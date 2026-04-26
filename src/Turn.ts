@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Effect, Option, Schema, Stream } from "effect"
 import { FunctionCall, Item, Message, Reasoning, StopReason, Usage } from "./Items.js"
 
 /**
@@ -35,3 +35,16 @@ export const reasonings = (turn: Turn): ReadonlyArray<Reasoning> =>
 
 export const assistantMessages = (turn: Turn): ReadonlyArray<Message> =>
   turn.items.filter((i): i is Message => i.type === "message" && i.role === "assistant")
+
+/**
+ * Drain a `TurnDelta` stream and return the assembled `Turn` carried by its
+ * terminal `turn_complete` event, or `Option.none()` if the stream ended
+ * without one. The caller decides what "no terminal event" means — usually
+ * `AiError`, but a partial-content recovery path is also valid.
+ */
+export const untilTurnComplete = <E, R>(
+  stream: Stream.Stream<TurnDelta, E, R>,
+): Effect.Effect<Option.Option<Turn>, E, R> =>
+  Stream.runFold(stream, Option.none<Turn>, (acc, delta) =>
+    delta.type === "turn_complete" ? Option.some(delta.turn) : acc,
+  )

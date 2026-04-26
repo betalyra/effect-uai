@@ -11,7 +11,7 @@ import { OpenAi, layer as openAiLayer } from "../src/providers/openai/Responses.
 import * as Tool from "../src/Tool.js"
 import type { ToolError } from "../src/Tool.js"
 import * as Toolkit from "../src/Toolkit.js"
-import { functionCalls, type Turn } from "../src/Turn.js"
+import * as Turn from "../src/Turn.js"
 
 // ---------------------------------------------------------------------------
 // Tool — get_current_time (uses Effect's DateTime)
@@ -93,9 +93,7 @@ const conversation = Stream.paginate(initial, (state) =>
       })
       .pipe(
         Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-        Stream.runFold(Option.none<Turn>, (acc, delta) =>
-          delta.type === "turn_complete" ? Option.some(delta.turn) : acc,
-        ),
+        Turn.untilTurnComplete,
       )
 
     if (Option.isNone(maybeTurn)) {
@@ -106,7 +104,7 @@ const conversation = Stream.paginate(initial, (state) =>
     const turn = maybeTurn.value
 
     const cursor = Conversation.cursor(state, turn)
-    const calls = functionCalls(turn)
+    const calls = Turn.functionCalls(turn)
     if (calls.length === 0) return Conversation.stop(cursor)
 
     const outputs = yield* Toolkit.executeAllSafe(toolkit, calls, repair)

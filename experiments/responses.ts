@@ -75,24 +75,24 @@ const conversation = Stream.paginate(initial, (state) =>
   Effect.gen(function* () {
     const oai = yield* OpenAi
 
-    const turn = yield* oai
+    const maybeTurn = yield* oai
       .streamTurn(state.history, {
         tools,
         reasoning: { effort: "low" },
       })
       .pipe(
         Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-        Stream.runFold(
-          (): Turn | undefined => undefined,
-          (acc, delta) => (delta.type === "turn_complete" ? delta.turn : acc),
+        Stream.runFold(Option.none<Turn>, (acc, delta) =>
+          delta.type === "turn_complete" ? Option.some(delta.turn) : acc,
         ),
       )
 
-    if (turn === undefined) {
+    if (Option.isNone(maybeTurn)) {
       return yield* new AiError({
         message: "Stream ended without turn_complete",
       })
     }
+    const turn = maybeTurn.value
 
     const history = [...state.history, ...turn.items]
     const cursor: Cursor = { history, turn, index: state.index }

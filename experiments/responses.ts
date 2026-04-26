@@ -82,10 +82,12 @@ const repair = (err: ToolError, call: Items.FunctionCall): Items.FunctionCallOut
 // The loop — Stream.paginate, fully visible
 // ---------------------------------------------------------------------------
 
+// One body per turn. Returns `stop` to terminate, `advance` to continue.
 const conversation = Stream.paginate(initial, (state) =>
   Effect.gen(function* () {
     const oai = yield* OpenAi
 
+    // Generate the next turn from the model.
     const maybeTurn = yield* oai
       .streamTurn(state.history, {
         tools,
@@ -102,12 +104,17 @@ const conversation = Stream.paginate(initial, (state) =>
       })
     }
     const turn = maybeTurn.value
-
     const cursor = Conversation.cursor(state, turn)
+
+    // No tool calls — the assistant is done.
     const calls = Turn.functionCalls(turn)
     if (calls.length === 0) return Conversation.stop(cursor)
 
+    // Run the tools the model asked for. If a call fails (e.g. bad arguments),
+    // `repair` feeds the error back so the model can self-correct next turn.
     const outputs = yield* Toolkit.executeAllSafe(toolkit, calls, repair)
+
+    // Continue with tool outputs appended to history.
     return Conversation.advance(cursor, {
       ...state,
       history: [...cursor.history, ...outputs],

@@ -3,7 +3,7 @@ import type { FunctionCall, FunctionCallOutput } from "./Items.js"
 import { functionCallOutput } from "./Items.js"
 
 export class ToolError extends Schema.TaggedErrorClass<ToolError>(
-  "effect-ai/ToolError"
+  "@betalyra/effect-uai/ToolError"
 )("ToolError", {
   call_id: Schema.String,
   tool: Schema.String,

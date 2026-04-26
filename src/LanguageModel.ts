@@ -12,7 +12,7 @@ export interface LanguageModelService {
 export class LanguageModel extends Context.Service<
   LanguageModel,
   LanguageModelService
->()("effect-ai/LanguageModel") {}
+>()("@betalyra/effect-uai/LanguageModel") {}
 
 /**
  * Stream the deltas of a single turn.

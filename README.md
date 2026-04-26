@@ -1,4 +1,8 @@
-# effect-ai
+# @betalyra/effect-uai
+
+*/ˈi.fɛkt ˈwaj/ — "effect-why"*
+
+> ***Uai*** \\ wai \\ — Mineiro Portuguese, all-purpose interjection. 
 
 A small, explicit AI/LLM toolkit for Effect v4. PoC stage.
 

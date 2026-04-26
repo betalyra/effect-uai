@@ -132,9 +132,7 @@ const program = Effect.gen(function* () {
   const final = Option.getOrThrowWith(last, () => new Error("conversation produced no turns"))
 
   yield* Effect.logInfo("final history items:")
-  for (const item of final.history) {
-    yield* Effect.logInfo("  item", { item })
-  }
+  yield* Effect.forEach(final.history, (item) => Effect.logInfo("  item", { item }))
 })
 
 const apiKeyLayer = Layer.unwrap(

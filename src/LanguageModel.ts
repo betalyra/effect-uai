@@ -23,25 +23,22 @@ export interface CommonRequestOptions {
 export interface LanguageModelService {
   readonly streamTurn: (
     history: ReadonlyArray<Item>,
-    options?: CommonRequestOptions
+    options?: CommonRequestOptions,
   ) => Stream.Stream<TurnDelta, AiError>
 }
 
-export class LanguageModel extends Context.Service<
-  LanguageModel,
-  LanguageModelService
->()("@betalyra/effect-uai/LanguageModel") {}
+export class LanguageModel extends Context.Service<LanguageModel, LanguageModelService>()(
+  "@betalyra/effect-uai/LanguageModel",
+) {}
 
 /**
  * Stream the deltas of a single turn.
  */
 export const streamTurn = (
   history: ReadonlyArray<Item>,
-  options?: CommonRequestOptions
+  options?: CommonRequestOptions,
 ): Stream.Stream<TurnDelta, AiError, LanguageModel> =>
-  Stream.unwrap(
-    Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(history, options))
-  )
+  Stream.unwrap(Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(history, options)))
 
 /**
  * Run a single turn to completion and return the assembled `Turn`.
@@ -52,7 +49,7 @@ export const streamTurn = (
  */
 export const turn = (
   history: ReadonlyArray<Item>,
-  options?: CommonRequestOptions
+  options?: CommonRequestOptions,
 ): Effect.Effect<Turn, AiError, LanguageModel> =>
   Effect.flatMap(Stream.runCollect(streamTurn(history, options)), (deltas) => {
     const last = deltas[deltas.length - 1]
@@ -60,7 +57,7 @@ export const turn = (
       ? Effect.succeed(last.turn)
       : Effect.fail(
           new AiError({
-            message: "Provider stream ended without a turn_complete event"
-          })
+            message: "Provider stream ended without a turn_complete event",
+          }),
         )
   })

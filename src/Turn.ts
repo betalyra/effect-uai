@@ -1,12 +1,5 @@
 import { Schema } from "effect"
-import {
-  FunctionCall,
-  Item,
-  Message,
-  Reasoning,
-  StopReason,
-  Usage
-} from "./Items.js"
+import { FunctionCall, Item, Message, Reasoning, StopReason, Usage } from "./Items.js"
 
 /**
  * The result of a single LLM generation. A turn produces zero or more items
@@ -16,7 +9,7 @@ import {
 export const Turn = Schema.Struct({
   items: Schema.Array(Item),
   usage: Usage,
-  stop_reason: StopReason
+  stop_reason: StopReason,
 })
 export type Turn = typeof Turn.Type
 
@@ -31,9 +24,8 @@ export type TurnDelta =
   | { readonly type: "tool_call_args_delta"; readonly call_id: string; readonly delta: string }
   | { readonly type: "turn_complete"; readonly turn: Turn }
 
-export const isTurnComplete = (
-  d: TurnDelta
-): d is Extract<TurnDelta, { type: "turn_complete" }> => d.type === "turn_complete"
+export const isTurnComplete = (d: TurnDelta): d is Extract<TurnDelta, { type: "turn_complete" }> =>
+  d.type === "turn_complete"
 
 export const functionCalls = (turn: Turn): ReadonlyArray<FunctionCall> =>
   turn.items.filter((i): i is FunctionCall => i.type === "function_call")
@@ -42,6 +34,4 @@ export const reasonings = (turn: Turn): ReadonlyArray<Reasoning> =>
   turn.items.filter((i): i is Reasoning => i.type === "reasoning")
 
 export const assistantMessages = (turn: Turn): ReadonlyArray<Message> =>
-  turn.items.filter(
-    (i): i is Message => i.type === "message" && i.role === "assistant"
-  )
+  turn.items.filter((i): i is Message => i.type === "message" && i.role === "assistant")

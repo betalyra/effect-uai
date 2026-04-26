@@ -10,7 +10,7 @@ describe("Toolkit.toDescriptors", () => {
     name: "get_weather",
     description: "Look up the current temperature for a city.",
     inputSchema: Tool.fromEffectSchema(GetWeatherInput),
-    run: ({ city }) => Effect.succeed({ city, tempC: 18 })
+    run: ({ city }) => Effect.succeed({ city, tempC: 18 }),
   })
 
   it("renders the input schema as a JSON Schema document", () => {
@@ -20,7 +20,7 @@ describe("Toolkit.toDescriptors", () => {
     expect(desc?.inputSchema).toMatchObject({
       type: "object",
       properties: { city: { type: "string" } },
-      required: ["city"]
+      required: ["city"],
     })
   })
 
@@ -30,13 +30,13 @@ describe("Toolkit.toDescriptors", () => {
       description: "",
       inputSchema: Tool.fromEffectSchema(GetWeatherInput),
       run: () => Effect.succeed({}),
-      strict: true
+      strict: true,
     })
     const looseTool = Tool.make({
       name: "loose_one",
       description: "",
       inputSchema: Tool.fromEffectSchema(GetWeatherInput),
-      run: () => Effect.succeed({})
+      run: () => Effect.succeed({}),
     })
     const [s, l] = Toolkit.toDescriptors(Toolkit.make([strictTool, looseTool]))
     expect(s?.strict).toBe(true)

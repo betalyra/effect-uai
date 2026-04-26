@@ -2,24 +2,11 @@
  * Drive a real OpenAI Responses API conversation through `Stream.paginate`.
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx experiments/responses.ts`
  */
-import {
-  Config,
-  DateTime,
-  Effect,
-  Layer,
-  Logger,
-  Option,
-  References,
-  Schema,
-  Stream
-} from "effect"
+import { Config, DateTime, Effect, Layer, Logger, Option, References, Schema, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import { AiError } from "../src/AiError.js"
 import * as Items from "../src/Items.js"
-import {
-  OpenAi,
-  layer as openAiLayer
-} from "../src/providers/openai/Responses.js"
+import { OpenAi, layer as openAiLayer } from "../src/providers/openai/Responses.js"
 import * as Tool from "../src/Tool.js"
 import * as Toolkit from "../src/Toolkit.js"
 import { functionCalls, type Turn } from "../src/Turn.js"
@@ -29,11 +16,10 @@ import { functionCalls, type Turn } from "../src/Turn.js"
 // ---------------------------------------------------------------------------
 
 const GetCurrentTimeInput = Schema.Struct({
-  timezone: Schema.String
+  timezone: Schema.String,
 })
 
-const InvalidTimeZone = (timezone: string) =>
-  new Error(`Invalid IANA timezone: ${timezone}`)
+const InvalidTimeZone = (timezone: string) => new Error(`Invalid IANA timezone: ${timezone}`)
 
 const getCurrentTime = Tool.make({
   name: "get_current_time",
@@ -49,13 +35,13 @@ const getCurrentTime = Tool.make({
             onSome: (zoned) =>
               Effect.succeed({
                 timezone,
-                iso: DateTime.formatIsoZoned(zoned)
-              })
-          })
-        )
-      )
+                iso: DateTime.formatIsoZoned(zoned),
+              }),
+          }),
+        ),
+      ),
     ),
-  strict: true
+  strict: true,
 })
 
 const toolkit = Toolkit.make([getCurrentTime])
@@ -77,10 +63,8 @@ interface Cursor {
 }
 
 const initial: State = {
-  history: [
-    Items.userText("What time is it in Lisbon and Tokyo right now?")
-  ],
-  index: 0
+  history: [Items.userText("What time is it in Lisbon and Tokyo right now?")],
+  index: 0,
 }
 
 // ---------------------------------------------------------------------------
@@ -94,19 +78,19 @@ const conversation = Stream.paginate(initial, (state) =>
     const turn = yield* oai
       .streamTurn(state.history, {
         tools,
-        reasoning: { effort: "low" }
+        reasoning: { effort: "low" },
       })
       .pipe(
         Stream.tap((delta) => Effect.logDebug("delta", { delta })),
         Stream.runFold(
           (): Turn | undefined => undefined,
-          (acc, delta) => (delta.type === "turn_complete" ? delta.turn : acc)
-        )
+          (acc, delta) => (delta.type === "turn_complete" ? delta.turn : acc),
+        ),
       )
 
     if (turn === undefined) {
       return yield* new AiError({
-        message: "Stream ended without turn_complete"
+        message: "Stream ended without turn_complete",
       })
     }
 
@@ -123,10 +107,10 @@ const conversation = Stream.paginate(initial, (state) =>
       [cursor],
       Option.some<State>({
         history: [...history, ...outputs],
-        index: state.index + 1
-      })
+        index: state.index + 1,
+      }),
     ] as const
-  })
+  }),
 )
 
 // ---------------------------------------------------------------------------
@@ -139,16 +123,13 @@ const program = Effect.gen(function* () {
       Stream.tap((cursor) =>
         Effect.logInfo(`turn ${cursor.index} complete`, {
           stop_reason: cursor.turn.stop_reason,
-          usage: cursor.turn.usage
-        })
-      )
-    )
+          usage: cursor.turn.usage,
+        }),
+      ),
+    ),
   )
 
-  const final = Option.getOrThrowWith(
-    last,
-    () => new Error("conversation produced no turns")
-  )
+  const final = Option.getOrThrowWith(last, () => new Error("conversation produced no turns"))
 
   yield* Effect.logInfo("final history items:")
   for (const item of final.history) {
@@ -160,19 +141,16 @@ const apiKeyLayer = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("OPENAI_API_KEY")
     return openAiLayer({ apiKey, model: "gpt-5.4-mini" })
-  })
+  }),
 )
 
 const runtime = Layer.mergeAll(
   apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
-  Logger.layer([Logger.consolePretty()])
+  Logger.layer([Logger.consolePretty()]),
 )
 
 Effect.runPromise(
-  program.pipe(
-    Effect.provide(runtime),
-    Effect.provideService(References.MinimumLogLevel, "Debug")
-  )
+  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Debug")),
 ).catch((err) => {
   console.error("experiment failed:", err)
   process.exit(1)

@@ -6,47 +6,36 @@ const enc = new TextEncoder()
 const bytesOf = (...chunks: ReadonlyArray<string>) =>
   Stream.fromIterable(chunks.map((c) => enc.encode(c)))
 
-const collect = <A, E>(s: Stream.Stream<A, E>) =>
-  Effect.runPromise(Stream.runCollect(s))
+const collect = <A, E>(s: Stream.Stream<A, E>) => Effect.runPromise(Stream.runCollect(s))
 
 describe("SSE.fromBytes", () => {
   it("parses a single complete event", async () => {
-    const out = await collect(
-      SSE.fromBytes(bytesOf("event: foo\ndata: hello\n\n"))
-    )
+    const out = await collect(SSE.fromBytes(bytesOf("event: foo\ndata: hello\n\n")))
     expect(out).toEqual([{ event: "foo", data: "hello" }])
   })
 
   it("joins multiple data lines with \\n", async () => {
-    const out = await collect(
-      SSE.fromBytes(bytesOf("data: line1\ndata: line2\ndata: line3\n\n"))
-    )
+    const out = await collect(SSE.fromBytes(bytesOf("data: line1\ndata: line2\ndata: line3\n\n")))
     expect(out).toEqual([{ data: "line1\nline2\nline3" }])
   })
 
   it("handles events split across chunk boundaries", async () => {
     const out = await collect(
-      SSE.fromBytes(
-        bytesOf("event: split\nda", "ta: hi\n", "\nevent: next\ndata: x\n\n")
-      )
+      SSE.fromBytes(bytesOf("event: split\nda", "ta: hi\n", "\nevent: next\ndata: x\n\n")),
     )
     expect(out).toEqual([
       { event: "split", data: "hi" },
-      { event: "next", data: "x" }
+      { event: "next", data: "x" },
     ])
   })
 
   it("handles CRLF line endings", async () => {
-    const out = await collect(
-      SSE.fromBytes(bytesOf("event: a\r\ndata: b\r\n\r\n"))
-    )
+    const out = await collect(SSE.fromBytes(bytesOf("event: a\r\ndata: b\r\n\r\n")))
     expect(out).toEqual([{ event: "a", data: "b" }])
   })
 
   it("preserves id and skips comment lines", async () => {
-    const out = await collect(
-      SSE.fromBytes(bytesOf(": ping\nid: 42\ndata: x\n\n"))
-    )
+    const out = await collect(SSE.fromBytes(bytesOf(": ping\nid: 42\ndata: x\n\n")))
     expect(out).toEqual([{ id: "42", data: "x" }])
   })
 
@@ -56,9 +45,7 @@ describe("SSE.fromBytes", () => {
   })
 
   it("ignores empty blocks between events", async () => {
-    const out = await collect(
-      SSE.fromBytes(bytesOf("data: a\n\n\n\ndata: b\n\n"))
-    )
+    const out = await collect(SSE.fromBytes(bytesOf("data: a\n\n\n\ndata: b\n\n")))
     expect(out).toEqual([{ data: "a" }, { data: "b" }])
   })
 
@@ -77,11 +64,9 @@ describe("SSE.toBytes round-trip", () => {
     const events: ReadonlyArray<SSE.Event> = [
       { event: "a", data: "hello" },
       { data: "multi\nline" },
-      { event: "b", id: "7", data: "x" }
+      { event: "b", id: "7", data: "x" },
     ]
-    const reparsed = await collect(
-      Stream.fromIterable(events).pipe(SSE.toBytes, SSE.fromBytes)
-    )
+    const reparsed = await collect(Stream.fromIterable(events).pipe(SSE.toBytes, SSE.fromBytes))
     expect(reparsed).toEqual(events)
   })
 })

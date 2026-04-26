@@ -6,13 +6,13 @@ import { Schema } from "effect"
 
 export const InputText = Schema.Struct({
   type: Schema.Literal("input_text"),
-  text: Schema.String
+  text: Schema.String,
 })
 export type InputText = typeof InputText.Type
 
 export const OutputText = Schema.Struct({
   type: Schema.Literal("output_text"),
-  text: Schema.String
+  text: Schema.String,
 })
 export type OutputText = typeof OutputText.Type
 
@@ -39,7 +39,7 @@ export const Message = Schema.Struct({
   type: Schema.Literal("message"),
   role: Role,
   content: Schema.Array(ContentBlock),
-  providerData: ProviderData
+  providerData: ProviderData,
 })
 export type Message = typeof Message.Type
 
@@ -49,7 +49,7 @@ export const FunctionCall = Schema.Struct({
   name: Schema.String,
   // JSON-encoded arguments string, mirroring OpenAI Responses API
   arguments: Schema.String,
-  providerData: ProviderData
+  providerData: ProviderData,
 })
 export type FunctionCall = typeof FunctionCall.Type
 
@@ -57,7 +57,7 @@ export const FunctionCallOutput = Schema.Struct({
   type: Schema.Literal("function_call_output"),
   call_id: Schema.String,
   output: Schema.String,
-  providerData: ProviderData
+  providerData: ProviderData,
 })
 export type FunctionCallOutput = typeof FunctionCallOutput.Type
 
@@ -72,16 +72,11 @@ export const Reasoning = Schema.Struct({
   id: Schema.optional(Schema.String),
   summary: Schema.optional(Schema.String),
   signature: Schema.optional(Schema.String),
-  providerData: ProviderData
+  providerData: ProviderData,
 })
 export type Reasoning = typeof Reasoning.Type
 
-export const Item = Schema.Union([
-  Message,
-  FunctionCall,
-  FunctionCallOutput,
-  Reasoning
-])
+export const Item = Schema.Union([Message, FunctionCall, FunctionCallOutput, Reasoning])
 export type Item = typeof Item.Type
 
 // ---------------------------------------------------------------------------
@@ -91,7 +86,7 @@ export type Item = typeof Item.Type
 export const Usage = Schema.Struct({
   input_tokens: Schema.optional(Schema.Number),
   output_tokens: Schema.optional(Schema.Number),
-  total_tokens: Schema.optional(Schema.Number)
+  total_tokens: Schema.optional(Schema.Number),
 })
 export type Usage = typeof Usage.Type
 
@@ -105,26 +100,23 @@ export type StopReason = typeof StopReason.Type
 export const userText = (text: string): Message => ({
   type: "message",
   role: "user",
-  content: [{ type: "input_text", text }]
+  content: [{ type: "input_text", text }],
 })
 
 export const systemText = (text: string): Message => ({
   type: "message",
   role: "system",
-  content: [{ type: "input_text", text }]
+  content: [{ type: "input_text", text }],
 })
 
 export const assistantText = (text: string): Message => ({
   type: "message",
   role: "assistant",
-  content: [{ type: "output_text", text }]
+  content: [{ type: "output_text", text }],
 })
 
-export const functionCallOutput = (
-  call_id: string,
-  output: string
-): FunctionCallOutput => ({
+export const functionCallOutput = (call_id: string, output: string): FunctionCallOutput => ({
   type: "function_call_output",
   call_id,
-  output
+  output,
 })

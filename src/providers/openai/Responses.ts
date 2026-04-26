@@ -1,29 +1,17 @@
-import {
-  Context,
-  Effect,
-  Layer,
-  Option,
-  Redacted,
-  Schema,
-  Stream
-} from "effect"
+import { Context, Effect, Layer, Option, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { AiError } from "../../AiError.js"
 import type { Item } from "../../Items.js"
 import {
   type CommonRequestOptions,
   LanguageModel,
-  type LanguageModelService
+  type LanguageModelService,
 } from "../../LanguageModel.js"
 import { JsonParseError } from "../../JSONL.js"
 import * as SSE from "../../SSE.js"
 import type { TurnDelta } from "../../Turn.js"
 import { itemsToInput } from "./codec.js"
-import {
-  ProviderEvent,
-  eventToDeltas,
-  makeCallIdLookup
-} from "./streamEvents.js"
+import { ProviderEvent, eventToDeltas, makeCallIdLookup } from "./streamEvents.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -38,7 +26,7 @@ export interface OpenAiRequestOptions extends CommonRequestOptions {
 export interface OpenAiService {
   readonly streamTurn: (
     history: ReadonlyArray<Item>,
-    options?: OpenAiRequestOptions
+    options?: OpenAiRequestOptions,
   ) => Stream.Stream<TurnDelta, AiError>
 }
 
@@ -49,7 +37,7 @@ export interface OpenAiService {
  * registered by `OpenAiResponses.layer`.
  */
 export class OpenAi extends Context.Service<OpenAi, OpenAiService>()(
-  "@betalyra/effect-uai/providers/openai/Responses"
+  "@betalyra/effect-uai/providers/openai/Responses",
 ) {}
 
 export interface Config {
@@ -65,7 +53,7 @@ export interface Config {
 const buildBody = (
   history: ReadonlyArray<Item>,
   model: string,
-  options: OpenAiRequestOptions | undefined
+  options: OpenAiRequestOptions | undefined,
 ): Record<string, unknown> => ({
   model,
   input: itemsToInput(history),
@@ -77,21 +65,21 @@ const buildBody = (
         name: t.name,
         description: t.description,
         parameters: t.inputSchema,
-        ...(t.strict !== undefined && { strict: t.strict })
-      }))
+        ...(t.strict !== undefined && { strict: t.strict }),
+      })),
     }),
   ...(options?.toolChoice !== undefined && { tool_choice: options.toolChoice }),
   ...(options?.temperature !== undefined && {
-    temperature: options.temperature
+    temperature: options.temperature,
   }),
   ...(options?.maxOutputTokens !== undefined && {
-    max_output_tokens: options.maxOutputTokens
+    max_output_tokens: options.maxOutputTokens,
   }),
   ...(options?.reasoning !== undefined && { reasoning: options.reasoning }),
   ...(options?.store !== undefined && { store: options.store }),
   ...(options?.previousResponseId !== undefined && {
-    previous_response_id: options.previousResponseId
-  })
+    previous_response_id: options.previousResponseId,
+  }),
 })
 
 // ---------------------------------------------------------------------------
@@ -105,12 +93,10 @@ const decodeProviderEvent = Schema.decodeUnknownEffect(ProviderEvent)
  * JSON-parse failures and schema-decode failures both produce
  * `Option.none()` — unknown event types are silently ignored.
  */
-const sseEventToProviderEvent = (
-  ev: SSE.Event
-): Effect.Effect<Option.Option<ProviderEvent>> =>
+const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<Option.Option<ProviderEvent>> =>
   Effect.try({
     try: () => JSON.parse(ev.data) as unknown,
-    catch: (cause) => new JsonParseError({ line: ev.data, cause })
+    catch: (cause) => new JsonParseError({ line: ev.data, cause }),
   }).pipe(Effect.flatMap(decodeProviderEvent), Effect.option)
 
 // ---------------------------------------------------------------------------
@@ -119,43 +105,34 @@ const sseEventToProviderEvent = (
 
 const httpStatusError = (status: number, body: string): AiError =>
   new AiError({
-    message: `OpenAI Responses returned ${status}${body.length > 0 ? `: ${body}` : ""}`
+    message: `OpenAI Responses returned ${status}${body.length > 0 ? `: ${body}` : ""}`,
   })
 
 const buildStream = (cfg: Config) => {
   const url = `${cfg.baseUrl ?? "https://api.openai.com/v1"}/responses`
   return (
     history: ReadonlyArray<Item>,
-    options: OpenAiRequestOptions | undefined
+    options: OpenAiRequestOptions | undefined,
   ): Stream.Stream<TurnDelta, AiError, HttpClient.HttpClient> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
         const request = HttpClientRequest.post(url).pipe(
           HttpClientRequest.bearerToken(cfg.apiKey),
-          HttpClientRequest.bodyJsonUnsafe(
-            buildBody(history, cfg.model, options)
-          ),
-          HttpClientRequest.accept("text/event-stream")
+          HttpClientRequest.bodyJsonUnsafe(buildBody(history, cfg.model, options)),
+          HttpClientRequest.accept("text/event-stream"),
         )
-        const response = yield* client.execute(request).pipe(
-          Effect.mapError(
-            (cause) => new AiError({ message: "HTTP request failed", cause })
-          )
-        )
+        const response = yield* client
+          .execute(request)
+          .pipe(Effect.mapError((cause) => new AiError({ message: "HTTP request failed", cause })))
         if (response.status >= 400) {
-          const body = yield* response.text.pipe(
-            Effect.orElseSucceed(() => "")
-          )
+          const body = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
           return Stream.fail(httpStatusError(response.status, body))
         }
 
         const lookup = makeCallIdLookup()
         return response.stream.pipe(
-          Stream.mapError(
-            (cause) =>
-              new AiError({ message: "Response stream error", cause })
-          ),
+          Stream.mapError((cause) => new AiError({ message: "Response stream error", cause })),
           SSE.fromBytes,
           Stream.mapEffect(sseEventToProviderEvent),
           Stream.flatMap(
@@ -165,14 +142,14 @@ const buildStream = (cfg: Config) => {
                 event.type === "error"
                   ? Stream.fail(
                       new AiError({
-                        message: event.message ?? "Unknown OpenAI error"
-                      })
+                        message: event.message ?? "Unknown OpenAI error",
+                      }),
                     )
-                  : Stream.fromIterable(eventToDeltas(event, lookup))
-            })
-          )
+                  : Stream.fromIterable(eventToDeltas(event, lookup)),
+            }),
+          ),
         )
-      })
+      }),
     )
 }
 
@@ -186,14 +163,10 @@ const buildStream = (cfg: Config) => {
  * `Effect.provideService(OpenAi, model)`. For Layer-based setup, prefer
  * `layer`.
  */
-export const make = (
-  cfg: Config
-): Effect.Effect<OpenAiService, never, HttpClient.HttpClient> =>
+export const make = (cfg: Config): Effect.Effect<OpenAiService, never, HttpClient.HttpClient> =>
   Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
     streamTurn: (history, options) =>
-      buildStream(cfg)(history, options).pipe(
-        Stream.provideService(HttpClient.HttpClient, client)
-      )
+      buildStream(cfg)(history, options).pipe(Stream.provideService(HttpClient.HttpClient, client)),
   }))
 
 /**
@@ -204,7 +177,7 @@ export const make = (
  * accepts the full `OpenAiRequestOptions` surface.
  */
 export const layer = (
-  cfg: Config
+  cfg: Config,
 ): Layer.Layer<OpenAi | LanguageModel, never, HttpClient.HttpClient> => {
   const typed = Layer.effect(OpenAi, make(cfg))
   const generic = Layer.effect(
@@ -212,9 +185,9 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): LanguageModelService => ({
-        streamTurn: (history, options) => s.streamTurn(history, options)
-      })
-    )
+        streamTurn: (history, options) => s.streamTurn(history, options),
+      }),
+    ),
   )
   return Layer.merge(typed, generic)
 }

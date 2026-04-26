@@ -6,8 +6,7 @@ const enc = new TextEncoder()
 const bytesOf = (...chunks: ReadonlyArray<string>) =>
   Stream.fromIterable(chunks.map((c) => enc.encode(c)))
 
-const collect = <A, E>(s: Stream.Stream<A, E>) =>
-  Effect.runPromise(Stream.runCollect(s))
+const collect = <A, E>(s: Stream.Stream<A, E>) => Effect.runPromise(Stream.runCollect(s))
 
 const collectResult = <A, E>(s: Stream.Stream<A, E>) =>
   Effect.runPromise(Effect.result(Stream.runCollect(s)))
@@ -41,21 +40,18 @@ describe("JSONL.parse", () => {
     const out = await collect(
       bytesOf(`{"op":"add","value":1}\n{"op":"sub","value":2}\n`).pipe(
         JSONL.fromBytes,
-        JSONL.parse(Patch)
-      )
+        JSONL.parse(Patch),
+      ),
     )
     expect(out).toEqual([
       { op: "add", value: 1 },
-      { op: "sub", value: 2 }
+      { op: "sub", value: 2 },
     ])
   })
 
   it("fails with JsonParseError on malformed JSON", async () => {
     const result = await collectResult(
-      bytesOf(`{"op":"add","value":1}\nNOT_JSON\n`).pipe(
-        JSONL.fromBytes,
-        JSONL.parse(Patch)
-      )
+      bytesOf(`{"op":"add","value":1}\nNOT_JSON\n`).pipe(JSONL.fromBytes, JSONL.parse(Patch)),
     )
     expect(Result.isFailure(result)).toBe(true)
     if (Result.isFailure(result)) {
@@ -66,10 +62,7 @@ describe("JSONL.parse", () => {
 
   it("fails with JsonParseError on schema mismatch", async () => {
     const result = await collectResult(
-      bytesOf(`{"op":"add","value":"not a number"}\n`).pipe(
-        JSONL.fromBytes,
-        JSONL.parse(Patch)
-      )
+      bytesOf(`{"op":"add","value":"not a number"}\n`).pipe(JSONL.fromBytes, JSONL.parse(Patch)),
     )
     expect(Result.isFailure(result)).toBe(true)
     if (Result.isFailure(result)) {
@@ -82,14 +75,10 @@ describe("JSONL round-trip", () => {
   it("toBytes then fromBytes/parse recovers the values", async () => {
     const values = [
       { op: "a", value: 1 },
-      { op: "b", value: 2 }
+      { op: "b", value: 2 },
     ]
     const out = await collect(
-      Stream.fromIterable(values).pipe(
-        JSONL.toBytes(Patch),
-        JSONL.fromBytes,
-        JSONL.parse(Patch)
-      )
+      Stream.fromIterable(values).pipe(JSONL.toBytes(Patch), JSONL.fromBytes, JSONL.parse(Patch)),
     )
     expect(out).toEqual(values)
   })

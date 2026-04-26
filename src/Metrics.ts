@@ -6,7 +6,7 @@ import { Clock, Duration, Effect, Option, Stream } from "effect"
  * which is also the conventional "time to first ____" metric.
  */
 export const withElapsed = <A, E, R>(
-  self: Stream.Stream<A, E, R>
+  self: Stream.Stream<A, E, R>,
 ): Stream.Stream<{ readonly value: A; readonly elapsed: Duration.Duration }, E, R> =>
   Stream.unwrap(
     Effect.map(Clock.currentTimeMillis, (start) =>
@@ -14,11 +14,11 @@ export const withElapsed = <A, E, R>(
         Stream.mapEffect((value) =>
           Effect.map(Clock.currentTimeMillis, (now) => ({
             value,
-            elapsed: Duration.millis(now - start)
-          }))
-        )
-      )
-    )
+            elapsed: Duration.millis(now - start),
+          })),
+        ),
+      ),
+    ),
   )
 
 /**
@@ -29,15 +29,14 @@ export const withElapsed = <A, E, R>(
  * `Stream.broadcast` to fan the source out and run `timeToFirst` on one
  * branch.
  */
-export const timeToFirst = <A>(predicate: (a: A) => boolean) =>
-<E, R>(
-  self: Stream.Stream<A, E, R>
-): Effect.Effect<Option.Option<Duration.Duration>, E, R> =>
-  withElapsed(self).pipe(
-    Stream.filter(({ value }) => predicate(value)),
-    Stream.runHead,
-    Effect.map(Option.map(({ elapsed }) => elapsed))
-  )
+export const timeToFirst =
+  <A>(predicate: (a: A) => boolean) =>
+  <E, R>(self: Stream.Stream<A, E, R>): Effect.Effect<Option.Option<Duration.Duration>, E, R> =>
+    withElapsed(self).pipe(
+      Stream.filter(({ value }) => predicate(value)),
+      Stream.runHead,
+      Effect.map(Option.map(({ elapsed }) => elapsed)),
+    )
 
 export interface RatePoint<A> {
   readonly value: A
@@ -57,33 +56,32 @@ export interface RatePoint<A> {
  *
  * Use any tokenizer you like; the library does not ship one.
  */
-export const withRate = <A>(weight: (a: A) => number) =>
-<E, R>(
-  self: Stream.Stream<A, E, R>
-): Stream.Stream<RatePoint<A>, E, R> =>
-  Stream.unwrap(
-    Effect.map(Clock.currentTimeMillis, (start) =>
-      self.pipe(
-        Stream.mapAccumEffect(
-          () => ({ total: 0 }),
-          (acc, value) =>
-            Effect.map(Clock.currentTimeMillis, (now) => {
-              const total = acc.total + weight(value)
-              const elapsedMs = now - start
-              const ratePerSecond = elapsedMs > 0 ? (total / elapsedMs) * 1000 : 0
-              return [
-                { total },
-                [
-                  {
-                    value,
-                    total,
-                    ratePerSecond,
-                    elapsed: Duration.millis(elapsedMs)
-                  } satisfies RatePoint<A>
-                ]
-              ] as const
-            })
-        )
-      )
+export const withRate =
+  <A>(weight: (a: A) => number) =>
+  <E, R>(self: Stream.Stream<A, E, R>): Stream.Stream<RatePoint<A>, E, R> =>
+    Stream.unwrap(
+      Effect.map(Clock.currentTimeMillis, (start) =>
+        self.pipe(
+          Stream.mapAccumEffect(
+            () => ({ total: 0 }),
+            (acc, value) =>
+              Effect.map(Clock.currentTimeMillis, (now) => {
+                const total = acc.total + weight(value)
+                const elapsedMs = now - start
+                const ratePerSecond = elapsedMs > 0 ? (total / elapsedMs) * 1000 : 0
+                return [
+                  { total },
+                  [
+                    {
+                      value,
+                      total,
+                      ratePerSecond,
+                      elapsed: Duration.millis(elapsedMs),
+                    } satisfies RatePoint<A>,
+                  ],
+                ] as const
+              }),
+          ),
+        ),
+      ),
     )
-  )

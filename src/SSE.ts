@@ -18,21 +18,18 @@ export interface Event {
 // ---------------------------------------------------------------------------
 
 /** Decode `Uint8Array` chunks as UTF-8, handling multi-byte boundaries. */
-const decodeText = <E, R>(
-  self: Stream.Stream<Uint8Array, E, R>
-): Stream.Stream<string, E, R> =>
+const decodeText = <E, R>(self: Stream.Stream<Uint8Array, E, R>): Stream.Stream<string, E, R> =>
   self.pipe(
     Stream.mapAccum(
       (): TextDecoder => new TextDecoder("utf-8"),
-      (decoder, chunk: Uint8Array) =>
-        [decoder, [decoder.decode(chunk, { stream: true })]] as const,
+      (decoder, chunk: Uint8Array) => [decoder, [decoder.decode(chunk, { stream: true })]] as const,
       {
         onHalt: (decoder: TextDecoder) => {
           const tail = decoder.decode()
           return tail.length > 0 ? [tail] : []
-        }
-      }
-    )
+        },
+      },
+    ),
   )
 
 /** Split a text stream on a separator, buffering across chunk boundaries. */
@@ -47,8 +44,8 @@ const splitOn =
           const tail = parts[parts.length - 1] ?? ""
           return [tail, parts.slice(0, -1)] as const
         },
-        { onHalt: (tail: string) => (tail.length > 0 ? [tail] : []) }
-      )
+        { onHalt: (tail: string) => (tail.length > 0 ? [tail] : []) },
+      ),
     )
 
 // ---------------------------------------------------------------------------
@@ -63,9 +60,7 @@ const parseField = (line: string): readonly [string, string] => {
 }
 
 const parseBlock = (block: string): Event | null => {
-  const lines = block.split("\n").filter(
-    (l) => l.length > 0 && !l.startsWith(":")
-  )
+  const lines = block.split("\n").filter((l) => l.length > 0 && !l.startsWith(":"))
   if (lines.length === 0) return null
 
   const fields = lines.map(parseField)
@@ -74,7 +69,7 @@ const parseBlock = (block: string): Event | null => {
   const id = fields.find(([f]) => f === "id")?.[1]
 
   const out: { event?: string; data: string; id?: string } = {
-    data: dataLines.join("\n")
+    data: dataLines.join("\n"),
   }
   if (event !== undefined) out.event = event
   if (id !== undefined) out.id = id
@@ -91,14 +86,14 @@ const parseBlock = (block: string): Event | null => {
  * endings, and events split across chunk boundaries.
  */
 export const fromBytes = <E, R>(
-  self: Stream.Stream<Uint8Array, E, R>
+  self: Stream.Stream<Uint8Array, E, R>,
 ): Stream.Stream<Event, E, R> =>
   self.pipe(
     decodeText,
     Stream.map((s) => s.replace(/\r/g, "")), // SSE allows CRLF; normalize to LF
     splitOn("\n\n"),
     Stream.map(parseBlock),
-    Stream.filter((ev): ev is Event => ev !== null)
+    Stream.filter((ev): ev is Event => ev !== null),
   )
 
 const eventToString = (ev: Event): string => {
@@ -115,7 +110,5 @@ const encoder = new TextEncoder()
  * Encode a `Stream<Event>` as `Stream<Uint8Array>` ready to send on an
  * HTTP response with `Content-Type: text/event-stream`.
  */
-export const toBytes = <E, R>(
-  self: Stream.Stream<Event, E, R>
-): Stream.Stream<Uint8Array, E, R> =>
+export const toBytes = <E, R>(self: Stream.Stream<Event, E, R>): Stream.Stream<Uint8Array, E, R> =>
   Stream.map(self, (ev) => encoder.encode(eventToString(ev)))

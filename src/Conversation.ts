@@ -4,12 +4,7 @@ import type { Item } from "./Items.js"
 import { LanguageModel, turn as runTurn } from "./LanguageModel.js"
 import type { Turn } from "./Turn.js"
 import { functionCalls } from "./Turn.js"
-import {
-  executeAll,
-  type AnyTool,
-  type Toolkit,
-  type ToolsR
-} from "./Toolkit.js"
+import { executeAll, type AnyTool, type Toolkit, type ToolsR } from "./Toolkit.js"
 import type { ToolError } from "./Tool.js"
 
 /**
@@ -33,9 +28,7 @@ export interface Cursor {
  * This is *pure data flow*. No callbacks, no while loops. Compose with
  * `Effect.flatMap`, `Effect.map`, `Effect.forEach`.
  */
-export type Step<E, R> = (
-  cursor: Cursor
-) => Effect.Effect<ReadonlyArray<Item> | undefined, E, R>
+export type Step<E, R> = (cursor: Cursor) => Effect.Effect<ReadonlyArray<Item> | undefined, E, R>
 
 /**
  * The functional loop primitive: a typed `Stream.paginate` that calls the
@@ -48,7 +41,7 @@ export type Step<E, R> = (
  */
 export const unfold = <E, R>(
   initial: ReadonlyArray<Item>,
-  step: Step<E, R>
+  step: Step<E, R>,
 ): Stream.Stream<Cursor, E | AiError, R | LanguageModel> =>
   Stream.paginate(
     { history: initial, index: 0 } as {
@@ -61,20 +54,21 @@ export const unfold = <E, R>(
           const cursor: Cursor = {
             history: [...s.history, ...turn.items],
             turn,
-            index: s.index
+            index: s.index,
           }
           return step(cursor).pipe(
-            Effect.map((next) =>
-              [
-                [cursor] as ReadonlyArray<Cursor>,
-                next === undefined
-                  ? Option.none<{ history: ReadonlyArray<Item>; index: number }>()
-                  : Option.some({ history: next, index: s.index + 1 })
-              ] as const
-            )
+            Effect.map(
+              (next) =>
+                [
+                  [cursor] as ReadonlyArray<Cursor>,
+                  next === undefined
+                    ? Option.none<{ history: ReadonlyArray<Item>; index: number }>()
+                    : Option.some({ history: next, index: s.index + 1 }),
+                ] as const,
+            ),
           )
-        })
-      )
+        }),
+      ),
   )
 
 /**
@@ -84,13 +78,9 @@ export const unfold = <E, R>(
  * Six lines. Anything else you want, fork it.
  */
 export const defaultStep =
-  <Tools extends ReadonlyArray<AnyTool>>(
-    toolkit: Toolkit<Tools>
-  ): Step<ToolError, ToolsR<Tools>> =>
+  <Tools extends ReadonlyArray<AnyTool>>(toolkit: Toolkit<Tools>): Step<ToolError, ToolsR<Tools>> =>
   ({ history, turn }) => {
     const calls = functionCalls(turn)
     if (calls.length === 0) return Effect.succeed(undefined)
-    return executeAll(toolkit, calls).pipe(
-      Effect.map((outputs) => [...history, ...outputs])
-    )
+    return executeAll(toolkit, calls).pipe(Effect.map((outputs) => [...history, ...outputs]))
   }

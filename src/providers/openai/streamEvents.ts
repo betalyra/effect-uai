@@ -1,10 +1,6 @@
 import { Match, Schema } from "effect"
 import type { TurnDelta } from "../../Turn.js"
-import {
-  WireOutputItem,
-  WireResponseCompleted,
-  turnFromCompleted
-} from "./codec.js"
+import { WireOutputItem, WireResponseCompleted, turnFromCompleted } from "./codec.js"
 
 // ---------------------------------------------------------------------------
 // Schemas for the SSE event payloads we care about. The Responses API ships
@@ -14,34 +10,34 @@ import {
 
 const OutputItemAdded = Schema.Struct({
   type: Schema.Literal("response.output_item.added"),
-  item: WireOutputItem
+  item: WireOutputItem,
 })
 
 const OutputTextDelta = Schema.Struct({
   type: Schema.Literal("response.output_text.delta"),
-  delta: Schema.String
+  delta: Schema.String,
 })
 
 const FunctionArgsDelta = Schema.Struct({
   type: Schema.Literal("response.function_call_arguments.delta"),
   item_id: Schema.String,
-  delta: Schema.String
+  delta: Schema.String,
 })
 
 const ReasoningSummaryDelta = Schema.Struct({
   type: Schema.Literal("response.reasoning_summary_text.delta"),
-  delta: Schema.String
+  delta: Schema.String,
 })
 
 const Completed = Schema.Struct({
   type: Schema.Literal("response.completed"),
-  response: WireResponseCompleted
+  response: WireResponseCompleted,
 })
 
 const ErrorEvent = Schema.Struct({
   type: Schema.Literal("error"),
   message: Schema.optional(Schema.String),
-  code: Schema.optional(Schema.String)
+  code: Schema.optional(Schema.String),
 })
 
 /**
@@ -54,7 +50,7 @@ export const ProviderEvent = Schema.Union([
   FunctionArgsDelta,
   ReasoningSummaryDelta,
   Completed,
-  ErrorEvent
+  ErrorEvent,
 ])
 export type ProviderEvent = typeof ProviderEvent.Type
 
@@ -72,7 +68,7 @@ export const makeCallIdLookup = (): CallIdLookup => {
     resolve: (id) => map.get(id),
     remember: (id, callId) => {
       map.set(id, callId)
-    }
+    },
   }
 }
 
@@ -84,46 +80,35 @@ export const makeCallIdLookup = (): CallIdLookup => {
  */
 export const eventToDeltas = (
   event: ProviderEvent,
-  lookup: CallIdLookup
+  lookup: CallIdLookup,
 ): ReadonlyArray<TurnDelta> =>
   Match.value(event).pipe(
-    Match.discriminator("type")(
-      "response.output_item.added",
-      ({ item }) => {
-        if (item.type !== "function_call") return []
-        if (item.id !== undefined) lookup.remember(item.id, item.call_id)
-        return [
-          {
-            type: "tool_call_start" as const,
-            call_id: item.call_id,
-            name: item.name
-          }
-        ]
-      }
-    ),
-    Match.discriminator("type")(
-      "response.output_text.delta",
-      ({ delta }) => [{ type: "text_delta" as const, text: delta }]
-    ),
-    Match.discriminator("type")(
-      "response.function_call_arguments.delta",
-      ({ item_id, delta }) => {
-        const call_id = lookup.resolve(item_id)
-        return call_id === undefined
-          ? []
-          : [{ type: "tool_call_args_delta" as const, call_id, delta }]
-      }
-    ),
-    Match.discriminator("type")(
-      "response.reasoning_summary_text.delta",
-      ({ delta }) => [{ type: "reasoning_summary_delta" as const, text: delta }]
-    ),
-    Match.discriminator("type")(
-      "response.completed",
-      ({ response }) => [
-        { type: "turn_complete" as const, turn: turnFromCompleted(response) }
+    Match.discriminator("type")("response.output_item.added", ({ item }) => {
+      if (item.type !== "function_call") return []
+      if (item.id !== undefined) lookup.remember(item.id, item.call_id)
+      return [
+        {
+          type: "tool_call_start" as const,
+          call_id: item.call_id,
+          name: item.name,
+        },
       ]
-    ),
+    }),
+    Match.discriminator("type")("response.output_text.delta", ({ delta }) => [
+      { type: "text_delta" as const, text: delta },
+    ]),
+    Match.discriminator("type")("response.function_call_arguments.delta", ({ item_id, delta }) => {
+      const call_id = lookup.resolve(item_id)
+      return call_id === undefined
+        ? []
+        : [{ type: "tool_call_args_delta" as const, call_id, delta }]
+    }),
+    Match.discriminator("type")("response.reasoning_summary_text.delta", ({ delta }) => [
+      { type: "reasoning_summary_delta" as const, text: delta },
+    ]),
+    Match.discriminator("type")("response.completed", ({ response }) => [
+      { type: "turn_complete" as const, turn: turnFromCompleted(response) },
+    ]),
     Match.discriminator("type")("error", () => []), // surfaced separately as AiError
-    Match.exhaustive
+    Match.exhaustive,
   )

@@ -39,12 +39,12 @@ const turnToDeltas = (turn: Turn): ReadonlyArray<TurnDelta> => {
       deltas.push({
         type: "tool_call_start",
         call_id: item.call_id,
-        name: item.name
+        name: item.name,
       })
       deltas.push({
         type: "tool_call_args_delta",
         call_id: item.call_id,
-        delta: item.arguments
+        delta: item.arguments,
       })
     } else if (item.type === "reasoning" && item.summary !== undefined) {
       deltas.push({ type: "reasoning_summary_delta", text: item.summary })
@@ -54,10 +54,7 @@ const turnToDeltas = (turn: Turn): ReadonlyArray<TurnDelta> => {
   return deltas
 }
 
-const pacedDeltas = (
-  turn: Turn,
-  options?: MockOptions
-): Stream.Stream<TurnDelta> => {
+const pacedDeltas = (turn: Turn, options?: MockOptions): Stream.Stream<TurnDelta> => {
   const base = Stream.fromIterable(turnToDeltas(turn))
   return options?.deltaInterval === undefined
     ? base
@@ -67,10 +64,7 @@ const pacedDeltas = (
 const makeService = (
   scriptedTurns: ReadonlyArray<Turn>,
   options?: MockOptions,
-  recordCall?: (
-    history: ReadonlyArray<Item>,
-    turn: Turn
-  ) => Effect.Effect<void>
+  recordCall?: (history: ReadonlyArray<Item>, turn: Turn) => Effect.Effect<void>,
 ) =>
   Effect.gen(function* () {
     const cursor = yield* Ref.make(0)
@@ -82,8 +76,8 @@ const makeService = (
             if (i >= scriptedTurns.length) {
               return Stream.fail(
                 new AiError({
-                  message: `MockProvider exhausted: ${scriptedTurns.length} turns scripted, but call ${i + 1} was made`
-                })
+                  message: `MockProvider exhausted: ${scriptedTurns.length} turns scripted, but call ${i + 1} was made`,
+                }),
               )
             }
             const turn = scriptedTurns[i]!
@@ -91,16 +85,15 @@ const makeService = (
               yield* recordCall(history, turn)
             }
             return pacedDeltas(turn, options)
-          })
-        )
+          }),
+        ),
     })
   })
 
 export const layer = (
   scriptedTurns: ReadonlyArray<Turn>,
-  options?: MockOptions
-): Layer.Layer<LanguageModel> =>
-  Layer.effect(LanguageModel, makeService(scriptedTurns, options))
+  options?: MockOptions,
+): Layer.Layer<LanguageModel> => Layer.effect(LanguageModel, makeService(scriptedTurns, options))
 
 /**
  * Synchronous constructor that returns the `LanguageModelService` value
@@ -110,15 +103,13 @@ export const layer = (
  */
 export const make = (
   scriptedTurns: ReadonlyArray<Turn>,
-  options?: MockOptions
+  options?: MockOptions,
 ): {
   readonly service: LanguageModelService
   readonly recorder: Effect.Effect<MockRecorder>
 } => {
   const cursor = Ref.makeUnsafe(0)
-  const callsRef = Ref.makeUnsafe<
-    ReadonlyArray<{ history: ReadonlyArray<Item>; turn: Turn }>
-  >([])
+  const callsRef = Ref.makeUnsafe<ReadonlyArray<{ history: ReadonlyArray<Item>; turn: Turn }>>([])
   const service: LanguageModelService = {
     streamTurn: (history) =>
       Stream.unwrap(
@@ -127,19 +118,19 @@ export const make = (
           if (i >= scriptedTurns.length) {
             return Stream.fail(
               new AiError({
-                message: `MockProvider exhausted: ${scriptedTurns.length} turns scripted, but call ${i + 1} was made`
-              })
+                message: `MockProvider exhausted: ${scriptedTurns.length} turns scripted, but call ${i + 1} was made`,
+              }),
             )
           }
           const turn = scriptedTurns[i]!
           yield* Ref.update(callsRef, (xs) => [...xs, { history, turn }])
           return pacedDeltas(turn, options)
-        })
-      )
+        }),
+      ),
   }
   return {
     service,
-    recorder: Ref.get(callsRef).pipe(Effect.map((calls) => ({ calls })))
+    recorder: Ref.get(callsRef).pipe(Effect.map((calls) => ({ calls }))),
   }
 }
 
@@ -149,22 +140,20 @@ export const make = (
  */
 export const layerWithRecorder = (
   scriptedTurns: ReadonlyArray<Turn>,
-  options?: MockOptions
+  options?: MockOptions,
 ): {
   readonly layer: Layer.Layer<LanguageModel>
   readonly recorder: Effect.Effect<MockRecorder>
 } => {
-  const callsRef = Ref.makeUnsafe<
-    ReadonlyArray<{ history: ReadonlyArray<Item>; turn: Turn }>
-  >([])
+  const callsRef = Ref.makeUnsafe<ReadonlyArray<{ history: ReadonlyArray<Item>; turn: Turn }>>([])
   const live = Layer.effect(
     LanguageModel,
     makeService(scriptedTurns, options, (history, turn) =>
-      Ref.update(callsRef, (xs) => [...xs, { history, turn }])
-    )
+      Ref.update(callsRef, (xs) => [...xs, { history, turn }]),
+    ),
   )
   return {
     layer: live,
-    recorder: Ref.get(callsRef).pipe(Effect.map((calls) => ({ calls })))
+    recorder: Ref.get(callsRef).pipe(Effect.map((calls) => ({ calls }))),
   }
 }

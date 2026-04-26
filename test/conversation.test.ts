@@ -19,7 +19,7 @@ const getWeather = Tool.make({
   name: "get_weather",
   description: "Look up the current temperature for a city.",
   inputSchema: Tool.fromEffectSchema(GetWeatherInput),
-  run: ({ city }) => Effect.succeed({ city, tempC: 18 })
+  run: ({ city }) => Effect.succeed({ city, tempC: 18 }),
 })
 
 const toolkit = Toolkit.make([getWeather])
@@ -33,17 +33,17 @@ const turn1: Turn = {
     {
       type: "message",
       role: "assistant",
-      content: [{ type: "output_text", text: "Let me check the weather." }]
+      content: [{ type: "output_text", text: "Let me check the weather." }],
     },
     {
       type: "function_call",
       call_id: "call_1",
       name: "get_weather",
-      arguments: JSON.stringify({ city: "Lisbon" })
-    }
+      arguments: JSON.stringify({ city: "Lisbon" }),
+    },
   ],
   usage: { input_tokens: 10, output_tokens: 12, total_tokens: 22 },
-  stop_reason: "tool_calls"
+  stop_reason: "tool_calls",
 }
 
 const turn2: Turn = {
@@ -51,11 +51,11 @@ const turn2: Turn = {
     {
       type: "message",
       role: "assistant",
-      content: [{ type: "output_text", text: "It's 18°C in Lisbon." }]
-    }
+      content: [{ type: "output_text", text: "It's 18°C in Lisbon." }],
+    },
   ],
   usage: { input_tokens: 30, output_tokens: 8, total_tokens: 38 },
-  stop_reason: "stop"
+  stop_reason: "stop",
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
 
     const initial: State = {
       history: [Items.userText("What's the weather in Lisbon?")],
-      index: 0
+      index: 0,
     }
 
     // The "loop" is right here, fully visible. No helper, no callback.
@@ -91,23 +91,22 @@ describe("PoC — primitives only, no Conversation helper", () => {
           const cursor: Cursor = { history, turn: t, index: state.index }
           const calls = functionCalls(t)
           if (calls.length === 0) {
-            return Effect.succeed(
-              [[cursor], Option.none<State>()] as const
-            )
+            return Effect.succeed([[cursor], Option.none<State>()] as const)
           }
           return Toolkit.executeAll(toolkit, calls).pipe(
-            Effect.map((outputs) =>
-              [
-                [cursor],
-                Option.some<State>({
-                  history: [...history, ...outputs],
-                  index: state.index + 1
-                })
-              ] as const
-            )
+            Effect.map(
+              (outputs) =>
+                [
+                  [cursor],
+                  Option.some<State>({
+                    history: [...history, ...outputs],
+                    index: state.index + 1,
+                  }),
+                ] as const,
+            ),
           )
-        })
-      )
+        }),
+      ),
     )
 
     const program = Effect.gen(function* () {
@@ -116,23 +115,21 @@ describe("PoC — primitives only, no Conversation helper", () => {
       return { cursors, calls: captured.calls }
     })
 
-    const { cursors, calls } = await Effect.runPromise(
-      program.pipe(Effect.provide(layer))
-    )
+    const { cursors, calls } = await Effect.runPromise(program.pipe(Effect.provide(layer)))
 
     expect(calls).toHaveLength(2)
-    expect(calls[0]!.history).toEqual([
-      Items.userText("What's the weather in Lisbon?")
-    ])
+    expect(calls[0]!.history).toEqual([Items.userText("What's the weather in Lisbon?")])
 
     const secondHistory = calls[1]!.history
     expect(secondHistory).toHaveLength(4)
     expect(secondHistory[3]).toMatchObject({
       type: "function_call_output",
-      call_id: "call_1"
+      call_id: "call_1",
     })
-    expect(JSON.parse((secondHistory[3] as Items.FunctionCallOutput).output))
-      .toEqual({ city: "Lisbon", tempC: 18 })
+    expect(JSON.parse((secondHistory[3] as Items.FunctionCallOutput).output)).toEqual({
+      city: "Lisbon",
+      tempC: 18,
+    })
 
     expect(cursors).toHaveLength(2)
     expect(cursors[0]!.turn.stop_reason).toBe("tool_calls")
@@ -140,7 +137,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
     expect(cursors[1]!.history).toHaveLength(5)
     expect((cursors[1]!.history[4] as Items.Message).content[0]).toEqual({
       type: "output_text",
-      text: "It's 18°C in Lisbon."
+      text: "It's 18°C in Lisbon.",
     })
   })
 
@@ -158,19 +155,19 @@ describe("PoC — primitives only, no Conversation helper", () => {
           content: [
             {
               type: "output_text",
-              text: "This is hard. Let me upgrade."
-            }
-          ]
+              text: "This is hard. Let me upgrade.",
+            },
+          ],
         },
         {
           type: "function_call",
           call_id: "u_1",
           name: "upgrade_model",
-          arguments: JSON.stringify({ to: "opus" })
-        }
+          arguments: JSON.stringify({ to: "opus" }),
+        },
       ],
       usage: { input_tokens: 10, output_tokens: 6, total_tokens: 16 },
-      stop_reason: "tool_calls"
+      stop_reason: "tool_calls",
     }
 
     const opusTurn: Turn = {
@@ -178,11 +175,11 @@ describe("PoC — primitives only, no Conversation helper", () => {
         {
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: "The answer is 42." }]
-        }
+          content: [{ type: "output_text", text: "The answer is 42." }],
+        },
       ],
       usage: { input_tokens: 25, output_tokens: 5, total_tokens: 30 },
-      stop_reason: "stop"
+      stop_reason: "stop",
     }
 
     const haiku = MockProvider.make([haikuTurn])
@@ -195,7 +192,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
       name: "upgrade_model",
       description: "Upgrade the active model.",
       inputSchema: Tool.fromEffectSchema(Schema.Struct({ to: Schema.String })),
-      run: ({ to }) => Effect.succeed({ upgraded_to: to })
+      run: ({ to }) => Effect.succeed({ upgraded_to: to }),
     })
     const tk = Toolkit.make([upgradeModel])
 
@@ -214,7 +211,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
     const initial: State = {
       history: [Items.userText("What is the meaning of life?")],
       model: haiku.service,
-      index: 0
+      index: 0,
     }
 
     const conversation = Stream.paginate(initial, (state) =>
@@ -228,26 +225,27 @@ describe("PoC — primitives only, no Conversation helper", () => {
             history,
             turn: t,
             modelName: state.model === haiku.service ? "haiku" : "opus",
-            index: state.index
+            index: state.index,
           }
           if (calls.length === 0) {
             return Effect.succeed([[cursor], Option.none<State>()] as const)
           }
           return Toolkit.executeAll(tk, calls).pipe(
-            Effect.map((outputs) =>
-              [
-                [cursor],
-                Option.some<State>({
-                  history: [...history, ...outputs],
-                  // pure swap: same line you'd update any other state field
-                  model: wantsUpgrade ? opus.service : state.model,
-                  index: state.index + 1
-                })
-              ] as const
-            )
+            Effect.map(
+              (outputs) =>
+                [
+                  [cursor],
+                  Option.some<State>({
+                    history: [...history, ...outputs],
+                    // pure swap: same line you'd update any other state field
+                    model: wantsUpgrade ? opus.service : state.model,
+                    index: state.index + 1,
+                  }),
+                ] as const,
+            ),
           )
-        })
-      )
+        }),
+      ),
     )
 
     const program = Effect.gen(function* () {
@@ -272,18 +270,18 @@ describe("PoC — primitives only, no Conversation helper", () => {
     expect(opusHistory).toHaveLength(4)
     expect(opusHistory[2]).toMatchObject({
       type: "function_call",
-      name: "upgrade_model"
+      name: "upgrade_model",
     })
     expect(opusHistory[3]).toMatchObject({
       type: "function_call_output",
-      call_id: "u_1"
+      call_id: "u_1",
     })
 
     // Final assistant message is the opus response.
     const final = cursors[1]!.history
     expect((final[final.length - 1] as Items.Message).content[0]).toEqual({
       type: "output_text",
-      text: "The answer is 42."
+      text: "The answer is 42.",
     })
   })
 
@@ -299,18 +297,18 @@ describe("PoC — primitives only, no Conversation helper", () => {
         {
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: "Looking up Lisbon." }]
+          content: [{ type: "output_text", text: "Looking up Lisbon." }],
         },
         {
           type: "function_call",
           call_id: "call_bad",
           name: "get_weather",
           // wrong arg name — should be `city`
-          arguments: JSON.stringify({ cityName: "Lisbon" })
-        }
+          arguments: JSON.stringify({ cityName: "Lisbon" }),
+        },
       ],
       usage: { input_tokens: 10, output_tokens: 6, total_tokens: 16 },
-      stop_reason: "tool_calls"
+      stop_reason: "tool_calls",
     }
 
     const goodTurn: Turn = {
@@ -318,17 +316,17 @@ describe("PoC — primitives only, no Conversation helper", () => {
         {
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: "Sorry, retrying." }]
+          content: [{ type: "output_text", text: "Sorry, retrying." }],
         },
         {
           type: "function_call",
           call_id: "call_good",
           name: "get_weather",
-          arguments: JSON.stringify({ city: "Lisbon" })
-        }
+          arguments: JSON.stringify({ city: "Lisbon" }),
+        },
       ],
       usage: { input_tokens: 30, output_tokens: 6, total_tokens: 36 },
-      stop_reason: "tool_calls"
+      stop_reason: "tool_calls",
     }
 
     const finalTurn: Turn = {
@@ -336,18 +334,14 @@ describe("PoC — primitives only, no Conversation helper", () => {
         {
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: "It's 18°C in Lisbon." }]
-        }
+          content: [{ type: "output_text", text: "It's 18°C in Lisbon." }],
+        },
       ],
       usage: { input_tokens: 40, output_tokens: 6, total_tokens: 46 },
-      stop_reason: "stop"
+      stop_reason: "stop",
     }
 
-    const { layer, recorder } = MockProvider.layerWithRecorder([
-      badTurn,
-      goodTurn,
-      finalTurn
-    ])
+    const { layer, recorder } = MockProvider.layerWithRecorder([badTurn, goodTurn, finalTurn])
 
     type State = {
       readonly history: ReadonlyArray<Items.Item>
@@ -367,40 +361,43 @@ describe("PoC — primitives only, no Conversation helper", () => {
               JSON.stringify({
                 error: "argument_validation_failed",
                 tool: err.tool,
-                message: err.message
-              })
-            )
-          )
-        )
+                message: err.message,
+              }),
+            ),
+          ),
+        ),
       )
 
-    const conversation = Stream.paginate({
-      history: [Items.userText("What's the weather in Lisbon?")],
-      index: 0
-    } as State, (state) =>
-      turn(state.history).pipe(
-        Effect.flatMap((t) => {
-          const history = [...state.history, ...t.items]
-          const cursor = { history, turn: t, index: state.index }
-          const calls = functionCalls(t)
-          if (calls.length === 0) {
-            return Effect.succeed([[cursor], Option.none<State>()] as const)
-          }
-          return Effect.forEach(calls, safeExecute, {
-            concurrency: "unbounded"
-          }).pipe(
-            Effect.map((outputs) =>
-              [
-                [cursor],
-                Option.some<State>({
-                  history: [...history, ...outputs],
-                  index: state.index + 1
-                })
-              ] as const
+    const conversation = Stream.paginate(
+      {
+        history: [Items.userText("What's the weather in Lisbon?")],
+        index: 0,
+      } as State,
+      (state) =>
+        turn(state.history).pipe(
+          Effect.flatMap((t) => {
+            const history = [...state.history, ...t.items]
+            const cursor = { history, turn: t, index: state.index }
+            const calls = functionCalls(t)
+            if (calls.length === 0) {
+              return Effect.succeed([[cursor], Option.none<State>()] as const)
+            }
+            return Effect.forEach(calls, safeExecute, {
+              concurrency: "unbounded",
+            }).pipe(
+              Effect.map(
+                (outputs) =>
+                  [
+                    [cursor],
+                    Option.some<State>({
+                      history: [...history, ...outputs],
+                      index: state.index + 1,
+                    }),
+                  ] as const,
+              ),
             )
-          )
-        })
-      )
+          }),
+        ),
     )
 
     const program = Effect.gen(function* () {
@@ -409,9 +406,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
       return { cursors, calls }
     })
 
-    const { cursors, calls } = await Effect.runPromise(
-      program.pipe(Effect.provide(layer))
-    )
+    const { cursors, calls } = await Effect.runPromise(program.pipe(Effect.provide(layer)))
 
     // Provider was called three times: bad, good, final.
     expect(calls).toHaveLength(3)
@@ -437,7 +432,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
     expect(goodOutput.call_id).toBe("call_good")
     expect(JSON.parse(goodOutput.output)).toEqual({
       city: "Lisbon",
-      tempC: 18
+      tempC: 18,
     })
 
     // Cursor 2 is the final assistant message, no tool calls.
@@ -458,12 +453,12 @@ describe("PoC — primitives only, no Conversation helper", () => {
             { type: "output_text", text: "tok" },
             { type: "output_text", text: "tok" },
             { type: "output_text", text: "tok" },
-            { type: "output_text", text: "tok" }
-          ]
-        }
+            { type: "output_text", text: "tok" },
+          ],
+        },
       ],
       usage: { input_tokens: 0, output_tokens: 5, total_tokens: 5 },
-      stop_reason: "stop"
+      stop_reason: "stop",
     }
 
     // The metric pipeline: subscribe to the delta stream, weight each
@@ -471,17 +466,11 @@ describe("PoC — primitives only, no Conversation helper", () => {
     // carries running total + rate + elapsed time since stream start.
     const program = Effect.gen(function* () {
       const points = yield* streamTurn([Items.userText("go")]).pipe(
-        Metrics.withRate((d: TurnDelta) =>
-          d.type === "text_delta" ? 1 : 0
-        ),
-        Stream.runCollect
+        Metrics.withRate((d: TurnDelta) => (d.type === "text_delta" ? 1 : 0)),
+        Stream.runCollect,
       )
       return points
-    }).pipe(
-      Effect.provide(
-        MockProvider.layer([pacedTurn], { deltaInterval: "100 millis" })
-      )
-    )
+    }).pipe(Effect.provide(MockProvider.layer([pacedTurn], { deltaInterval: "100 millis" })))
 
     // Pattern recommended by TestClock: fork the program (so it suspends
     // on the scheduled sleeps), advance the virtual clock, then join.
@@ -492,7 +481,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
     })
 
     const points = await Effect.runPromise(
-      Effect.scoped(driver.pipe(Effect.provide(TestClock.layer())))
+      Effect.scoped(driver.pipe(Effect.provide(TestClock.layer()))),
     )
 
     // The 5 text deltas, then the turn_complete (no token weight).
@@ -521,18 +510,16 @@ describe("PoC — primitives only, no Conversation helper", () => {
         {
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: "hello" }]
-        }
+          content: [{ type: "output_text", text: "hello" }],
+        },
       ],
       usage: { input_tokens: 0, output_tokens: 1, total_tokens: 1 },
-      stop_reason: "stop"
+      stop_reason: "stop",
     }
 
     const program = streamTurn([Items.userText("go")]).pipe(
       Metrics.timeToFirst((d: TurnDelta) => d.type === "text_delta"),
-      Effect.provide(
-        MockProvider.layer([turn250], { deltaInterval: "250 millis" })
-      )
+      Effect.provide(MockProvider.layer([turn250], { deltaInterval: "250 millis" })),
     )
 
     const driver = Effect.gen(function* () {
@@ -542,7 +529,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
     })
 
     const result = await Effect.runPromise(
-      Effect.scoped(driver.pipe(Effect.provide(TestClock.layer())))
+      Effect.scoped(driver.pipe(Effect.provide(TestClock.layer()))),
     )
 
     expect(Option.isSome(result)).toBe(true)
@@ -552,9 +539,9 @@ describe("PoC — primitives only, no Conversation helper", () => {
   })
 
   it("streamTurn yields delta-level events with turn_complete last", async () => {
-    const program = Stream.runCollect(
-      streamTurn([Items.userText("hi")])
-    ).pipe(Effect.provide(MockProvider.layer([turn1])))
+    const program = Stream.runCollect(streamTurn([Items.userText("hi")])).pipe(
+      Effect.provide(MockProvider.layer([turn1])),
+    )
 
     const deltas: ReadonlyArray<TurnDelta> = await Effect.runPromise(program)
 
@@ -562,7 +549,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
       "text_delta",
       "tool_call_start",
       "tool_call_args_delta",
-      "turn_complete"
+      "turn_complete",
     ])
     const last = deltas[deltas.length - 1]!
     if (last.type === "turn_complete") {

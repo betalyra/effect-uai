@@ -18,7 +18,7 @@ questions first, then implement in the order at the bottom.
 - **Model**: `gpt-5.4-mini`. Always reasons a little — reasoning support
   is required, not optional.
 - **Tool**: `get_current_time({ timezone })` via `Intl.DateTimeFormat`.
-- **User prompt**: *"What time is it in Lisbon and Tokyo right now?"* —
+- **User prompt**: _"What time is it in Lisbon and Tokyo right now?"_ —
   forces parallel tool calls.
 - **Output**: `Effect.logDebug` per delta, pretty-printed; print every
   stream element.
@@ -64,12 +64,15 @@ interface CommonRequestOptions {
 
 // Generic tag — works with any provider. Code that yields LanguageModel
 // is provider-portable.
-class LanguageModel extends Context.Service<LanguageModel, {
-  readonly streamTurn: (
-    history: ReadonlyArray<Item>,
-    options?: CommonRequestOptions
-  ) => Stream<TurnDelta, AiError>
-}>()("@betalyra/effect-uai/LanguageModel") {}
+class LanguageModel extends Context.Service<
+  LanguageModel,
+  {
+    readonly streamTurn: (
+      history: ReadonlyArray<Item>,
+      options?: CommonRequestOptions,
+    ) => Stream<TurnDelta, AiError>
+  }
+>()("@betalyra/effect-uai/LanguageModel") {}
 ```
 
 Provider-specific options extend the common type and live next to the
@@ -80,15 +83,18 @@ provider's own service tag:
 interface OpenAiRequestOptions extends CommonRequestOptions {
   readonly reasoning?: { readonly effort: "low" | "medium" | "high" }
   readonly store?: boolean
-  readonly previousResponseId?: string                // not used in this experiment
+  readonly previousResponseId?: string // not used in this experiment
 }
 
-class OpenAi extends Context.Service<OpenAi, {
-  readonly streamTurn: (
-    history: ReadonlyArray<Item>,
-    options?: OpenAiRequestOptions
-  ) => Stream<TurnDelta, AiError>
-}>()("@betalyra/effect-uai/providers/openai/Responses") {}
+class OpenAi extends Context.Service<
+  OpenAi,
+  {
+    readonly streamTurn: (
+      history: ReadonlyArray<Item>,
+      options?: OpenAiRequestOptions,
+    ) => Stream<TurnDelta, AiError>
+  }
+>()("@betalyra/effect-uai/providers/openai/Responses") {}
 ```
 
 The provider's `layer` registers **both tags** with the same
@@ -98,7 +104,7 @@ implementation:
 namespace OpenAiResponses {
   export const layer = (cfg: Config): Layer<LanguageModel | OpenAi> =>
     Layer.effect(OpenAi, makeService(cfg)).pipe(
-      Layer.merge(Layer.effect(LanguageModel, makeService(cfg)))
+      Layer.merge(Layer.effect(LanguageModel, makeService(cfg))),
     )
 }
 ```
@@ -123,6 +129,7 @@ turn(history, { reasoning: { effort: "high" } })   // ✗
 ### Pros and cons
 
 **Pros**:
+
 - Type-safe per provider, no global enum or union of provider names.
 - Generic `LanguageModel` tag still works for portable code.
 - Adding a new provider is local — declare a service tag with a
@@ -130,9 +137,10 @@ turn(history, { reasoning: { effort: "high" } })   // ✗
 - Uses only Effect's existing primitives — no parametric services.
 
 **Cons**:
+
 - Provider-aware code requires the provider's tag in `R`, not just
   `LanguageModel`. Mildly more verbose than a single tag, but it's the
-  *correct* coupling.
+  _correct_ coupling.
 - Two-tag registration in the provider Layer is one extra line per
   provider. Trivially abstracted with a small helper if it ever grows.
 
@@ -175,20 +183,20 @@ There is no provider name registry, no enum, no discriminated union.
 const Reasoning = Schema.Struct({
   type: Schema.Literal("reasoning"),
   id: Schema.optional(Schema.String),
-  summary: Schema.optional(Schema.String),         // human-readable, for UI/metrics
-  signature: Schema.optional(Schema.String),       // opaque round-trip blob
-  providerData: Schema.optional(Schema.Unknown)    // provider's native shape, untouched
+  summary: Schema.optional(Schema.String), // human-readable, for UI/metrics
+  signature: Schema.optional(Schema.String), // opaque round-trip blob
+  providerData: Schema.optional(Schema.Unknown), // provider's native shape, untouched
 })
 ```
 
 What goes in each common field:
 
-| Field | Source for OpenAI | Source for Anthropic |
-|---|---|---|
-| `id` | `item.id` | `item.id` |
-| `summary` | concatenation of `summary[].text` | `text` |
-| `signature` | `encrypted_content` | `signature` |
-| `providerData` | the full original JSON object | the full original JSON object |
+| Field          | Source for OpenAI                 | Source for Anthropic          |
+| -------------- | --------------------------------- | ----------------------------- |
+| `id`           | `item.id`                         | `item.id`                     |
+| `summary`      | concatenation of `summary[].text` | `text`                        |
+| `signature`    | `encrypted_content`               | `signature`                   |
+| `providerData` | the full original JSON object     | the full original JSON object |
 
 Same idea applies to `Message`, `FunctionCall`, `FunctionCallOutput` —
 each gets an optional `providerData: unknown`. Adding new providers
@@ -206,10 +214,14 @@ import * as Items from "@betalyra/effect-uai/Items"
 
 export const ReasoningData = Schema.Struct({
   encrypted_content: Schema.optional(Schema.String),
-  summary: Schema.optional(Schema.Array(Schema.Struct({
-    type: Schema.String,
-    text: Schema.String
-  })))
+  summary: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        type: Schema.String,
+        text: Schema.String,
+      }),
+    ),
+  ),
 })
 export type ReasoningData = typeof ReasoningData.Type
 
@@ -271,7 +283,7 @@ For the experiment, Effect Schema directly:
 import { Schema } from "effect"
 
 const GetCurrentTimeInput = Schema.Struct({
-  timezone: Schema.String
+  timezone: Schema.String,
 })
 
 const getCurrentTime = Tool.make({
@@ -280,9 +292,9 @@ const getCurrentTime = Tool.make({
   inputSchema: GetCurrentTimeInput,
   run: ({ timezone }) =>
     Effect.try(() => ({
-      iso: new Date().toLocaleString("en-US", { timeZone: timezone })
+      iso: new Date().toLocaleString("en-US", { timeZone: timezone }),
     })),
-  strict: true
+  strict: true,
 })
 ```
 
@@ -306,7 +318,7 @@ interface Tool<Name, Input, Output, R> {
   readonly description: string
   readonly inputSchema: StandardSchemaV1<unknown, Input>
   readonly run: (input: Input) => Effect<Output, unknown, R>
-  readonly strict?: boolean        // default true
+  readonly strict?: boolean // default true
 }
 ```
 
@@ -322,7 +334,7 @@ interface ToolDescriptor {
   readonly name: string
   readonly description: string
   readonly parameters: JsonSchema
-  readonly strict?: boolean        // undefined falls back to provider default
+  readonly strict?: boolean // undefined falls back to provider default
 }
 ```
 

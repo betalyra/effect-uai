@@ -5,9 +5,11 @@
 import { Config, DateTime, Effect, Layer, Logger, Option, References, Schema, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import { AiError } from "../src/AiError.js"
+import * as Conversation from "../src/Conversation.js"
 import * as Items from "../src/Items.js"
 import { OpenAi, layer as openAiLayer } from "../src/providers/openai/Responses.js"
 import * as Tool from "../src/Tool.js"
+import type { ToolError } from "../src/Tool.js"
 import * as Toolkit from "../src/Toolkit.js"
 import { functionCalls, type Turn } from "../src/Turn.js"
 
@@ -56,16 +58,25 @@ interface State {
   readonly index: number
 }
 
-interface Cursor {
-  readonly history: ReadonlyArray<Items.Item>
-  readonly turn: Turn
-  readonly index: number
-}
-
 const initial: State = {
   history: [Items.userText("What time is it in Lisbon and Tokyo right now?")],
   index: 0,
 }
+
+/**
+ * Repair handler for `Toolkit.executeAllSafe`: when a tool's argument schema
+ * decode fails, feed a structured error payload back to the model so it can
+ * self-correct on the next turn.
+ */
+const repair = (err: ToolError, call: Items.FunctionCall): Items.FunctionCallOutput =>
+  Items.functionCallOutput(
+    call.call_id,
+    JSON.stringify({
+      error: "argument_validation_failed",
+      tool: err.tool,
+      message: err.message,
+    }),
+  )
 
 // ---------------------------------------------------------------------------
 // The loop — Stream.paginate, fully visible
@@ -94,22 +105,16 @@ const conversation = Stream.paginate(initial, (state) =>
     }
     const turn = maybeTurn.value
 
-    const history = [...state.history, ...turn.items]
-    const cursor: Cursor = { history, turn, index: state.index }
+    const cursor = Conversation.cursor(state, turn)
     const calls = functionCalls(turn)
+    if (calls.length === 0) return Conversation.stop(cursor)
 
-    if (calls.length === 0) {
-      return [[cursor], Option.none<State>()] as const
-    }
-
-    const outputs = yield* Toolkit.executeAll(toolkit, calls)
-    return [
-      [cursor],
-      Option.some<State>({
-        history: [...history, ...outputs],
-        index: state.index + 1,
-      }),
-    ] as const
+    const outputs = yield* Toolkit.executeAllSafe(toolkit, calls, repair)
+    return Conversation.advance(cursor, {
+      ...state,
+      history: [...cursor.history, ...outputs],
+      index: state.index + 1,
+    })
   }),
 )
 

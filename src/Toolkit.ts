@@ -41,6 +41,30 @@ export const executeAll = <Tools extends ReadonlyArray<AnyTool>>(
   })
 
 /**
+ * Like `executeAll`, but per-call `ToolError`s are caught and translated by
+ * `onError` into a `FunctionCallOutput` that can be appended to the history
+ * and fed back to the model — typically a structured error payload the model
+ * can read and self-correct from.
+ *
+ * Defects (e.g. unknown tool name) are NOT caught — those are programming
+ * errors, not model errors.
+ */
+export const executeAllSafe = <Tools extends ReadonlyArray<AnyTool>>(
+  toolkit: Toolkit<Tools>,
+  calls: ReadonlyArray<FunctionCall>,
+  onError: (err: ToolError, call: FunctionCall) => FunctionCallOutput,
+  options?: { readonly concurrency?: number | "unbounded" },
+): Effect.Effect<ReadonlyArray<FunctionCallOutput>, never, ToolsR<Tools>> =>
+  Effect.forEach(
+    calls,
+    (call) =>
+      executeOne(toolkit, call).pipe(
+        Effect.catchTag("ToolError", (err) => Effect.succeed(onError(err, call))),
+      ),
+    { concurrency: options?.concurrency ?? "unbounded" },
+  )
+
+/**
  * Render every tool in a toolkit to a provider-agnostic descriptor.
  * `inputSchema` is the JSON Schema document produced by the tool's
  * Standard Schema converter (draft 2020-12).

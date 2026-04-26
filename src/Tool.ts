@@ -2,9 +2,9 @@ import { Effect, Schema } from "effect"
 import type { FunctionCall, FunctionCallOutput } from "./Items.js"
 import { functionCallOutput } from "./Items.js"
 
-export class ToolError extends Schema.ErrorClass<ToolError>(
+export class ToolError extends Schema.TaggedErrorClass<ToolError>(
   "effect-ai/ToolError"
-)({
+)("ToolError", {
   call_id: Schema.String,
   tool: Schema.String,
   message: Schema.String,

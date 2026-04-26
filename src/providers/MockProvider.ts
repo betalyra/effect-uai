@@ -1,7 +1,7 @@
 import { Effect, Layer, Ref, Stream } from "effect"
 import { AiError } from "../AiError.js"
 import type { Item } from "../Items.js"
-import { LanguageModel } from "../LanguageModel.js"
+import { LanguageModel, type LanguageModelService } from "../LanguageModel.js"
 import type { Turn, TurnDelta } from "../Turn.js"
 
 /**
@@ -78,6 +78,46 @@ export const layer = (
   scriptedTurns: ReadonlyArray<Turn>
 ): Layer.Layer<LanguageModel> =>
   Layer.effect(LanguageModel, makeService(scriptedTurns))
+
+/**
+ * Synchronous constructor that returns the `LanguageModelService` value
+ * directly, plus a recorder. Use this when you want to swap models
+ * mid-stream via `Effect.provideService` instead of providing one model
+ * for the whole program via `Layer`.
+ */
+export const make = (
+  scriptedTurns: ReadonlyArray<Turn>
+): {
+  readonly service: LanguageModelService
+  readonly recorder: Effect.Effect<MockRecorder>
+} => {
+  const cursor = Ref.makeUnsafe(0)
+  const callsRef = Ref.makeUnsafe<
+    ReadonlyArray<{ history: ReadonlyArray<Item>; turn: Turn }>
+  >([])
+  const service: LanguageModelService = {
+    streamTurn: (history) =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const i = yield* Ref.getAndUpdate(cursor, (n) => n + 1)
+          if (i >= scriptedTurns.length) {
+            return Stream.fail(
+              new AiError({
+                message: `MockProvider exhausted: ${scriptedTurns.length} turns scripted, but call ${i + 1} was made`
+              })
+            )
+          }
+          const turn = scriptedTurns[i]!
+          yield* Ref.update(callsRef, (xs) => [...xs, { history, turn }])
+          return Stream.fromIterable(turnToDeltas(turn))
+        })
+      )
+  }
+  return {
+    service,
+    recorder: Ref.get(callsRef).pipe(Effect.map((calls) => ({ calls })))
+  }
+}
 
 /**
  * Same as `layer`, but also exposes a recorder that captures every call

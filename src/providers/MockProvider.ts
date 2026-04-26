@@ -1,8 +1,17 @@
-import { Effect, Layer, Ref, Stream } from "effect"
+import { Duration, Effect, Layer, Ref, Schedule, Stream } from "effect"
 import { AiError } from "../AiError.js"
 import type { Item } from "../Items.js"
 import { LanguageModel, type LanguageModelService } from "../LanguageModel.js"
 import type { Turn, TurnDelta } from "../Turn.js"
+
+export interface MockOptions {
+  /**
+   * If set, deltas of each scripted turn are spaced by this duration via
+   * `Schedule.spaced`. Combine with `TestClock.adjust` for deterministic
+   * timing in tests.
+   */
+  readonly deltaInterval?: Duration.Input
+}
 
 /**
  * A scripted mock provider. Pre-canned `Turn` outputs are returned in order,
@@ -43,8 +52,19 @@ const turnToDeltas = (turn: Turn): ReadonlyArray<TurnDelta> => {
   return deltas
 }
 
+const pacedDeltas = (
+  turn: Turn,
+  options?: MockOptions
+): Stream.Stream<TurnDelta> => {
+  const base = Stream.fromIterable(turnToDeltas(turn))
+  return options?.deltaInterval === undefined
+    ? base
+    : base.pipe(Stream.schedule(Schedule.spaced(options.deltaInterval)))
+}
+
 const makeService = (
   scriptedTurns: ReadonlyArray<Turn>,
+  options?: MockOptions,
   recordCall?: (
     history: ReadonlyArray<Item>,
     turn: Turn
@@ -68,16 +88,17 @@ const makeService = (
             if (recordCall !== undefined) {
               yield* recordCall(history, turn)
             }
-            return Stream.fromIterable(turnToDeltas(turn))
+            return pacedDeltas(turn, options)
           })
         )
     })
   })
 
 export const layer = (
-  scriptedTurns: ReadonlyArray<Turn>
+  scriptedTurns: ReadonlyArray<Turn>,
+  options?: MockOptions
 ): Layer.Layer<LanguageModel> =>
-  Layer.effect(LanguageModel, makeService(scriptedTurns))
+  Layer.effect(LanguageModel, makeService(scriptedTurns, options))
 
 /**
  * Synchronous constructor that returns the `LanguageModelService` value
@@ -86,7 +107,8 @@ export const layer = (
  * for the whole program via `Layer`.
  */
 export const make = (
-  scriptedTurns: ReadonlyArray<Turn>
+  scriptedTurns: ReadonlyArray<Turn>,
+  options?: MockOptions
 ): {
   readonly service: LanguageModelService
   readonly recorder: Effect.Effect<MockRecorder>
@@ -109,7 +131,7 @@ export const make = (
           }
           const turn = scriptedTurns[i]!
           yield* Ref.update(callsRef, (xs) => [...xs, { history, turn }])
-          return Stream.fromIterable(turnToDeltas(turn))
+          return pacedDeltas(turn, options)
         })
       )
   }
@@ -124,7 +146,8 @@ export const make = (
  * (history + returned turn).
  */
 export const layerWithRecorder = (
-  scriptedTurns: ReadonlyArray<Turn>
+  scriptedTurns: ReadonlyArray<Turn>,
+  options?: MockOptions
 ): {
   readonly layer: Layer.Layer<LanguageModel>
   readonly recorder: Effect.Effect<MockRecorder>
@@ -134,7 +157,7 @@ export const layerWithRecorder = (
   >([])
   const live = Layer.effect(
     LanguageModel,
-    makeService(scriptedTurns, (history, turn) =>
+    makeService(scriptedTurns, options, (history, turn) =>
       Ref.update(callsRef, (xs) => [...xs, { history, turn }])
     )
   )

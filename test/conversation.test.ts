@@ -1,7 +1,9 @@
-import { Effect, Option, Schema, Stream } from "effect"
+import { Duration, Effect, Fiber, Option, Schema, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import { describe, expect, it } from "vitest"
 import * as Items from "../src/Items.js"
 import { LanguageModel, streamTurn, turn } from "../src/LanguageModel.js"
+import * as Metrics from "../src/Metrics.js"
 import * as MockProvider from "../src/providers/MockProvider.js"
 import * as Tool from "../src/Tool.js"
 import * as Toolkit from "../src/Toolkit.js"
@@ -440,6 +442,113 @@ describe("PoC — primitives only, no Conversation helper", () => {
 
     // Cursor 2 is the final assistant message, no tool calls.
     expect(cursors[2]!.turn.stop_reason).toBe("stop")
+  })
+
+  it("metrics: ttft + tokens-per-second over a TestClock-paced stream", async () => {
+    // Five output_text content blocks → five text_delta events from the
+    // mock provider. Spaced 100ms apart by `Schedule.spaced`. Plus the
+    // terminal `turn_complete` event.
+    const pacedTurn: Turn = {
+      items: [
+        {
+          type: "message",
+          role: "assistant",
+          content: [
+            { type: "output_text", text: "tok" },
+            { type: "output_text", text: "tok" },
+            { type: "output_text", text: "tok" },
+            { type: "output_text", text: "tok" },
+            { type: "output_text", text: "tok" }
+          ]
+        }
+      ],
+      usage: { input_tokens: 0, output_tokens: 5, total_tokens: 5 },
+      stop_reason: "stop"
+    }
+
+    // The metric pipeline: subscribe to the delta stream, weight each
+    // text_delta as 1 token, ignore other deltas. Each emitted point
+    // carries running total + rate + elapsed time since stream start.
+    const program = Effect.gen(function* () {
+      const points = yield* streamTurn([Items.userText("go")]).pipe(
+        Metrics.withRate((d: TurnDelta) =>
+          d.type === "text_delta" ? 1 : 0
+        ),
+        Stream.runCollect
+      )
+      return points
+    }).pipe(
+      Effect.provide(
+        MockProvider.layer([pacedTurn], { deltaInterval: "100 millis" })
+      )
+    )
+
+    // Pattern recommended by TestClock: fork the program (so it suspends
+    // on the scheduled sleeps), advance the virtual clock, then join.
+    const driver = Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(program)
+      yield* TestClock.adjust("1 second")
+      return yield* Fiber.join(fiber)
+    })
+
+    const points = await Effect.runPromise(
+      Effect.scoped(driver.pipe(Effect.provide(TestClock.layer())))
+    )
+
+    // The 5 text deltas, then the turn_complete (no token weight).
+    const textPoints = points.filter((p) => p.value.type === "text_delta")
+    expect(textPoints).toHaveLength(5)
+
+    // First text delta arrives 100ms after the stream starts → TTFT = 100ms.
+    expect(Duration.toMillis(textPoints[0]!.elapsed)).toBe(100)
+    expect(textPoints[0]!.total).toBe(1)
+
+    // Last text delta at 500ms; running rate = 5 tokens / 0.5s = 10 tok/s.
+    expect(Duration.toMillis(textPoints[4]!.elapsed)).toBe(500)
+    expect(textPoints[4]!.total).toBe(5)
+    expect(textPoints[4]!.ratePerSecond).toBe(10)
+
+    // turn_complete is the last event; total stays at 5 (no extra weight).
+    const last = points[points.length - 1]!
+    expect(last.value.type).toBe("turn_complete")
+    expect(last.total).toBe(5)
+  })
+
+  it("metrics: timeToFirst on a paced stream", async () => {
+    // Single text_delta after 250ms — Metrics.timeToFirst should report 250ms.
+    const turn250: Turn = {
+      items: [
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "hello" }]
+        }
+      ],
+      usage: { input_tokens: 0, output_tokens: 1, total_tokens: 1 },
+      stop_reason: "stop"
+    }
+
+    const program = streamTurn([Items.userText("go")]).pipe(
+      Metrics.timeToFirst((d: TurnDelta) => d.type === "text_delta"),
+      Effect.provide(
+        MockProvider.layer([turn250], { deltaInterval: "250 millis" })
+      )
+    )
+
+    const driver = Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(program)
+      yield* TestClock.adjust("1 second")
+      return yield* Fiber.join(fiber)
+    })
+
+    const result = await Effect.runPromise(
+      Effect.scoped(driver.pipe(Effect.provide(TestClock.layer())))
+    )
+
+    expect(Option.isSome(result)).toBe(true)
+    if (Option.isSome(result)) {
+      expect(Duration.toMillis(result.value)).toBe(250)
+    }
   })
 
   it("streamTurn yields delta-level events with turn_complete last", async () => {

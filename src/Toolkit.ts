@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import type { FunctionCall, FunctionCallOutput } from "./Items.js"
+import { functionCallOutput, type FunctionCall, type FunctionCallOutput } from "./Items.js"
 import { execute, type Tool, type ToolDescriptor, type ToolError } from "./Tool.js"
 
 export type AnyTool = Tool<string, any, any, any>
@@ -41,10 +41,25 @@ export const executeAll = <Tools extends ReadonlyArray<AnyTool>>(
   })
 
 /**
+ * Default repair: turn a `ToolError` into a `FunctionCallOutput` carrying a
+ * structured JSON error payload. The model reads it on the next turn and
+ * self-corrects (e.g. retries with the right argument names). Override by
+ * passing your own `onError` to `executeAllSafe`.
+ */
+export const defaultRepair = (err: ToolError, call: FunctionCall): FunctionCallOutput =>
+  functionCallOutput(
+    call.call_id,
+    JSON.stringify({
+      error: "argument_validation_failed",
+      tool: err.tool,
+      message: err.message,
+    }),
+  )
+
+/**
  * Like `executeAll`, but per-call `ToolError`s are caught and translated by
- * `onError` into a `FunctionCallOutput` that can be appended to the history
- * and fed back to the model — typically a structured error payload the model
- * can read and self-correct from.
+ * `onError` (defaults to `defaultRepair`) into a `FunctionCallOutput` that
+ * can be appended to the history and fed back to the model.
  *
  * Defects (e.g. unknown tool name) are NOT caught — those are programming
  * errors, not model errors.
@@ -52,7 +67,7 @@ export const executeAll = <Tools extends ReadonlyArray<AnyTool>>(
 export const executeAllSafe = <Tools extends ReadonlyArray<AnyTool>>(
   toolkit: Toolkit<Tools>,
   calls: ReadonlyArray<FunctionCall>,
-  onError: (err: ToolError, call: FunctionCall) => FunctionCallOutput,
+  onError: (err: ToolError, call: FunctionCall) => FunctionCallOutput = defaultRepair,
   options?: { readonly concurrency?: number | "unbounded" },
 ): Effect.Effect<ReadonlyArray<FunctionCallOutput>, never, ToolsR<Tools>> =>
   Effect.forEach(

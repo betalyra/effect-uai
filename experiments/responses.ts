@@ -9,7 +9,6 @@ import * as Conversation from "../src/Conversation.js"
 import * as Items from "../src/Items.js"
 import { OpenAi, layer as openAiLayer } from "../src/providers/openai/Responses.js"
 import * as Tool from "../src/Tool.js"
-import type { ToolError } from "../src/Tool.js"
 import * as Toolkit from "../src/Toolkit.js"
 import * as Turn from "../src/Turn.js"
 
@@ -63,21 +62,6 @@ const initial: State = {
   index: 0,
 }
 
-/**
- * Repair handler for `Toolkit.executeAllSafe`: when a tool's argument schema
- * decode fails, feed a structured error payload back to the model so it can
- * self-correct on the next turn.
- */
-const repair = (err: ToolError, call: Items.FunctionCall): Items.FunctionCallOutput =>
-  Items.functionCallOutput(
-    call.call_id,
-    JSON.stringify({
-      error: "argument_validation_failed",
-      tool: err.tool,
-      message: err.message,
-    }),
-  )
-
 // ---------------------------------------------------------------------------
 // The loop — Stream.paginate, fully visible
 // ---------------------------------------------------------------------------
@@ -112,7 +96,7 @@ const conversation = Stream.paginate(initial, (state) =>
 
     // Run the tools the model asked for. If a call fails (e.g. bad arguments),
     // `repair` feeds the error back so the model can self-correct next turn.
-    const outputs = yield* Toolkit.executeAllSafe(toolkit, calls, repair)
+    const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
 
     // Continue with tool outputs appended to history.
     return Conversation.advance(cursor, {

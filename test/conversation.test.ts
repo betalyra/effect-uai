@@ -18,7 +18,7 @@ const GetWeatherInput = Schema.Struct({ city: Schema.String })
 const getWeather = Tool.make({
   name: "get_weather",
   description: "Look up the current temperature for a city.",
-  inputSchema: GetWeatherInput,
+  inputSchema: Tool.fromEffectSchema(GetWeatherInput),
   run: ({ city }) => Effect.succeed({ city, tempC: 18 })
 })
 
@@ -194,7 +194,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
     const upgradeModel = Tool.make({
       name: "upgrade_model",
       description: "Upgrade the active model.",
-      inputSchema: Schema.Struct({ to: Schema.String }),
+      inputSchema: Tool.fromEffectSchema(Schema.Struct({ to: Schema.String })),
       run: ({ to }) => Effect.succeed({ upgraded_to: to })
     })
     const tk = Toolkit.make([upgradeModel])

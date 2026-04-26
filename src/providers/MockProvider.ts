@@ -46,6 +46,8 @@ const turnToDeltas = (turn: Turn): ReadonlyArray<TurnDelta> => {
         call_id: item.call_id,
         delta: item.arguments
       })
+    } else if (item.type === "reasoning" && item.summary !== undefined) {
+      deltas.push({ type: "reasoning_summary_delta", text: item.summary })
     }
   }
   deltas.push({ type: "turn_complete", turn })

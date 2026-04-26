@@ -1,6 +1,11 @@
 import { Effect } from "effect"
 import type { FunctionCall, FunctionCallOutput } from "./Items.js"
-import { execute, type Tool, type ToolError } from "./Tool.js"
+import {
+  execute,
+  type Tool,
+  type ToolDescriptor,
+  type ToolError
+} from "./Tool.js"
 
 export type AnyTool = Tool<string, any, any, any>
 
@@ -46,4 +51,21 @@ export const executeAll = <Tools extends ReadonlyArray<AnyTool>>(
 > =>
   Effect.forEach(calls, (call) => executeOne(toolkit, call), {
     concurrency: options?.concurrency ?? "unbounded"
+  })
+
+/**
+ * Render every tool in a toolkit to a provider-agnostic descriptor.
+ * `inputSchema` is the JSON Schema document produced by the tool's
+ * Standard Schema converter (draft 2020-12).
+ */
+export const toDescriptors = <Tools extends ReadonlyArray<AnyTool>>(
+  toolkit: Toolkit<Tools>
+): ReadonlyArray<ToolDescriptor> =>
+  toolkit.tools.map((tool) => {
+    const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
+      target: "draft-2020-12"
+    })
+    return tool.strict !== undefined
+      ? { name: tool.name, description: tool.description, inputSchema, strict: tool.strict }
+      : { name: tool.name, description: tool.description, inputSchema }
   })

@@ -1,6 +1,6 @@
 import { Effect, Stream } from "effect"
 import { describe, expect, it } from "vitest"
-import * as SSE from "../src/SSE.js"
+import * as SSE from "./SSE.js"
 
 const enc = new TextEncoder()
 const bytesOf = (...chunks: ReadonlyArray<string>) =>

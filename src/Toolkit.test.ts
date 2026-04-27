@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import { describe, expect, it } from "vitest"
-import * as Tool from "../src/Tool.js"
-import * as Toolkit from "../src/Toolkit.js"
+import * as Tool from "./Tool.js"
+import * as Toolkit from "./Toolkit.js"
 
 describe("Toolkit.toDescriptors", () => {
   const GetWeatherInput = Schema.Struct({ city: Schema.String })

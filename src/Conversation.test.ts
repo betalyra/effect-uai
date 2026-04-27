@@ -1,13 +1,13 @@
 import { Duration, Effect, Fiber, Option, Schema, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { describe, expect, it } from "vitest"
-import * as Items from "../src/Items.js"
-import { LanguageModel, streamTurn, turn } from "../src/LanguageModel.js"
-import * as Metrics from "../src/Metrics.js"
-import * as MockProvider from "../src/providers/MockProvider.js"
-import * as Tool from "../src/Tool.js"
-import * as Toolkit from "../src/Toolkit.js"
-import { functionCalls, type Turn, type TurnDelta } from "../src/Turn.js"
+import * as Items from "./Items.js"
+import { LanguageModel, streamTurn, turn } from "./LanguageModel.js"
+import * as Metrics from "./Metrics.js"
+import * as MockProvider from "./providers/MockProvider.js"
+import * as Tool from "./Tool.js"
+import * as Toolkit from "./Toolkit.js"
+import { functionCalls, type Turn, type TurnDelta } from "./Turn.js"
 
 // ---------------------------------------------------------------------------
 // Tool — get_weather

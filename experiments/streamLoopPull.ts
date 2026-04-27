@@ -6,6 +6,11 @@
  * downstream pulls the outer stream, so cancellation, failures, scoped
  * resources, and backpressure stay aligned with normal Stream semantics.
  *
+ * Convention: emit `Decision` as the terminal control value for a body stream.
+ * If a body emits additional values after a `Decision` in the same chunk, those
+ * values are discarded, but side effects that produced that chunk may already
+ * have run. Prefer `Stream.concat(deltas, Stream.fromIterable([next(state)]))`.
+ *
  * Run: `pnpm tsx experiments/streamLoopPull.ts`
  */
 import { Cause, Channel, Effect, Exit, Scope, Stream } from "effect"
@@ -58,14 +63,13 @@ export const loop = <S, A, E, R>(
         const closeActive = (
           active: CurrentBody<S, A, E, R>,
           exit: Exit.Exit<unknown, unknown>,
-        ) =>
-          closeBody(active, exit).pipe(
-            Effect.andThen(
-              Effect.sync(() => {
-                if (current === active) current = undefined
-              }),
-            ),
-          )
+        ) => {
+          const isActive = current === active
+          if (isActive) current = undefined
+          // Scope.close is idempotent. Multiple paths can race to close the
+          // active body during cancellation/failure, so closing twice is safe.
+          return closeBody(active, exit)
+        }
 
         yield* Scope.addFinalizerExit(outerScope, (exit) =>
           current === undefined ? Effect.void : closeActive(current, exit),
@@ -78,7 +82,12 @@ export const loop = <S, A, E, R>(
             if (current === undefined) {
               const stream = body(state)
               const bodyScope = yield* Scope.fork(outerScope)
-              const bodyPull = yield* Channel.toPullScoped(Stream.toChannel(stream), bodyScope)
+              const bodyPull = yield* Channel.toPullScoped(
+                Stream.toChannel(stream),
+                bodyScope,
+              ).pipe(
+                Effect.onError((cause) => Scope.close(bodyScope, Exit.failCause(cause))),
+              )
               current = { scope: bodyScope, pull: bodyPull }
             }
 

@@ -1,37 +1,21 @@
 import { Deferred, Effect, Fiber, Ref, Stream } from "effect"
 import { describe, expect, it } from "vitest"
-import { type Decision, loop, next, stop } from "./streamLoopChannel.js"
 import {
-  loop as loopPull,
-  next as nextPull,
-  stop as stopPull,
+  type Decision,
+  loop,
+  next,
+  nextAfter,
+  stop,
+  stopAfter,
 } from "./streamLoopPull.js"
 
-interface LoopControls {
-  readonly loop: typeof loop
-  readonly next: typeof next
-  readonly stop: typeof stop
-}
-
-const channelControls: LoopControls = { loop, next, stop }
-const pullControls: LoopControls = {
-  loop: loopPull as typeof loop,
-  next: nextPull as unknown as typeof next,
-  stop: stopPull as unknown as typeof stop,
-}
-
-const implementations: ReadonlyArray<readonly [string, LoopControls]> = [
-  ["callbackArray", channelControls],
-  ["pull", pullControls],
-]
-
-describe.each(implementations)("streamLoop.loop — %s", (_name, controls) => {
+describe("streamLoop.loop", () => {
   it("threads state across iterations and emits each iteration's substream in order", async () => {
     // Each iter emits [n, n + 0.5] then continues; final iter emits [n] and stops.
-    const stream = controls.loop(0, (n: number) =>
+    const stream = loop(0, (n: number) =>
       n >= 3
-        ? Stream.fromIterable([n, controls.stop])
-        : Stream.fromIterable([n, n + 0.5, controls.next(n + 1)]),
+        ? Stream.fromIterable([n, stop])
+        : Stream.fromIterable([n, n + 0.5, next(n + 1)]),
     )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
@@ -40,10 +24,10 @@ describe.each(implementations)("streamLoop.loop — %s", (_name, controls) => {
 
   it("supports iterations that emit zero values and only decide", async () => {
     // Every iteration emits nothing, just bumps state; stops at 5.
-    const stream = controls.loop(0, (n: number) =>
+    const stream = loop(0, (n: number) =>
       n >= 5
-        ? Stream.fromIterable([controls.stop])
-        : Stream.fromIterable([controls.next(n + 1)]),
+        ? Stream.fromIterable([stop])
+        : Stream.fromIterable([next(n + 1)]),
     )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
@@ -52,13 +36,13 @@ describe.each(implementations)("streamLoop.loop — %s", (_name, controls) => {
 
   it("supports Effect-driven bodies (state from a yielded Effect)", async () => {
     // Each iter yields an Effect that doubles the state, then emits it.
-    const stream = controls.loop(1, (n: number) =>
+    const stream = loop(1, (n: number) =>
       Stream.unwrap(
         Effect.gen(function* () {
           const doubled = yield* Effect.succeed(n * 2)
           return doubled >= 16
-            ? Stream.fromIterable([doubled, controls.stop])
-            : Stream.fromIterable([doubled, controls.next(doubled)])
+            ? Stream.fromIterable([doubled, stop])
+            : Stream.fromIterable([doubled, next(doubled)])
         }),
       ),
     )
@@ -69,10 +53,10 @@ describe.each(implementations)("streamLoop.loop — %s", (_name, controls) => {
 
   it("propagates errors from the body's stream", async () => {
     const boom = new Error("boom")
-    const stream = controls.loop(0, (n: number) =>
+    const stream = loop(0, (n: number) =>
       n === 2
         ? Stream.fail(boom)
-        : Stream.fromIterable([n, controls.next(n + 1)]),
+        : Stream.fromIterable([n, next(n + 1)]),
     )
 
     const result = await Effect.runPromiseExit(Stream.runCollect(stream))
@@ -81,7 +65,7 @@ describe.each(implementations)("streamLoop.loop — %s", (_name, controls) => {
 
   it("terminates silently if the body emits no Decision (mirrors paginate's silent stop)", async () => {
     // No decision emitted — loop just ends after the body's stream completes.
-    const stream = controls.loop(0, (n: number) => Stream.fromIterable([n, n + 1]))
+    const stream = loop(0, (n: number) => Stream.fromIterable([n, n + 1]))
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
     expect(result).toEqual([0, 1])
@@ -92,10 +76,10 @@ describe.each(implementations)("streamLoop.loop — %s", (_name, controls) => {
     // body's stream is interrupted — `n+10` is never pulled, so it never
     // flows to the outer stream. This is the correct behavior: a Decision
     // marks "I'm done with this iteration"; anything after it is dead code.
-    const stream = controls.loop(0, (n: number) =>
+    const stream = loop(0, (n: number) =>
       n >= 2
-        ? Stream.fromIterable([n, controls.stop])
-        : Stream.fromIterable([n, controls.next(n + 1), n + 10]),
+        ? Stream.fromIterable([n, stop])
+        : Stream.fromIterable([n, next(n + 1), n + 10]),
     )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
@@ -105,10 +89,10 @@ describe.each(implementations)("streamLoop.loop — %s", (_name, controls) => {
   it("is stack-safe and linear-time across many iterations", async () => {
     // 100k iterations far exceeds V8's typical stack depth (~10–15k frames).
     const N = 100_000
-    const stream = controls.loop(0, (n: number) =>
+    const stream = loop(0, (n: number) =>
       n >= N
-        ? Stream.fromIterable([n, controls.stop])
-        : Stream.fromIterable([n, controls.next(n + 1)]),
+        ? Stream.fromIterable([n, stop])
+        : Stream.fromIterable([n, next(n + 1)]),
     )
 
     const count = await Effect.runPromise(
@@ -176,9 +160,8 @@ const scriptedModel = (script: ReadonlyArray<ReadonlyArray<Delta>>): MockModel =
 const conversationLoop = (
   initial: State,
   runTool: ToolRunner,
-  controls: LoopControls,
 ) =>
-  controls.loop(initial, (state) =>
+  loop(initial, (state) =>
     Stream.unwrap(
       Effect.gen(function* () {
         const textsRef = yield* Ref.make<ReadonlyArray<string>>([])
@@ -209,7 +192,7 @@ const conversationLoop = (
             const toolCalls = yield* Ref.get(toolCallsRef)
 
             if (toolCalls.length === 0) {
-              return Stream.fromIterable<Event | Decision<State>>([controls.stop])
+              return stopAfter(Stream.empty)
             }
 
             const turnItems: ReadonlyArray<HistoryItem> = [
@@ -248,10 +231,7 @@ const conversationLoop = (
               model: nextModel,
             }
 
-            return Stream.fromIterable<Event | Decision<State>>([
-              ...events,
-              controls.next(nextState),
-            ])
+            return nextAfter(Stream.fromIterable(events), nextState)
           }),
         )
 
@@ -260,7 +240,7 @@ const conversationLoop = (
     ),
   )
 
-describe.each(implementations)("streamLoop.loop — LLM-style scenarios — %s", (_name, controls) => {
+describe("streamLoop.loop — LLM-style scenarios", () => {
   it("forwards text deltas, tool start, tool result, and post-tool text in order", async () => {
     const m = scriptedModel([
       [
@@ -285,7 +265,7 @@ describe.each(implementations)("streamLoop.loop — LLM-style scenarios — %s",
     }
 
     const events = await Effect.runPromise(
-      Stream.runCollect(conversationLoop(initial, runTool, controls)),
+      Stream.runCollect(conversationLoop(initial, runTool)),
     )
 
     expect(events).toEqual([
@@ -324,7 +304,7 @@ describe.each(implementations)("streamLoop.loop — LLM-style scenarios — %s",
     }
 
     const events = await Effect.runPromise(
-      Stream.runCollect(conversationLoop(initial, runTool, controls)),
+      Stream.runCollect(conversationLoop(initial, runTool)),
     )
 
     expect(events).toEqual([
@@ -343,13 +323,13 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
     const bodyCalls = await Effect.runPromise(
       Effect.gen(function* () {
         const callsRef = yield* Ref.make(0)
-        const stream = loopPull(0, (n: number) =>
+        const stream = loop(0, (n: number) =>
           Stream.unwrap(
             Ref.update(callsRef, (calls) => calls + 1).pipe(
               Effect.as(
                 n >= 10
-                  ? Stream.fromIterable([n, stopPull])
-                  : Stream.fromIterable([n, nextPull(n + 1)]),
+                  ? Stream.fromIterable([n, stop])
+                  : Stream.fromIterable([n, next(n + 1)]),
               ),
             ),
           ),
@@ -365,7 +345,7 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
 
   it("propagates defects from the body instead of leaving the consumer waiting", async () => {
     const defect = new Error("defect")
-    const stream = loopPull(0, () => Stream.die(defect))
+    const stream = loop(0, () => Stream.die(defect))
 
     const result = await Effect.runPromiseExit(Stream.runCollect(stream))
 
@@ -376,10 +356,10 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
     const releases = await Effect.runPromise(
       Effect.gen(function* () {
         const releasesRef = yield* Ref.make<ReadonlyArray<number>>([])
-        const stream = loopPull(0, (n: number) =>
+        const stream = loop(0, (n: number) =>
           (n >= 1
-            ? Stream.fromIterable([n, stopPull])
-            : Stream.fromIterable([n, nextPull(n + 1), n + 10])
+            ? Stream.fromIterable([n, stop])
+            : Stream.fromIterable([n, next(n + 1), n + 10])
           ).pipe(
             Stream.ensuring(Ref.update(releasesRef, (values) => [...values, n])),
           ),
@@ -399,12 +379,12 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
       Effect.gen(function* () {
         const started = yield* Deferred.make<void>()
         const releasesRef = yield* Ref.make(0)
-        const body = (): Stream.Stream<number | typeof stopPull> =>
+        const body = (): Stream.Stream<number | typeof stop> =>
           Stream.concat(
             Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(0))),
             Stream.never,
           ).pipe(Stream.ensuring(Ref.update(releasesRef, (n) => n + 1)))
-        const stream = loopPull(0, body)
+        const stream = loop(0, body)
 
         const fiber = yield* Effect.forkChild(Stream.runCollect(stream))
         yield* Deferred.await(started)
@@ -421,7 +401,7 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
     const defect = new Error("body construction failed")
     const result = await Effect.runPromiseExit(
       Stream.runCollect(
-        loopPull(0, (): Stream.Stream<number | typeof stopPull> => {
+        loop(0, (): Stream.Stream<number | typeof stop> => {
           throw defect
         }),
       ),

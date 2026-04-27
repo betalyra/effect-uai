@@ -1,21 +1,22 @@
 import { Deferred, Effect, Fiber, Ref, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import {
-  type Decision,
+  type Event,
   loop,
   next,
   nextAfter,
   stop,
   stopAfter,
-} from "./streamLoopPull.js"
+  value,
+} from "./Loop.js"
 
-describe("streamLoop.loop", () => {
+describe("Loop.loop", () => {
   it("threads state across iterations and emits each iteration's substream in order", async () => {
     // Each iter emits [n, n + 0.5] then continues; final iter emits [n] and stops.
     const stream = loop(0, (n: number) =>
       n >= 3
-        ? Stream.fromIterable([n, stop])
-        : Stream.fromIterable([n, n + 0.5, next(n + 1)]),
+        ? stopAfter(Stream.fromIterable([n]))
+        : nextAfter(Stream.fromIterable([n, n + 0.5]), n + 1),
     )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
@@ -41,8 +42,8 @@ describe("streamLoop.loop", () => {
         Effect.gen(function* () {
           const doubled = yield* Effect.succeed(n * 2)
           return doubled >= 16
-            ? Stream.fromIterable([doubled, stop])
-            : Stream.fromIterable([doubled, next(doubled)])
+            ? stopAfter(Stream.fromIterable([doubled]))
+            : nextAfter(Stream.fromIterable([doubled]), doubled)
         }),
       ),
     )
@@ -53,10 +54,10 @@ describe("streamLoop.loop", () => {
 
   it("propagates errors from the body's stream", async () => {
     const boom = new Error("boom")
-    const stream = loop(0, (n: number) =>
+    const stream = loop(0, (n: number): Stream.Stream<Event<number, number>, Error> =>
       n === 2
         ? Stream.fail(boom)
-        : Stream.fromIterable([n, next(n + 1)]),
+        : Stream.fromIterable([value(n), next(n + 1)]),
     )
 
     const result = await Effect.runPromiseExit(Stream.runCollect(stream))
@@ -65,7 +66,9 @@ describe("streamLoop.loop", () => {
 
   it("terminates silently if the body emits no Decision (mirrors paginate's silent stop)", async () => {
     // No decision emitted — loop just ends after the body's stream completes.
-    const stream = loop(0, (n: number) => Stream.fromIterable([n, n + 1]))
+    const stream = loop(0, (n: number) =>
+      Stream.fromIterable([value(n), value(n + 1)]),
+    )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
     expect(result).toEqual([0, 1])
@@ -78,8 +81,8 @@ describe("streamLoop.loop", () => {
     // marks "I'm done with this iteration"; anything after it is dead code.
     const stream = loop(0, (n: number) =>
       n >= 2
-        ? Stream.fromIterable([n, stop])
-        : Stream.fromIterable([n, next(n + 1), n + 10]),
+        ? Stream.fromIterable([value(n), stop])
+        : Stream.fromIterable([value(n), next(n + 1), value(n + 10)]),
     )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
@@ -91,8 +94,8 @@ describe("streamLoop.loop", () => {
     const N = 100_000
     const stream = loop(0, (n: number) =>
       n >= N
-        ? Stream.fromIterable([n, stop])
-        : Stream.fromIterable([n, next(n + 1)]),
+        ? Stream.fromIterable([value(n), stop])
+        : Stream.fromIterable([value(n), next(n + 1)]),
     )
 
     const count = await Effect.runPromise(
@@ -117,7 +120,7 @@ type HistoryItem =
   | { readonly type: "tool_call"; readonly id: string; readonly name: string }
   | { readonly type: "tool_result"; readonly id: string; readonly output: string }
 
-type Event =
+type UiEvent =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "tool_started"; readonly id: string; readonly name: string }
   | { readonly type: "tool_result"; readonly id: string; readonly output: string }
@@ -152,7 +155,7 @@ const scriptedModel = (script: ReadonlyArray<ReadonlyArray<Delta>>): MockModel =
 /**
  * Body factored out so both tests share it. Per iteration:
  *   1. Stream the model's deltas; tap captures texts + tool calls into Refs.
- *   2. flatMap projects deltas into Events forwarded to the outer stream.
+ *   2. flatMap projects deltas into UiEvents forwarded to the outer stream.
  *   3. Continuation reads the captured calls; if any, runs them, emits
  *      tool_result events, builds the next state (with model swap if a tool
  *      asked for one), and emits `next(state)`. Otherwise `stop`.
@@ -169,7 +172,7 @@ const conversationLoop = (
           ReadonlyArray<{ readonly id: string; readonly name: string }>
         >([])
 
-        const deltas: Stream.Stream<Event | Decision<State>> = state.model
+        const deltas: Stream.Stream<Event<UiEvent, State>> = state.model
           .streamTurn(state.history)
           .pipe(
             Stream.tap((d) =>
@@ -177,16 +180,16 @@ const conversationLoop = (
                 ? Ref.update(textsRef, (t) => [...t, d.text])
                 : Ref.update(toolCallsRef, (t) => [...t, { id: d.id, name: d.name }]),
             ),
-            Stream.flatMap((d): Stream.Stream<Event | Decision<State>> =>
+            Stream.flatMap((d): Stream.Stream<Event<UiEvent, State>> =>
               d.type === "text"
-                ? Stream.fromIterable<Event>([{ type: "text", text: d.text }])
-                : Stream.fromIterable<Event>([
-                    { type: "tool_started", id: d.id, name: d.name },
+                ? Stream.fromIterable([value<UiEvent>({ type: "text", text: d.text })])
+                : Stream.fromIterable([
+                    value<UiEvent>({ type: "tool_started", id: d.id, name: d.name }),
                   ]),
             ),
           )
 
-        const continuation: Stream.Stream<Event | Decision<State>> = Stream.unwrap(
+        const continuation: Stream.Stream<Event<UiEvent, State>> = Stream.unwrap(
           Effect.gen(function* () {
             const texts = yield* Ref.get(textsRef)
             const toolCalls = yield* Ref.get(toolCallsRef)
@@ -206,7 +209,7 @@ const conversationLoop = (
 
             const outcomes = toolCalls.map((call) => ({ call, outcome: runTool(call) }))
 
-            const events: ReadonlyArray<Event> = outcomes.map(({ call, outcome }) => ({
+            const events: ReadonlyArray<UiEvent> = outcomes.map(({ call, outcome }) => ({
               type: "tool_result",
               id: call.id,
               output: outcome.output,
@@ -240,7 +243,7 @@ const conversationLoop = (
     ),
   )
 
-describe("streamLoop.loop — LLM-style scenarios", () => {
+describe("Loop.loop — LLM-style scenarios", () => {
   it("forwards text deltas, tool start, tool result, and post-tool text in order", async () => {
     const m = scriptedModel([
       [
@@ -318,7 +321,7 @@ describe("streamLoop.loop — LLM-style scenarios", () => {
   })
 })
 
-describe("streamLoop.loop — pull-specific stream semantics", () => {
+describe("Loop.loop — pull-specific stream semantics", () => {
   it("does not start the next iteration when downstream only takes the first value", async () => {
     const bodyCalls = await Effect.runPromise(
       Effect.gen(function* () {
@@ -328,8 +331,8 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
             Ref.update(callsRef, (calls) => calls + 1).pipe(
               Effect.as(
                 n >= 10
-                  ? Stream.fromIterable([n, stop])
-                  : Stream.fromIterable([n, next(n + 1)]),
+                  ? Stream.fromIterable([value(n), stop])
+                  : Stream.fromIterable([value(n), next(n + 1)]),
               ),
             ),
           ),
@@ -358,8 +361,8 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
         const releasesRef = yield* Ref.make<ReadonlyArray<number>>([])
         const stream = loop(0, (n: number) =>
           (n >= 1
-            ? Stream.fromIterable([n, stop])
-            : Stream.fromIterable([n, next(n + 1), n + 10])
+            ? Stream.fromIterable([value(n), stop])
+            : Stream.fromIterable([value(n), next(n + 1), value(n + 10)])
           ).pipe(
             Stream.ensuring(Ref.update(releasesRef, (values) => [...values, n])),
           ),
@@ -379,9 +382,11 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
       Effect.gen(function* () {
         const started = yield* Deferred.make<void>()
         const releasesRef = yield* Ref.make(0)
-        const body = (): Stream.Stream<number | typeof stop> =>
+        const body = (): Stream.Stream<Event<number, never>> =>
           Stream.concat(
-            Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(0))),
+            Stream.fromEffect(
+              Deferred.succeed(started, undefined).pipe(Effect.as(value(0))),
+            ),
             Stream.never,
           ).pipe(Stream.ensuring(Ref.update(releasesRef, (n) => n + 1)))
         const stream = loop(0, body)
@@ -401,7 +406,7 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
     const defect = new Error("body construction failed")
     const result = await Effect.runPromiseExit(
       Stream.runCollect(
-        loop(0, (): Stream.Stream<number | typeof stop> => {
+        loop(0, (): Stream.Stream<Event<number, never>> => {
           throw defect
         }),
       ),

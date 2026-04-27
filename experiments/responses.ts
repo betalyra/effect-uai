@@ -17,7 +17,7 @@ import {
   Stream,
 } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { AiError } from "../src/AiError.js";
+import * as AiError from "../src/AiError.js";
 import * as Conversation from "../src/Conversation.js";
 import * as Items from "../src/Items.js";
 import {
@@ -27,8 +27,8 @@ import {
 import * as Tool from "../src/Tool.js";
 import * as Toolkit from "../src/Toolkit.js";
 import * as Turn from "../src/Turn.js";
-import { type Decision, loop, nextAfter, stopAfter } from "./streamLoopPull.js";
-import { streamUntilComplete } from "./turnStream.js";
+import { type Event as LoopEvent, loop, nextAfter, stopAfter, value } from "../src/Loop.js";
+import { streamUntilComplete } from "../src/Turn.js";
 
 // ---------------------------------------------------------------------------
 // Tool — get_current_time (uses Effect's DateTime)
@@ -102,7 +102,7 @@ const initial: State = {
 // after the terminal `turn_complete` event.
 const conversation: Stream.Stream<
   Event,
-  AiError,
+  AiError.AiError,
   OpenAi | Toolkit.ToolsR<typeof toolkit.tools>
 > = loop(initial, (state) =>
   Stream.unwrap(
@@ -117,11 +117,12 @@ const conversation: Stream.Stream<
         .pipe(Stream.tap((delta) => Effect.logDebug("delta", { delta })));
 
       return streamUntilComplete(deltas, {
-        emit: (delta) =>
-          Stream.succeed<Event | Decision<State>>({ type: "delta", delta }),
+        emit: (delta): Stream.Stream<LoopEvent<Event, State>> =>
+          Stream.succeed(value<Event>({ type: "delta", delta })),
         onMissing: Effect.fail(
-          new AiError({
-            message: "Stream ended without turn_complete",
+          new AiError.Unavailable({
+            provider: "openai",
+            raw: "Stream ended without turn_complete",
           }),
         ),
         then: (turn) =>

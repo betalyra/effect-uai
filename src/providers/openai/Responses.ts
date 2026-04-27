@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
-import { AiError } from "../../AiError.js"
+import * as AiError from "../../AiError.js"
 import type { Item } from "../../Items.js"
 import {
   type CommonRequestOptions,
@@ -27,7 +27,7 @@ export interface OpenAiService {
   readonly streamTurn: (
     history: ReadonlyArray<Item>,
     options?: OpenAiRequestOptions,
-  ) => Stream.Stream<TurnDelta, AiError>
+  ) => Stream.Stream<TurnDelta, AiError.AiError>
 }
 
 /**
@@ -103,17 +103,25 @@ const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<Option.Option<Pro
 // Service implementation
 // ---------------------------------------------------------------------------
 
-const httpStatusError = (status: number, body: string): AiError =>
-  new AiError({
-    message: `OpenAI Responses returned ${status}${body.length > 0 ? `: ${body}` : ""}`,
-  })
+const httpStatusError = (status: number, body: string): AiError.AiError => {
+  const provider = "openai"
+  const raw = body
+  if (status === 429) return new AiError.RateLimited({ provider, raw })
+  if (status === 408 || status === 504) return new AiError.Timeout({ provider, raw })
+  if (status === 401) return new AiError.AuthFailed({ provider, subtype: "auth", raw })
+  if (status === 403) return new AiError.AuthFailed({ provider, subtype: "permission", raw })
+  if (status === 402) return new AiError.AuthFailed({ provider, subtype: "billing", raw })
+  if (status === 413) return new AiError.ContextLengthExceeded({ provider, raw })
+  if (status >= 500) return new AiError.Unavailable({ provider, status, raw })
+  return new AiError.InvalidRequest({ provider, raw })
+}
 
 const buildStream = (cfg: Config) => {
   const url = `${cfg.baseUrl ?? "https://api.openai.com/v1"}/responses`
   return (
     history: ReadonlyArray<Item>,
     options: OpenAiRequestOptions | undefined,
-  ): Stream.Stream<TurnDelta, AiError, HttpClient.HttpClient> =>
+  ): Stream.Stream<TurnDelta, AiError.AiError, HttpClient.HttpClient> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
@@ -124,7 +132,7 @@ const buildStream = (cfg: Config) => {
         )
         const response = yield* client
           .execute(request)
-          .pipe(Effect.mapError((cause) => new AiError({ message: "HTTP request failed", cause })))
+          .pipe(Effect.mapError((cause) => new AiError.Unavailable({ provider: "openai", raw: cause })))
         if (response.status >= 400) {
           const body = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
           return Stream.fail(httpStatusError(response.status, body))
@@ -132,7 +140,7 @@ const buildStream = (cfg: Config) => {
 
         const lookup = makeCallIdLookup()
         return response.stream.pipe(
-          Stream.mapError((cause) => new AiError({ message: "Response stream error", cause })),
+          Stream.mapError((cause) => new AiError.Unavailable({ provider: "openai", raw: cause })),
           SSE.fromBytes,
           Stream.mapEffect(sseEventToProviderEvent),
           Stream.flatMap(
@@ -141,8 +149,9 @@ const buildStream = (cfg: Config) => {
               onSome: (event) =>
                 event.type === "error"
                   ? Stream.fail(
-                      new AiError({
-                        message: event.message ?? "Unknown OpenAI error",
+                      new AiError.Unavailable({
+                        provider: "openai",
+                        raw: event,
                       }),
                     )
                   : Stream.fromIterable(eventToDeltas(event, lookup)),

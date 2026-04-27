@@ -1,5 +1,5 @@
 import { Duration, Effect, Layer, Ref, Schedule, Stream } from "effect"
-import { AiError } from "../AiError.js"
+import * as AiError from "../AiError.js"
 import type { Item } from "../Items.js"
 import { LanguageModel, type LanguageModelService } from "../LanguageModel.js"
 import type { Turn, TurnDelta } from "../Turn.js"
@@ -75,8 +75,9 @@ const makeService = (
             const i = yield* Ref.getAndUpdate(cursor, (n) => n + 1)
             if (i >= scriptedTurns.length) {
               return Stream.fail(
-                new AiError({
-                  message: `MockProvider exhausted: ${scriptedTurns.length} turns scripted, but call ${i + 1} was made`,
+                new AiError.InvalidRequest({
+                  provider: "mock",
+                  raw: `MockProvider exhausted: ${scriptedTurns.length} turns scripted, but call ${i + 1} was made`,
                 }),
               )
             }
@@ -117,8 +118,9 @@ export const make = (
           const i = yield* Ref.getAndUpdate(cursor, (n) => n + 1)
           if (i >= scriptedTurns.length) {
             return Stream.fail(
-              new AiError({
-                message: `MockProvider exhausted: ${scriptedTurns.length} turns scripted, but call ${i + 1} was made`,
+              new AiError.InvalidRequest({
+                provider: "mock",
+                raw: `MockProvider exhausted: ${scriptedTurns.length} turns scripted, but call ${i + 1} was made`,
               }),
             )
           }

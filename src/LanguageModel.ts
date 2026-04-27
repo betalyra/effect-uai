@@ -1,5 +1,5 @@
 import { Context, Effect, Stream } from "effect"
-import { AiError } from "./AiError.js"
+import * as AiError from "./AiError.js"
 import type { Item } from "./Items.js"
 import type { ToolDescriptor } from "./Tool.js"
 import { isTurnComplete, type Turn, type TurnDelta } from "./Turn.js"
@@ -24,7 +24,7 @@ export interface LanguageModelService {
   readonly streamTurn: (
     history: ReadonlyArray<Item>,
     options?: CommonRequestOptions,
-  ) => Stream.Stream<TurnDelta, AiError>
+  ) => Stream.Stream<TurnDelta, AiError.AiError>
 }
 
 export class LanguageModel extends Context.Service<LanguageModel, LanguageModelService>()(
@@ -37,7 +37,7 @@ export class LanguageModel extends Context.Service<LanguageModel, LanguageModelS
 export const streamTurn = (
   history: ReadonlyArray<Item>,
   options?: CommonRequestOptions,
-): Stream.Stream<TurnDelta, AiError, LanguageModel> =>
+): Stream.Stream<TurnDelta, AiError.AiError, LanguageModel> =>
   Stream.unwrap(Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(history, options)))
 
 /**
@@ -50,14 +50,15 @@ export const streamTurn = (
 export const turn = (
   history: ReadonlyArray<Item>,
   options?: CommonRequestOptions,
-): Effect.Effect<Turn, AiError, LanguageModel> =>
+): Effect.Effect<Turn, AiError.AiError, LanguageModel> =>
   Effect.flatMap(Stream.runCollect(streamTurn(history, options)), (deltas) => {
     const last = deltas[deltas.length - 1]
     return last !== undefined && isTurnComplete(last)
       ? Effect.succeed(last.turn)
       : Effect.fail(
-          new AiError({
-            message: "Provider stream ended without a turn_complete event",
+          new AiError.Unavailable({
+            provider: "unknown",
+            raw: "Provider stream ended without a turn_complete event",
           }),
         )
   })

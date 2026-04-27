@@ -1,4 +1,4 @@
-import { Effect, Ref, Stream } from "effect"
+import { Deferred, Effect, Fiber, Ref, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import { type Decision, loop, next, stop } from "./streamLoopChannel.js"
 import {
@@ -392,5 +392,41 @@ describe("streamLoop.loop — pull-specific stream semantics", () => {
     )
 
     expect(releases).toEqual([0, 1])
+  })
+
+  it("runs the active body finalizer when the downstream consumer is interrupted", async () => {
+    const releases = await Effect.runPromise(
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>()
+        const releasesRef = yield* Ref.make(0)
+        const body = (): Stream.Stream<number | typeof stopPull> =>
+          Stream.concat(
+            Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(0))),
+            Stream.never,
+          ).pipe(Stream.ensuring(Ref.update(releasesRef, (n) => n + 1)))
+        const stream = loopPull(0, body)
+
+        const fiber = yield* Effect.forkChild(Stream.runCollect(stream))
+        yield* Deferred.await(started)
+        yield* Fiber.interrupt(fiber)
+
+        return yield* Ref.get(releasesRef)
+      }),
+    )
+
+    expect(releases).toBe(1)
+  })
+
+  it("does not create a body scope if constructing the body stream defects", async () => {
+    const defect = new Error("body construction failed")
+    const result = await Effect.runPromiseExit(
+      Stream.runCollect(
+        loopPull(0, (): Stream.Stream<number | typeof stopPull> => {
+          throw defect
+        }),
+      ),
+    )
+
+    expect(result._tag).toBe("Failure")
   })
 })

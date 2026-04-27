@@ -10,7 +10,7 @@
  */
 import { Cause, Channel, Effect, Exit, Scope, Stream } from "effect"
 
-const DecisionTag = Symbol.for("@betalyra/effect-uai/streamLoopPull/Decision")
+const DecisionTag = Symbol("@betalyra/effect-uai/streamLoopPull/Decision")
 
 export type Decision<S> =
   | { readonly [DecisionTag]: true; readonly _tag: "next"; readonly state: S }
@@ -47,20 +47,38 @@ export const loop = <S, A, E, R>(
   initial: S,
   body: (state: S) => Stream.Stream<A | Decision<S>, E, R>,
 ): Stream.Stream<A, E, R> =>
-  Stream.fromChannel(
-    Channel.fromTransformBracket((_, outerScope, _forkedScope) =>
-      Effect.sync(() => {
+  Stream.scoped(
+    Stream.fromPull(
+      Effect.gen(function* () {
+        const outerScope = yield* Effect.scope
         let state = initial
         let current: CurrentBody<S, A, E, R> | undefined
         let done = false
+
+        const closeActive = (
+          active: CurrentBody<S, A, E, R>,
+          exit: Exit.Exit<unknown, unknown>,
+        ) =>
+          closeBody(active, exit).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                if (current === active) current = undefined
+              }),
+            ),
+          )
+
+        yield* Scope.addFinalizerExit(outerScope, (exit) =>
+          current === undefined ? Effect.void : closeActive(current, exit),
+        )
 
         const pull = Effect.gen(function* () {
           while (true) {
             if (done) return yield* Cause.done()
 
             if (current === undefined) {
-              const bodyScope = Scope.forkUnsafe(outerScope)
-              const bodyPull = yield* Channel.toPullScoped(Stream.toChannel(body(state)), bodyScope)
+              const stream = body(state)
+              const bodyScope = yield* Scope.fork(outerScope)
+              const bodyPull = yield* Channel.toPullScoped(Stream.toChannel(stream), bodyScope)
               current = { scope: bodyScope, pull: bodyPull }
             }
 
@@ -69,15 +87,14 @@ export const loop = <S, A, E, R>(
               Effect.catchIf(
                 Cause.isDone,
                 () =>
-                  closeBody(active, Exit.void).pipe(
+                  closeActive(active, Exit.void).pipe(
                     Effect.as(undefined as ReadonlyArray<A | Decision<S>> | undefined),
                   ),
               ),
-              Effect.onError((cause) => closeBody(active, Exit.failCause(cause))),
+              Effect.onError((cause) => closeActive(active, Exit.failCause(cause))),
             )
 
             if (chunk === undefined) {
-              current = undefined
               done = true
               return yield* Cause.done()
             }
@@ -88,8 +105,7 @@ export const loop = <S, A, E, R>(
             const decision = chunk[decisionIndex] as Decision<S>
             const out = chunk.slice(0, decisionIndex) as Array<A>
 
-            yield* closeBody(active, Exit.void)
-            current = undefined
+            yield* closeActive(active, Exit.void)
 
             if (decision._tag === "stop") {
               done = true

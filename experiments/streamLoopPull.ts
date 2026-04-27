@@ -1,9 +1,9 @@
 /**
  * Spike: pull-based `loop` for state-threaded sub-streams.
  *
- * Unlike `streamLoopChannel`, this implementation does not fork a producer
- * fiber or buffer through a Queue. The next body stream is only pulled when
- * downstream pulls the outer stream, so cancellation, failures, scoped
+ * Unlike a queue-backed producer/consumer implementation, this does not fork a
+ * producer fiber or buffer through a Queue. The next body stream is only pulled
+ * when downstream pulls the outer stream, so cancellation, failures, scoped
  * resources, and backpressure stay aligned with normal Stream semantics.
  *
  * Convention: emit `Decision` as the terminal control value for a body stream.
@@ -31,6 +31,17 @@ export const stop: Decision<never> = {
   [DecisionTag]: true,
   _tag: "stop",
 }
+
+export const nextAfter = <S, A, E, R>(
+  stream: Stream.Stream<A, E, R>,
+  state: S,
+): Stream.Stream<A | Decision<S>, E, R> =>
+  Stream.concat(stream, Stream.fromIterable([next(state)]))
+
+export const stopAfter = <A, E, R>(
+  stream: Stream.Stream<A, E, R>,
+): Stream.Stream<A | Decision<never>, E, R> =>
+  Stream.concat(stream, Stream.fromIterable([stop]))
 
 const isDecision = (v: unknown): v is Decision<unknown> =>
   typeof v === "object" && v !== null && (v as Record<symbol, unknown>)[DecisionTag] === true

@@ -35,13 +35,28 @@ describe("Loop.loop", () => {
     expect(result).toEqual([])
   })
 
-  it("supports Effect-driven bodies (state from a yielded Effect)", async () => {
+  it("supports Effect-returning bodies directly (no Stream.unwrap needed)", async () => {
     // Each iter yields an Effect that doubles the state, then emits it.
+    // Body returns Effect<Stream> directly; loop unwraps internally.
+    const stream = loop(1, (n: number) =>
+      Effect.gen(function* () {
+        const doubled = yield* Effect.succeed(n * 2)
+        return doubled >= 16
+          ? stopAfter(Stream.fromIterable([doubled]))
+          : nextAfter(Stream.fromIterable([doubled]), doubled)
+      }),
+    )
+
+    const result = await Effect.runPromise(Stream.runCollect(stream))
+    expect(result).toEqual([2, 4, 8, 16])
+  })
+
+  it("still accepts Stream.unwrap-wrapped bodies for backward compatibility", async () => {
     const stream = loop(1, (n: number) =>
       Stream.unwrap(
         Effect.gen(function* () {
           const doubled = yield* Effect.succeed(n * 2)
-          return doubled >= 16
+          return doubled >= 4
             ? stopAfter(Stream.fromIterable([doubled]))
             : nextAfter(Stream.fromIterable([doubled]), doubled)
         }),
@@ -49,7 +64,7 @@ describe("Loop.loop", () => {
     )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
-    expect(result).toEqual([2, 4, 8, 16])
+    expect(result).toEqual([2, 4])
   })
 
   it("propagates errors from the body's stream", async () => {

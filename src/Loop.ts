@@ -113,7 +113,11 @@ const partitionChunk = <A, S>(
 
 export const loop = <S, A, E, R>(
   initial: S,
-  body: (state: S) => Stream.Stream<Event<A, S>, E, R>,
+  body: (
+    state: S,
+  ) =>
+    | Stream.Stream<Event<A, S>, E, R>
+    | Effect.Effect<Stream.Stream<Event<A, S>, E, R>, E, R>,
 ): Stream.Stream<A, E, R> =>
   Stream.scoped(
     Stream.fromPull(
@@ -143,7 +147,8 @@ export const loop = <S, A, E, R>(
             if (done) return yield* Cause.done()
 
             if (current === undefined) {
-              const stream = body(state)
+              const result = body(state)
+              const stream = Effect.isEffect(result) ? Stream.unwrap(result) : result
               const bodyScope = yield* Scope.fork(outerScope)
               const bodyPull = yield* Channel.toPullScoped(
                 Stream.toChannel(stream),

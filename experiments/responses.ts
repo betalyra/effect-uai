@@ -105,56 +105,54 @@ const conversation: Stream.Stream<
   AiError.AiError,
   OpenAi | Toolkit.ToolsR<typeof toolkit.tools>
 > = loop(initial, (state) =>
-  Stream.unwrap(
-    Effect.gen(function* () {
-      const oai = yield* OpenAi;
+  Effect.gen(function* () {
+    const oai = yield* OpenAi;
 
-      const deltas = oai
-        .streamTurn(state.history, {
-          tools,
-          reasoning: { effort: "low" },
-        })
-        .pipe(Stream.tap((delta) => Effect.logDebug("delta", { delta })));
+    const deltas = oai
+      .streamTurn(state.history, {
+        tools,
+        reasoning: { effort: "low" },
+      })
+      .pipe(Stream.tap((delta) => Effect.logDebug("delta", { delta })));
 
-      return streamUntilComplete(deltas, {
-        emit: (delta): Stream.Stream<LoopEvent<Event, State>> =>
-          Stream.succeed(value<Event>({ type: "delta", delta })),
-        onMissing: Effect.fail(
-          new AiError.Unavailable({
-            provider: "openai",
-            raw: "Stream ended without turn_complete",
-          }),
-        ),
-        then: (turn) =>
-          Effect.gen(function* () {
-            const cursor = Conversation.cursor(state, turn);
-            const calls = Turn.functionCalls(turn);
-            const turnComplete = Stream.succeed<Event>({
-              type: "turn_complete",
-              cursor,
-            });
+    return streamUntilComplete(deltas, {
+      emit: (delta): Stream.Stream<LoopEvent<Event, State>> =>
+        Stream.succeed(value<Event>({ type: "delta", delta })),
+      onMissing: Effect.fail(
+        new AiError.Unavailable({
+          provider: "openai",
+          raw: "Stream ended without turn_complete",
+        }),
+      ),
+      then: (turn) =>
+        Effect.gen(function* () {
+          const cursor = Conversation.cursor(state, turn);
+          const calls = Turn.functionCalls(turn);
+          const turnComplete = Stream.succeed<Event>({
+            type: "turn_complete",
+            cursor,
+          });
 
-            // No tool calls — the assistant is done.
-            if (calls.length === 0) return stopAfter(turnComplete);
+          // No tool calls — the assistant is done.
+          if (calls.length === 0) return stopAfter(turnComplete);
 
-            // Run the tools the model asked for. If a call fails (e.g. bad
-            // arguments), `repair` feeds the error back so the model can
-            // self-correct next turn.
-            const outputs = yield* Toolkit.executeAllSafe(toolkit, calls);
+          // Run the tools the model asked for. If a call fails (e.g. bad
+          // arguments), `repair` feeds the error back so the model can
+          // self-correct next turn.
+          const outputs = yield* Toolkit.executeAllSafe(toolkit, calls);
 
-            const toolOutputs = Stream.fromIterable(
-              outputs.map((output): Event => ({ type: "tool_output", output })),
-            );
+          const toolOutputs = Stream.fromIterable(
+            outputs.map((output): Event => ({ type: "tool_output", output })),
+          );
 
-            return nextAfter(Stream.concat(turnComplete, toolOutputs), {
-              ...state,
-              history: [...cursor.history, ...outputs],
-              index: state.index + 1,
-            });
-          }),
-      });
-    }),
-  ),
+          return nextAfter(Stream.concat(turnComplete, toolOutputs), {
+            ...state,
+            history: [...cursor.history, ...outputs],
+            index: state.index + 1,
+          });
+        }),
+    });
+  }),
 );
 
 // ---------------------------------------------------------------------------

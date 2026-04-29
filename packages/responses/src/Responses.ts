@@ -132,7 +132,11 @@ const buildStream = (cfg: Config) => {
         )
         const response = yield* client
           .execute(request)
-          .pipe(Effect.mapError((cause) => new AiError.Unavailable({ provider: "responses", raw: cause })))
+          .pipe(
+            Effect.mapError(
+              (cause) => new AiError.Unavailable({ provider: "responses", raw: cause }),
+            ),
+          )
         if (response.status >= 400) {
           const body = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
           return Stream.fail(httpStatusError(response.status, body))
@@ -140,7 +144,9 @@ const buildStream = (cfg: Config) => {
 
         const lookup = makeCallIdLookup()
         return response.stream.pipe(
-          Stream.mapError((cause) => new AiError.Unavailable({ provider: "responses", raw: cause })),
+          Stream.mapError(
+            (cause) => new AiError.Unavailable({ provider: "responses", raw: cause }),
+          ),
           SSE.fromBytes,
           Stream.mapEffect(sseEventToProviderEvent),
           Stream.flatMap(

@@ -2,27 +2,27 @@
   "name": "effect-uai-monorepo",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "description": "Low-level primitives for AI agents in Effect.",
-  "license": "MIT",
-  "author": "Betalyra",
-  "homepage": "https://effect-uai.betalyra.com",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/betalyra/effect-uai"
-  },
-  "bugs": {
-    "url": "https://github.com/betalyra/effect-uai/issues"
-  },
   "keywords": [
-    "effect",
-    "ai",
     "agents",
+    "ai",
+    "effect",
     "llm",
     "openai",
     "streaming",
     "typescript"
   ],
+  "homepage": "https://effect-uai.betalyra.com",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "license": "MIT",
+  "author": "Betalyra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai"
+  },
+  "type": "module",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

@@ -1,14 +1,6 @@
 import { Deferred, Effect, Fiber, Ref, Stream } from "effect"
 import { describe, expect, it } from "vitest"
-import {
-  type Event,
-  loop,
-  next,
-  nextAfter,
-  stopEvent,
-  stopAfter,
-  value,
-} from "./Loop.js"
+import { type Event, loop, next, nextAfter, stopEvent, stopAfter, value } from "./Loop.js"
 
 describe("Loop.loop", () => {
   it("threads state across iterations and emits each iteration's substream in order", async () => {
@@ -26,9 +18,7 @@ describe("Loop.loop", () => {
   it("supports iterations that emit zero values and only decide", async () => {
     // Every iteration emits nothing, just bumps state; stops at 5.
     const stream = loop(0, (n: number) =>
-      n >= 5
-        ? Stream.fromIterable([stopEvent])
-        : Stream.fromIterable([next(n + 1)]),
+      n >= 5 ? Stream.fromIterable([stopEvent]) : Stream.fromIterable([next(n + 1)]),
     )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
@@ -69,10 +59,10 @@ describe("Loop.loop", () => {
 
   it("propagates errors from the body's stream", async () => {
     const boom = new Error("boom")
-    const stream = loop(0, (n: number): Stream.Stream<Event<number, number>, Error> =>
-      n === 2
-        ? Stream.fail(boom)
-        : Stream.fromIterable([value(n), next(n + 1)]),
+    const stream = loop(
+      0,
+      (n: number): Stream.Stream<Event<number, number>, Error> =>
+        n === 2 ? Stream.fail(boom) : Stream.fromIterable([value(n), next(n + 1)]),
     )
 
     const result = await Effect.runPromiseExit(Stream.runCollect(stream))
@@ -81,9 +71,7 @@ describe("Loop.loop", () => {
 
   it("terminates silently if the body emits no Decision (mirrors paginate's silent stop)", async () => {
     // No decision emitted - loop just ends after the body's stream completes.
-    const stream = loop(0, (n: number) =>
-      Stream.fromIterable([value(n), value(n + 1)]),
-    )
+    const stream = loop(0, (n: number) => Stream.fromIterable([value(n), value(n + 1)]))
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
     expect(result).toEqual([0, 1])
@@ -114,7 +102,11 @@ describe("Loop.loop", () => {
     )
 
     const count = await Effect.runPromise(
-      Stream.runFold(stream, (): number => 0, (acc) => acc + 1),
+      Stream.runFold(
+        stream,
+        (): number => 0,
+        (acc) => acc + 1,
+      ),
     )
     expect(count).toBe(N + 1) // 0..N inclusive
   }, 10_000)
@@ -175,10 +167,7 @@ const scriptedModel = (script: ReadonlyArray<ReadonlyArray<Delta>>): MockModel =
  *      tool_result events, builds the next state (with model swap if a tool
  *      asked for one), and emits `next(state)`. Otherwise `stop`.
  */
-const conversationLoop = (
-  initial: State,
-  runTool: ToolRunner,
-) =>
+const conversationLoop = (initial: State, runTool: ToolRunner) =>
   loop(initial, (state) =>
     Stream.unwrap(
       Effect.gen(function* () {
@@ -195,12 +184,13 @@ const conversationLoop = (
                 ? Ref.update(textsRef, (t) => [...t, d.text])
                 : Ref.update(toolCallsRef, (t) => [...t, { id: d.id, name: d.name }]),
             ),
-            Stream.flatMap((d): Stream.Stream<Event<UiEvent, State>> =>
-              d.type === "text"
-                ? Stream.fromIterable([value<UiEvent>({ type: "text", text: d.text })])
-                : Stream.fromIterable([
-                    value<UiEvent>({ type: "tool_started", id: d.id, name: d.name }),
-                  ]),
+            Stream.flatMap(
+              (d): Stream.Stream<Event<UiEvent, State>> =>
+                d.type === "text"
+                  ? Stream.fromIterable([value<UiEvent>({ type: "text", text: d.text })])
+                  : Stream.fromIterable([
+                      value<UiEvent>({ type: "tool_started", id: d.id, name: d.name }),
+                    ]),
             ),
           )
 
@@ -214,9 +204,7 @@ const conversationLoop = (
             }
 
             const turnItems: ReadonlyArray<HistoryItem> = [
-              ...(texts.length > 0
-                ? [{ type: "assistant" as const, text: texts.join("") }]
-                : []),
+              ...(texts.length > 0 ? [{ type: "assistant" as const, text: texts.join("") }] : []),
               ...toolCalls.map(
                 (tc): HistoryItem => ({ type: "tool_call", id: tc.id, name: tc.name }),
               ),
@@ -282,9 +270,7 @@ describe("Loop.loop - LLM-style scenarios", () => {
       model: m,
     }
 
-    const events = await Effect.runPromise(
-      Stream.runCollect(conversationLoop(initial, runTool)),
-    )
+    const events = await Effect.runPromise(Stream.runCollect(conversationLoop(initial, runTool)))
 
     expect(events).toEqual([
       { type: "text", text: "hello" },
@@ -321,9 +307,7 @@ describe("Loop.loop - LLM-style scenarios", () => {
       model: m1,
     }
 
-    const events = await Effect.runPromise(
-      Stream.runCollect(conversationLoop(initial, runTool)),
-    )
+    const events = await Effect.runPromise(Stream.runCollect(conversationLoop(initial, runTool)))
 
     expect(events).toEqual([
       { type: "text", text: "Hard question." },
@@ -378,9 +362,7 @@ describe("Loop.loop - pull-specific stream semantics", () => {
           (n >= 1
             ? Stream.fromIterable([value(n), stopEvent])
             : Stream.fromIterable([value(n), next(n + 1), value(n + 10)])
-          ).pipe(
-            Stream.ensuring(Ref.update(releasesRef, (values) => [...values, n])),
-          ),
+          ).pipe(Stream.ensuring(Ref.update(releasesRef, (values) => [...values, n]))),
         )
 
         const values = yield* Stream.runCollect(stream)
@@ -399,9 +381,7 @@ describe("Loop.loop - pull-specific stream semantics", () => {
         const releasesRef = yield* Ref.make(0)
         const body = (): Stream.Stream<Event<number, never>> =>
           Stream.concat(
-            Stream.fromEffect(
-              Deferred.succeed(started, undefined).pipe(Effect.as(value(0))),
-            ),
+            Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(value(0)))),
             Stream.never,
           ).pipe(Stream.ensuring(Ref.update(releasesRef, (n) => n + 1)))
         const stream = loop(0, body)

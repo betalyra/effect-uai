@@ -2,15 +2,15 @@
   "name": "effect-uai",
   "version": "0.0.1",
   "description": "Reserved name. See @betalyra/effect-uai-core and @betalyra/effect-uai-responses.",
+  "homepage": "https://github.com/betalyra/effect-uai#readme",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
   "license": "MIT",
   "author": "Betalyra",
-  "homepage": "https://github.com/betalyra/effect-uai#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/betalyra/effect-uai"
-  },
-  "bugs": {
-    "url": "https://github.com/betalyra/effect-uai/issues"
   },
   "scripts": {
     "typecheck": "echo 'no-op'"

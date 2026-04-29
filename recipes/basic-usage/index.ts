@@ -17,22 +17,14 @@ import {
   References,
   Schema,
   Stream,
-} from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
-import * as Items from "@betalyra/effect-uai-core/Items";
-import {
-  loop,
-  nextAfter,
-  stop,
-  streamUntilComplete,
-} from "@betalyra/effect-uai-core/Loop";
-import * as Tool from "@betalyra/effect-uai-core/Tool";
-import * as Toolkit from "@betalyra/effect-uai-core/Toolkit";
-import * as Turn from "@betalyra/effect-uai-core/Turn";
-import {
-  Responses,
-  layer as responsesLayer,
-} from "@betalyra/effect-uai-responses";
+} from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
+import * as Items from "@betalyra/effect-uai-core/Items"
+import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
+import * as Tool from "@betalyra/effect-uai-core/Tool"
+import * as Toolkit from "@betalyra/effect-uai-core/Toolkit"
+import * as Turn from "@betalyra/effect-uai-core/Turn"
+import { Responses, layer as responsesLayer } from "@betalyra/effect-uai-responses"
 
 // ---------------------------------------------------------------------------
 // Tool - get_current_time (uses Effect's DateTime)
@@ -40,10 +32,9 @@ import {
 
 const GetCurrentTimeInput = Schema.Struct({
   timezone: Schema.String,
-});
+})
 
-const InvalidTimeZone = (timezone: string) =>
-  new Error(`Invalid IANA timezone: ${timezone}`);
+const InvalidTimeZone = (timezone: string) => new Error(`Invalid IANA timezone: ${timezone}`)
 
 const getCurrentTime = Tool.make({
   name: "get_current_time",
@@ -66,24 +57,24 @@ const getCurrentTime = Tool.make({
       ),
     ),
   strict: true,
-});
+})
 
-const toolkit = Toolkit.make([getCurrentTime]);
-const tools = Toolkit.toDescriptors(toolkit);
+const toolkit = Toolkit.make([getCurrentTime])
+const tools = Toolkit.toDescriptors(toolkit)
 
 // ---------------------------------------------------------------------------
 // State and types
 // ---------------------------------------------------------------------------
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>;
-  readonly index: number;
+  readonly history: ReadonlyArray<Items.Item>
+  readonly index: number
 }
 
 const initial: State = {
   history: [Items.userText("What time is it in Lisbon and Tokyo right now?")],
   index: 0,
-};
+}
 
 // ---------------------------------------------------------------------------
 // The loop - explicit, streaming, and still fully visible
@@ -96,7 +87,7 @@ const conversation = pipe(
   initial,
   loop((state) =>
     Effect.gen(function* () {
-      const oai = yield* Responses;
+      const oai = yield* Responses
 
       return oai
         .streamTurn(state.history, {
@@ -107,27 +98,27 @@ const conversation = pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
           streamUntilComplete((turn) =>
             Effect.gen(function* () {
-              const next = Turn.cursor(state, turn);
-              const calls = Turn.functionCalls(turn);
+              const next = Turn.cursor(state, turn)
+              const calls = Turn.functionCalls(turn)
 
               // No tool calls - the assistant is done.
-              if (calls.length === 0) return stop;
+              if (calls.length === 0) return stop
 
               // `executeAllSafe` reflects tool failures as `FunctionCallOutput`
               // items so the model can self-correct on the next turn.
-              const outputs = yield* Toolkit.executeAllSafe(toolkit, calls);
+              const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
 
               return nextAfter(Stream.fromIterable(outputs), {
                 ...next,
                 history: [...next.history, ...outputs],
                 index: state.index + 1,
-              });
+              })
             }),
           ),
-        );
+        )
     }),
   ),
-);
+)
 
 // ---------------------------------------------------------------------------
 // Run
@@ -147,27 +138,24 @@ const program = Effect.gen(function* () {
       ),
       Match.orElse(() => Effect.logDebug("delta", { event })),
     ),
-  );
-});
+  )
+})
 
 const apiKeyLayer = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY");
-    return responsesLayer({ apiKey, model: "gpt-5.4-mini" });
+    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+    return responsesLayer({ apiKey, model: "gpt-5.4-mini" })
   }),
-);
+)
 
 const runtime = Layer.mergeAll(
   apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
-);
+)
 
 Effect.runPromise(
-  program.pipe(
-    Effect.provide(runtime),
-    Effect.provideService(References.MinimumLogLevel, "Debug"),
-  ),
+  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Debug")),
 ).catch((err) => {
-  console.error("recipe failed:", err);
-  process.exit(1);
-});
+  console.error("recipe failed:", err)
+  process.exit(1)
+})

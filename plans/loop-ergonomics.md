@@ -138,12 +138,12 @@ ceremony there is in user code before committing to this.
 
 ## Problem
 
-Today the outer loop is `Stream<Cursor>` — one event *per turn*. Inside each
+Today the outer loop is `Stream<Cursor>` — one event _per turn_. Inside each
 turn, deltas are streamed from OpenAI but only used for `Stream.tap` logging
 or folded into a `Turn`. They never escape the iteration. For a real backend
 serving a frontend, that's wrong: text deltas, reasoning summaries, and tool
 call arguments need to flow through as they arrive. Vercel AI SDK does this
-end-to-end (text, tool starts, tool *results*); we currently can't.
+end-to-end (text, tool starts, tool _results_); we currently can't.
 
 What a real session should look like over the wire:
 
@@ -166,12 +166,12 @@ Extend `TurnDelta` with conversation-level events. The discriminator stays
 ```ts
 // in src/Conversation.ts (or a new src/ConversationEvent.ts)
 export type ConversationEvent =
-  | TurnDelta                                                // text/reasoning/tool_call_*/turn_complete
+  | TurnDelta // text/reasoning/tool_call_*/turn_complete
   | { readonly type: "tool_result"; readonly output: FunctionCallOutput }
   | { readonly type: "tool_failed"; readonly call_id: string; readonly error: ToolError }
 ```
 
-`tool_failed` is emitted *in addition to* `tool_result` when `defaultRepair`
+`tool_failed` is emitted _in addition to_ `tool_result` when `defaultRepair`
 (or the user's `onError`) handled a `ToolError` — so the frontend can show a
 "tool failed, retrying" banner while still seeing the repair output that gets
 fed back to the model.
@@ -237,7 +237,7 @@ const continueWith = (state: State, turn: Turn): Stream.Stream<ConversationEvent
 }
 ```
 
-`Stream.concat(a, b)` is lazy in `b` — `b` is only evaluated *after* `a`
+`Stream.concat(a, b)` is lazy in `b` — `b` is only evaluated _after_ `a`
 completes — so the `Ref.get` reliably sees the captured Turn.
 
 ## How this changes the experiment
@@ -246,20 +246,21 @@ The user's program becomes a `Stream.tap`-and-render loop over events,
 not a `Stream.runCollect` of cursors:
 
 ```ts
-yield* conversation(initial).pipe(
-  Stream.tap((event) =>
-    Match.value(event).pipe(
-      Match.discriminator("type")("text_delta", ({ text }) => writeToFrontend(text)),
-      Match.discriminator("type")("tool_result", ({ output }) => sendToolResult(output)),
-      // ... etc
-      Match.orElse(() => Effect.void),
+yield *
+  conversation(initial).pipe(
+    Stream.tap((event) =>
+      Match.value(event).pipe(
+        Match.discriminator("type")("text_delta", ({ text }) => writeToFrontend(text)),
+        Match.discriminator("type")("tool_result", ({ output }) => sendToolResult(output)),
+        // ... etc
+        Match.orElse(() => Effect.void),
+      ),
     ),
-  ),
-  Stream.runDrain,
-)
+    Stream.runDrain,
+  )
 ```
 
-The current `Cursor` stream is *derivable* from this event stream via
+The current `Cursor` stream is _derivable_ from this event stream via
 `Stream.scan` (accumulate state on `turn_complete` + `tool_result`), so Phase
 4 strictly subsumes Phase 3 — Phase 3's helpers (`Conversation.cursor`,
 `stop`, `advance`) become useful only if you opt into the simpler per-turn
@@ -295,7 +296,7 @@ Conversation.cursors(events): Stream<Cursor, AiError, R>
 3. **Resumability.** Connection drops; can the consumer reconnect and pick
    up where it left off? Probably needs the durable-event-log work from the
    cuttlekit-use-cases plan. Out of scope for Phase 4.
-4. **Tool result streaming.** Vercel AI SDK lets a tool *stream* its result
+4. **Tool result streaming.** Vercel AI SDK lets a tool _stream_ its result
    (e.g. an LLM-generated summary tool). Our `Tool.run` returns
    `Effect<output>`. To support streaming results, we'd need
    `Tool.run: Effect<output> | Stream<chunk>`. Big change — separate phase.

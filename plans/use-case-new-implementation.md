@@ -48,9 +48,7 @@ In the body, after `executeAllSafe(toolkit, calls)`:
 
 ```ts
 const failures = outputs.filter(isErrorOutput).length
-const next = failures > 0
-  ? Math.min(state.consecutiveToolFailures + failures, /* cap */ 99)
-  : 0
+const next = failures > 0 ? Math.min(state.consecutiveToolFailures + failures, /* cap */ 99) : 0
 const upgraded =
   next >= 3 && state.fallbacks.length > 0
     ? { model: state.fallbacks[0], fallbacks: state.fallbacks.slice(1), consecutiveToolFailures: 0 }
@@ -110,10 +108,12 @@ timeout). Retry with backoff. If retries exhaust, propagate.
 
 ```ts
 const turn = state.model.streamTurn(state.history, opts).pipe(
-  Stream.retry(Schedule.exponential("250 millis").pipe(
-    Schedule.intersect(Schedule.recurs(3)),
-    Schedule.whileInput((e: AiError) => e._tag === "Transient"),
-  )),
+  Stream.retry(
+    Schedule.exponential("250 millis").pipe(
+      Schedule.intersect(Schedule.recurs(3)),
+      Schedule.whileInput((e: AiError) => e._tag === "Transient"),
+    ),
+  ),
 )
 ```
 
@@ -171,7 +171,12 @@ const handleFallback = (err) =>
   state.fallbacks.length === 0
     ? Stream.fail(err)
     : Stream.fromIterable<Event | Decision<State>>([
-        { type: "model_fallback", from: state.model.id, to: state.fallbacks[0].id, reason: err._tag },
+        {
+          type: "model_fallback",
+          from: state.model.id,
+          to: state.fallbacks[0].id,
+          reason: err._tag,
+        },
         next({ ...state, model: state.fallbacks[0], fallbacks: state.fallbacks.slice(1) }),
       ])
 ```
@@ -212,14 +217,18 @@ interface State {
 // In body, at end of turn:
 const cumulativeTokens = state.cumulativeTokens + (turn.usage.totalTokens ?? 0)
 if (cumulativeTokens >= MAX_TOKENS || state.index + 1 >= MAX_TURNS) {
-  return Stream.unwrap(Effect.gen(function* () {
-    const summary = yield* compactHistory(cursor.history, summarizerModel)
-    const compactionEvent: Event = { type: "compacted", from: cursor.history.length, to: 1 }
-    return Stream.concat(
-      Stream.fromIterable<Event>([turnComplete, compactionEvent]),
-      Stream.fromIterable<Event | Decision<State>>([next({ ...state, history: [summary], index: 0, cumulativeTokens: 0 })]),
-    )
-  }))
+  return Stream.unwrap(
+    Effect.gen(function* () {
+      const summary = yield* compactHistory(cursor.history, summarizerModel)
+      const compactionEvent: Event = { type: "compacted", from: cursor.history.length, to: 1 }
+      return Stream.concat(
+        Stream.fromIterable<Event>([turnComplete, compactionEvent]),
+        Stream.fromIterable<Event | Decision<State>>([
+          next({ ...state, history: [summary], index: 0, cumulativeTokens: 0 }),
+        ]),
+      )
+    }),
+  )
 }
 ```
 
@@ -248,13 +257,10 @@ if (cumulativeTokens >= MAX_TOKENS || state.index + 1 >= MAX_TURNS) {
 ```ts
 conversation.pipe(
   Stream.map(toSseEvent), // user-defined: Event → SSE.Event
-  SSE.toBytes,            // already in src/SSE.ts
+  SSE.toBytes, // already in src/SSE.ts
 )
 // or
-conversation.pipe(
-  Stream.map(JSON.stringify),
-  JSONL.toBytes,
-)
+conversation.pipe(Stream.map(JSON.stringify), JSONL.toBytes)
 ```
 
 **Gaps.**
@@ -447,10 +453,10 @@ When the loop's outer scope closes:
 The user-facing trigger:
 
 ```ts
-const abort = yield* Deferred.make<void>()
+const abort = yield * Deferred.make<void>()
 conversation.pipe(Stream.interruptWhen(Deferred.await(abort)))
 // elsewhere:
-yield* Deferred.succeed(abort, undefined)
+yield * Deferred.succeed(abort, undefined)
 ```
 
 **Gaps.**
@@ -492,21 +498,21 @@ Cross-checking against the broader use-case list. Marking each as **C**
 
 ### From the compass artifact (top complaints)
 
-| Pain point                                           | Verdict for our loop                                                            |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Reasoning preservation across tool turns             | C if `Items` schema preserves reasoning (Phase 1) — the loop is agnostic        |
-| Zod ↔ JSON Schema fidelity                           | provider-side; out of scope for `loop`                                          |
-| Stream resumability + abort compose                  | C **iff** we add the regression test (#10) and DurableEventLog Layer (#9)       |
-| Prompt cache breakpoint placement                    | C — `Items` schema work (Phase 1)                                               |
-| Per-error-class retry policies (header-aware)        | +primitive (typed `AiError` variants, `retry-after` header parsing) — see #3, #4 |
-| Hidden tool-loop orchestration                       | **already won** — the loop is fully visible by design                           |
-| Cost tracking (token → USD)                          | +helper (`CostTracker` Layer + pricing table)                                   |
-| Edge-runtime streaming                               | C — Effect runs on Workers; verify with regression test                         |
-| Citations / grounded outputs                         | +primitive (schema additions in `Items`/`Turn`)                                 |
-| MCP client                                           | out of scope for `loop`                                                         |
-| Real-time / voice                                    | out of scope for `loop`                                                         |
-| Computer use                                         | C — it's just a tool; `Toolkit` already handles it                              |
-| Provider fallback (`ExecutionPlan`)                  | C — see #4                                                                      |
+| Pain point                                    | Verdict for our loop                                                             |
+| --------------------------------------------- | -------------------------------------------------------------------------------- |
+| Reasoning preservation across tool turns      | C if `Items` schema preserves reasoning (Phase 1) — the loop is agnostic         |
+| Zod ↔ JSON Schema fidelity                    | provider-side; out of scope for `loop`                                           |
+| Stream resumability + abort compose           | C **iff** we add the regression test (#10) and DurableEventLog Layer (#9)        |
+| Prompt cache breakpoint placement             | C — `Items` schema work (Phase 1)                                                |
+| Per-error-class retry policies (header-aware) | +primitive (typed `AiError` variants, `retry-after` header parsing) — see #3, #4 |
+| Hidden tool-loop orchestration                | **already won** — the loop is fully visible by design                            |
+| Cost tracking (token → USD)                   | +helper (`CostTracker` Layer + pricing table)                                    |
+| Edge-runtime streaming                        | C — Effect runs on Workers; verify with regression test                          |
+| Citations / grounded outputs                  | +primitive (schema additions in `Items`/`Turn`)                                  |
+| MCP client                                    | out of scope for `loop`                                                          |
+| Real-time / voice                             | out of scope for `loop`                                                          |
+| Computer use                                  | C — it's just a tool; `Toolkit` already handles it                               |
+| Provider fallback (`ExecutionPlan`)           | C — see #4                                                                       |
 
 ### Use cases not yet on either list (worth calling out)
 

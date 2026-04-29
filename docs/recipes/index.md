@@ -6,7 +6,7 @@ description: Working examples of common agent patterns.
 Recipes live in [`recipes/`](https://github.com/betalyra/effect-uai/tree/main/recipes)
 in the repo. Each one is real, type-checked code composed from core
 primitives. Their READMEs are mirrored as pages in this section - the page
-*is* the recipe's `README.md`, sitting next to its `index.ts` and
+_is_ the recipe's `README.md`, sitting next to its `index.ts` and
 `index.test.ts` in the repo.
 
 Currently scaffolded:

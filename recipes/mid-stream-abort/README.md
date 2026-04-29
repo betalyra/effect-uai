@@ -5,7 +5,7 @@ description: Cancel the loop and abort the upstream HTTP request via scope-based
 
 # Recipe: Mid-stream abort
 
-**Scenario.** User clicks "stop". Server must interrupt the loop *and*
+**Scenario.** User clicks "stop". Server must interrupt the loop _and_
 abort the upstream HTTP request to the model provider.
 
 Effect's structured concurrency model already does this when the chain is
@@ -13,10 +13,10 @@ correctly scoped: when the loop's outer scope closes, the HTTP client's
 finalizer fires and `FetchHttpClient` aborts via `AbortController`.
 
 ```ts
-const abort = yield* Deferred.make<void>()
+const abort = yield * Deferred.make<void>()
 conversation.pipe(Stream.interruptWhen(Deferred.await(abort)))
 // elsewhere:
-yield* Deferred.succeed(abort, undefined)
+yield * Deferred.succeed(abort, undefined)
 ```
 
 ## Why a recipe, not a primitive

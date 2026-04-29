@@ -9,16 +9,7 @@
  *
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/auto-compaction/index.ts`
  */
-import {
-  Config,
-  Effect,
-  Layer,
-  Logger,
-  Match,
-  References,
-  Stream,
-  pipe,
-} from "effect"
+import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@betalyra/effect-uai-core/Items"
 import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
@@ -54,9 +45,7 @@ const PROMPTS = [
 
 const initial: State = {
   history: [
-    Items.systemText(
-      "You are a friendly tour guide. Reply in 1-2 short sentences per city.",
-    ),
+    Items.systemText("You are a friendly tour guide. Reply in 1-2 short sentences per city."),
     Items.userText(PROMPTS[0]!),
   ],
   turnIndex: 0,
@@ -67,14 +56,12 @@ const initial: State = {
 const advance = (state: State, turn: Turn.Turn): State => ({
   history: [...state.history, ...turn.items],
   turnIndex: state.turnIndex + 1,
-  cumulativeInputTokens:
-    state.cumulativeInputTokens + (turn.usage.input_tokens ?? 0),
+  cumulativeInputTokens: state.cumulativeInputTokens + (turn.usage.input_tokens ?? 0),
   pendingPrompts: state.pendingPrompts,
 })
 
 const shouldCompact = (state: State): boolean =>
-  state.turnIndex >= MAX_TURNS ||
-  state.cumulativeInputTokens >= MAX_INPUT_TOKENS
+  state.turnIndex >= MAX_TURNS || state.cumulativeInputTokens >= MAX_INPUT_TOKENS
 
 const withSummary = (state: State, summary: string): State => ({
   history: [
@@ -119,9 +106,7 @@ const conversation = pipe(
               Effect.sync(() => {
                 const summary = Turn.assistantMessages(turn)
                   .flatMap((m) => m.content)
-                  .filter(
-                    (c): c is Items.OutputText => c.type === "output_text",
-                  )
+                  .filter((c): c is Items.OutputText => c.type === "output_text")
                   .map((c) => c.text)
                   .join(" ")
                 return nextAfter(Stream.empty, withSummary(state, summary))
@@ -134,23 +119,21 @@ const conversation = pipe(
       // Normal turn: stream a response, then either inject the next user
       // prompt or stop when the queue is empty.
       // -----------------------------------------------------------------
-      return oai
-        .streamTurn(state.history, { tools: [], reasoning: { effort: "low" } })
-        .pipe(
-          Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-          streamUntilComplete((turn) =>
-            Effect.sync(() => {
-              const next = advance(state, turn)
-              if (state.pendingPrompts.length === 0) return stop
-              const [nextPrompt, ...rest] = state.pendingPrompts
-              return nextAfter(Stream.empty, {
-                ...next,
-                history: [...next.history, Items.userText(nextPrompt!)],
-                pendingPrompts: rest,
-              })
-            }),
-          ),
-        )
+      return oai.streamTurn(state.history, { tools: [], reasoning: { effort: "low" } }).pipe(
+        Stream.tap((delta) => Effect.logDebug("delta", { delta })),
+        streamUntilComplete((turn) =>
+          Effect.sync(() => {
+            const next = advance(state, turn)
+            if (state.pendingPrompts.length === 0) return stop
+            const [nextPrompt, ...rest] = state.pendingPrompts
+            return nextAfter(Stream.empty, {
+              ...next,
+              history: [...next.history, Items.userText(nextPrompt!)],
+              pendingPrompts: rest,
+            })
+          }),
+        ),
+      )
     }),
   ),
 )
@@ -192,10 +175,7 @@ const runtime = Layer.mergeAll(
 )
 
 Effect.runPromise(
-  program.pipe(
-    Effect.provide(runtime),
-    Effect.provideService(References.MinimumLogLevel, "Info"),
-  ),
+  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Info")),
 ).catch((err) => {
   console.error("recipe failed:", err)
   process.exit(1)

@@ -15,4 +15,4 @@ loop<S, A, E, R>(
 ```
 
 Sugar helpers: `nextAfter(stream, state)` and `stopAfter(stream)` let the
-body emit values *and* a terminal decision in one expression.
+body emit values _and_ a terminal decision in one expression.

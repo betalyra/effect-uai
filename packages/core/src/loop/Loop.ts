@@ -17,18 +17,7 @@
  * (their producing side effects may already have run). Prefer the
  * `Loop.nextAfter` / `Loop.stopAfter` helpers to terminate cleanly.
  */
-import {
-  Cause,
-  Channel,
-  Data,
-  Effect,
-  Exit,
-  Function,
-  Option,
-  Ref,
-  Scope,
-  Stream,
-} from "effect"
+import { Cause, Channel, Data, Effect, Exit, Function, Option, Ref, Scope, Stream } from "effect"
 import { IncompleteTurn } from "../domain/AiError.js"
 import { isTurnComplete, type Turn, type TurnDelta } from "../domain/Turn.js"
 
@@ -182,9 +171,7 @@ const partitionChunk = <A, S>(
 
 type LoopBody<S, A, E, R> = (
   state: S,
-) =>
-  | Stream.Stream<Event<A, S>, E, R>
-  | Effect.Effect<Stream.Stream<Event<A, S>, E, R>, E, R>
+) => Stream.Stream<Event<A, S>, E, R> | Effect.Effect<Stream.Stream<Event<A, S>, E, R>, E, R>
 
 /**
  * Drive a state-threaded loop body. Each iteration runs `body(state)` to get
@@ -196,19 +183,11 @@ type LoopBody<S, A, E, R> = (
  * (or `pipe(initial, loop(body))`) both work.
  */
 export const loop: {
-  <S, A, E, R>(
-    body: LoopBody<S, A, E, R>,
-  ): (initial: S) => Stream.Stream<A, E, R>
-  <S, A, E, R>(
-    initial: S,
-    body: LoopBody<S, A, E, R>,
-  ): Stream.Stream<A, E, R>
+  <S, A, E, R>(body: LoopBody<S, A, E, R>): (initial: S) => Stream.Stream<A, E, R>
+  <S, A, E, R>(initial: S, body: LoopBody<S, A, E, R>): Stream.Stream<A, E, R>
 } = Function.dual(
   2,
-  <S, A, E, R>(
-    initial: S,
-    body: LoopBody<S, A, E, R>,
-  ): Stream.Stream<A, E, R> =>
+  <S, A, E, R>(initial: S, body: LoopBody<S, A, E, R>): Stream.Stream<A, E, R> =>
     Stream.scoped(
       Stream.fromPull(
         Effect.gen(function* () {
@@ -243,20 +222,16 @@ export const loop: {
                 const bodyPull = yield* Channel.toPullScoped(
                   Stream.toChannel(stream),
                   bodyScope,
-                ).pipe(
-                  Effect.onError((cause) => Scope.close(bodyScope, Exit.failCause(cause))),
-                )
+                ).pipe(Effect.onError((cause) => Scope.close(bodyScope, Exit.failCause(cause))))
                 current = { scope: bodyScope, pull: bodyPull }
               }
 
               const active = current
               const chunk = yield* active.pull.pipe(
-                Effect.catchIf(
-                  Cause.isDone,
-                  () =>
-                    closeActive(active, Exit.void).pipe(
-                      Effect.as(undefined as ReadonlyArray<Event<A, S>> | undefined),
-                    ),
+                Effect.catchIf(Cause.isDone, () =>
+                  closeActive(active, Exit.void).pipe(
+                    Effect.as(undefined as ReadonlyArray<Event<A, S>> | undefined),
+                  ),
                 ),
                 Effect.onError((cause) => closeActive(active, Exit.failCause(cause))),
               )

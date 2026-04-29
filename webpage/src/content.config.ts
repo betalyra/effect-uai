@@ -9,9 +9,7 @@ export const collections = {
       pattern: ["docs/**/*.{md,mdx}", "recipes/*/README.md"],
       generateId: ({ entry }) => {
         if (entry.startsWith("docs/")) {
-          const id = entry
-            .replace(/^docs\//, "")
-            .replace(/\.(md|mdx)$/, "")
+          const id = entry.replace(/^docs\//, "").replace(/\.(md|mdx)$/, "")
           return id === "index" ? "index" : id.replace(/\/index$/, "")
         }
         return entry.replace(/\/README\.md$/, "")

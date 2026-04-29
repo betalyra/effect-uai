@@ -22,7 +22,7 @@ mechanic itself rather than tool-calling.
 - Branching the loop body on a state predicate (`shouldCompact`) to take
   one of two paths in a given iteration: a normal turn, or a compaction
   step.
-- Issuing a separate `Responses.streamTurn` *inside* the body (the
+- Issuing a separate `Responses.streamTurn` _inside_ the body (the
   compaction call) and using its result to rewrite history before the
   next iteration.
 - Using `Turn.assistantMessages(turn)` to extract the model's textual
@@ -39,17 +39,14 @@ loop((state) =>
       // Compaction step: summarize the early history, replace it.
       const toCompact = state.history.slice(0, -KEEP_RECENT_ITEMS)
       return oai
-        .streamTurn(
-          [...toCompact, Items.userText("Summarize the conversation above...")],
-          { tools: [], reasoning: { effort: "low" } },
-        )
+        .streamTurn([...toCompact, Items.userText("Summarize the conversation above...")], {
+          tools: [],
+          reasoning: { effort: "low" },
+        })
         .pipe(
           streamUntilComplete((turn) =>
             Effect.sync(() =>
-              nextAfter(
-                Stream.empty,
-                withSummary(state, /* extract text from turn */),
-              ),
+              nextAfter(Stream.empty, withSummary(state /* extract text from turn */)),
             ),
           ),
         )
@@ -85,7 +82,7 @@ whatever `State` shape the recipe defines.
 The recipe compacts within one loop invocation - one SDK process, one
 in-memory `State`. Real chat applications usually have a different shape:
 each user message is a fresh request, the agent runs a short loop, and
-the conversation history is *persisted* between requests (database, KV
+the conversation history is _persisted_ between requests (database, KV
 store, file). Compaction at that scale is the same mechanism applied at
 a different boundary.
 
@@ -99,12 +96,12 @@ The pieces:
   `initial` state from it, run the agent loop for that request, save
   the resulting state at the end.
 - **Decide when to compact**. Three reasonable points:
-  - *Lazy, at load time.* If the hydrated history exceeds your budget,
-    run a single compaction `streamTurn` *before* starting the agent
+  - _Lazy, at load time._ If the hydrated history exceeds your budget,
+    run a single compaction `streamTurn` _before_ starting the agent
     loop, then continue with the compacted history.
-  - *Eager, at save time.* When the loop finishes a request, check the
+  - _Eager, at save time._ When the loop finishes a request, check the
     budget; compact and persist the smaller history.
-  - *Background.* After the user-facing response returns, kick off
+  - _Background._ After the user-facing response returns, kick off
     compaction asynchronously and overwrite the stored history. Best
     for latency-sensitive UIs.
 
@@ -126,7 +123,7 @@ const finalState = yield* Stream.runFold(
 yield* saveHistory(conversationId, finalState.history)
 ```
 
-The compaction *shape* (summarize older items via the model, replace
+The compaction _shape_ (summarize older items via the model, replace
 them with a `[Summary]: ...` user message) is the same as inside the
 loop. The trigger and the persistence boundary are application
 choices.

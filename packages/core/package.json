@@ -1,20 +1,26 @@
 {
   "name": "@betalyra/effect-uai-core",
   "version": "0.1.0",
-  "type": "module",
   "description": "Low-level primitives (loop, conversation, items, tools, streaming codecs) for building AI agents with Effect.",
+  "keywords": [
+    "agents",
+    "ai",
+    "effect",
+    "llm",
+    "streaming"
+  ],
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/core",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
   "license": "MIT",
   "author": "Betalyra",
-  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/core",
   "repository": {
     "type": "git",
     "url": "https://github.com/betalyra/effect-uai",
     "directory": "packages/core"
   },
-  "bugs": {
-    "url": "https://github.com/betalyra/effect-uai/issues"
-  },
-  "keywords": ["effect", "ai", "agents", "llm", "streaming"],
+  "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "exports": {

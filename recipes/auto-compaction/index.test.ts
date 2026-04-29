@@ -2,12 +2,7 @@ import { Effect, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@betalyra/effect-uai-core/Items"
 import { LanguageModel } from "@betalyra/effect-uai-core/LanguageModel"
-import {
-  loop,
-  nextAfter,
-  stop,
-  streamUntilComplete,
-} from "@betalyra/effect-uai-core/Loop"
+import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
 import * as MockProvider from "@betalyra/effect-uai-core/testing/MockProvider"
 import * as Turn from "@betalyra/effect-uai-core/Turn"
 
@@ -26,13 +21,11 @@ describe("auto-compaction", () => {
     const advance = (state: State, turn: Turn.Turn): State => ({
       history: [...state.history, ...turn.items],
       turnIndex: state.turnIndex + 1,
-      cumulativeInputTokens:
-        state.cumulativeInputTokens + (turn.usage.input_tokens ?? 0),
+      cumulativeInputTokens: state.cumulativeInputTokens + (turn.usage.input_tokens ?? 0),
       pendingPrompts: state.pendingPrompts,
     })
 
-    const shouldCompact = (state: State): boolean =>
-      state.turnIndex >= MAX_TURNS
+    const shouldCompact = (state: State): boolean => state.turnIndex >= MAX_TURNS
 
     const withSummary = (state: State, summary: string): State => ({
       history: [
@@ -120,9 +113,7 @@ describe("auto-compaction", () => {
                   Effect.sync(() => {
                     const summary = Turn.assistantMessages(turn)
                       .flatMap((m) => m.content)
-                      .filter(
-                        (c): c is Items.OutputText => c.type === "output_text",
-                      )
+                      .filter((c): c is Items.OutputText => c.type === "output_text")
                       .map((c) => c.text)
                       .join(" ")
                     return nextAfter(Stream.empty, withSummary(state, summary))
@@ -194,9 +185,7 @@ describe("auto-compaction", () => {
       expect(first?.type).toBe("message")
       if (first?.type !== "message") continue
       expect(first.role).toBe("user")
-      const firstText = first.content.find(
-        (b): b is Items.InputText => b.type === "input_text",
-      )
+      const firstText = first.content.find((b): b is Items.InputText => b.type === "input_text")
       expect(firstText?.text.startsWith("[Summary]:")).toBe(true)
     }
   })

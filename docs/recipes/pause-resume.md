@@ -103,4 +103,4 @@ silence between turns 3 and 4 while the controller holds the latch
 closed.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/pause-resume/index.ts).
+[`recipes/pause-resume/index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/pause-resume/index.ts).

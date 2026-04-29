@@ -2,12 +2,7 @@ import { Effect, Schema, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@betalyra/effect-uai-core/Items"
 import { LanguageModel } from "@betalyra/effect-uai-core/LanguageModel"
-import {
-  loop,
-  nextAfter,
-  stop,
-  streamUntilComplete,
-} from "@betalyra/effect-uai-core/Loop"
+import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
 import * as MockProvider from "@betalyra/effect-uai-core/testing/MockProvider"
 import * as Tool from "@betalyra/effect-uai-core/Tool"
 import * as Toolkit from "@betalyra/effect-uai-core/Toolkit"
@@ -67,31 +62,27 @@ describe("basic-usage", () => {
       loop((state) =>
         Effect.gen(function* () {
           const lm = yield* LanguageModel
-          return lm
-            .streamTurn(state.history, { tools: Toolkit.toDescriptors(toolkit) })
-            .pipe(
-              streamUntilComplete((turn) =>
-                Effect.gen(function* () {
-                  const next = Turn.cursor(state, turn)
-                  const calls = Turn.functionCalls(turn)
-                  if (calls.length === 0) return stop
-                  const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-                  return nextAfter(Stream.fromIterable(outputs), {
-                    ...next,
-                    history: [...next.history, ...outputs],
-                    index: state.index + 1,
-                  })
-                }),
-              ),
-            )
+          return lm.streamTurn(state.history, { tools: Toolkit.toDescriptors(toolkit) }).pipe(
+            streamUntilComplete((turn) =>
+              Effect.gen(function* () {
+                const next = Turn.cursor(state, turn)
+                const calls = Turn.functionCalls(turn)
+                if (calls.length === 0) return stop
+                const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
+                return nextAfter(Stream.fromIterable(outputs), {
+                  ...next,
+                  history: [...next.history, ...outputs],
+                  index: state.index + 1,
+                })
+              }),
+            ),
+          )
         }),
       ),
     )
 
     const events = await Effect.runPromise(
-      Stream.runCollect(conversation).pipe(
-        Effect.provide(MockProvider.layer([turn1, turn2])),
-      ),
+      Stream.runCollect(conversation).pipe(Effect.provide(MockProvider.layer([turn1, turn2]))),
     )
 
     const turnCompletes = events.filter(
@@ -99,8 +90,7 @@ describe("basic-usage", () => {
         "type" in e && e.type === "turn_complete",
     )
     const toolOutputs = events.filter(
-      (e): e is Items.FunctionCallOutput =>
-        "type" in e && e.type === "function_call_output",
+      (e): e is Items.FunctionCallOutput => "type" in e && e.type === "function_call_output",
     )
 
     expect(turnCompletes).toHaveLength(2)

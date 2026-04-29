@@ -1,0 +1,16 @@
+{
+  "name": "@betalyra/effect-uai-recipes",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@betalyra/effect-uai-core": "workspace:*",
+    "effect": "4.0.0-beta.57"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

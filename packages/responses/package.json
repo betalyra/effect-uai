@@ -1,0 +1,33 @@
+{
+  "name": "@betalyra/effect-uai-responses",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "OpenAI Responses API provider for @betalyra/effect-uai-core.",
+  "license": "MIT",
+  "author": "Betalyra",
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/responses",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai",
+    "directory": "packages/responses"
+  },
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "keywords": ["effect", "ai", "openai", "responses-api", "llm"],
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.57"
+  },
+  "peerDependencies": {
+    "@betalyra/effect-uai-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@betalyra/effect-uai-core": "workspace:*",
+    "typescript": "^6.0.3"
+  }
+}

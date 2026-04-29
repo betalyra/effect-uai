@@ -4,7 +4,7 @@ import type { Turn } from "@betalyra/effect-uai-core/Turn"
 import { matchType } from "./internal/matchType.js"
 
 // ---------------------------------------------------------------------------
-// Wire schemas — minimal subset of the Responses API output we consume.
+// Wire schemas - minimal subset of the Responses API output we consume.
 // Reference: https://www.openresponses.org/specification
 // ---------------------------------------------------------------------------
 
@@ -50,7 +50,7 @@ const WireUsage = Schema.Struct({
 })
 
 // Many Responses-API fields are emitted as explicit `null` rather than
-// missing — `Schema.optional` alone (T | undefined) doesn't cover that, so
+// missing - `Schema.optional` alone (T | undefined) doesn't cover that, so
 // we lift each through `NullOr` first.
 export const WireResponseCompleted = Schema.Struct({
   id: Schema.optional(Schema.NullOr(Schema.String)),
@@ -73,7 +73,7 @@ export type WireResponseCompleted = typeof WireResponseCompleted.Type
 
 /**
  * If an item carries `providerData` from a prior OpenAI turn, re-emit it
- * verbatim — preserves `encrypted_content`, item ids, and any field this
+ * verbatim - preserves `encrypted_content`, item ids, and any field this
  * codec doesn't model.
  */
 const passthrough = (item: Item): Record<string, unknown> | undefined =>

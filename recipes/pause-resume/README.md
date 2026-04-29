@@ -5,8 +5,8 @@ description: Checkpoint state after each turn and resume across processes via pr
 
 # Recipe: Pause and resume
 
-**Scenario.** Long-running agent. User hits "pause" — server should release
-the HTTP connection. Later user hits "resume" — server picks up where it
+**Scenario.** Long-running agent. User hits "pause" - server should release
+the HTTP connection. Later user hits "resume" - server picks up where it
 left off.
 
 Two regimes:
@@ -18,7 +18,7 @@ Two regimes:
    saved state and re-enters `loop(savedState, body)`.
 
 For the OpenAI Responses API, the natural checkpoint key is
-`previousResponseId` — the provider doesn't replay on resume.
+`previousResponseId` - the provider doesn't replay on resume.
 
 ## Why a recipe, not a primitive
 

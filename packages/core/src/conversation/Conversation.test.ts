@@ -10,7 +10,7 @@ import * as Toolkit from "../tool/Toolkit.js"
 import { functionCalls, type Turn, type TurnDelta } from "../domain/Turn.js"
 
 // ---------------------------------------------------------------------------
-// Tool — get_weather
+// Tool - get_weather
 // ---------------------------------------------------------------------------
 
 const GetWeatherInput = Schema.Struct({ city: Schema.String })
@@ -62,7 +62,7 @@ const turn2: Turn = {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("PoC — primitives only, no Conversation helper", () => {
+describe("PoC - primitives only, no Conversation helper", () => {
   it("happy path: text → tool → text via Stream.paginate directly", async () => {
     const { layer, recorder } = MockProvider.layerWithRecorder([turn1, turn2])
 
@@ -142,7 +142,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
   })
 
   it("model swap mid-stream via Effect.provideService", async () => {
-    // Two mock providers — haiku speaks first, then the assistant calls
+    // Two mock providers - haiku speaks first, then the assistant calls
     // `upgrade_model` and the next turn is fielded by opus. State carries
     // the current model as a value; we wire it in per-iteration with
     // `Effect.provideService`.
@@ -185,7 +185,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
     const haiku = MockProvider.make([haikuTurn])
     const opus = MockProvider.make([opusTurn])
 
-    // The upgrade tool itself is a no-op — it exists so the LLM has
+    // The upgrade tool itself is a no-op - it exists so the LLM has
     // something to "call" to signal the upgrade. The actual swap happens
     // in the step below, which interprets the call.
     const upgradeModel = Tool.make({
@@ -285,7 +285,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
     })
   })
 
-  it("tool repair via Effect.catchTag — feed schema error back to the LLM", async () => {
+  it("tool repair via Effect.catchTag - feed schema error back to the LLM", async () => {
     // The mock first calls get_weather with the wrong arg name (`cityName`
     // instead of `city`). Schema decode fails with ToolError. The step
     // catches that error and feeds it back as a function_call_output with
@@ -303,7 +303,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
           type: "function_call",
           call_id: "call_bad",
           name: "get_weather",
-          // wrong arg name — should be `city`
+          // wrong arg name - should be `city`
           arguments: JSON.stringify({ cityName: "Lisbon" }),
         },
       ],
@@ -504,7 +504,7 @@ describe("PoC — primitives only, no Conversation helper", () => {
   })
 
   it("metrics: timeToFirst on a paced stream", async () => {
-    // Single text_delta after 250ms — Metrics.timeToFirst should report 250ms.
+    // Single text_delta after 250ms - Metrics.timeToFirst should report 250ms.
     const turn250: Turn = {
       items: [
         {

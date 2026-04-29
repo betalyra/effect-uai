@@ -8,7 +8,7 @@
  * the resulting stream is a plain `Stream<A>`.
  *
  * The next body stream is only pulled when downstream pulls the outer
- * stream — no producer fiber, no queue buffering. Cancellation, failures,
+ * stream - no producer fiber, no queue buffering. Cancellation, failures,
  * scoped resources, and backpressure stay aligned with normal Stream
  * semantics.
  *
@@ -20,7 +20,7 @@
 import { Cause, Channel, Data, Effect, Exit, Scope, Stream } from "effect"
 
 // ---------------------------------------------------------------------------
-// Event type — the body's emit shape
+// Event type - the body's emit shape
 // ---------------------------------------------------------------------------
 
 /**
@@ -89,7 +89,7 @@ const closeBody = <S, A, E, R>(
 /**
  * Walk a chunk of `Event<A, S>` until a terminal `Next` or `Stop` is found.
  * Returns the unwrapped values seen so far and (optionally) the terminal
- * event. Anything in the chunk after the terminal is discarded — its
+ * event. Anything in the chunk after the terminal is discarded - its
  * producing side effects may have run, but downstream never sees it.
  */
 const partitionChunk = <A, S>(

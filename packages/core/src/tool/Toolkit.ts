@@ -61,7 +61,7 @@ export const defaultRepair = (err: ToolError, call: FunctionCall): FunctionCallO
  * `onError` (defaults to `defaultRepair`) into a `FunctionCallOutput` that
  * can be appended to the history and fed back to the model.
  *
- * Defects (e.g. unknown tool name) are NOT caught — those are programming
+ * Defects (e.g. unknown tool name) are NOT caught - those are programming
  * errors, not model errors.
  */
 export const executeAllSafe = <Tools extends ReadonlyArray<AnyTool>>(

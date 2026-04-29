@@ -2,7 +2,7 @@
 
 Astro + Starlight site for `effect-uai`. Reads its docs directly from the
 top-level [`docs/`](../docs) folder via the content collection's `glob`
-loader — no copy step.
+loader - no copy step.
 
 ## Develop
 

@@ -26,7 +26,7 @@ export type ToolInputSchema<Input = unknown> = StandardSchemaV1<unknown, Input> 
   StandardJSONSchemaV1<unknown, Input>
 
 /**
- * Convenience wrapper for Effect Schema users — adds both the
+ * Convenience wrapper for Effect Schema users - adds both the
  * `validate` and `jsonSchema` extensions to a plain Effect Schema so it
  * can be used as a `Tool.inputSchema`.
  */

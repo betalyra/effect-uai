@@ -32,5 +32,5 @@ state-machine version that keeps the loop visible.
 
 ## Status
 
-Scaffolded only. Implementation pending — depends on Tier-1 typed `AiError`
+Scaffolded only. Implementation pending - depends on Tier-1 typed `AiError`
 variants (see `plans/use-case-new-implementation.md` §3, §4).

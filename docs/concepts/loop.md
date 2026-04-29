@@ -1,6 +1,6 @@
 ---
 title: The loop primitive
-description: State, decision, body — the three things an agent loop needs.
+description: State, decision, body - the three things an agent loop needs.
 ---
 
 The core thesis of `effect-uai`: **the user owns the loop**. State is a

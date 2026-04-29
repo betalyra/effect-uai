@@ -33,7 +33,7 @@ export interface ResponsesService {
 /**
  * Provider-typed service tag. Yield this when you want Responses-specific
  * options (`reasoning.effort`, `store`, `previousResponseId`) at the call
- * site. Yield the generic `LanguageModel` tag for provider-portable code —
+ * site. Yield the generic `LanguageModel` tag for provider-portable code -
  * both are registered by `layer`.
  */
 export class Responses extends Context.Service<Responses, ResponsesService>()(
@@ -91,7 +91,7 @@ const decodeProviderEvent = Schema.decodeUnknownEffect(ProviderEvent)
 /**
  * Parse one SSE event's `data` payload into a typed `ProviderEvent`.
  * JSON-parse failures and schema-decode failures both produce
- * `Option.none()` — unknown event types are silently ignored.
+ * `Option.none()` - unknown event types are silently ignored.
  */
 const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<Option.Option<ProviderEvent>> =>
   Effect.try({

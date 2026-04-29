@@ -1,0 +1,6 @@
+{
+  "framework": "astro",
+  "buildCommand": "pnpm --filter webpage build",
+  "outputDirectory": "webpage/dist",
+  "installCommand": "pnpm install --frozen-lockfile"
+}

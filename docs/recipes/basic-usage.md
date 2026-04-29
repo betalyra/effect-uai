@@ -20,39 +20,49 @@ until the model stops asking for tools.
 - Building a `Toolkit` and projecting it to provider-shaped descriptors with
   `Toolkit.toDescriptors`.
 - Driving a turn with `Responses.streamTurn` and piping the raw delta
-  stream through `Turn.streamUntilComplete` to get loop events.
-- Continuing the loop with `Loop.nextAfter` after running tools, or stopping
-  with `Loop.stopAfter` when the model produced its final message.
-- Forwarding three event shapes downstream - `delta`, `tool_output`,
-  `turn_complete` - so the caller can render or log each as it likes.
+  stream through `Loop.streamUntilComplete` to forward deltas to the
+  consumer and decide what to do once the turn lands.
+- Continuing the loop with `Loop.nextAfter` after running tools, or
+  ending it with `Loop.stop` when the model produced its final message.
+- The downstream consumer sees the natural protocol shapes
+  (`Turn.TurnDelta`, `Items.FunctionCallOutput`) and pattern-matches on
+  the existing `type` discriminator. No recipe-defined event taxonomy.
 
 ## The loop, in shape
 
 ```ts
-loop(initial, (state) =>
-  Effect.gen(function* () {
-    const oai = yield* Responses
+pipe(
+  initial,
+  loop((state) =>
+    Effect.gen(function* () {
+      const oai = yield* Responses
 
-    return oai.streamTurn(state.history, { tools }).pipe(
-      Turn.streamUntilComplete({
-        emit: (delta) => Stream.succeed(value({ type: "delta", delta })),
-        then: (turn) =>
+      return oai.streamTurn(state.history, { tools }).pipe(
+        streamUntilComplete((turn) =>
           Effect.gen(function* () {
+            const next = Turn.cursor(state, turn)
             const calls = Turn.functionCalls(turn)
-            if (calls.length === 0) return stopAfter(turnComplete)
+            if (calls.length === 0) return stop
 
             const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-            return nextAfter(Stream.concat(turnComplete, toolOutputs), {
-              ...state,
-              history: [...state.history, ...turn.items, ...outputs],
+            return nextAfter(Stream.fromIterable(outputs), {
+              ...next,
+              history: [...next.history, ...outputs],
               index: state.index + 1,
             })
           }),
-      }),
-    )
-  }),
+        ),
+      )
+    }),
+  ),
 )
 ```
+
+`Turn.cursor(state, turn)` builds the "state with the just-completed turn
+stamped" record (extends `state.history` with `turn.items` and adds
+`turn`). `Loop.stop` is a one-element stream that ends the loop with no
+extra emissions; `Loop.nextAfter(s, state)` emits the values in `s` and
+then advances with the new state.
 
 If the provider stream ends without a `turn_complete` (a misbehaving
 provider, or a connection that dropped mid-flight), the resulting stream

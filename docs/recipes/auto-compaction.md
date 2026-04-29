@@ -145,4 +145,4 @@ OPENAI_API_KEY=sk-... pnpm tsx recipes/auto-compaction/index.ts
 ```
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/auto-compaction/index.ts).
+[`recipes/auto-compaction/index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/auto-compaction/index.ts).

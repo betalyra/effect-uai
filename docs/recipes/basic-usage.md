@@ -58,17 +58,14 @@ pipe(
 )
 ```
 
-`Turn.cursor(state, turn)` builds the "state with the just-completed turn
-stamped" record (extends `state.history` with `turn.items` and adds
-`turn`). `Loop.stop` is a one-element stream that ends the loop with no
-extra emissions; `Loop.nextAfter(s, state)` emits the values in `s` and
-then advances with the new state.
+`Turn.cursor(state, turn)` extends `state.history` with `turn.items` and
+stamps the turn. `Loop.stop` is a one-element stream that ends the loop;
+`Loop.nextAfter(s, state)` emits the values in `s` then advances with
+the new state.
 
-If the provider stream ends without a `turn_complete` (a misbehaving
-provider, or a connection that dropped mid-flight), the resulting stream
-fails with `AiError.IncompleteTurn`. Catch it downstream with
-`Stream.catchTag("IncompleteTurn", ...)` if you want to recover; otherwise
-it surfaces alongside the rest of `AiError`.
+If the upstream ends without a `turn_complete`, the resulting stream
+fails with `AiError.IncompleteTurn` - catch it via `Stream.catchTag`
+if you want to recover.
 
 ## Run it
 

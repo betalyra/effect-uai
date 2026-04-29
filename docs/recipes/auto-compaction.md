@@ -71,12 +71,6 @@ loop((state) =>
 )
 ```
 
-## Why a recipe, not a primitive
-
-The trigger predicate, summarizer model, and replacement strategy are all
-application choices. The loop primitive stays agnostic - it just threads
-whatever `State` shape the recipe defines.
-
 ## Beyond a single loop: across user sessions
 
 The recipe compacts within one loop invocation - one SDK process, one
@@ -122,11 +116,6 @@ const finalState = yield* Stream.runFold(
 
 yield* saveHistory(conversationId, finalState.history)
 ```
-
-The compaction _shape_ (summarize older items via the model, replace
-them with a `[Summary]: ...` user message) is the same as inside the
-loop. The trigger and the persistence boundary are application
-choices.
 
 ## Tuning knobs
 

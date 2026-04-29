@@ -65,17 +65,10 @@ While closed, the body suspends - the previous turn has already
 finished and released its HTTP connection, the next turn hasn't started,
 and `state` is held in memory exactly where the suspension landed.
 
-## Why turn-count gating in the demo
-
 The demo's controller pauses after `PAUSE_AFTER_TURN` turns by polling
-a `Ref<number>` that the loop body increments. This makes the pause
-land at a known point regardless of how fast the model responds - if
-gpt-5.4-mini answers in 1.5s, you still see the pause exactly between
-turns 3 and 4.
-
-Wall-clock-based pausing (e.g., `Effect.sleep("3 seconds")` in the
-controller) is simpler but the timing depends on model latency. For a
-visible demo, count-based is more predictable.
+a shared `Ref<number>` that the body increments. Count-based gating is
+deterministic regardless of model latency; a wall-clock controller
+(`Effect.sleep("3 seconds")`) would race against generation speed.
 
 ## Soft pause vs. cross-process resume
 
@@ -85,12 +78,6 @@ survives a restart, you need persistence - hydrate `initial` from a
 checkpoint instead of from a literal, save state at relevant points.
 That's a different pattern (closer to the cross-session compaction
 section in the auto-compaction recipe).
-
-## Why a recipe, not a primitive
-
-A `pause` decision in the loop primitive would couple it to one
-particular scheduler / latch / signal model. `Latch.await` plus the
-existing state-threading covers it generically.
 
 ## Run it
 

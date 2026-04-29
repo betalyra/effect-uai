@@ -113,7 +113,7 @@ describe("auto-compaction", () => {
                   Effect.sync(() => {
                     const summary = Turn.assistantMessages(turn)
                       .flatMap((m) => m.content)
-                      .filter((c): c is Items.OutputText => c.type === "output_text")
+                      .filter(Items.isOutputText)
                       .map((c) => c.text)
                       .join(" ")
                     return nextAfter(Stream.empty, withSummary(state, summary))
@@ -185,7 +185,7 @@ describe("auto-compaction", () => {
       expect(first?.type).toBe("message")
       if (first?.type !== "message") continue
       expect(first.role).toBe("user")
-      const firstText = first.content.find((b): b is Items.InputText => b.type === "input_text")
+      const firstText = first.content.find(Items.isInputText)
       expect(firstText?.text.startsWith("[Summary]:")).toBe(true)
     }
   })

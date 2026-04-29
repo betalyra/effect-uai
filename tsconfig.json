@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/responses" },
+    { "path": "./packages/google" },
     { "path": "./recipes" }
   ]
 }

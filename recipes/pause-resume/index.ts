@@ -145,7 +145,7 @@ const program = Effect.gen(function* () {
         Effect.logInfo("turn complete", {
           assistant: Turn.assistantMessages(turn)
             .flatMap((m) => m.content)
-            .filter((c): c is Items.OutputText => c.type === "output_text")
+            .filter(Items.isOutputText)
             .map((c) => c.text)
             .join(" "),
         }),

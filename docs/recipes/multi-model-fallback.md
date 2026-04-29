@@ -83,4 +83,4 @@ OPENAI_API_KEY=sk-... GOOGLE_API_KEY=... pnpm tsx recipes/multi-model-fallback/i
 ```
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multi-model-fallback/index.ts).
+[`recipes/multi-model-fallback/index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multi-model-fallback/index.ts).

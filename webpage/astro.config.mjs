@@ -20,11 +20,21 @@ export default defineConfig({
       sidebar: [
         {
           label: "Start here",
-          items: [{ label: "Installation", slug: "start/installation" }],
+          items: [
+            { label: "Installation", slug: "start/installation" },
+            { label: "Getting started", slug: "start/getting-started" },
+          ],
         },
         {
           label: "Concepts",
           items: [{ label: "The loop primitive", slug: "concepts/loop" }],
+        },
+        {
+          label: "Providers",
+          items: [
+            { label: "OpenAI Responses", slug: "providers/responses" },
+            { label: "Google Gemini", slug: "providers/gemini" },
+          ],
         },
         {
           label: "Recipes",

@@ -5,9 +5,9 @@
   "keywords": [
     "ai",
     "effect",
-    "llm",
+    "gemini",
     "google",
-    "gemini"
+    "llm"
   ],
   "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/google",
   "bugs": {

@@ -60,9 +60,7 @@ export interface Config {
 // Request body
 // ---------------------------------------------------------------------------
 
-const buildGenerationConfig = (
-  options: GeminiRequestOptions,
-): Option.Option<GenerationConfig> => {
+const buildGenerationConfig = (options: GeminiRequestOptions): Option.Option<GenerationConfig> => {
   const cfg: GenerationConfig = {
     ...(options.temperature !== undefined && { temperature: options.temperature }),
     ...(options.maxOutputTokens !== undefined && { maxOutputTokens: options.maxOutputTokens }),
@@ -79,9 +77,7 @@ const buildGenerationConfig = (
 
 const decodeChunk = Schema.decodeUnknownEffect(WireChunk)
 
-const sseEventToChunk = (
-  ev: SSE.Event,
-): Effect.Effect<Option.Option<WireChunk>, JsonParseError> =>
+const sseEventToChunk = (ev: SSE.Event): Effect.Effect<Option.Option<WireChunk>, JsonParseError> =>
   Effect.try({
     try: () => JSON.parse(ev.data) as unknown,
     catch: (cause) => new JsonParseError({ line: ev.data, cause }),

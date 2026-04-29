@@ -30,6 +30,7 @@
     "./Turn": "./src/domain/Turn.ts",
     "./LanguageModel": "./src/language-model/LanguageModel.ts",
     "./Loop": "./src/loop/Loop.ts",
+    "./Match": "./src/match/Match.ts",
     "./Tool": "./src/tool/Tool.ts",
     "./Toolkit": "./src/tool/Toolkit.ts",
     "./JSONL": "./src/streaming/JSONL.ts",

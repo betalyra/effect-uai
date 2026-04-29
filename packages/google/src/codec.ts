@@ -1,5 +1,6 @@
 import { Array as Arr, Match, Option, Result, Schema, pipe } from "effect"
 import type { ContentBlock, Item, Message } from "@betalyra/effect-uai-core/Items"
+import { matchType } from "@betalyra/effect-uai-core/Match"
 import type { Turn } from "@betalyra/effect-uai-core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -66,8 +67,8 @@ export interface RequestBody {
 }
 
 const blockText = Match.type<ContentBlock>().pipe(
-  Match.discriminator("type")("input_text", (b) => b.text),
-  Match.discriminator("type")("output_text", (b) => b.text),
+  matchType("input_text", (b) => b.text),
+  matchType("output_text", (b) => b.text),
   Match.exhaustive,
 )
 

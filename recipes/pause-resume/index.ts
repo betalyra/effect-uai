@@ -26,6 +26,7 @@ import {
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@betalyra/effect-uai-core/Items"
 import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
+import { matchType } from "@betalyra/effect-uai-core/Match"
 import * as Turn from "@betalyra/effect-uai-core/Turn"
 import { Responses, layer as responsesLayer } from "@betalyra/effect-uai-responses"
 
@@ -141,7 +142,7 @@ const program = Effect.gen(function* () {
 
   yield* Stream.runForEach(conversation(pauseLatch, turnsCompleted), (event) =>
     Match.value(event).pipe(
-      Match.discriminator("type")("turn_complete", ({ turn }) =>
+      matchType("turn_complete", ({ turn }) =>
         Effect.logInfo("turn complete", {
           assistant: Turn.assistantMessages(turn)
             .flatMap((m) => m.content)

@@ -1,7 +1,7 @@
 import { Match, Schema } from "effect"
 import type { Item } from "@betalyra/effect-uai-core/Items"
+import { matchType } from "@betalyra/effect-uai-core/Match"
 import type { Turn } from "@betalyra/effect-uai-core/Turn"
-import { matchType } from "./internal/matchType.js"
 
 // ---------------------------------------------------------------------------
 // Wire schemas - minimal subset of the Responses API output we consume.

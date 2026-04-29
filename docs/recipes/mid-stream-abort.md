@@ -41,7 +41,7 @@ const conversation = pipe(
     Effect.gen(function* () {
       const oai = yield* Responses
       return oai
-        .streamTurn(state.history, { reasoning: { effort: "low" } })
+        .streamTurn(state.history, {})
         .pipe(streamUntilComplete(() => Effect.sync(() => stop)))
     }),
   ),
@@ -56,9 +56,9 @@ yield* Stream.runForEach(
 ```
 
 The trigger lives outside the loop; in the demo a forked fiber sleeps
-for one second then completes the deferred. Replace that with whatever
-fits your app - a UI signal, a `Queue.take`, an `AbortSignal` bridged
-into Effect via `Effect.async`.
+then completes the deferred. Replace that with whatever fits your app -
+a UI signal, a `Queue.take`, an `AbortSignal` bridged into Effect via
+`Effect.async`.
 
 ## State and partial completions
 
@@ -77,6 +77,14 @@ text to survive abort, two options:
 Neither is wired here - the demo just logs deltas and lets the partial
 output go.
 
+## Why no `reasoning.effort`
+
+The demo asks for streamed text and aborts on a wall clock. With
+`reasoning.effort` set, the model thinks first and only then emits
+output tokens, so a short abort window can land before any delta has
+crossed the wire. Dropping the reasoning request makes deltas start
+immediately and the abort lands mid-stream where it should.
+
 ## Run it
 
 ```sh
@@ -87,4 +95,4 @@ You'll see a stream of `delta` log lines, then `abort fired after 3
 seconds`, then `loop ended`. No `turn_complete` line.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/mid-stream-abort/index.ts).
+[`recipes/mid-stream-abort/index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/mid-stream-abort/index.ts).

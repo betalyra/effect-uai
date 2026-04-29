@@ -1,5 +1,5 @@
 import { Match, Schema } from "effect";
-import type { TurnDelta } from "@betalyra/effect-uai-core/InteractionEvent";
+import type { TurnDelta } from "@betalyra/effect-uai-core/Turn";
 import { matchType } from "./internal/matchType.js";
 import {
   WireOutputItem,

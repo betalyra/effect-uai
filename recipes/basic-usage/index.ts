@@ -13,6 +13,7 @@ import {
   Logger,
   Match,
   Option,
+  pipe,
   References,
   Schema,
   Stream,
@@ -27,7 +28,7 @@ import {
 } from "@betalyra/effect-uai-core/Loop";
 import * as Tool from "@betalyra/effect-uai-core/Tool";
 import * as Toolkit from "@betalyra/effect-uai-core/Toolkit";
-import * as InteractionEvent from "@betalyra/effect-uai-core/InteractionEvent";
+import * as Turn from "@betalyra/effect-uai-core/Turn";
 import {
   Responses,
   layer as responsesLayer,
@@ -88,41 +89,44 @@ const initial: State = {
 // The loop - explicit, streaming, and still fully visible
 // ---------------------------------------------------------------------------
 
-// One body per turn. Deltas pass through automatically (including the
-// terminal `turn_complete`); after the turn lands we run any tool calls
-// the model asked for and decide whether to continue.
-const conversation = loop(initial, (state) =>
-  Effect.gen(function* () {
-    const oai = yield* Responses;
+// Run a multi-turn conversation: stream the model's response, execute any
+// tools it asks for, feed the results back, and keep going until the model
+// produces a final answer.
+const conversation = pipe(
+  initial,
+  loop((state) =>
+    Effect.gen(function* () {
+      const oai = yield* Responses;
 
-    return oai
-      .streamTurn(state.history, {
-        tools,
-        reasoning: { effort: "low" },
-      })
-      .pipe(
-        Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-        streamUntilComplete((turn) =>
-          Effect.gen(function* () {
-            const next = InteractionEvent.cursor(state, turn);
-            const calls = InteractionEvent.functionCalls(turn);
+      return oai
+        .streamTurn(state.history, {
+          tools,
+          reasoning: { effort: "low" },
+        })
+        .pipe(
+          Stream.tap((delta) => Effect.logDebug("delta", { delta })),
+          streamUntilComplete((turn) =>
+            Effect.gen(function* () {
+              const next = Turn.cursor(state, turn);
+              const calls = Turn.functionCalls(turn);
 
-            // No tool calls - the assistant is done.
-            if (calls.length === 0) return stop;
+              // No tool calls - the assistant is done.
+              if (calls.length === 0) return stop;
 
-            // `executeAllSafe` reflects tool failures as `FunctionCallOutput`
-            // items so the model can self-correct on the next turn.
-            const outputs = yield* Toolkit.executeAllSafe(toolkit, calls);
+              // `executeAllSafe` reflects tool failures as `FunctionCallOutput`
+              // items so the model can self-correct on the next turn.
+              const outputs = yield* Toolkit.executeAllSafe(toolkit, calls);
 
-            return nextAfter(Stream.fromIterable(outputs), {
-              ...next,
-              history: [...next.history, ...outputs],
-              index: state.index + 1,
-            });
-          }),
-        ),
-      );
-  }),
+              return nextAfter(Stream.fromIterable(outputs), {
+                ...next,
+                history: [...next.history, ...outputs],
+                index: state.index + 1,
+              });
+            }),
+          ),
+        );
+    }),
+  ),
 );
 
 // ---------------------------------------------------------------------------

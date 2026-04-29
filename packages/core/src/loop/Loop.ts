@@ -17,9 +17,20 @@
  * (their producing side effects may already have run). Prefer the
  * `Loop.nextAfter` / `Loop.stopAfter` helpers to terminate cleanly.
  */
-import { Cause, Channel, Data, Effect, Exit, Option, Ref, Scope, Stream } from "effect"
+import {
+  Cause,
+  Channel,
+  Data,
+  Effect,
+  Exit,
+  Function,
+  Option,
+  Ref,
+  Scope,
+  Stream,
+} from "effect"
 import { IncompleteTurn } from "../domain/AiError.js"
-import { isTurnComplete, type Turn, type TurnDelta } from "../domain/InteractionEvent.js"
+import { isTurnComplete, type Turn, type TurnDelta } from "../domain/Turn.js"
 
 // ---------------------------------------------------------------------------
 // Event type - the body's emit shape
@@ -169,91 +180,113 @@ const partitionChunk = <A, S>(
 // Public API
 // ---------------------------------------------------------------------------
 
-export const loop = <S, A, E, R>(
-  initial: S,
-  body: (
-    state: S,
-  ) =>
-    | Stream.Stream<Event<A, S>, E, R>
-    | Effect.Effect<Stream.Stream<Event<A, S>, E, R>, E, R>,
-): Stream.Stream<A, E, R> =>
-  Stream.scoped(
-    Stream.fromPull(
-      Effect.gen(function* () {
-        const outerScope = yield* Effect.scope
-        let state = initial
-        let current: CurrentBody<S, A, E, R> | undefined
-        let done = false
+type LoopBody<S, A, E, R> = (
+  state: S,
+) =>
+  | Stream.Stream<Event<A, S>, E, R>
+  | Effect.Effect<Stream.Stream<Event<A, S>, E, R>, E, R>
 
-        const closeActive = (
-          active: CurrentBody<S, A, E, R>,
-          exit: Exit.Exit<unknown, unknown>,
-        ) => {
-          const isActive = current === active
-          if (isActive) current = undefined
-          // Scope.close is idempotent. Multiple paths can race to close the
-          // active body during cancellation/failure, so closing twice is safe.
-          return closeBody(active, exit)
-        }
+/**
+ * Drive a state-threaded loop body. Each iteration runs `body(state)` to get
+ * a `Stream<Event<A, S>>`; values flow downstream, `next(s)` continues with
+ * a new state, `stop` ends the loop. See the file header for the full
+ * pull-based execution model.
+ *
+ * Dual: data-first `loop(initial, body)` and data-last `loop(body)(initial)`
+ * (or `pipe(initial, loop(body))`) both work.
+ */
+export const loop: {
+  <S, A, E, R>(
+    body: LoopBody<S, A, E, R>,
+  ): (initial: S) => Stream.Stream<A, E, R>
+  <S, A, E, R>(
+    initial: S,
+    body: LoopBody<S, A, E, R>,
+  ): Stream.Stream<A, E, R>
+} = Function.dual(
+  2,
+  <S, A, E, R>(
+    initial: S,
+    body: LoopBody<S, A, E, R>,
+  ): Stream.Stream<A, E, R> =>
+    Stream.scoped(
+      Stream.fromPull(
+        Effect.gen(function* () {
+          const outerScope = yield* Effect.scope
+          let state = initial
+          let current: CurrentBody<S, A, E, R> | undefined
+          let done = false
 
-        yield* Scope.addFinalizerExit(outerScope, (exit) =>
-          current === undefined ? Effect.void : closeActive(current, exit),
-        )
-
-        const pull = Effect.gen(function* () {
-          while (true) {
-            if (done) return yield* Cause.done()
-
-            if (current === undefined) {
-              const result = body(state)
-              const stream = Effect.isEffect(result) ? Stream.unwrap(result) : result
-              const bodyScope = yield* Scope.fork(outerScope)
-              const bodyPull = yield* Channel.toPullScoped(
-                Stream.toChannel(stream),
-                bodyScope,
-              ).pipe(
-                Effect.onError((cause) => Scope.close(bodyScope, Exit.failCause(cause))),
-              )
-              current = { scope: bodyScope, pull: bodyPull }
-            }
-
-            const active = current
-            const chunk = yield* active.pull.pipe(
-              Effect.catchIf(
-                Cause.isDone,
-                () =>
-                  closeActive(active, Exit.void).pipe(
-                    Effect.as(undefined as ReadonlyArray<Event<A, S>> | undefined),
-                  ),
-              ),
-              Effect.onError((cause) => closeActive(active, Exit.failCause(cause))),
-            )
-
-            if (chunk === undefined) {
-              done = true
-              return yield* Cause.done()
-            }
-
-            const { values, decision } = partitionChunk(chunk)
-
-            if (decision !== undefined) {
-              yield* closeActive(active, Exit.void)
-              if (decision._tag === "Stop") {
-                done = true
-              } else if (decision._tag === "Next") {
-                state = decision.state
-              }
-            }
-
-            // Emit the values seen so far if any. Chunks from a Stream pull
-            // are non-empty, so when `decision === undefined` every event was
-            // a `Value` and `values` is non-empty here. With a decision and
-            // no preceding values, fall through to the next iteration.
-            if (isNonEmpty(values)) return values
+          const closeActive = (
+            active: CurrentBody<S, A, E, R>,
+            exit: Exit.Exit<unknown, unknown>,
+          ) => {
+            const isActive = current === active
+            if (isActive) current = undefined
+            // Scope.close is idempotent. Multiple paths can race to close the
+            // active body during cancellation/failure, so closing twice is safe.
+            return closeBody(active, exit)
           }
-        })
 
-        return pull
-      }),
+          yield* Scope.addFinalizerExit(outerScope, (exit) =>
+            current === undefined ? Effect.void : closeActive(current, exit),
+          )
+
+          const pull = Effect.gen(function* () {
+            while (true) {
+              if (done) return yield* Cause.done()
+
+              if (current === undefined) {
+                const result = body(state)
+                const stream = Effect.isEffect(result) ? Stream.unwrap(result) : result
+                const bodyScope = yield* Scope.fork(outerScope)
+                const bodyPull = yield* Channel.toPullScoped(
+                  Stream.toChannel(stream),
+                  bodyScope,
+                ).pipe(
+                  Effect.onError((cause) => Scope.close(bodyScope, Exit.failCause(cause))),
+                )
+                current = { scope: bodyScope, pull: bodyPull }
+              }
+
+              const active = current
+              const chunk = yield* active.pull.pipe(
+                Effect.catchIf(
+                  Cause.isDone,
+                  () =>
+                    closeActive(active, Exit.void).pipe(
+                      Effect.as(undefined as ReadonlyArray<Event<A, S>> | undefined),
+                    ),
+                ),
+                Effect.onError((cause) => closeActive(active, Exit.failCause(cause))),
+              )
+
+              if (chunk === undefined) {
+                done = true
+                return yield* Cause.done()
+              }
+
+              const { values, decision } = partitionChunk(chunk)
+
+              if (decision !== undefined) {
+                yield* closeActive(active, Exit.void)
+                if (decision._tag === "Stop") {
+                  done = true
+                } else if (decision._tag === "Next") {
+                  state = decision.state
+                }
+              }
+
+              // Emit the values seen so far if any. Chunks from a Stream pull
+              // are non-empty, so when `decision === undefined` every event was
+              // a `Value` and `values` is non-empty here. With a decision and
+              // no preceding values, fall through to the next iteration.
+              if (isNonEmpty(values)) return values
+            }
+          })
+
+          return pull
+        }),
+      ),
     ),
-  )
+)

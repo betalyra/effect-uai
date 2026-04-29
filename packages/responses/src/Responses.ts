@@ -9,7 +9,7 @@ import {
 } from "@betalyra/effect-uai-core/LanguageModel"
 import { JsonParseError } from "@betalyra/effect-uai-core/JSONL"
 import * as SSE from "@betalyra/effect-uai-core/SSE"
-import type { TurnDelta } from "@betalyra/effect-uai-core/InteractionEvent"
+import type { TurnDelta } from "@betalyra/effect-uai-core/Turn"
 import { itemsToInput } from "./codec.js"
 import { ProviderEvent, eventToDeltas, makeCallIdLookup } from "./streamEvents.js"
 

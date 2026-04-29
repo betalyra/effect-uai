@@ -1,6 +1,6 @@
 import { Match, Schema } from "effect"
 import type { Item } from "@betalyra/effect-uai-core/Items"
-import type { Turn } from "@betalyra/effect-uai-core/InteractionEvent"
+import type { Turn } from "@betalyra/effect-uai-core/Turn"
 import { matchType } from "./internal/matchType.js"
 
 // ---------------------------------------------------------------------------

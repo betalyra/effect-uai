@@ -21,7 +21,7 @@
     ".": "./src/index.ts",
     "./AiError": "./src/domain/AiError.ts",
     "./Items": "./src/domain/Items.ts",
-    "./InteractionEvent": "./src/domain/InteractionEvent.ts",
+    "./Turn": "./src/domain/Turn.ts",
     "./LanguageModel": "./src/language-model/LanguageModel.ts",
     "./Loop": "./src/loop/Loop.ts",
     "./Tool": "./src/tool/Tool.ts",

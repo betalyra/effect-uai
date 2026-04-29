@@ -16,15 +16,24 @@ export default defineConfig({
       sidebar: [
         {
           label: "Start here",
-          autogenerate: { directory: "start" },
+          items: [{ label: "Installation", slug: "start/installation" }],
         },
         {
           label: "Concepts",
-          autogenerate: { directory: "concepts" },
+          items: [{ label: "The loop primitive", slug: "concepts/loop" }],
         },
         {
           label: "Recipes",
-          autogenerate: { directory: "recipes" },
+          items: [
+            { label: "Overview", slug: "recipes" },
+            {
+              label: "Multi-model fallback",
+              slug: "recipes/multi-model-fallback",
+            },
+            { label: "Auto-compaction", slug: "recipes/auto-compaction" },
+            { label: "Pause and resume", slug: "recipes/pause-resume" },
+            { label: "Mid-stream abort", slug: "recipes/mid-stream-abort" },
+          ],
         },
       ],
     }),

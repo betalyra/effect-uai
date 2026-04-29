@@ -1,0 +1,39 @@
+{
+  "name": "@betalyra/effect-uai-google",
+  "version": "0.1.0",
+  "description": "Google Gemini provider for @betalyra/effect-uai-core.",
+  "keywords": [
+    "ai",
+    "effect",
+    "llm",
+    "google",
+    "gemini"
+  ],
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/google",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "license": "MIT",
+  "author": "Betalyra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai",
+    "directory": "packages/google"
+  },
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.57"
+  },
+  "devDependencies": {
+    "@betalyra/effect-uai-core": "workspace:*",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@betalyra/effect-uai-core": "workspace:*"
+  }
+}

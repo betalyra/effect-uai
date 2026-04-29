@@ -80,6 +80,20 @@ export const Item = Schema.Union([Message, FunctionCall, FunctionCallOutput, Rea
 export type Item = typeof Item.Type
 
 // ---------------------------------------------------------------------------
+// Type guards
+// ---------------------------------------------------------------------------
+
+export const isInputText = (block: ContentBlock): block is InputText => block.type === "input_text"
+export const isOutputText = (block: ContentBlock): block is OutputText =>
+  block.type === "output_text"
+
+export const isMessage = (item: Item): item is Message => item.type === "message"
+export const isFunctionCall = (item: Item): item is FunctionCall => item.type === "function_call"
+export const isFunctionCallOutput = (item: Item): item is FunctionCallOutput =>
+  item.type === "function_call_output"
+export const isReasoning = (item: Item): item is Reasoning => item.type === "reasoning"
+
+// ---------------------------------------------------------------------------
 // Usage and stop reason
 // ---------------------------------------------------------------------------
 

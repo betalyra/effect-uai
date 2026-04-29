@@ -106,7 +106,7 @@ const conversation = pipe(
               Effect.sync(() => {
                 const summary = Turn.assistantMessages(turn)
                   .flatMap((m) => m.content)
-                  .filter((c): c is Items.OutputText => c.type === "output_text")
+                  .filter(Items.isOutputText)
                   .map((c) => c.text)
                   .join(" ")
                 return nextAfter(Stream.empty, withSummary(state, summary))
@@ -152,7 +152,7 @@ const program = Effect.gen(function* () {
           output_tokens: turn.usage.output_tokens,
           assistant: Turn.assistantMessages(turn)
             .flatMap((m) => m.content)
-            .filter((c): c is Items.OutputText => c.type === "output_text")
+            .filter(Items.isOutputText)
             .map((c) => c.text)
             .join(" "),
         }),

@@ -17,4 +17,4 @@ hero:
 
 ## Why effect-uai
 
-Most agentic ai frameworks abstract the interaction with the LLM. This is great for getting started, but becomes painful quickly once you need to customise your agentic loop. effect-uai makes **LLM interaction explicit**, gives you **basic building blocks** and provides **recipes for common use cases**. You stay in control.
+Most ai frameworks hide the LLM interaction loop. Great to get started, painful when you need to customize it. effect-uai keeps the LLM interaction explicit: small Effect-native **building blocks**, **practical recipes**, and **full control** over your agent loop.

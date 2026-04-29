@@ -92,20 +92,23 @@
   background-color: var(--color-mark);
   clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
   inset-block-start: -0.2em;
-  inset-inline-end: -0.43em;
+  inset-inline-end: -0.48em;
+  transform: rotate(10deg);
   z-index: -1;
 }
 
-/* White copy of the title, clipped to the triangle's screen area. */
+/* White copy of the title, clipped to the triangle's screen area. The
+   polygon points are the ::before's three corners rotated 10deg clockwise
+   around the ::before's center (100% - 0.27em, 0.45em). */
 .hero h1::after {
   content: "effect-uai";
   position: absolute;
   inset: 0;
   color: #ffffff;
   pointer-events: none;
-  clip-path: polygon(calc(100% - 0.32em) -0.2em,
-      calc(100% - 1.07em) 1.1em,
-      calc(100% + 0.43em) 1.1em);
+  clip-path: polygon(calc(100% - 0.16em) -0.19em,
+      calc(100% - 1.12em) 0.96em,
+      calc(100% + 0.36em) 1.22em);
 }
 
 /* Tighten the gap between the H1 and the line beneath it. */

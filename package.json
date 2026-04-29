@@ -1,24 +1,43 @@
 {
-  "name": "@betalyra/effect-uai",
-  "version": "1.0.0",
-  "description": "",
-  "keywords": [],
-  "license": "ISC",
-  "author": "",
+  "name": "effect-uai-monorepo",
+  "version": "0.0.0",
+  "private": true,
   "type": "module",
-  "main": "src/index.ts",
+  "description": "Low-level primitives for AI agents in Effect.",
+  "license": "MIT",
+  "author": "Betalyra",
+  "homepage": "https://effect-uai.betalyra.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai"
+  },
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "keywords": [
+    "effect",
+    "ai",
+    "agents",
+    "llm",
+    "openai",
+    "streaming",
+    "typescript"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc",
+    "typecheck": "pnpm -r typecheck",
+    "typecheck:core": "pnpm --filter @betalyra/effect-uai-core typecheck",
+    "typecheck:responses": "pnpm --filter @betalyra/effect-uai-responses typecheck",
+    "typecheck:recipes": "pnpm --filter @betalyra/effect-uai-recipes typecheck",
+    "typecheck:webpage": "pnpm --filter webpage typecheck",
     "format": "oxfmt",
-    "format:check": "oxfmt --check"
-  },
-  "dependencies": {
-    "effect": "4.0.0-beta.57"
+    "format:check": "oxfmt --check",
+    "dev:webpage": "pnpm --filter webpage dev",
+    "build:webpage": "pnpm --filter webpage build",
+    "preview:webpage": "pnpm --filter webpage preview"
   },
   "devDependencies": {
-    "@standard-schema/spec": "^1.1.0",
     "@types/node": "^25.6.0",
     "oxfmt": "^0.46.0",
     "tsx": "^4.21.0",

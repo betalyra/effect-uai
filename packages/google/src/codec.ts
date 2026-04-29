@@ -168,7 +168,9 @@ const mergeUsage = (
     : {
         ...prev,
         ...(next.promptTokenCount !== undefined && { input_tokens: next.promptTokenCount }),
-        ...(next.candidatesTokenCount !== undefined && { output_tokens: next.candidatesTokenCount }),
+        ...(next.candidatesTokenCount !== undefined && {
+          output_tokens: next.candidatesTokenCount,
+        }),
         ...(next.totalTokenCount !== undefined && { total_tokens: next.totalTokenCount }),
       }
 

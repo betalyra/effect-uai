@@ -65,11 +65,13 @@ To see the fallback fire against real APIs, the recipe configures the
 primary tier with a deliberately broken `baseUrl`:
 
 ```ts
-const openai = yield* makeResponses({
-  apiKey: openaiKey,
-  model: "gpt-5.4-mini",
-  baseUrl: "https://invalid-host.example.invalid/v1",
-})
+const openai =
+  yield *
+  makeResponses({
+    apiKey: openaiKey,
+    model: "gpt-5.4-mini",
+    baseUrl: "https://invalid-host.example.invalid/v1",
+  })
 ```
 
 The HTTP client fails to resolve the host, the provider maps it to

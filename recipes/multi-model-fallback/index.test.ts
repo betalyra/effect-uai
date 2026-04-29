@@ -35,10 +35,7 @@ describe("multi-model-fallback", () => {
     ],
   })
 
-  const failingService = (
-    error: AiError.AiError,
-    onCall: () => void,
-  ): LanguageModelService => ({
+  const failingService = (error: AiError.AiError, onCall: () => void): LanguageModelService => ({
     streamTurn: () =>
       Stream.unwrap(
         Effect.sync(() => {

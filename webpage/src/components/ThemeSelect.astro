@@ -1,0 +1,93 @@
+---
+// Replaces Starlight's three-option theme dropdown with a single icon
+// toggle. Sun shown when current theme is dark (clicking switches to light);
+// moon shown when current theme is light (clicking switches to dark).
+---
+
+<starlight-theme-toggle>
+  <button
+    type="button"
+    class="theme-toggle"
+    aria-label="Toggle light and dark theme"
+  >
+    <svg
+      class="icon icon-sun"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <circle cx="12" cy="12" r="4"></circle>
+      <path
+        d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+      ></path>
+    </svg>
+    <svg
+      class="icon icon-moon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+    </svg>
+  </button>
+</starlight-theme-toggle>
+
+<script>
+  class StarlightThemeToggle extends HTMLElement {
+    constructor() {
+      super()
+      const button = this.querySelector("button")
+      button?.addEventListener("click", () => {
+        const root = document.documentElement
+        const current = root.dataset.theme || "light"
+        const next = current === "dark" ? "light" : "dark"
+        root.dataset.theme = next
+        try {
+          localStorage.setItem("starlight-theme", next)
+        } catch {}
+      })
+    }
+  }
+  if (!customElements.get("starlight-theme-toggle")) {
+    customElements.define("starlight-theme-toggle", StarlightThemeToggle)
+  }
+</script>
+
+<style>
+  .theme-toggle {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    padding: 0.4rem;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s;
+  }
+  .theme-toggle:hover {
+    color: var(--color-mark, currentColor);
+  }
+  .icon {
+    width: 1.15rem;
+    height: 1.15rem;
+    display: block;
+  }
+  /* Show moon in light mode (the action: switch to dark).
+     Show sun in dark mode (the action: switch to light). */
+  :global(:root[data-theme="light"]) .icon-sun {
+    display: none;
+  }
+  :global(:root[data-theme="dark"]) .icon-moon {
+    display: none;
+  }
+</style>

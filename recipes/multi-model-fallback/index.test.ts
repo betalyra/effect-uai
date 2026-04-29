@@ -5,7 +5,7 @@ describe("multi-model-fallback", () => {
   it.todo("falls back on Unavailable")
   it.todo("propagates ContentFiltered without falling back")
 
-  it("placeholder — recipe scaffold compiles", () => {
+  it("placeholder - recipe scaffold compiles", () => {
     expect(true).toBe(true)
   })
 })

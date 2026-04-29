@@ -1,0 +1,190 @@
+/* Type: one neutral grotesque for everything UI, modernist mono for code. */
+@import "@fontsource-variable/albert-sans";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+:root {
+  --sl-font: "Albert Sans Variable", system-ui, -apple-system, sans-serif;
+  --sl-font-system-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* The graphic accent. Reserved for the triangle, the active-page mark,
+     and link hover. Nothing else. */
+  --color-mark: #d62828;
+}
+
+/* Light, the modernist default. Clean white, full black ink. */
+:root[data-theme="light"] {
+  --sl-color-bg: #fafafa;
+  --sl-color-bg-nav: #fafafa;
+  --sl-color-bg-sidebar: #f4f4f4;
+  --sl-color-bg-inline-code: #ececec;
+  --sl-color-text: #0a0a0a;
+  --sl-color-white: #0a0a0a;
+  --sl-color-gray-1: #1a1a1a;
+  --sl-color-gray-2: #4a4a4a;
+  --sl-color-gray-3: #6b6b6b;
+  --sl-color-gray-5: #c8c8c8;
+  --sl-color-gray-6: #e0e0e0;
+  --sl-color-gray-7: #f4f4f4;
+  --sl-color-hairline: #dcdcdc;
+  --sl-color-hairline-shade: #cccccc;
+
+  /* Accent: full black. Buttons, focus rings, selection. Never blue. */
+  --sl-color-accent: #0a0a0a;
+  --sl-color-accent-high: #0a0a0a;
+  --sl-color-accent-low: #e0e0e0;
+  --sl-color-text-accent: #0a0a0a;
+}
+
+/* Dark, the inverted twin. Same discipline. */
+:root[data-theme="dark"] {
+  --sl-color-bg: #0f0f0f;
+  --sl-color-bg-nav: #0f0f0f;
+  --sl-color-bg-sidebar: #080808;
+  --sl-color-bg-inline-code: #1a1a1a;
+  --sl-color-text: #f0eee8;
+  --sl-color-white: #fafafa;
+  --sl-color-gray-1: #d4d4d2;
+  --sl-color-gray-2: #a3a3a0;
+  --sl-color-gray-3: #6b6b68;
+  --sl-color-gray-5: #2a2a2a;
+  --sl-color-gray-6: #1a1a1a;
+  --sl-color-gray-7: #0a0a0a;
+  --sl-color-hairline: #1f1f1f;
+  --sl-color-hairline-shade: #2a2a2a;
+
+  /* Accent: full white. */
+  --sl-color-accent: #fafafa;
+  --sl-color-accent-high: #fafafa;
+  --sl-color-accent-low: #1f1f1f;
+  --sl-color-text-accent: #fafafa;
+}
+
+/* Headings: tight modernist tracking. */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.hero h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Hero: large, bold grotesque. Modernist proportions. */
+.hero h1 {
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  font-size: clamp(3.5rem, calc(1rem + 8vw), 6rem);
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+  line-height: 1;
+}
+
+/* The graphic mark. An equilateral red triangle (Minas Gerais flag
+   geometry) sitting behind the "ai" of "uai": one mark referencing AI,
+   the MG interjection "uai", and U.I. With width 1.5em, equilateral
+   height = 1.5 * sqrt(3)/2 ≈ 1.3em. */
+.hero h1::before {
+  content: "";
+  position: absolute;
+  width: 1.5em;
+  height: 1.3em;
+  background-color: var(--color-mark);
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  inset-block-start: -0.2em;
+  inset-inline-end: -0.45em;
+  z-index: -1;
+}
+
+/* White copy of the title, clipped to the triangle's screen area. */
+.hero h1::after {
+  content: "effect-uai";
+  position: absolute;
+  inset: 0;
+  color: #ffffff;
+  pointer-events: none;
+  clip-path: polygon(calc(100% - 0.3em) -0.2em,
+      calc(100% - 1.05em) 1.1em,
+      calc(100% + 0.45em) 1.1em);
+}
+
+/* Tighten the gap between the H1 and the line beneath it. */
+.hero h1 {
+  margin-block-end: 0 !important;
+}
+
+.hero .tagline {
+  margin-block-start: 0.15rem !important;
+}
+
+/* Pronunciation guide. Sits between the title and the tagline. */
+.hero .tagline::before {
+  content: "/ˈi.fɛkt ˈwaj/";
+  display: block;
+  margin-block-end: 0.9em;
+  font-family: var(--sl-font-system-mono);
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--sl-color-gray-3);
+}
+
+.hero .tagline {
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  max-width: 36rem;
+}
+
+/* Body reading rhythm. */
+.sl-markdown-content {
+  line-height: 1.65;
+}
+
+code:not(pre code) {
+  padding: 0.1em 0.3em;
+  border-radius: 2px;
+  font-size: 0.9em;
+}
+
+/* Hairline header, modernist discipline. */
+.header {
+  border-bottom: 0;
+  box-shadow: none;
+}
+
+/* Remove all vertical separator rules inside the navbar. */
+.social-icons::after,
+.right-group::before,
+.right-group::after {
+  display: none !important;
+  border: 0 !important;
+}
+
+/* Active sidebar entry: a 2px red rule on the leading edge. */
+.sidebar-content [aria-current="page"] {
+  position: relative;
+  background-color: transparent !important;
+  color: var(--sl-color-white) !important;
+  font-weight: 600;
+}
+
+.sidebar-content [aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  inset-block: 0.2em;
+  inset-inline-start: -0.5rem;
+  width: 2px;
+  background-color: var(--color-mark);
+}
+
+/* Body links: stay black, hover shows the red. Restrained. */
+.sl-markdown-content a {
+  color: var(--sl-color-text);
+  text-decoration-color: var(--sl-color-gray-3);
+  text-underline-offset: 0.2em;
+}
+
+.sl-markdown-content a:hover {
+  color: var(--color-mark);
+  text-decoration-color: var(--color-mark);
+}

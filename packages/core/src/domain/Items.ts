@@ -23,7 +23,7 @@ export const Role = Schema.Literals(["user", "assistant", "system"])
 export type Role = typeof Role.Type
 
 // ---------------------------------------------------------------------------
-// Provider passthrough — every Item type carries this opaque slot.
+// Provider passthrough - every Item type carries this opaque slot.
 // The framework never reads or interprets it; provider modules decode
 // their own data via their own typed readers (see e.g.
 // the `@betalyra/effect-uai-responses` package).
@@ -62,9 +62,9 @@ export const FunctionCallOutput = Schema.Struct({
 export type FunctionCallOutput = typeof FunctionCallOutput.Type
 
 /**
- * Reasoning item — top-level, mirrors OpenAI Responses API. Common shape
+ * Reasoning item - top-level, mirrors OpenAI Responses API. Common shape
  * across providers covers `summary` (human-readable text) and `signature`
- * (opaque round-trip blob — Anthropic's signed thinking, OpenAI's
+ * (opaque round-trip blob - Anthropic's signed thinking, OpenAI's
  * encrypted_content, etc.). Provider-specific fields go in `providerData`.
  */
 export const Reasoning = Schema.Struct({

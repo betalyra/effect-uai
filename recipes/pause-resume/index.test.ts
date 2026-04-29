@@ -5,7 +5,7 @@ describe("pause-resume", () => {
   it.todo("resumes from a saved checkpoint with previousResponseId")
   it.todo("emits a serializable checkpoint event before stop")
 
-  it("placeholder — recipe scaffold compiles", () => {
+  it("placeholder - recipe scaffold compiles", () => {
     expect(true).toBe(true)
   })
 })

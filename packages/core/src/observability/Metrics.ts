@@ -49,7 +49,7 @@ export interface RatePoint<A> {
  * Annotate every event with a running total and a rolling rate per second,
  * computed from a user-supplied weight function.
  *
- * The weight is the unit you care about — bytes, tokens, error count, etc.
+ * The weight is the unit you care about - bytes, tokens, error count, etc.
  * For tokens-per-second on `TurnDelta`, pass:
  *
  *   `(d) => d.type === "text_delta" ? countTokens(d.text) : 0`

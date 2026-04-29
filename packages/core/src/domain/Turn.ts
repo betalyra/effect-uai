@@ -39,7 +39,7 @@ export const assistantMessages = (turn: Turn): ReadonlyArray<Message> =>
 /**
  * Drain a `TurnDelta` stream and return the assembled `Turn` carried by its
  * terminal `turn_complete` event, or `Option.none()` if the stream ended
- * without one. The caller decides what "no terminal event" means — usually
+ * without one. The caller decides what "no terminal event" means - usually
  * `AiError`, but a partial-content recovery path is also valid.
  */
 export const untilTurnComplete = <E, R>(

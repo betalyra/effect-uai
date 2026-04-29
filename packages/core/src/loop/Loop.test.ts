@@ -80,7 +80,7 @@ describe("Loop.loop", () => {
   })
 
   it("terminates silently if the body emits no Decision (mirrors paginate's silent stop)", async () => {
-    // No decision emitted — loop just ends after the body's stream completes.
+    // No decision emitted - loop just ends after the body's stream completes.
     const stream = loop(0, (n: number) =>
       Stream.fromIterable([value(n), value(n + 1)]),
     )
@@ -91,7 +91,7 @@ describe("Loop.loop", () => {
 
   it("short-circuits the body's stream when a Decision is seen", async () => {
     // Body emits [n, next(n+1), n+10]. Once the Decision is encountered, the
-    // body's stream is interrupted — `n+10` is never pulled, so it never
+    // body's stream is interrupted - `n+10` is never pulled, so it never
     // flows to the outer stream. This is the correct behavior: a Decision
     // marks "I'm done with this iteration"; anything after it is dead code.
     const stream = loop(0, (n: number) =>
@@ -121,7 +121,7 @@ describe("Loop.loop", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Mock LLM scenario — proves the loop forwards deltas in real time and
+// Mock LLM scenario - proves the loop forwards deltas in real time and
 // correctly threads tool-result events between turns.
 // ---------------------------------------------------------------------------
 
@@ -258,7 +258,7 @@ const conversationLoop = (
     ),
   )
 
-describe("Loop.loop — LLM-style scenarios", () => {
+describe("Loop.loop - LLM-style scenarios", () => {
   it("forwards text deltas, tool start, tool result, and post-tool text in order", async () => {
     const m = scriptedModel([
       [
@@ -336,7 +336,7 @@ describe("Loop.loop — LLM-style scenarios", () => {
   })
 })
 
-describe("Loop.loop — pull-specific stream semantics", () => {
+describe("Loop.loop - pull-specific stream semantics", () => {
   it("does not start the next iteration when downstream only takes the first value", async () => {
     const bodyCalls = await Effect.runPromise(
       Effect.gen(function* () {

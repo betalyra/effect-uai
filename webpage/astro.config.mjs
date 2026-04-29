@@ -6,6 +6,10 @@ export default defineConfig({
     starlight({
       title: "effect-uai",
       description: "Low-level primitives for AI agents in Effect.",
+      customCss: ["./src/styles/custom.css"],
+      components: {
+        ThemeSelect: "./src/components/ThemeSelect.astro",
+      },
       social: [
         {
           icon: "github",

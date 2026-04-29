@@ -1,6 +1,7 @@
 import { Match, Schema } from "effect"
 import type { Item } from "../../Items.js"
 import type { Turn } from "../../Turn.js"
+import { matchType } from "../utils.js"
 
 // ---------------------------------------------------------------------------
 // Wire schemas — minimal subset of the Responses API output we consume.
@@ -85,23 +86,23 @@ const passthrough = (item: Item): Record<string, unknown> | undefined =>
 const itemToInput = (item: Item): Record<string, unknown> =>
   passthrough(item) ??
   Match.value(item).pipe(
-    Match.discriminator("type")("message", (m) => ({
+    matchType("message", (m) => ({
       type: "message",
       role: m.role,
       content: m.content.map((c) => ({ type: c.type, text: c.text })),
     })),
-    Match.discriminator("type")("function_call", (f) => ({
+    matchType("function_call", (f) => ({
       type: "function_call",
       call_id: f.call_id,
       name: f.name,
       arguments: f.arguments,
     })),
-    Match.discriminator("type")("function_call_output", (o) => ({
+    matchType("function_call_output", (o) => ({
       type: "function_call_output",
       call_id: o.call_id,
       output: o.output,
     })),
-    Match.discriminator("type")("reasoning", (r) => ({
+    matchType("reasoning", (r) => ({
       type: "reasoning",
       ...(r.id !== undefined && { id: r.id }),
       ...(r.summary !== undefined && {
@@ -122,7 +123,7 @@ export const itemsToInput = (items: ReadonlyArray<Item>): ReadonlyArray<Record<s
 
 export const wireItemToItem = (wire: WireOutputItem): Item =>
   Match.value(wire).pipe(
-    Match.discriminator("type")("message", (m) => ({
+    matchType("message", (m) => ({
       type: "message" as const,
       role: m.role,
       content: m.content.map((c) => ({
@@ -131,14 +132,14 @@ export const wireItemToItem = (wire: WireOutputItem): Item =>
       })),
       providerData: m,
     })),
-    Match.discriminator("type")("function_call", (f) => ({
+    matchType("function_call", (f) => ({
       type: "function_call" as const,
       call_id: f.call_id,
       name: f.name,
       arguments: f.arguments,
       providerData: f,
     })),
-    Match.discriminator("type")("reasoning", (r) => ({
+    matchType("reasoning", (r) => ({
       type: "reasoning" as const,
       ...(r.id !== undefined && { id: r.id }),
       ...(r.summary !== undefined && {

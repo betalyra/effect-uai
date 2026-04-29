@@ -27,7 +27,13 @@ import {
 import * as Tool from "../src/Tool.js";
 import * as Toolkit from "../src/Toolkit.js";
 import * as Turn from "../src/Turn.js";
-import { type Event as LoopEvent, loop, nextAfter, stopAfter, value } from "../src/Loop.js";
+import {
+  type Event as LoopEvent,
+  loop,
+  nextAfter,
+  stopAfter,
+  value,
+} from "../src/Loop.js";
 import { streamUntilComplete } from "../src/Turn.js";
 
 // ---------------------------------------------------------------------------

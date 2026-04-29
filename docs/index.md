@@ -3,7 +3,7 @@ title: effect-uai
 description: Low-level primitives for AI agents in Effect.
 template: splash
 hero:
-  tagline: Low-level primitives for AI agents in Effect - you own the loop.
+  tagline: Effectful building blocks for agentic ai
   actions:
     - text: Get started
       link: /start/installation/
@@ -17,13 +17,5 @@ hero:
 
 ## Why effect-uai
 
-Most agent frameworks hide the loop. `effect-uai` exposes it - state is a
-plain record, `Decision<S>` controls iteration, the body is a `Stream`. Every
-agent shape (retry, fallback, compaction, pause/resume, abort) falls out of
-composition rather than framework features.
+Most agentic ai frameworks abstract the interaction with the LLM. This is great for getting started, but becomes painful quickly once you need to customise your agentic loop. **effect-uai** makes LLM interaction explicit, gives you basic building blocks and provides recipes for common use cases. You stay in control. 
 
-## Packages
-
-- **`@betalyra/effect-uai-core`** - primitives: loop, conversation, items,
-  tools, streaming codecs, errors.
-- **`@betalyra/effect-uai-responses`** - OpenAI Responses API provider.

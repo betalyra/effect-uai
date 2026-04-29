@@ -146,10 +146,15 @@ code:not(pre code) {
   font-size: 0.9em;
 }
 
-/* Hairline header, modernist discipline. */
+/* Hairline header, modernist discipline. Inner content is constrained to
+   --nav-max-width on large screens so the logo and right-group align with
+   the page content below. Uses dynamic padding-inline rather than a wrapper
+   element so we don't have to override Starlight's Header component. */
 .header {
+  --nav-max-width: 87.5rem;
   border-bottom: 0;
   box-shadow: none;
+  padding-inline: max(var(--sl-nav-pad-x, 1rem), calc((100% - var(--nav-max-width)) / 2)) !important;
 }
 
 /* Remove all vertical separator rules inside the navbar. */

@@ -11,6 +11,8 @@ primitives. Their READMEs are mirrored as pages in this section - the page
 
 Currently scaffolded:
 
+- [Basic usage](/recipes/basic-usage/) - the smallest end-to-end shape:
+  streaming deltas, a tool call, and a final answer.
 - [Multi-model fallback](/recipes/multi-model-fallback/) - fall back across
   providers on `RateLimited` / `Unavailable`.
 - [Auto-compaction](/recipes/auto-compaction/) - summarize history when

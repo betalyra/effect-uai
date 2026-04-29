@@ -57,6 +57,9 @@ importers:
       '@betalyra/effect-uai-core':
         specifier: workspace:*
         version: link:../packages/core
+      '@betalyra/effect-uai-responses':
+        specifier: workspace:*
+        version: link:../packages/responses
       effect:
         specifier: 4.0.0-beta.57
         version: 4.0.0-beta.57

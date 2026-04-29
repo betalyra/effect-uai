@@ -30,6 +30,7 @@ export default defineConfig({
           label: "Recipes",
           items: [
             { label: "Overview", slug: "recipes" },
+            { label: "Basic usage", slug: "recipes/basic-usage" },
             {
               label: "Multi-model fallback",
               slug: "recipes/multi-model-fallback",

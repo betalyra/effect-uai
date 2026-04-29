@@ -57,6 +57,15 @@ export class Cancelled extends Data.TaggedError("Cancelled")<{
   provider: string
 }> {}
 
+/**
+ * The provider's delta stream ended without a terminal `turn_complete`.
+ * Indicates a misbehaving provider or a connection that dropped mid-flight.
+ * Non-terminal deltas seen so far have already been emitted downstream.
+ */
+export class IncompleteTurn extends Data.TaggedError("IncompleteTurn")<{
+  raw?: unknown
+}> {}
+
 export type AiError =
   | RateLimited
   | Unavailable
@@ -66,3 +75,4 @@ export type AiError =
   | InvalidRequest
   | AuthFailed
   | Cancelled
+  | IncompleteTurn

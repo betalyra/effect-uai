@@ -107,54 +107,49 @@ const conversation: Stream.Stream<
   Effect.gen(function* () {
     const oai = yield* Responses
 
-    const deltas = oai
+    return oai
       .streamTurn(state.history, {
         tools,
         reasoning: { effort: "low" },
       })
-      .pipe(Stream.tap((delta) => Effect.logDebug("delta", { delta })))
+      .pipe(
+        Stream.tap((delta) => Effect.logDebug("delta", { delta })),
+        Turn.streamUntilComplete({
+          emit: (delta): Stream.Stream<LoopEvent<Event, State>> =>
+            Stream.succeed(value<Event>({ type: "delta", delta })),
+          then: (turn) =>
+            Effect.gen(function* () {
+              const cursor: Cursor = {
+                ...state,
+                history: [...state.history, ...turn.items],
+                turn,
+              }
+              const calls = Turn.functionCalls(turn)
+              const turnComplete = Stream.succeed<Event>({
+                type: "turn_complete",
+                cursor,
+              })
 
-    return Turn.streamUntilComplete(deltas, {
-      emit: (delta): Stream.Stream<LoopEvent<Event, State>> =>
-        Stream.succeed(value<Event>({ type: "delta", delta })),
-      onMissing: Effect.fail(
-        new AiError.Unavailable({
-          provider: "openai",
-          raw: "Stream ended without turn_complete",
+              // No tool calls - the assistant is done.
+              if (calls.length === 0) return stopAfter(turnComplete)
+
+              // Run the tools the model asked for. `executeAllSafe` reflects
+              // tool failures as `FunctionCallOutput` items so the model can
+              // self-correct on the next turn.
+              const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
+
+              const toolOutputs = Stream.fromIterable(
+                outputs.map((output): Event => ({ type: "tool_output", output })),
+              )
+
+              return nextAfter(Stream.concat(turnComplete, toolOutputs), {
+                ...state,
+                history: [...cursor.history, ...outputs],
+                index: state.index + 1,
+              })
+            }),
         }),
-      ),
-      then: (turn) =>
-        Effect.gen(function* () {
-          const cursor: Cursor = {
-            ...state,
-            history: [...state.history, ...turn.items],
-            turn,
-          }
-          const calls = Turn.functionCalls(turn)
-          const turnComplete = Stream.succeed<Event>({
-            type: "turn_complete",
-            cursor,
-          })
-
-          // No tool calls - the assistant is done.
-          if (calls.length === 0) return stopAfter(turnComplete)
-
-          // Run the tools the model asked for. `executeAllSafe` reflects tool
-          // failures as `FunctionCallOutput` items so the model can self-correct
-          // on the next turn.
-          const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-
-          const toolOutputs = Stream.fromIterable(
-            outputs.map((output): Event => ({ type: "tool_output", output })),
-          )
-
-          return nextAfter(Stream.concat(turnComplete, toolOutputs), {
-            ...state,
-            history: [...cursor.history, ...outputs],
-            index: state.index + 1,
-          })
-        }),
-    })
+      )
   }),
 )
 

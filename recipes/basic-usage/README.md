@@ -19,8 +19,8 @@ until the model stops asking for tools.
 - Defining a tool with `Tool.make` and an Effect `Schema` for its input.
 - Building a `Toolkit` and projecting it to provider-shaped descriptors with
   `Toolkit.toDescriptors`.
-- Driving a turn with `Responses.streamTurn` and turning the raw delta
-  stream into loop events with `Turn.streamUntilComplete`.
+- Driving a turn with `Responses.streamTurn` and piping the raw delta
+  stream through `Turn.streamUntilComplete` to get loop events.
 - Continuing the loop with `Loop.nextAfter` after running tools, or stopping
   with `Loop.stopAfter` when the model produced its final message.
 - Forwarding three event shapes downstream - `delta`, `tool_output`,
@@ -32,27 +32,33 @@ until the model stops asking for tools.
 loop(initial, (state) =>
   Effect.gen(function* () {
     const oai = yield* Responses
-    const deltas = oai.streamTurn(state.history, { tools })
 
-    return Turn.streamUntilComplete(deltas, {
-      emit: (delta) => Stream.succeed(value({ type: "delta", delta })),
-      onMissing: Effect.fail(/* stream ended without turn_complete */),
-      then: (turn) =>
-        Effect.gen(function* () {
-          const calls = Turn.functionCalls(turn)
-          if (calls.length === 0) return stopAfter(turnComplete)
+    return oai.streamTurn(state.history, { tools }).pipe(
+      Turn.streamUntilComplete({
+        emit: (delta) => Stream.succeed(value({ type: "delta", delta })),
+        then: (turn) =>
+          Effect.gen(function* () {
+            const calls = Turn.functionCalls(turn)
+            if (calls.length === 0) return stopAfter(turnComplete)
 
-          const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-          return nextAfter(Stream.concat(turnComplete, toolOutputs), {
-            ...state,
-            history: [...state.history, ...turn.items, ...outputs],
-            index: state.index + 1,
-          })
-        }),
-    })
+            const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
+            return nextAfter(Stream.concat(turnComplete, toolOutputs), {
+              ...state,
+              history: [...state.history, ...turn.items, ...outputs],
+              index: state.index + 1,
+            })
+          }),
+      }),
+    )
   }),
 )
 ```
+
+If the provider stream ends without a `turn_complete` (a misbehaving
+provider, or a connection that dropped mid-flight), the resulting stream
+fails with `AiError.IncompleteTurn`. Catch it downstream with
+`Stream.catchTag("IncompleteTurn", ...)` if you want to recover; otherwise
+it surfaces alongside the rest of `AiError`.
 
 ## Run it
 

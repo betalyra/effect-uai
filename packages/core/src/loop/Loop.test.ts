@@ -5,7 +5,7 @@ import {
   loop,
   next,
   nextAfter,
-  stop,
+  stopEvent,
   stopAfter,
   value,
 } from "./Loop.js"
@@ -27,7 +27,7 @@ describe("Loop.loop", () => {
     // Every iteration emits nothing, just bumps state; stops at 5.
     const stream = loop(0, (n: number) =>
       n >= 5
-        ? Stream.fromIterable([stop])
+        ? Stream.fromIterable([stopEvent])
         : Stream.fromIterable([next(n + 1)]),
     )
 
@@ -96,7 +96,7 @@ describe("Loop.loop", () => {
     // marks "I'm done with this iteration"; anything after it is dead code.
     const stream = loop(0, (n: number) =>
       n >= 2
-        ? Stream.fromIterable([value(n), stop])
+        ? Stream.fromIterable([value(n), stopEvent])
         : Stream.fromIterable([value(n), next(n + 1), value(n + 10)]),
     )
 
@@ -109,7 +109,7 @@ describe("Loop.loop", () => {
     const N = 100_000
     const stream = loop(0, (n: number) =>
       n >= N
-        ? Stream.fromIterable([value(n), stop])
+        ? Stream.fromIterable([value(n), stopEvent])
         : Stream.fromIterable([value(n), next(n + 1)]),
     )
 
@@ -346,7 +346,7 @@ describe("Loop.loop - pull-specific stream semantics", () => {
             Ref.update(callsRef, (calls) => calls + 1).pipe(
               Effect.as(
                 n >= 10
-                  ? Stream.fromIterable([value(n), stop])
+                  ? Stream.fromIterable([value(n), stopEvent])
                   : Stream.fromIterable([value(n), next(n + 1)]),
               ),
             ),
@@ -376,7 +376,7 @@ describe("Loop.loop - pull-specific stream semantics", () => {
         const releasesRef = yield* Ref.make<ReadonlyArray<number>>([])
         const stream = loop(0, (n: number) =>
           (n >= 1
-            ? Stream.fromIterable([value(n), stop])
+            ? Stream.fromIterable([value(n), stopEvent])
             : Stream.fromIterable([value(n), next(n + 1), value(n + 10)])
           ).pipe(
             Stream.ensuring(Ref.update(releasesRef, (values) => [...values, n])),

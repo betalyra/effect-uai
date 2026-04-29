@@ -17,7 +17,9 @@
  * (their producing side effects may already have run). Prefer the
  * `Loop.nextAfter` / `Loop.stopAfter` helpers to terminate cleanly.
  */
-import { Cause, Channel, Data, Effect, Exit, Scope, Stream } from "effect"
+import { Cause, Channel, Data, Effect, Exit, Option, Ref, Scope, Stream } from "effect"
+import { IncompleteTurn } from "../domain/AiError.js"
+import { isTurnComplete, type Turn, type TurnDelta } from "../domain/InteractionEvent.js"
 
 // ---------------------------------------------------------------------------
 // Event type - the body's emit shape
@@ -46,8 +48,15 @@ export const value = <A>(a: A): Event<A, never> => Event.Value({ value: a })
 /** End the current iteration and continue with a new state. */
 export const next = <S>(state: S): Event<never, S> => Event.Next({ state })
 
-/** End the loop entirely. */
-export const stop: Event<never, never> = Event.Stop()
+/** The terminal `Stop` event. Use `stop` (the Stream) to end a loop body. */
+export const stopEvent: Event<never, never> = Event.Stop()
+
+/**
+ * A single-element stream that ends the loop. Return this from a body when
+ * there's nothing else to emit; equivalent to `stopAfter(Stream.empty)` but
+ * named for the common case.
+ */
+export const stop: Stream.Stream<Event<never, never>> = Stream.succeed(stopEvent)
 
 /**
  * Pipe a raw `Stream<A>` into the loop's emit shape, then terminate the
@@ -67,7 +76,56 @@ export const nextAfter = <S, A, E, R>(
 export const stopAfter = <A, E, R>(
   stream: Stream.Stream<A, E, R>,
 ): Stream.Stream<Event<A, never>, E, R> =>
-  Stream.concat(Stream.map(stream, value), Stream.fromIterable([stop]))
+  Stream.concat(Stream.map(stream, value), Stream.fromIterable([stopEvent]))
+
+// ---------------------------------------------------------------------------
+// streamUntilComplete - turn-aware stream operator for loop bodies
+// ---------------------------------------------------------------------------
+
+/**
+ * Lift a provider's `Stream<TurnDelta>` into a loop body's `Stream<Event<TurnDelta | A, S>>`.
+ * Each delta passes through as `value(delta)` (including the terminal
+ * `turn_complete`, so the consumer sees turn boundaries naturally). Once
+ * the terminal arrives, `then(turn)` runs and its returned stream of loop
+ * events (typically tool outputs followed by `next(state)` or `stop`) is
+ * concatenated.
+ *
+ * Pre-pipe transforms (`Stream.tap` / `Stream.map` / `Stream.filter`) on
+ * the raw delta stream cover anything an `emit`-style callback would do.
+ *
+ * If the upstream ends without a `turn_complete`, the resulting stream
+ * fails with `AiError.IncompleteTurn`. Catch it via `Stream.catchTag` if
+ * you want to recover.
+ */
+export const streamUntilComplete =
+  <S, A, E2 = never, R2 = never>(
+    then: (turn: Turn) => Effect.Effect<Stream.Stream<Event<A, S>, E2, R2>, E2, R2>,
+  ) =>
+  <E, R>(
+    deltas: Stream.Stream<TurnDelta, E, R>,
+  ): Stream.Stream<Event<TurnDelta | A, S>, E | E2 | IncompleteTurn, R | R2> =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const turnRef = yield* Ref.make<Option.Option<Turn>>(Option.none())
+
+        const events: Stream.Stream<Event<TurnDelta, S>, E, R> = deltas.pipe(
+          Stream.tap((delta) =>
+            isTurnComplete(delta) ? Ref.set(turnRef, Option.some(delta.turn)) : Effect.void,
+          ),
+          Stream.map(value),
+        )
+
+        const continuation = Stream.unwrap(
+          Effect.gen(function* () {
+            const opt = yield* Ref.get(turnRef)
+            if (Option.isNone(opt)) return yield* Effect.fail(new IncompleteTurn({}))
+            return yield* then(opt.value)
+          }),
+        )
+
+        return Stream.concat(events, continuation)
+      }),
+    )
 
 // ---------------------------------------------------------------------------
 // Internal helpers

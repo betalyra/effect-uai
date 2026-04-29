@@ -2,7 +2,7 @@ import { Context, Effect, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { Item } from "../domain/Items.js"
 import type { ToolDescriptor } from "../tool/Tool.js"
-import { isTurnComplete, type Turn, type TurnDelta } from "../domain/Turn.js"
+import { isTurnComplete, type Turn, type TurnDelta } from "../domain/InteractionEvent.js"
 
 /**
  * Cross-provider request options. Anything specific to a single provider

@@ -1,6 +1,6 @@
 export * as AiError from "./domain/AiError.js"
 export * as Items from "./domain/Items.js"
-export * as Turn from "./domain/Turn.js"
+export * as InteractionEvent from "./domain/InteractionEvent.js"
 export * as LanguageModel from "./language-model/LanguageModel.js"
 export * as Loop from "./loop/Loop.js"
 export * as Tool from "./tool/Tool.js"

@@ -2,7 +2,7 @@ import { Duration, Effect, Layer, Ref, Schedule, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { Item } from "../domain/Items.js"
 import { LanguageModel, type LanguageModelService } from "../language-model/LanguageModel.js"
-import type { Turn, TurnDelta } from "../domain/Turn.js"
+import type { Turn, TurnDelta } from "../domain/InteractionEvent.js"
 
 export interface MockOptions {
   /**

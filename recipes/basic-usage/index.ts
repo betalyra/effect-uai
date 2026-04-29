@@ -21,6 +21,7 @@ import {
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@betalyra/effect-uai-core/Items"
 import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
+import { matchType } from "@betalyra/effect-uai-core/Match"
 import * as Tool from "@betalyra/effect-uai-core/Tool"
 import * as Toolkit from "@betalyra/effect-uai-core/Toolkit"
 import * as Turn from "@betalyra/effect-uai-core/Turn"
@@ -127,13 +128,13 @@ const conversation = pipe(
 const program = Effect.gen(function* () {
   yield* Stream.runForEach(conversation, (event) =>
     Match.value(event).pipe(
-      Match.discriminator("type")("turn_complete", ({ turn }) =>
+      matchType("turn_complete", ({ turn }) =>
         Effect.logInfo("turn complete", {
           stop_reason: turn.stop_reason,
           usage: turn.usage,
         }),
       ),
-      Match.discriminator("type")("function_call_output", (output) =>
+      matchType("function_call_output", (output) =>
         Effect.logInfo("tool output", { output }),
       ),
       Match.orElse(() => Effect.logDebug("delta", { event })),

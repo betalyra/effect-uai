@@ -13,6 +13,7 @@ import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@betalyra/effect-uai-core/Items"
 import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
+import { matchType } from "@betalyra/effect-uai-core/Match"
 import * as Turn from "@betalyra/effect-uai-core/Turn"
 import { Responses, layer as responsesLayer } from "@betalyra/effect-uai-responses"
 
@@ -145,7 +146,7 @@ const conversation = pipe(
 const program = Effect.gen(function* () {
   yield* Stream.runForEach(conversation, (event) =>
     Match.value(event).pipe(
-      Match.discriminator("type")("turn_complete", ({ turn }) =>
+      matchType("turn_complete", ({ turn }) =>
         Effect.logInfo("turn complete", {
           stop_reason: turn.stop_reason,
           input_tokens: turn.usage.input_tokens,

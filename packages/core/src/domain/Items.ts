@@ -10,9 +10,62 @@ export const InputText = Schema.Struct({
 })
 export type InputText = typeof InputText.Type
 
+// ---------------------------------------------------------------------------
+// Annotations - source / citation pointers attached to `output_text` blocks.
+// Mirrors OpenAI Responses API; other providers can omit or map onto these
+// shapes.
+// ---------------------------------------------------------------------------
+
+export const UrlCitation = Schema.Struct({
+  type: Schema.Literal("url_citation"),
+  url: Schema.String,
+  start_index: Schema.Number,
+  end_index: Schema.Number,
+  title: Schema.String,
+})
+export type UrlCitation = typeof UrlCitation.Type
+
+export const FileCitation = Schema.Struct({
+  type: Schema.Literal("file_citation"),
+  file_id: Schema.String,
+  index: Schema.Number,
+})
+export type FileCitation = typeof FileCitation.Type
+
+export const ContainerFileCitation = Schema.Struct({
+  type: Schema.Literal("container_file_citation"),
+  container_id: Schema.String,
+  file_id: Schema.String,
+  start_index: Schema.Number,
+  end_index: Schema.Number,
+})
+export type ContainerFileCitation = typeof ContainerFileCitation.Type
+
+export const FilePath = Schema.Struct({
+  type: Schema.Literal("file_path"),
+  file_id: Schema.String,
+  index: Schema.Number,
+})
+export type FilePath = typeof FilePath.Type
+
+export const Annotation = Schema.Union([
+  UrlCitation,
+  FileCitation,
+  ContainerFileCitation,
+  FilePath,
+])
+export type Annotation = typeof Annotation.Type
+
+export const isUrlCitation = (a: Annotation): a is UrlCitation => a.type === "url_citation"
+export const isFileCitation = (a: Annotation): a is FileCitation => a.type === "file_citation"
+export const isContainerFileCitation = (a: Annotation): a is ContainerFileCitation =>
+  a.type === "container_file_citation"
+export const isFilePath = (a: Annotation): a is FilePath => a.type === "file_path"
+
 export const OutputText = Schema.Struct({
   type: Schema.Literal("output_text"),
   text: Schema.String,
+  annotations: Schema.optional(Schema.Array(Annotation)),
 })
 export type OutputText = typeof OutputText.Type
 
@@ -97,10 +150,22 @@ export const isReasoning = (item: Item): item is Reasoning => item.type === "rea
 // Usage and stop reason
 // ---------------------------------------------------------------------------
 
+export const InputTokensDetails = Schema.Struct({
+  cached_tokens: Schema.optional(Schema.Number),
+})
+export type InputTokensDetails = typeof InputTokensDetails.Type
+
+export const OutputTokensDetails = Schema.Struct({
+  reasoning_tokens: Schema.optional(Schema.Number),
+})
+export type OutputTokensDetails = typeof OutputTokensDetails.Type
+
 export const Usage = Schema.Struct({
   input_tokens: Schema.optional(Schema.Number),
   output_tokens: Schema.optional(Schema.Number),
   total_tokens: Schema.optional(Schema.Number),
+  input_tokens_details: Schema.optional(InputTokensDetails),
+  output_tokens_details: Schema.optional(OutputTokensDetails),
 })
 export type Usage = typeof Usage.Type
 

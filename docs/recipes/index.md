@@ -21,3 +21,5 @@ Currently scaffolded:
   resume later via `previousResponseId`.
 - [Mid-stream abort](/recipes/mid-stream-abort/) - cancel the loop and the
   upstream HTTP request via scope-based cleanup.
+- [Model council](/recipes/model-council/) - fan one prompt out to OpenAI,
+  Google, and Anthropic concurrently with per-member error isolation.

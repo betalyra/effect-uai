@@ -17,6 +17,7 @@ export interface CommonRequestOptions {
     | "none"
     | { readonly type: "function"; readonly name: string }
   readonly temperature?: number
+  readonly topP?: number
   readonly maxOutputTokens?: number
 }
 

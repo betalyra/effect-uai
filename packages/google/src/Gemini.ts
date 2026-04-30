@@ -64,6 +64,7 @@ const buildGenerationConfig = (options: GeminiRequestOptions): Option.Option<Gen
   const cfg: GenerationConfig = {
     ...(options.temperature !== undefined && { temperature: options.temperature }),
     ...(options.maxOutputTokens !== undefined && { maxOutputTokens: options.maxOutputTokens }),
+    ...(options.topP !== undefined && { topP: options.topP }),
     ...(options.thinkingBudget !== undefined && {
       thinkingConfig: { thinkingBudget: options.thinkingBudget },
     }),

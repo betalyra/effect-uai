@@ -8,9 +8,45 @@ import type { Turn } from "@betalyra/effect-uai-core/Turn"
 // Reference: https://www.openresponses.org/specification
 // ---------------------------------------------------------------------------
 
+const WireUrlCitation = Schema.Struct({
+  type: Schema.Literal("url_citation"),
+  url: Schema.String,
+  start_index: Schema.Number,
+  end_index: Schema.Number,
+  title: Schema.String,
+})
+
+const WireFileCitation = Schema.Struct({
+  type: Schema.Literal("file_citation"),
+  file_id: Schema.String,
+  index: Schema.Number,
+})
+
+const WireContainerFileCitation = Schema.Struct({
+  type: Schema.Literal("container_file_citation"),
+  container_id: Schema.String,
+  file_id: Schema.String,
+  start_index: Schema.Number,
+  end_index: Schema.Number,
+})
+
+const WireFilePath = Schema.Struct({
+  type: Schema.Literal("file_path"),
+  file_id: Schema.String,
+  index: Schema.Number,
+})
+
+const WireAnnotation = Schema.Union([
+  WireUrlCitation,
+  WireFileCitation,
+  WireContainerFileCitation,
+  WireFilePath,
+])
+
 const WireOutputTextContent = Schema.Struct({
   type: Schema.Literal("output_text"),
   text: Schema.String,
+  annotations: Schema.optional(Schema.NullOr(Schema.Array(WireAnnotation))),
 })
 
 const WireSummaryText = Schema.Struct({
@@ -43,10 +79,20 @@ const WireReasoning = Schema.Struct({
 export const WireOutputItem = Schema.Union([WireMessage, WireFunctionCall, WireReasoning])
 export type WireOutputItem = typeof WireOutputItem.Type
 
+const WireInputTokensDetails = Schema.Struct({
+  cached_tokens: Schema.optional(Schema.NullOr(Schema.Number)),
+})
+
+const WireOutputTokensDetails = Schema.Struct({
+  reasoning_tokens: Schema.optional(Schema.NullOr(Schema.Number)),
+})
+
 const WireUsage = Schema.Struct({
   input_tokens: Schema.optional(Schema.Number),
   output_tokens: Schema.optional(Schema.Number),
   total_tokens: Schema.optional(Schema.Number),
+  input_tokens_details: Schema.optional(Schema.NullOr(WireInputTokensDetails)),
+  output_tokens_details: Schema.optional(Schema.NullOr(WireOutputTokensDetails)),
 })
 
 // Many Responses-API fields are emitted as explicit `null` rather than
@@ -129,6 +175,8 @@ export const wireItemToItem = (wire: WireOutputItem): Item =>
       content: m.content.map((c) => ({
         type: "output_text" as const,
         text: c.text,
+        ...(c.annotations !== undefined &&
+          c.annotations !== null && { annotations: c.annotations }),
       })),
       providerData: m,
     })),
@@ -163,18 +211,34 @@ const stopReasonFromCompleted = (payload: WireResponseCompleted): Turn["stop_rea
   return output.some((i) => i.type === "function_call") ? "tool_calls" : "stop"
 }
 
-export const turnFromCompleted = (payload: WireResponseCompleted): Turn => ({
-  items: (payload.output ?? []).map(wireItemToItem),
-  usage: {
-    ...(payload.usage?.input_tokens !== undefined && {
-      input_tokens: payload.usage.input_tokens,
-    }),
-    ...(payload.usage?.output_tokens !== undefined && {
-      output_tokens: payload.usage.output_tokens,
-    }),
-    ...(payload.usage?.total_tokens !== undefined && {
-      total_tokens: payload.usage.total_tokens,
-    }),
-  },
-  stop_reason: stopReasonFromCompleted(payload),
-})
+const cachedTokens = (payload: WireResponseCompleted): number | undefined =>
+  payload.usage?.input_tokens_details?.cached_tokens ?? undefined
+
+const reasoningTokens = (payload: WireResponseCompleted): number | undefined =>
+  payload.usage?.output_tokens_details?.reasoning_tokens ?? undefined
+
+export const turnFromCompleted = (payload: WireResponseCompleted): Turn => {
+  const cached = cachedTokens(payload)
+  const reasoning = reasoningTokens(payload)
+  return {
+    items: (payload.output ?? []).map(wireItemToItem),
+    usage: {
+      ...(payload.usage?.input_tokens !== undefined && {
+        input_tokens: payload.usage.input_tokens,
+      }),
+      ...(payload.usage?.output_tokens !== undefined && {
+        output_tokens: payload.usage.output_tokens,
+      }),
+      ...(payload.usage?.total_tokens !== undefined && {
+        total_tokens: payload.usage.total_tokens,
+      }),
+      ...(cached !== undefined && {
+        input_tokens_details: { cached_tokens: cached },
+      }),
+      ...(reasoning !== undefined && {
+        output_tokens_details: { reasoning_tokens: reasoning },
+      }),
+    },
+    stop_reason: stopReasonFromCompleted(payload),
+  }
+}

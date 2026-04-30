@@ -22,6 +22,14 @@ export interface ResponsesRequestOptions extends CommonRequestOptions {
   readonly reasoning?: { readonly effort: "low" | "medium" | "high" }
   readonly store?: boolean
   readonly previousResponseId?: string
+  readonly instructions?: string
+  readonly topP?: number
+  readonly parallelToolCalls?: boolean
+  readonly metadata?: Readonly<Record<string, string>>
+  readonly user?: string
+  readonly safetyIdentifier?: string
+  readonly promptCacheKey?: string
+  readonly truncation?: "auto" | "disabled"
 }
 
 export interface ResponsesService {
@@ -81,6 +89,20 @@ const buildBody = (
   ...(options?.previousResponseId !== undefined && {
     previous_response_id: options.previousResponseId,
   }),
+  ...(options?.instructions !== undefined && { instructions: options.instructions }),
+  ...(options?.topP !== undefined && { top_p: options.topP }),
+  ...(options?.parallelToolCalls !== undefined && {
+    parallel_tool_calls: options.parallelToolCalls,
+  }),
+  ...(options?.metadata !== undefined && { metadata: options.metadata }),
+  ...(options?.user !== undefined && { user: options.user }),
+  ...(options?.safetyIdentifier !== undefined && {
+    safety_identifier: options.safetyIdentifier,
+  }),
+  ...(options?.promptCacheKey !== undefined && {
+    prompt_cache_key: options.promptCacheKey,
+  }),
+  ...(options?.truncation !== undefined && { truncation: options.truncation }),
 })
 
 // ---------------------------------------------------------------------------

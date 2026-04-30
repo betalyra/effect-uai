@@ -29,6 +29,8 @@ const UsageMetadata = Schema.Struct({
   promptTokenCount: Schema.optional(Schema.Number),
   candidatesTokenCount: Schema.optional(Schema.Number),
   totalTokenCount: Schema.optional(Schema.Number),
+  cachedContentTokenCount: Schema.optional(Schema.Number),
+  thoughtsTokenCount: Schema.optional(Schema.Number),
 })
 
 export const WireChunk = Schema.Struct({
@@ -57,6 +59,7 @@ export interface ThinkingConfig {
 export interface GenerationConfig {
   readonly temperature?: number
   readonly maxOutputTokens?: number
+  readonly topP?: number
   readonly thinkingConfig?: ThinkingConfig
 }
 
@@ -139,6 +142,8 @@ export interface Accumulator {
     readonly input_tokens?: number
     readonly output_tokens?: number
     readonly total_tokens?: number
+    readonly input_tokens_details?: { readonly cached_tokens?: number }
+    readonly output_tokens_details?: { readonly reasoning_tokens?: number }
   }
 }
 
@@ -173,6 +178,12 @@ const mergeUsage = (
           output_tokens: next.candidatesTokenCount,
         }),
         ...(next.totalTokenCount !== undefined && { total_tokens: next.totalTokenCount }),
+        ...(next.cachedContentTokenCount !== undefined && {
+          input_tokens_details: { cached_tokens: next.cachedContentTokenCount },
+        }),
+        ...(next.thoughtsTokenCount !== undefined && {
+          output_tokens_details: { reasoning_tokens: next.thoughtsTokenCount },
+        }),
       }
 
 export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => {

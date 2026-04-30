@@ -32,8 +32,9 @@ export default defineConfig({
         {
           label: "Providers",
           items: [
-            { label: "OpenAI Responses", slug: "providers/responses" },
+            { label: "Responses / OpenAI", slug: "providers/responses" },
             { label: "Google Gemini", slug: "providers/gemini" },
+            { label: "Anthropic", slug: "providers/anthropic" },
           ],
         },
         {
@@ -48,6 +49,7 @@ export default defineConfig({
             { label: "Auto-compaction", slug: "recipes/auto-compaction" },
             { label: "Pause and resume", slug: "recipes/pause-resume" },
             { label: "Mid-stream abort", slug: "recipes/mid-stream-abort" },
+            { label: "Model council", slug: "recipes/model-council" },
           ],
         },
       ],

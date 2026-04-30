@@ -4,6 +4,15 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    effect:
+      specifier: 4.0.0-beta.57
+      version: 4.0.0-beta.57
+    typescript:
+      specifier: ^6.0.3
+      version: 6.0.3
+
 importers:
 
   .:
@@ -18,7 +27,7 @@ importers:
         specifier: ^4.21.0
         version: 4.21.0
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
         specifier: ^4.1.5
@@ -43,11 +52,11 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
       effect:
-        specifier: 4.0.0-beta.57
+        specifier: 'catalog:'
         version: 4.0.0-beta.57
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   packages/effect-uai: {}
@@ -55,27 +64,27 @@ importers:
   packages/google:
     dependencies:
       effect:
-        specifier: 4.0.0-beta.57
+        specifier: 'catalog:'
         version: 4.0.0-beta.57
     devDependencies:
       '@betalyra/effect-uai-core':
         specifier: workspace:*
         version: link:../core
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   packages/responses:
     dependencies:
       effect:
-        specifier: 4.0.0-beta.57
+        specifier: 'catalog:'
         version: 4.0.0-beta.57
     devDependencies:
       '@betalyra/effect-uai-core':
         specifier: workspace:*
         version: link:../core
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   recipes:
@@ -93,11 +102,11 @@ importers:
         specifier: workspace:*
         version: link:../packages/responses
       effect:
-        specifier: 4.0.0-beta.57
+        specifier: 'catalog:'
         version: 4.0.0-beta.57
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   webpage:

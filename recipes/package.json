@@ -11,9 +11,9 @@
     "@betalyra/effect-uai-core": "workspace:*",
     "@betalyra/effect-uai-google": "workspace:*",
     "@betalyra/effect-uai-responses": "workspace:*",
-    "effect": "4.0.0-beta.57"
+    "effect": "catalog:"
   },
   "devDependencies": {
-    "typescript": "^6.0.3"
+    "typescript": "catalog:"
   }
 }

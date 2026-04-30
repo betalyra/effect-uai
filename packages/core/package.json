@@ -43,9 +43,9 @@
   },
   "dependencies": {
     "@standard-schema/spec": "^1.1.0",
-    "effect": "4.0.0-beta.57"
+    "effect": "catalog:"
   },
   "devDependencies": {
-    "typescript": "^6.0.3"
+    "typescript": "catalog:"
   }
 }

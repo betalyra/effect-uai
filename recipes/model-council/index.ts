@@ -21,11 +21,11 @@ import {
   Stream,
 } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import * as Items from "@betalyra/effect-uai-core/Items"
-import { matchType } from "@betalyra/effect-uai-core/Match"
-import { make as makeAnthropic } from "@betalyra/effect-uai-anthropic"
-import { make as makeGemini } from "@betalyra/effect-uai-google"
-import { make as makeResponses } from "@betalyra/effect-uai-responses"
+import * as Items from "@effect-uai/core/Items"
+import { matchType } from "@effect-uai/core/Match"
+import { make as makeAnthropic } from "@effect-uai/anthropic"
+import { make as makeGemini } from "@effect-uai/google"
+import { make as makeResponses } from "@effect-uai/responses"
 import { type CouncilEvent, type Member, council } from "./council.js"
 
 const QUESTION =

@@ -1,8 +1,8 @@
 import { Stream } from "effect"
-import * as AiError from "@betalyra/effect-uai-core/AiError"
-import type * as Items from "@betalyra/effect-uai-core/Items"
-import type { LanguageModelService } from "@betalyra/effect-uai-core/LanguageModel"
-import type * as Turn from "@betalyra/effect-uai-core/Turn"
+import * as AiError from "@effect-uai/core/AiError"
+import type * as Items from "@effect-uai/core/Items"
+import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
+import type * as Turn from "@effect-uai/core/Turn"
 
 export interface Member {
   readonly name: string

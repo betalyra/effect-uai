@@ -1,9 +1,9 @@
 import { Deferred, Effect, Ref, Schedule, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
-import * as Items from "@betalyra/effect-uai-core/Items"
-import type { LanguageModelService } from "@betalyra/effect-uai-core/LanguageModel"
-import { loop, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
-import * as Turn from "@betalyra/effect-uai-core/Turn"
+import * as Items from "@effect-uai/core/Items"
+import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
+import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import * as Turn from "@effect-uai/core/Turn"
 
 describe("mid-stream-abort", () => {
   /**

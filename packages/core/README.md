@@ -1,4 +1,4 @@
-# @betalyra/effect-uai-core
+# @effect-uai/core
 
 Low-level primitives for building AI agents with [Effect](https://effect.website).
 

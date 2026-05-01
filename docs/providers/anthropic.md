@@ -13,7 +13,7 @@ are all surfaced via the typed `AnthropicRequestOptions`.
 ## Install
 
 ```sh
-pnpm add @betalyra/effect-uai-core @betalyra/effect-uai-anthropic effect
+pnpm add @effect-uai/core @effect-uai/anthropic effect
 ```
 
 ## Wire it up
@@ -21,7 +21,7 @@ pnpm add @betalyra/effect-uai-core @betalyra/effect-uai-anthropic effect
 ```ts
 import { Config, Effect, Layer } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import { Anthropic, layer as anthropicLayer } from "@betalyra/effect-uai-anthropic"
+import { Anthropic, layer as anthropicLayer } from "@effect-uai/anthropic"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
@@ -99,7 +99,7 @@ On top of the core `CommonRequestOptions` (`tools`, `toolChoice`,
 
 ```ts
 import { Effect, Stream } from "effect"
-import { Anthropic } from "@betalyra/effect-uai-anthropic"
+import { Anthropic } from "@effect-uai/anthropic"
 
 const turn = Effect.gen(function* () {
   const claude = yield* Anthropic

@@ -1,10 +1,10 @@
 import { Effect, Stream } from "effect"
 import { describe, expect, it } from "vitest"
-import * as AiError from "@betalyra/effect-uai-core/AiError"
-import * as Items from "@betalyra/effect-uai-core/Items"
-import type { LanguageModelService } from "@betalyra/effect-uai-core/LanguageModel"
-import * as MockProvider from "@betalyra/effect-uai-core/testing/MockProvider"
-import * as Turn from "@betalyra/effect-uai-core/Turn"
+import * as AiError from "@effect-uai/core/AiError"
+import * as Items from "@effect-uai/core/Items"
+import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
+import * as MockProvider from "@effect-uai/core/testing/MockProvider"
+import * as Turn from "@effect-uai/core/Turn"
 import { type CouncilEvent, council } from "./council.js"
 
 describe("model-council", () => {

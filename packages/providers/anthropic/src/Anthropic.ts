@@ -1,15 +1,15 @@
 import { Context, Effect, Layer, Option, Redacted, Result, Schema, Stream, pipe } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
-import * as AiError from "@betalyra/effect-uai-core/AiError"
-import type { Item } from "@betalyra/effect-uai-core/Items"
+import * as AiError from "@effect-uai/core/AiError"
+import type { Item } from "@effect-uai/core/Items"
 import {
   type CommonRequestOptions,
   LanguageModel,
   type LanguageModelService,
-} from "@betalyra/effect-uai-core/LanguageModel"
-import { JsonParseError } from "@betalyra/effect-uai-core/JSONL"
-import * as SSE from "@betalyra/effect-uai-core/SSE"
-import type { TurnDelta } from "@betalyra/effect-uai-core/Turn"
+} from "@effect-uai/core/LanguageModel"
+import { JsonParseError } from "@effect-uai/core/JSONL"
+import * as SSE from "@effect-uai/core/SSE"
+import type { TurnDelta } from "@effect-uai/core/Turn"
 import {
   type Accumulator,
   type ThinkingConfig,

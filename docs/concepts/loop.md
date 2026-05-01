@@ -60,9 +60,9 @@ always the same: forward deltas to the consumer, wait for the terminal
 
 ```ts
 import { Effect, Stream } from "effect"
-import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
-import * as Turn from "@betalyra/effect-uai-core/Turn"
-import { Responses } from "@betalyra/effect-uai-responses"
+import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import * as Turn from "@effect-uai/core/Turn"
+import { Responses } from "@effect-uai/responses"
 
 pipe(
   initial,

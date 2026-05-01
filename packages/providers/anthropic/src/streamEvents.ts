@@ -1,5 +1,5 @@
 import { Match, Schema } from "effect"
-import { matchType } from "@betalyra/effect-uai-core/Match"
+import { matchType } from "@effect-uai/core/Match"
 import {
   type Accumulator,
   WireContentBlock,

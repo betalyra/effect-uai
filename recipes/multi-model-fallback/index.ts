@@ -12,12 +12,12 @@
  */
 import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import * as Items from "@betalyra/effect-uai-core/Items"
-import type { LanguageModelService } from "@betalyra/effect-uai-core/LanguageModel"
-import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
-import * as Turn from "@betalyra/effect-uai-core/Turn"
-import { make as makeGemini } from "@betalyra/effect-uai-google"
-import { make as makeResponses } from "@betalyra/effect-uai-responses"
+import * as Items from "@effect-uai/core/Items"
+import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
+import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import * as Turn from "@effect-uai/core/Turn"
+import { make as makeGemini } from "@effect-uai/google"
+import { make as makeResponses } from "@effect-uai/responses"
 
 // ---------------------------------------------------------------------------
 // State and types

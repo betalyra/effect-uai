@@ -1,8 +1,8 @@
 import { Array as Arr, Match, Option, Order, Result, Schema, pipe } from "effect"
-import * as Items from "@betalyra/effect-uai-core/Items"
-import { JsonParseError } from "@betalyra/effect-uai-core/JSONL"
-import { matchType } from "@betalyra/effect-uai-core/Match"
-import type { Turn } from "@betalyra/effect-uai-core/Turn"
+import * as Items from "@effect-uai/core/Items"
+import { JsonParseError } from "@effect-uai/core/JSONL"
+import { matchType } from "@effect-uai/core/Match"
+import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
 // Wire schemas - subset of Anthropic Messages API we consume.

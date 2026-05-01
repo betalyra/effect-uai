@@ -1,15 +1,15 @@
 {
-  "name": "@betalyra/effect-uai-google",
+  "name": "@effect-uai/responses",
   "version": "0.1.0",
-  "description": "Google Gemini provider for @betalyra/effect-uai-core.",
+  "description": "OpenAI Responses API provider for @effect-uai/core.",
   "keywords": [
     "ai",
     "effect",
-    "gemini",
-    "google",
-    "llm"
+    "llm",
+    "openai",
+    "responses-api"
   ],
-  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/google",
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/responses",
   "bugs": {
     "url": "https://github.com/betalyra/effect-uai/issues"
   },
@@ -18,7 +18,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/betalyra/effect-uai",
-    "directory": "packages/google"
+    "directory": "packages/providers/responses"
   },
   "type": "module",
   "main": "src/index.ts",
@@ -30,10 +30,10 @@
     "effect": "4.0.0-beta.57"
   },
   "devDependencies": {
-    "@betalyra/effect-uai-core": "workspace:*",
+    "@effect-uai/core": "workspace:*",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@betalyra/effect-uai-core": "workspace:*"
+    "@effect-uai/core": "workspace:*"
   }
 }

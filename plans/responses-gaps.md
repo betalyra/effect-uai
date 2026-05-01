@@ -15,7 +15,7 @@ swallow the whole API.
 
 ## Where we are today
 
-**Request body** (in [packages/responses/src/Responses.ts](../packages/responses/src/Responses.ts)):
+**Request body** (in [packages/providers/responses/src/Responses.ts](../packages/providers/responses/src/Responses.ts)):
 `model`, `input`, `stream`, `tools` (function only), `tool_choice`,
 `temperature`, `max_output_tokens`, `reasoning.effort`, `store`,
 `previous_response_id`. Plus `apiKey` + `baseUrl` on `Config`.
@@ -26,7 +26,7 @@ swallow the whole API.
 (`summary` + `signature`/`encrypted_content`).
 
 **SSE events we map** (in
-[packages/responses/src/streamEvents.ts](../packages/responses/src/streamEvents.ts)):
+[packages/providers/responses/src/streamEvents.ts](../packages/providers/responses/src/streamEvents.ts)):
 `response.output_item.added`, `response.output_text.delta`,
 `response.function_call_arguments.delta`,
 `response.reasoning_summary_text.delta`, `response.completed`, `error`.

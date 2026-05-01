@@ -80,7 +80,7 @@ Both reduce, for our purposes (text + tools, no audio), to:
   property that closing the outer scope tears down the active
   iteration's resources (so [mid-stream
   abort](../recipes/mid-stream-abort/index.ts) keeps working).
-- Provider [Config](../packages/responses/src/Responses.ts) already
+- Provider [Config](../packages/providers/responses/src/Responses.ts) already
   carries `apiKey: Redacted.Redacted` and `baseUrl?: string`. We don't
   want to fork that for WS-mode; same Config should configure either
   transport.

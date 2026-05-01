@@ -12,7 +12,7 @@ abstractions you don't need yet.
 ## Install
 
 ```sh
-pnpm add @betalyra/effect-uai-core @betalyra/effect-uai-responses effect
+pnpm add @effect-uai/core @effect-uai/responses effect
 ```
 
 Each provider is its own package. The core package has no provider deps,
@@ -23,10 +23,10 @@ so edge / browser builds only pull in what you actually use.
 ```ts
 import { Config, Effect, Layer, Match, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import * as Items from "@betalyra/effect-uai-core/Items"
-import { loop, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
-import { matchType } from "@betalyra/effect-uai-core/Match"
-import { Responses, layer as responsesLayer } from "@betalyra/effect-uai-responses"
+import * as Items from "@effect-uai/core/Items"
+import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { matchType } from "@effect-uai/core/Match"
+import { Responses, layer as responsesLayer } from "@effect-uai/responses"
 
 const conversation = pipe(
   { history: [Items.userText("Write a haiku about the sea.")] },

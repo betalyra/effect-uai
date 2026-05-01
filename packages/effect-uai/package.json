@@ -1,7 +1,7 @@
 {
   "name": "effect-uai",
   "version": "0.1.0",
-  "description": "Reserved name. See @betalyra/effect-uai-core and @betalyra/effect-uai-responses.",
+  "description": "Reserved name. See @effect-uai/core and @effect-uai/responses.",
   "homepage": "https://github.com/betalyra/effect-uai#readme",
   "bugs": {
     "url": "https://github.com/betalyra/effect-uai/issues"

@@ -24,19 +24,6 @@ importers:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@25.6.0)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  packages/anthropic:
-    dependencies:
-      effect:
-        specifier: 4.0.0-beta.57
-        version: 4.0.0-beta.57
-    devDependencies:
-      '@betalyra/effect-uai-core':
-        specifier: workspace:*
-        version: link:../core
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
-
   packages/core:
     dependencies:
       '@standard-schema/spec':
@@ -52,46 +39,59 @@ importers:
 
   packages/effect-uai: {}
 
-  packages/google:
+  packages/providers/anthropic:
     dependencies:
       effect:
         specifier: 4.0.0-beta.57
         version: 4.0.0-beta.57
     devDependencies:
-      '@betalyra/effect-uai-core':
+      '@effect-uai/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
 
-  packages/responses:
+  packages/providers/google:
     dependencies:
       effect:
         specifier: 4.0.0-beta.57
         version: 4.0.0-beta.57
     devDependencies:
-      '@betalyra/effect-uai-core':
+      '@effect-uai/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/providers/responses:
+    dependencies:
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
 
   recipes:
     dependencies:
-      '@betalyra/effect-uai-anthropic':
+      '@effect-uai/anthropic':
         specifier: workspace:*
-        version: link:../packages/anthropic
-      '@betalyra/effect-uai-core':
+        version: link:../packages/providers/anthropic
+      '@effect-uai/core':
         specifier: workspace:*
         version: link:../packages/core
-      '@betalyra/effect-uai-google':
+      '@effect-uai/google':
         specifier: workspace:*
-        version: link:../packages/google
-      '@betalyra/effect-uai-responses':
+        version: link:../packages/providers/google
+      '@effect-uai/responses':
         specifier: workspace:*
-        version: link:../packages/responses
+        version: link:../packages/providers/responses
       effect:
         specifier: 4.0.0-beta.57
         version: 4.0.0-beta.57

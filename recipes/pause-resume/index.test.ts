@@ -1,10 +1,10 @@
 import { Effect, Fiber, Latch, Ref, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
-import * as Items from "@betalyra/effect-uai-core/Items"
-import { LanguageModel } from "@betalyra/effect-uai-core/LanguageModel"
-import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
-import * as MockProvider from "@betalyra/effect-uai-core/testing/MockProvider"
-import * as Turn from "@betalyra/effect-uai-core/Turn"
+import * as Items from "@effect-uai/core/Items"
+import { LanguageModel } from "@effect-uai/core/LanguageModel"
+import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import * as MockProvider from "@effect-uai/core/testing/MockProvider"
+import * as Turn from "@effect-uai/core/Turn"
 
 describe("pause-resume", () => {
   const PROMPTS = ["prompt 1", "prompt 2", "prompt 3", "prompt 4", "prompt 5"]

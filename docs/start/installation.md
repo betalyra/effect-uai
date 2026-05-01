@@ -4,7 +4,7 @@ description: Install effect-uai packages.
 ---
 
 ```sh
-pnpm add @betalyra/effect-uai-core @betalyra/effect-uai-responses effect
+pnpm add @effect-uai/core @effect-uai/responses effect
 ```
 
 Each provider is its own package. The core package has no provider deps, so

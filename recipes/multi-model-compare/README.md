@@ -24,9 +24,9 @@ winner.
 ## What it shows
 
 - Building three providers from the three packages
-  ([`@betalyra/effect-uai-responses`](/providers/responses/),
-  [`@betalyra/effect-uai-google`](/providers/gemini/),
-  [`@betalyra/effect-uai-anthropic`](/providers/anthropic/)) and
+  ([`@effect-uai/responses`](/providers/responses/),
+  [`@effect-uai/google`](/providers/gemini/),
+  [`@effect-uai/anthropic`](/providers/anthropic/)) and
   treating them uniformly as `LanguageModelService` values.
 - Wrapping each in a small `memberStream` that tags every delta with
   the member's name.

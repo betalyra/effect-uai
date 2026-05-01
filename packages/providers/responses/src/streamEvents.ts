@@ -1,6 +1,6 @@
 import { Match, Schema } from "effect"
-import { matchType } from "@betalyra/effect-uai-core/Match"
-import type { TurnDelta } from "@betalyra/effect-uai-core/Turn"
+import { matchType } from "@effect-uai/core/Match"
+import type { TurnDelta } from "@effect-uai/core/Turn"
 import { WireOutputItem, WireResponseCompleted, turnFromCompleted } from "./codec.js"
 
 // ---------------------------------------------------------------------------

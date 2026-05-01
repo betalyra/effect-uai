@@ -79,7 +79,7 @@ export type Role = typeof Role.Type
 // Provider passthrough - every Item type carries this opaque slot.
 // The framework never reads or interprets it; provider modules decode
 // their own data via their own typed readers (see e.g.
-// the `@betalyra/effect-uai-responses` package).
+// the `@effect-uai/responses` package).
 // ---------------------------------------------------------------------------
 
 const ProviderData = Schema.optional(Schema.Unknown)

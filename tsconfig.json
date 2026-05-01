@@ -2,8 +2,9 @@
   "files": [],
   "references": [
     { "path": "./packages/core" },
-    { "path": "./packages/responses" },
-    { "path": "./packages/google" },
+    { "path": "./packages/providers/responses" },
+    { "path": "./packages/providers/google" },
+    { "path": "./packages/providers/anthropic" },
     { "path": "./recipes" }
   ]
 }

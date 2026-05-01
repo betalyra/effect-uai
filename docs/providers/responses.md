@@ -13,7 +13,7 @@ tool calls, and response storage are all first-class via the typed
 ## Install
 
 ```sh
-pnpm add @betalyra/effect-uai-core @betalyra/effect-uai-responses effect
+pnpm add @effect-uai/core @effect-uai/responses effect
 ```
 
 ## Wire it up
@@ -21,7 +21,7 @@ pnpm add @betalyra/effect-uai-core @betalyra/effect-uai-responses effect
 ```ts
 import { Config, Effect, Layer } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import { Responses, layer as responsesLayer } from "@betalyra/effect-uai-responses"
+import { Responses, layer as responsesLayer } from "@effect-uai/responses"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
@@ -87,7 +87,7 @@ On top of the core `CommonRequestOptions` (`tools`, `toolChoice`,
 
 ```ts
 import { Effect, Stream } from "effect"
-import { Responses } from "@betalyra/effect-uai-responses"
+import { Responses } from "@effect-uai/responses"
 
 const turn = Effect.gen(function* () {
   const oai = yield* Responses

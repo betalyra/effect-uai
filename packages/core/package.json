@@ -1,5 +1,5 @@
 {
-  "name": "@betalyra/effect-uai-core",
+  "name": "@effect-uai/core",
   "version": "0.1.0",
   "description": "Low-level primitives (loop, conversation, items, tools, streaming codecs) for building AI agents with Effect.",
   "keywords": [

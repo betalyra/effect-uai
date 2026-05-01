@@ -12,7 +12,7 @@ is a first-class option for the 2.5+ model line.
 ## Install
 
 ```sh
-pnpm add @betalyra/effect-uai-core @betalyra/effect-uai-google effect
+pnpm add @effect-uai/core @effect-uai/google effect
 ```
 
 ## Wire it up
@@ -20,7 +20,7 @@ pnpm add @betalyra/effect-uai-core @betalyra/effect-uai-google effect
 ```ts
 import { Config, Effect, Layer } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import { Gemini, layer as geminiLayer } from "@betalyra/effect-uai-google"
+import { Gemini, layer as geminiLayer } from "@effect-uai/google"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
@@ -78,7 +78,7 @@ On top of the core `CommonRequestOptions` (`tools`, `toolChoice`,
 
 ```ts
 import { Effect, Stream } from "effect"
-import { Gemini } from "@betalyra/effect-uai-google"
+import { Gemini } from "@effect-uai/google"
 
 const turn = Effect.gen(function* () {
   const gemini = yield* Gemini

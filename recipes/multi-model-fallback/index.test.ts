@@ -1,11 +1,11 @@
 import { Effect, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
-import * as AiError from "@betalyra/effect-uai-core/AiError"
-import * as Items from "@betalyra/effect-uai-core/Items"
-import type { LanguageModelService } from "@betalyra/effect-uai-core/LanguageModel"
-import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
-import * as MockProvider from "@betalyra/effect-uai-core/testing/MockProvider"
-import * as Turn from "@betalyra/effect-uai-core/Turn"
+import * as AiError from "@effect-uai/core/AiError"
+import * as Items from "@effect-uai/core/Items"
+import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
+import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import * as MockProvider from "@effect-uai/core/testing/MockProvider"
+import * as Turn from "@effect-uai/core/Turn"
 
 describe("multi-model-fallback", () => {
   interface Tier {

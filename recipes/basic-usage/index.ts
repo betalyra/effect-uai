@@ -19,13 +19,13 @@ import {
   Stream,
 } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import * as Items from "@betalyra/effect-uai-core/Items"
-import { loop, nextAfter, stop, streamUntilComplete } from "@betalyra/effect-uai-core/Loop"
-import { matchType } from "@betalyra/effect-uai-core/Match"
-import * as Tool from "@betalyra/effect-uai-core/Tool"
-import * as Toolkit from "@betalyra/effect-uai-core/Toolkit"
-import * as Turn from "@betalyra/effect-uai-core/Turn"
-import { Responses, layer as responsesLayer } from "@betalyra/effect-uai-responses"
+import * as Items from "@effect-uai/core/Items"
+import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { matchType } from "@effect-uai/core/Match"
+import * as Tool from "@effect-uai/core/Tool"
+import * as Toolkit from "@effect-uai/core/Toolkit"
+import * as Turn from "@effect-uai/core/Turn"
+import { Responses, layer as responsesLayer } from "@effect-uai/responses"
 
 // ---------------------------------------------------------------------------
 // Tool - get_current_time (uses Effect's DateTime)

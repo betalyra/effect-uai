@@ -1,7 +1,7 @@
 import { Array as Arr, Match, Option, Result, Schema, pipe } from "effect"
-import type { ContentBlock, Item, Message } from "@betalyra/effect-uai-core/Items"
-import { matchType } from "@betalyra/effect-uai-core/Match"
-import type { Turn } from "@betalyra/effect-uai-core/Turn"
+import type { ContentBlock, Item, Message } from "@effect-uai/core/Items"
+import { matchType } from "@effect-uai/core/Match"
+import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
 // Wire schemas - the subset of Gemini's streamGenerateContent payload we

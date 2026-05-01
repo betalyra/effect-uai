@@ -1,7 +1,7 @@
 # Recipes
 
 Working examples of common agent patterns, each composed from
-`@betalyra/effect-uai-core` primitives. Recipes are not published - they are
+`@effect-uai/core` primitives. Recipes are not published - they are
 type-checked, runnable demonstrations that double as living regression tests
 for the primitive surface.
 

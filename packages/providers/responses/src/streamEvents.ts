@@ -1,11 +1,11 @@
 import { Match, Schema } from "effect"
 import { matchType } from "@effect-uai/core/Match"
-import type { TurnDelta } from "@effect-uai/core/Turn"
+import type { TurnEvent } from "@effect-uai/core/Turn"
 import { WireOutputItem, WireResponseCompleted, turnFromCompleted } from "./codec.js"
 
 // ---------------------------------------------------------------------------
 // Schemas for the SSE event payloads we care about. The Responses API ships
-// many event types; we model only the ones that map to a `TurnDelta`. All
+// many event types; we model only the ones that map to a `TurnEvent`. All
 // others are silently ignored at the dispatch site.
 // ---------------------------------------------------------------------------
 
@@ -25,8 +25,18 @@ const FunctionArgsDelta = Schema.Struct({
   delta: Schema.String,
 })
 
+const ReasoningTextDelta = Schema.Struct({
+  type: Schema.Literal("response.reasoning_text.delta"),
+  delta: Schema.String,
+})
+
 const ReasoningSummaryDelta = Schema.Struct({
   type: Schema.Literal("response.reasoning_summary_text.delta"),
+  delta: Schema.String,
+})
+
+const RefusalDelta = Schema.Struct({
+  type: Schema.Literal("response.refusal.delta"),
   delta: Schema.String,
 })
 
@@ -42,16 +52,46 @@ const ErrorEvent = Schema.Struct({
 })
 
 /**
- * Tagged union of every event we map to a TurnDelta. The `type` field is
- * the discriminator (matching the Responses API's `event:` SSE name).
+ * Catch-all variant for wire events that fail to decode against any known
+ * schema, plus events that fail to JSON-parse. The decoder never produces
+ * this directly - it's synthesized by `sseEventToProviderEvent` when
+ * `decodeKnown` fails.
+ */
+const Unknown = Schema.Struct({
+  type: Schema.Literal("_unknown"),
+  raw: Schema.Unknown,
+})
+
+/**
+ * Internal: union of variants we actually know how to decode from the wire.
+ * Used as the decode target; failures are caught and re-emitted as `Unknown`.
+ */
+export const KnownProviderEvent = Schema.Union([
+  OutputItemAdded,
+  OutputTextDelta,
+  FunctionArgsDelta,
+  ReasoningTextDelta,
+  ReasoningSummaryDelta,
+  RefusalDelta,
+  Completed,
+  ErrorEvent,
+])
+
+/**
+ * Public: every event the native stream can emit. Discriminated on `type`.
+ * The `_unknown` branch closes the cardinality so downstream `Match.exhaustive`
+ * cannot silently miss a wire event we didn't model.
  */
 export const ProviderEvent = Schema.Union([
   OutputItemAdded,
   OutputTextDelta,
   FunctionArgsDelta,
+  ReasoningTextDelta,
   ReasoningSummaryDelta,
+  RefusalDelta,
   Completed,
   ErrorEvent,
+  Unknown,
 ])
 export type ProviderEvent = typeof ProviderEvent.Type
 
@@ -74,7 +114,7 @@ export const makeCallIdLookup = (): CallIdLookup => {
 }
 
 /**
- * Translate a decoded provider event into zero-or-more `TurnDelta`s.
+ * Translate a decoded provider event into zero-or-more `TurnEvent`s.
  * Mutates `lookup` to record `(item_id → call_id)` from `output_item.added`
  * so subsequent `function_call_arguments.delta` events can be tagged with
  * the right call id.
@@ -82,7 +122,7 @@ export const makeCallIdLookup = (): CallIdLookup => {
 export const eventToDeltas = (
   event: ProviderEvent,
   lookup: CallIdLookup,
-): ReadonlyArray<TurnDelta> =>
+): ReadonlyArray<TurnEvent> =>
   Match.value(event).pipe(
     matchType("response.output_item.added", ({ item }) => {
       if (item.type !== "function_call") return []
@@ -104,12 +144,22 @@ export const eventToDeltas = (
         ? []
         : [{ type: "tool_call_args_delta" as const, call_id, delta }]
     }),
+    matchType("response.reasoning_text.delta", ({ delta }) => [
+      { type: "reasoning_delta" as const, text: delta, kind: "trace" as const },
+    ]),
     matchType("response.reasoning_summary_text.delta", ({ delta }) => [
-      { type: "reasoning_summary_delta" as const, text: delta },
+      { type: "reasoning_delta" as const, text: delta, kind: "summary" as const },
+    ]),
+    matchType("response.refusal.delta", ({ delta }) => [
+      { type: "refusal_delta" as const, text: delta },
     ]),
     matchType("response.completed", ({ response }) => [
       { type: "turn_complete" as const, turn: turnFromCompleted(response) },
     ]),
     matchType("error", () => []), // surfaced separately as AiError
+    // No silent drops: unknown wire events flow through `streamNative` but
+    // produce no canonical delta. Step 3 (canonical `other` event) replaces
+    // this with a forwarded `other` delta on `TurnEvent`.
+    matchType("_unknown", () => []),
     Match.exhaustive,
   )

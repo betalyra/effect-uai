@@ -131,7 +131,7 @@ describe("multi-model-fallback", () => {
         Stream.unwrap(
           Effect.sync(() => {
             secondaryCalls++
-            return Stream.fromIterable<Turn.TurnDelta>([
+            return Stream.fromIterable<Turn.TurnEvent>([
               { type: "turn_complete", turn: finalTurn("should-not-run") },
             ])
           }),

@@ -50,7 +50,7 @@ export interface RatePoint<A> {
  * computed from a user-supplied weight function.
  *
  * The weight is the unit you care about - bytes, tokens, error count, etc.
- * For tokens-per-second on `TurnDelta`, pass:
+ * For tokens-per-second on `TurnEvent`, pass:
  *
  *   `(d) => d.type === "text_delta" ? countTokens(d.text) : 0`
  *

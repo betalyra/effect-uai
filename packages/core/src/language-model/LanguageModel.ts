@@ -2,7 +2,7 @@ import { Context, Effect, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { Item } from "../domain/Items.js"
 import type { ToolDescriptor } from "../tool/Tool.js"
-import { isTurnComplete, type Turn, type TurnDelta } from "../domain/Turn.js"
+import { isTurnComplete, type Turn, type TurnEvent } from "../domain/Turn.js"
 
 /**
  * Cross-provider request options. Anything specific to a single provider
@@ -25,7 +25,7 @@ export interface LanguageModelService {
   readonly streamTurn: (
     history: ReadonlyArray<Item>,
     options?: CommonRequestOptions,
-  ) => Stream.Stream<TurnDelta, AiError.AiError>
+  ) => Stream.Stream<TurnEvent, AiError.AiError>
 }
 
 export class LanguageModel extends Context.Service<LanguageModel, LanguageModelService>()(
@@ -38,7 +38,7 @@ export class LanguageModel extends Context.Service<LanguageModel, LanguageModelS
 export const streamTurn = (
   history: ReadonlyArray<Item>,
   options?: CommonRequestOptions,
-): Stream.Stream<TurnDelta, AiError.AiError, LanguageModel> =>
+): Stream.Stream<TurnEvent, AiError.AiError, LanguageModel> =>
   Stream.unwrap(Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(history, options)))
 
 /**

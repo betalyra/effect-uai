@@ -2,7 +2,7 @@ import { Duration, Effect, Layer, Ref, Schedule, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { Item } from "../domain/Items.js"
 import { LanguageModel, type LanguageModelService } from "../language-model/LanguageModel.js"
-import type { Turn, TurnDelta } from "../domain/Turn.js"
+import type { Turn, TurnEvent } from "../domain/Turn.js"
 
 export interface MockOptions {
   /**
@@ -26,8 +26,8 @@ export interface MockRecorder {
   }>
 }
 
-const turnToDeltas = (turn: Turn): ReadonlyArray<TurnDelta> => {
-  const deltas: TurnDelta[] = []
+const turnToDeltas = (turn: Turn): ReadonlyArray<TurnEvent> => {
+  const deltas: TurnEvent[] = []
   for (const item of turn.items) {
     if (item.type === "message" && item.role === "assistant") {
       for (const block of item.content) {
@@ -47,14 +47,14 @@ const turnToDeltas = (turn: Turn): ReadonlyArray<TurnDelta> => {
         delta: item.arguments,
       })
     } else if (item.type === "reasoning" && item.summary !== undefined) {
-      deltas.push({ type: "reasoning_summary_delta", text: item.summary })
+      deltas.push({ type: "reasoning_delta", text: item.summary, kind: "summary" })
     }
   }
   deltas.push({ type: "turn_complete", turn })
   return deltas
 }
 
-const pacedDeltas = (turn: Turn, options?: MockOptions): Stream.Stream<TurnDelta> => {
+const pacedDeltas = (turn: Turn, options?: MockOptions): Stream.Stream<TurnEvent> => {
   const base = Stream.fromIterable(turnToDeltas(turn))
   return options?.deltaInterval === undefined
     ? base

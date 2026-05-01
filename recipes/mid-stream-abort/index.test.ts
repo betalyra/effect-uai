@@ -18,7 +18,7 @@ describe("mid-stream-abort", () => {
   ): LanguageModelService => ({
     streamTurn: () =>
       pipe(
-        Stream.fromIterable<Turn.TurnDelta>([
+        Stream.fromIterable<Turn.TurnEvent>([
           { type: "text_delta", text: "one " },
           { type: "text_delta", text: "two " },
           { type: "text_delta", text: "three " },

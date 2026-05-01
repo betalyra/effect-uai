@@ -86,7 +86,7 @@ describe("basic-usage", () => {
     )
 
     const turnCompletes = events.filter(
-      (e): e is Extract<Turn.TurnDelta, { type: "turn_complete" }> =>
+      (e): e is Extract<Turn.TurnEvent, { type: "turn_complete" }> =>
         "type" in e && e.type === "turn_complete",
     )
     const toolOutputs = events.filter(

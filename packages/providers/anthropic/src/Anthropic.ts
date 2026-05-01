@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Redacted, Result, Schema, Stream, pipe } from "effect"
+import { Context, Effect, Layer, Match, Option, Redacted, Result, Schema, Stream, pipe } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { Item } from "@effect-uai/core/Items"
@@ -7,9 +7,9 @@ import {
   LanguageModel,
   type LanguageModelService,
 } from "@effect-uai/core/LanguageModel"
-import { JsonParseError } from "@effect-uai/core/JSONL"
+import { matchType } from "@effect-uai/core/Match"
 import * as SSE from "@effect-uai/core/SSE"
-import type { TurnDelta } from "@effect-uai/core/Turn"
+import type { TurnEvent } from "@effect-uai/core/Turn"
 import {
   type Accumulator,
   type ThinkingConfig,
@@ -18,7 +18,7 @@ import {
   emptyAccumulator,
 } from "./codec.js"
 import type { AnthropicModel } from "./models.js"
-import { ProviderEvent, applyEvent } from "./streamEvents.js"
+import { KnownProviderEvent, ProviderEvent, applyEvent } from "./streamEvents.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -45,10 +45,31 @@ export interface AnthropicRequestOptions extends CommonRequestOptions {
 }
 
 export interface AnthropicService {
+  /**
+   * Stream the provider's native event vocabulary (post-SSE-decode).
+   * Use this when you need full vendor fidelity (e.g. `signature_delta` for
+   * encrypted reasoning state). For provider-portable code, use `streamTurn`.
+   */
+  readonly streamNative: (
+    history: ReadonlyArray<Item>,
+    options?: AnthropicRequestOptions,
+  ) => Stream.Stream<ProviderEvent, AiError.AiError>
+  /**
+   * Stream canonical `TurnEvent`s. Implemented as
+   * `streamNative |> toCanonical`.
+   */
   readonly streamTurn: (
     history: ReadonlyArray<Item>,
     options?: AnthropicRequestOptions,
-  ) => Stream.Stream<TurnDelta, AiError.AiError>
+  ) => Stream.Stream<TurnEvent, AiError.AiError>
+  /**
+   * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
+   * Stateful (threads an `Accumulator` for tool-call lookup and
+   * accumulator-to-Turn assembly).
+   */
+  readonly toCanonical: <E, R>(
+    s: Stream.Stream<ProviderEvent, E, R>,
+  ) => Stream.Stream<TurnEvent, E, R>
 }
 
 /**
@@ -124,69 +145,94 @@ const toolChoiceWire = (
 // SSE event → ProviderEvent
 // ---------------------------------------------------------------------------
 
-const decodeProviderEvent = Schema.decodeUnknownEffect(ProviderEvent)
+const decodeKnown = Schema.decodeUnknownEffect(KnownProviderEvent)
 
-const sseEventToProviderEvent = (
-  ev: SSE.Event,
-): Effect.Effect<Option.Option<ProviderEvent>> =>
+const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
+
+/**
+ * Parse one SSE event's `data` payload into a typed `ProviderEvent`. Never
+ * fails: JSON-parse and schema-decode failures both produce a synthesized
+ * `_unknown` event so consumers of `streamNative` never silently miss a
+ * wire event we didn't model.
+ */
+const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
   Effect.try({
     try: () => JSON.parse(ev.data) as unknown,
-    catch: (cause) => new JsonParseError({ line: ev.data, cause }),
-  }).pipe(Effect.flatMap(decodeProviderEvent), Effect.option)
+    catch: () => ev.data,
+  }).pipe(
+    Effect.flatMap((parsed) =>
+      decodeKnown(parsed).pipe(Effect.orElseSucceed(() => makeUnknown(parsed))),
+    ),
+    Effect.orElseSucceed(() => makeUnknown(ev.data)),
+  )
 
 // ---------------------------------------------------------------------------
-// Per-event derivation of TurnDeltas. Drives off the new accumulator and the
+// Per-event derivation of TurnEvents. Drives off the new accumulator and the
 // raw event, since some deltas (`tool_call_args_delta`) need the call_id
 // which lives on the accumulator's per-index block.
 // ---------------------------------------------------------------------------
 
 const deltasFromEvent = (
-  prev: Accumulator,
   next: Accumulator,
   event: ProviderEvent,
-): ReadonlyArray<TurnDelta> => {
-  if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
-    return [
-      {
-        type: "tool_call_start",
-        call_id: event.content_block.id,
-        name: event.content_block.name,
-      },
-    ]
-  }
-  if (event.type === "content_block_delta") {
-    if (event.delta.type === "text_delta") {
-      return [{ type: "text_delta", text: event.delta.text }]
-    }
-    if (event.delta.type === "thinking_delta") {
-      return [{ type: "reasoning_summary_delta", text: event.delta.thinking }]
-    }
-    if (event.delta.type === "input_json_delta") {
-      const block = next.blocks[event.index]
-      if (block === undefined) return []
-      const callId = Option.getOrElse(block.id, () => "")
-      return callId.length === 0
-        ? []
-        : [
+): ReadonlyArray<TurnEvent> =>
+  Match.value(event).pipe(
+    matchType("content_block_start", (e) =>
+      e.content_block.type === "tool_use"
+        ? [
             {
-              type: "tool_call_args_delta",
-              call_id: callId,
-              delta: event.delta.partial_json,
+              type: "tool_call_start" as const,
+              call_id: e.content_block.id,
+              name: e.content_block.name,
             },
           ]
-    }
-    return []
-  }
-  if (event.type === "message_stop") {
-    return [{ type: "turn_complete", turn: accumulatorToTurn(next) }]
-  }
-  // Reference `prev` so it remains part of the readable signature even
-  // though no current path needs it. This stays a real parameter so that
-  // future deltas (e.g. usage diffs) can compute against the previous
-  // accumulator state without an API change.
-  void prev
-  return []
-}
+        : [],
+    ),
+    matchType("content_block_delta", (e) =>
+      Match.value(e.delta).pipe(
+        matchType("text_delta", (d) => [{ type: "text_delta" as const, text: d.text }]),
+        matchType("thinking_delta", (d) => [
+          { type: "reasoning_delta" as const, text: d.thinking, kind: "trace" as const },
+        ]),
+        matchType("input_json_delta", (d) => {
+          const block = next.blocks[e.index]
+          if (block === undefined) return []
+          const callId = Option.getOrElse(block.id, () => "")
+          return callId.length === 0
+            ? []
+            : [
+                {
+                  type: "tool_call_args_delta" as const,
+                  call_id: callId,
+                  delta: d.partial_json,
+                },
+              ]
+        }),
+        // Encrypted reasoning state - flows through `streamNative` but has
+        // no canonical representation.
+        matchType("signature_delta", () => []),
+        Match.exhaustive,
+      ),
+    ),
+    matchType("message_start", (e) =>
+      e.message.usage === undefined
+        ? []
+        : [{ type: "usage_update" as const, usage: next.usage }],
+    ),
+    matchType("message_delta", (e) =>
+      e.usage === undefined
+        ? []
+        : [{ type: "usage_update" as const, usage: next.usage }],
+    ),
+    matchType("message_stop", () => [
+      { type: "turn_complete" as const, turn: accumulatorToTurn(next) },
+    ]),
+    matchType("content_block_stop", () => []),
+    matchType("ping", () => []),
+    matchType("error", () => []),
+    matchType("_unknown", () => []),
+    Match.exhaustive,
+  )
 
 // ---------------------------------------------------------------------------
 // Service implementation
@@ -206,13 +252,13 @@ const httpStatusError = (status: number, body: string): AiError.AiError => {
   return new AiError.InvalidRequest({ provider, raw })
 }
 
-const buildStream = (cfg: Config) => {
+const buildNativeStream = (cfg: Config) => {
   const baseUrl = cfg.baseUrl ?? "https://api.anthropic.com"
   const url = `${baseUrl}/v1/messages`
   return (
     history: ReadonlyArray<Item>,
     options: Option.Option<AnthropicRequestOptions>,
-  ): Stream.Stream<TurnDelta, AiError.AiError, HttpClient.HttpClient> =>
+  ): Stream.Stream<ProviderEvent, AiError.AiError, HttpClient.HttpClient> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const optionsField = <K extends keyof AnthropicRequestOptions>(
@@ -275,37 +321,37 @@ const buildStream = (cfg: Config) => {
               new AiError.Unavailable({ provider: "anthropic", raw: cause }),
           ),
           SSE.fromBytes,
-          Stream.mapEffect((ev) =>
-            sseEventToProviderEvent(ev).pipe(
-              Effect.mapError(
-                (cause): AiError.AiError =>
-                  new AiError.Unavailable({ provider: "anthropic", raw: cause }),
-              ),
-            ),
-          ),
-          Stream.flatMap(
-            Option.match({
-              onNone: () => Stream.empty,
-              onSome: (event) =>
-                event.type === "error"
-                  ? Stream.fail(
-                      new AiError.Unavailable({ provider: "anthropic", raw: event }),
-                    )
-                  : Stream.succeed(event),
-            }),
-          ),
-          Stream.mapAccum(
-            (): Accumulator => emptyAccumulator,
-            (acc, event) => {
-              const next = applyEvent(acc, event)
-              const deltas = deltasFromEvent(acc, next, event)
-              return [next, deltas] as const
-            },
+          Stream.mapEffect(sseEventToProviderEvent),
+          Stream.flatMap((event) =>
+            event.type === "error"
+              ? Stream.fail(
+                  new AiError.Unavailable({ provider: "anthropic", raw: event }),
+                )
+              : Stream.succeed(event),
           ),
         )
       }),
     )
 }
+
+/**
+ * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
+ * Threads a fresh `Accumulator` per stream so tool-call lookup and
+ * `accumulatorToTurn` assembly work correctly across the run.
+ */
+export const toCanonical = <E, R>(
+  s: Stream.Stream<ProviderEvent, E, R>,
+): Stream.Stream<TurnEvent, E, R> =>
+  s.pipe(
+    Stream.mapAccum(
+      () => emptyAccumulator,
+      (acc, event) => {
+        const next = applyEvent(acc, event)
+        const deltas = deltasFromEvent(next, event)
+        return [next, deltas] as const
+      },
+    ),
+  )
 
 // ---------------------------------------------------------------------------
 // Constructors
@@ -320,12 +366,17 @@ const buildStream = (cfg: Config) => {
 export const make = (
   cfg: Config,
 ): Effect.Effect<AnthropicService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
-    streamTurn: (history, options) =>
-      buildStream(cfg)(history, Option.fromUndefinedOr(options)).pipe(
+  Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
+    const streamNative: AnthropicService["streamNative"] = (history, options) =>
+      buildNativeStream(cfg)(history, Option.fromUndefinedOr(options)).pipe(
         Stream.provideService(HttpClient.HttpClient, client),
-      ),
-  }))
+      )
+    return {
+      streamNative,
+      streamTurn: (history, options) => toCanonical(streamNative(history, options)),
+      toCanonical,
+    }
+  })
 
 /**
  * Layer that registers both the provider-specific `Anthropic` tag and the

@@ -10,6 +10,12 @@ import type { Turn } from "@effect-uai/core/Turn"
 
 const TextPart = Schema.Struct({
   text: Schema.String,
+  /**
+   * Gemini's flag for chain-of-thought parts. When `true`, the part is
+   * reasoning trace, not the model's user-facing answer. Maps onto
+   * `reasoning_delta { kind: "trace" }` in the canonical view.
+   */
+  thought: Schema.optional(Schema.Boolean),
 })
 
 const Part = Schema.Union([TextPart])
@@ -137,6 +143,7 @@ const finishReasonToStop = (reason: Option.Option<string>): Turn["stop_reason"] 
 
 export interface Accumulator {
   readonly text: string
+  readonly reasoning: string
   readonly finishReason: Option.Option<string>
   readonly usage: {
     readonly input_tokens?: number
@@ -149,20 +156,43 @@ export interface Accumulator {
 
 export const emptyAccumulator: Accumulator = {
   text: "",
+  reasoning: "",
   finishReason: Option.none(),
   usage: {},
 }
 
+/**
+ * One part's worth of streamable text: either the model's answer
+ * (`kind: "text"`) or chain-of-thought (`kind: "reasoning"`). Emitted
+ * in wire order so consumers can interleave faithfully.
+ */
+export type ChunkPart =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "reasoning"; readonly text: string }
+
 export interface ChunkResult {
   readonly accumulator: Accumulator
-  readonly chunkText: string
+  readonly parts: ReadonlyArray<ChunkPart>
   readonly finished: boolean
 }
 
-const chunkText = (chunk: WireChunk): string =>
+const chunkParts = (chunk: WireChunk): ReadonlyArray<ChunkPart> =>
   pipe(
     chunk.candidates?.[0]?.content?.parts ?? [],
-    Arr.map((p) => p.text),
+    Arr.filterMap((p) =>
+      p.text.length === 0
+        ? Result.failVoid
+        : Result.succeed({
+            kind: p.thought === true ? ("reasoning" as const) : ("text" as const),
+            text: p.text,
+          }),
+    ),
+  )
+
+const sumByKind = (parts: ReadonlyArray<ChunkPart>, kind: ChunkPart["kind"]): string =>
+  pipe(
+    parts,
+    Arr.filterMap((p) => (p.kind === kind ? Result.succeed(p.text) : Result.failVoid)),
   ).join("")
 
 const mergeUsage = (
@@ -187,13 +217,14 @@ const mergeUsage = (
       }
 
 export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => {
-  const text = chunkText(chunk)
+  const parts = chunkParts(chunk)
   const finishReason = Option.fromNullishOr(chunk.candidates?.[0]?.finishReason)
   return {
-    chunkText: text,
+    parts,
     finished: Option.isSome(finishReason),
     accumulator: {
-      text: acc.text + text,
+      text: acc.text + sumByKind(parts, "text"),
+      reasoning: acc.reasoning + sumByKind(parts, "reasoning"),
       finishReason: Option.orElse(finishReason, () => acc.finishReason),
       usage: mergeUsage(acc.usage, chunk.usageMetadata),
     },
@@ -203,14 +234,18 @@ export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => 
 export const accumulatorToTurn = (acc: Accumulator): Turn => ({
   stop_reason: finishReasonToStop(acc.finishReason),
   usage: { ...acc.usage },
-  items:
-    acc.text.length === 0
+  items: [
+    ...(acc.reasoning.length > 0
+      ? [{ type: "reasoning" as const, summary: acc.reasoning }]
+      : []),
+    ...(acc.text.length === 0
       ? []
       : [
           {
-            type: "message",
-            role: "assistant",
-            content: [{ type: "output_text", text: acc.text }],
+            type: "message" as const,
+            role: "assistant" as const,
+            content: [{ type: "output_text" as const, text: acc.text }],
           },
-        ],
+        ]),
+  ],
 })

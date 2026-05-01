@@ -19,7 +19,7 @@
  */
 import { Cause, Channel, Data, Effect, Exit, Function, Option, Ref, Scope, Stream } from "effect"
 import { IncompleteTurn } from "../domain/AiError.js"
-import { isTurnComplete, type Turn, type TurnDelta } from "../domain/Turn.js"
+import { isTurnComplete, type Turn, type TurnEvent } from "../domain/Turn.js"
 
 // ---------------------------------------------------------------------------
 // Event type - the body's emit shape
@@ -83,7 +83,7 @@ export const stopAfter = <A, E, R>(
 // ---------------------------------------------------------------------------
 
 /**
- * Lift a provider's `Stream<TurnDelta>` into a loop body's `Stream<Event<TurnDelta | A, S>>`.
+ * Lift a provider's `Stream<TurnEvent>` into a loop body's `Stream<Event<TurnEvent | A, S>>`.
  * Each delta passes through as `value(delta)` (including the terminal
  * `turn_complete`, so the consumer sees turn boundaries naturally). Once
  * the terminal arrives, `then(turn)` runs and its returned stream of loop
@@ -102,13 +102,13 @@ export const streamUntilComplete =
     then: (turn: Turn) => Effect.Effect<Stream.Stream<Event<A, S>, E2, R2>, E2, R2>,
   ) =>
   <E, R>(
-    deltas: Stream.Stream<TurnDelta, E, R>,
-  ): Stream.Stream<Event<TurnDelta | A, S>, E | E2 | IncompleteTurn, R | R2> =>
+    deltas: Stream.Stream<TurnEvent, E, R>,
+  ): Stream.Stream<Event<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const turnRef = yield* Ref.make<Option.Option<Turn>>(Option.none())
 
-        const events: Stream.Stream<Event<TurnDelta, S>, E, R> = deltas.pipe(
+        const events: Stream.Stream<Event<TurnEvent, S>, E, R> = deltas.pipe(
           Stream.tap((delta) =>
             isTurnComplete(delta) ? Ref.set(turnRef, Option.some(delta.turn)) : Effect.void,
           ),

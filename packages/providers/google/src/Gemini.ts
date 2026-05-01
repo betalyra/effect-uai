@@ -9,9 +9,8 @@ import {
 } from "@effect-uai/core/LanguageModel"
 import { JsonParseError } from "@effect-uai/core/JSONL"
 import * as SSE from "@effect-uai/core/SSE"
-import type { TurnDelta } from "@effect-uai/core/Turn"
+import type { TurnEvent } from "@effect-uai/core/Turn"
 import {
-  type Accumulator,
   type GenerationConfig,
   WireChunk,
   accumulatorToTurn,
@@ -20,6 +19,15 @@ import {
   ingestChunk,
 } from "./codec.js"
 import type { GoogleModel } from "./models.js"
+
+/**
+ * Gemini's native event vocabulary. Aliased from `WireChunk` so the public
+ * surface matches `@effect-uai/responses` and `@effect-uai/anthropic`. Each
+ * `ProviderEvent` is a full `GenerateContentResponse` chunk (not a per-field
+ * delta) - that's how Gemini's SSE works.
+ */
+export const ProviderEvent = WireChunk
+export type ProviderEvent = WireChunk
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -35,10 +43,33 @@ export interface GeminiRequestOptions extends CommonRequestOptions {
 }
 
 export interface GeminiService {
+  /**
+   * Stream the provider's native event vocabulary (post-SSE-decode). For
+   * Gemini, each event is a full `GenerateContentResponse` chunk. Use this
+   * when you need access to fields the canonical view doesn't surface
+   * (`thoughtSignature`, granular `safetyRatings`, etc.). For
+   * provider-portable code, use `streamTurn`.
+   */
+  readonly streamNative: (
+    history: ReadonlyArray<Item>,
+    options?: GeminiRequestOptions,
+  ) => Stream.Stream<ProviderEvent, AiError.AiError>
+  /**
+   * Stream canonical `TurnEvent`s. Implemented as
+   * `streamNative |> toCanonical`.
+   */
   readonly streamTurn: (
     history: ReadonlyArray<Item>,
     options?: GeminiRequestOptions,
-  ) => Stream.Stream<TurnDelta, AiError.AiError>
+  ) => Stream.Stream<TurnEvent, AiError.AiError>
+  /**
+   * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
+   * Threads a fresh `Accumulator` so chunk-level text/usage merging happens
+   * per stream.
+   */
+  readonly toCanonical: <E, R>(
+    s: Stream.Stream<ProviderEvent, E, R>,
+  ) => Stream.Stream<TurnEvent, E, R>
 }
 
 /**
@@ -78,11 +109,18 @@ const buildGenerationConfig = (options: GeminiRequestOptions): Option.Option<Gen
 
 const decodeChunk = Schema.decodeUnknownEffect(WireChunk)
 
-const sseEventToChunk = (ev: SSE.Event): Effect.Effect<Option.Option<WireChunk>, JsonParseError> =>
+/**
+ * Parse one SSE event's `data` payload into a `WireChunk`. Unlike the other
+ * providers, Gemini's wire vocabulary is non-discriminated (a single
+ * permissive struct, all fields optional) - there's no natural shape for
+ * an `_unknown` variant, so JSON parse / schema decode failures flow
+ * through as transport errors rather than being silently dropped.
+ */
+const sseEventToChunk = (ev: SSE.Event) =>
   Effect.try({
     try: () => JSON.parse(ev.data) as unknown,
     catch: (cause) => new JsonParseError({ line: ev.data, cause }),
-  }).pipe(Effect.flatMap(decodeChunk), Effect.option)
+  }).pipe(Effect.flatMap(decodeChunk))
 
 // ---------------------------------------------------------------------------
 // Service implementation
@@ -101,12 +139,12 @@ const httpStatusError = (status: number, body: string): AiError.AiError => {
   return new AiError.InvalidRequest({ provider, raw })
 }
 
-const buildStream = (cfg: Config) => {
+const buildNativeStream = (cfg: Config) => {
   const baseUrl = cfg.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta"
   return (
     history: ReadonlyArray<Item>,
     options: Option.Option<GeminiRequestOptions>,
-  ): Stream.Stream<TurnDelta, AiError.AiError, HttpClient.HttpClient> =>
+  ): Stream.Stream<ProviderEvent, AiError.AiError, HttpClient.HttpClient> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
@@ -144,36 +182,42 @@ const buildStream = (cfg: Config) => {
               ),
             ),
           ),
-          Stream.flatMap(
-            Option.match({
-              onNone: () => Stream.empty,
-              onSome: Stream.succeed,
-            }),
-          ),
-          Stream.mapAccum(
-            (): Accumulator => emptyAccumulator,
-            (acc, chunk) => {
-              const result = ingestChunk(acc, chunk)
-              const deltas: ReadonlyArray<TurnDelta> = [
-                ...(result.chunkText.length > 0
-                  ? [{ type: "text_delta" as const, text: result.chunkText }]
-                  : []),
-                ...(result.finished
-                  ? [
-                      {
-                        type: "turn_complete" as const,
-                        turn: accumulatorToTurn(result.accumulator),
-                      },
-                    ]
-                  : []),
-              ]
-              return [result.accumulator, deltas] as const
-            },
-          ),
         )
       }),
     )
 }
+
+/**
+ * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
+ * Threads a fresh `Accumulator` so chunk-level text/usage merging works
+ * across the run.
+ */
+export const toCanonical = <E, R>(
+  s: Stream.Stream<ProviderEvent, E, R>,
+): Stream.Stream<TurnEvent, E, R> =>
+  s.pipe(
+    Stream.mapAccum(
+      () => emptyAccumulator,
+      (acc, chunk) => {
+        const result = ingestChunk(acc, chunk)
+        const partDeltas = result.parts.map((p) =>
+          p.kind === "text"
+            ? { type: "text_delta" as const, text: p.text }
+            : { type: "reasoning_delta" as const, text: p.text, kind: "trace" as const },
+        )
+        const deltas = result.finished
+          ? [
+              ...partDeltas,
+              {
+                type: "turn_complete" as const,
+                turn: accumulatorToTurn(result.accumulator),
+              },
+            ]
+          : partDeltas
+        return [result.accumulator, deltas] as const
+      },
+    ),
+  )
 
 // ---------------------------------------------------------------------------
 // Constructors
@@ -186,12 +230,17 @@ const buildStream = (cfg: Config) => {
  * `layer`.
  */
 export const make = (cfg: Config): Effect.Effect<GeminiService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
-    streamTurn: (history, options) =>
-      buildStream(cfg)(history, Option.fromUndefinedOr(options)).pipe(
+  Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
+    const streamNative: GeminiService["streamNative"] = (history, options) =>
+      buildNativeStream(cfg)(history, Option.fromUndefinedOr(options)).pipe(
         Stream.provideService(HttpClient.HttpClient, client),
-      ),
-  }))
+      )
+    return {
+      streamNative,
+      streamTurn: (history, options) => toCanonical(streamNative(history, options)),
+      toCanonical,
+    }
+  })
 
 /**
  * Layer that registers both the provider-specific `Gemini` tag and the

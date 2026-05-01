@@ -10,7 +10,7 @@ export interface Member {
 }
 
 export type CouncilEvent =
-  | { readonly type: "delta"; readonly member: string; readonly delta: Turn.TurnDelta }
+  | { readonly type: "delta"; readonly member: string; readonly delta: Turn.TurnEvent }
   | { readonly type: "error"; readonly member: string; readonly error: AiError.AiError }
 
 const memberStream = (

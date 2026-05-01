@@ -99,15 +99,16 @@ describe("auto-compaction", () => {
           if (shouldCompact(state)) {
             const toCompact = state.history.slice(0, -KEEP_RECENT_ITEMS)
             return lm
-              .streamTurn(
-                [
+              .streamTurn({
+                history: [
                   ...toCompact,
                   Items.userText(
                     "Summarize the conversation above in 2-3 sentences for use as context.",
                   ),
                 ],
-                { tools: [] },
-              )
+                model: "mock",
+                tools: [],
+              })
               .pipe(
                 streamUntilComplete((turn) =>
                   Effect.sync(() => {
@@ -122,7 +123,7 @@ describe("auto-compaction", () => {
               )
           }
 
-          return lm.streamTurn(state.history, { tools: [] }).pipe(
+          return lm.streamTurn({ history: state.history, model: "mock", tools: [] }).pipe(
             streamUntilComplete((turn) =>
               Effect.sync(() => {
                 const next = advance(state, turn)

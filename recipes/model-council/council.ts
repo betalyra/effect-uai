@@ -6,6 +6,7 @@ import type * as Turn from "@effect-uai/core/Turn"
 
 export interface Member {
   readonly name: string
+  readonly model: string
   readonly service: LanguageModelService
 }
 
@@ -58,9 +59,7 @@ const judgeHistory = (
     'You are an impartial judge. Reply ONLY with a JSON object: {"score": number 0-10, "rationale": short string}.',
   ),
   ...base,
-  Items.userText(
-    `Candidate answer from ${subject}:\n${subjectAnswer}\n\nScore the answer.`,
-  ),
+  Items.userText(`Candidate answer from ${subject}:\n${subjectAnswer}\n\nScore the answer.`),
 ]
 
 const parseScore = (raw: string): Result.Result<Score, AiError.AiError> =>
@@ -80,14 +79,14 @@ const judgeStream = (
   history: ReadonlyArray<Items.Item>,
 ): Stream.Stream<CouncilEvent> =>
   judge.service
-    .streamTurn(judgeHistory(history, subject, subjectAnswer), {})
+    .streamTurn({
+      history: judgeHistory(history, subject, subjectAnswer),
+      model: judge.model,
+    })
     .pipe(
       Stream.mapAccum(
         () => "",
-        (
-          acc,
-          delta,
-        ): readonly [string, ReadonlyArray<CouncilEvent>] => {
+        (acc, delta): readonly [string, ReadonlyArray<CouncilEvent>] => {
           if (delta.type === "text_delta") return [acc + delta.text, []]
           if (delta.type !== "turn_complete") return [acc, []]
           return Result.match(parseScore(acc), {
@@ -132,26 +131,17 @@ const candidatePipeline = (
   judges: ReadonlyArray<Member>,
   history: ReadonlyArray<Items.Item>,
 ): Stream.Stream<CouncilEvent> =>
-  member.service.streamTurn(history, {}).pipe(
+  member.service.streamTurn({ history, model: member.model }).pipe(
     Stream.mapAccum(
       () => "",
       (acc, delta): readonly [string, ReadonlyArray<CouncilEvent>] => {
         if (delta.type === "text_delta") {
-          return [
-            acc + delta.text,
-            [{ type: "candidate_delta", member: member.name, delta }],
-          ]
+          return [acc + delta.text, [{ type: "candidate_delta", member: member.name, delta }]]
         }
         if (delta.type === "turn_complete") {
-          return [
-            acc,
-            [{ type: "candidate_complete", member: member.name, answer: acc }],
-          ]
+          return [acc, [{ type: "candidate_complete", member: member.name, answer: acc }]]
         }
-        return [
-          acc,
-          [{ type: "candidate_delta", member: member.name, delta }],
-        ]
+        return [acc, [{ type: "candidate_delta", member: member.name, delta }]]
       },
     ),
     Stream.catch((error) =>
@@ -172,9 +162,7 @@ const candidatePipeline = (
         return Stream.merge(
           Stream.succeed<CouncilEvent>(event),
           Stream.mergeAll(
-            otherJudges.map((j) =>
-              judgeStream(j, member.name, event.answer, history),
-            ),
+            otherJudges.map((j) => judgeStream(j, member.name, event.answer, history)),
             { concurrency: "unbounded" },
           ),
         )
@@ -195,11 +183,7 @@ interface Tally {
 
 const emptyTally: Tally = { answers: new Map(), stats: new Map() }
 
-const recordCandidate = (
-  tally: Tally,
-  member: string,
-  answer: string,
-): Tally => ({
+const recordCandidate = (tally: Tally, member: string, answer: string): Tally => ({
   ...tally,
   answers: new Map(tally.answers).set(member, answer),
 })
@@ -231,9 +215,7 @@ const pickWinner = (tally: Tally): Winner | null =>
         averageScore: sum / count,
         answer: tally.answers.get(member) ?? "",
       }
-      return best === null || candidate.averageScore > best.averageScore
-        ? candidate
-        : best
+      return best === null || candidate.averageScore > best.averageScore ? candidate : best
     }),
   )
 

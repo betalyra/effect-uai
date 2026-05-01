@@ -140,9 +140,7 @@ export class RefusalRejected extends Data.TaggedError("RefusalRejected")<{
   readonly turn: Turn
 }> {}
 
-const lastAssistantContent = (
-  turn: Turn,
-): { readonly text: string; readonly refused: boolean } => {
+const lastAssistantContent = (turn: Turn): { readonly text: string; readonly refused: boolean } => {
   const assistants = assistantMessages(turn)
   const last = assistants[assistants.length - 1]
   if (last === undefined) return { text: "", refused: false }

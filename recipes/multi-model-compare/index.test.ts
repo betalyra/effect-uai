@@ -35,9 +35,9 @@ describe("multi-model-compare", () => {
       Stream.runCollect(
         council(
           [
-            { name: "openai", service: openai },
-            { name: "google", service: google },
-            { name: "anthropic", service: anthropic },
+            { name: "openai", model: "mock-openai", service: openai },
+            { name: "google", model: "mock-google", service: google },
+            { name: "anthropic", model: "mock-anthropic", service: anthropic },
           ],
           history,
         ),
@@ -74,9 +74,9 @@ describe("multi-model-compare", () => {
       Stream.runCollect(
         council(
           [
-            { name: "openai", service: openai },
-            { name: "google", service: google },
-            { name: "anthropic", service: anthropic },
+            { name: "openai", model: "mock-openai", service: openai },
+            { name: "google", model: "mock-google", service: google },
+            { name: "anthropic", model: "mock-anthropic", service: anthropic },
           ],
           history,
         ),
@@ -87,13 +87,9 @@ describe("multi-model-compare", () => {
     expect(errors).toHaveLength(1)
     expect(errors[0]!.type === "error" && errors[0]!.member).toBe("google")
 
-    const completions = events.filter(
-      (e) => e.type === "delta" && e.delta.type === "turn_complete",
-    )
+    const completions = events.filter((e) => e.type === "delta" && e.delta.type === "turn_complete")
     expect(completions).toHaveLength(2)
-    const completedMembers = new Set(
-      completions.map((e) => (e.type === "delta" ? e.member : "")),
-    )
+    const completedMembers = new Set(completions.map((e) => (e.type === "delta" ? e.member : "")))
     expect(completedMembers).toEqual(new Set(["openai", "anthropic"]))
   })
 
@@ -106,9 +102,9 @@ describe("multi-model-compare", () => {
       Stream.runCollect(
         council(
           [
-            { name: "openai", service: openai },
-            { name: "google", service: google },
-            { name: "anthropic", service: anthropic },
+            { name: "openai", model: "mock-openai", service: openai },
+            { name: "google", model: "mock-google", service: google },
+            { name: "anthropic", model: "mock-anthropic", service: anthropic },
           ],
           history,
         ),

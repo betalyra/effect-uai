@@ -52,9 +52,9 @@ describe("model-council", () => {
       Stream.runCollect(
         council(
           [
-            { name: "openai", service: openai },
-            { name: "google", service: google },
-            { name: "anthropic", service: anthropic },
+            { name: "openai", model: "mock-openai", service: openai },
+            { name: "google", model: "mock-google", service: google },
+            { name: "anthropic", model: "mock-anthropic", service: anthropic },
           ],
           history,
         ),
@@ -131,9 +131,9 @@ describe("model-council", () => {
       Stream.runCollect(
         council(
           [
-            { name: "openai", service: openai },
-            { name: "google", service: google },
-            { name: "anthropic", service: anthropic },
+            { name: "openai", model: "mock-openai", service: openai },
+            { name: "google", model: "mock-google", service: google },
+            { name: "anthropic", model: "mock-anthropic", service: anthropic },
           ],
           history,
         ),
@@ -143,10 +143,7 @@ describe("model-council", () => {
     const textPerMember = new Map<string, string>()
     for (const e of events) {
       if (e.type === "candidate_delta" && e.delta.type === "text_delta") {
-        textPerMember.set(
-          e.member,
-          (textPerMember.get(e.member) ?? "") + e.delta.text,
-        )
+        textPerMember.set(e.member, (textPerMember.get(e.member) ?? "") + e.delta.text)
       }
     }
     expect(textPerMember.get("openai")).toBe("alpha")
@@ -161,9 +158,7 @@ describe("model-council", () => {
     //     -> no judges of subject openai are spawned at all).
     //   - google completes -> spawns judges {openai (fails), anthropic (succeeds)}.
     //   - anthropic completes -> spawns judges {openai (fails), google (succeeds)}.
-    const openai = failingService(
-      new AiError.RateLimited({ provider: "openai", raw: "limit" }),
-    )
+    const openai = failingService(new AiError.RateLimited({ provider: "openai", raw: "limit" }))
     const { service: google } = MockProvider.make([
       finalTurn("from-google"),
       scoreTurn(4, "g-judges-anthropic"),
@@ -177,9 +172,9 @@ describe("model-council", () => {
       Stream.runCollect(
         council(
           [
-            { name: "openai", service: openai },
-            { name: "google", service: google },
-            { name: "anthropic", service: anthropic },
+            { name: "openai", model: "mock-openai", service: openai },
+            { name: "google", model: "mock-google", service: google },
+            { name: "anthropic", model: "mock-anthropic", service: anthropic },
           ],
           history,
         ),
@@ -243,9 +238,9 @@ describe("model-council", () => {
       Stream.runCollect(
         council(
           [
-            { name: "openai", service: openai },
-            { name: "google", service: google },
-            { name: "anthropic", service: anthropic },
+            { name: "openai", model: "mock-openai", service: openai },
+            { name: "google", model: "mock-google", service: google },
+            { name: "anthropic", model: "mock-anthropic", service: anthropic },
           ],
           history,
         ),

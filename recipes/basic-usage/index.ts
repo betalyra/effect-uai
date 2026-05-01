@@ -91,7 +91,9 @@ const conversation = pipe(
       const oai = yield* Responses
 
       return oai
-        .streamTurn(state.history, {
+        .streamTurn({
+          history: state.history,
+          model: "gpt-5.4-mini",
           tools,
           reasoning: { effort: "low" },
         })
@@ -134,9 +136,7 @@ const program = Effect.gen(function* () {
           usage: turn.usage,
         }),
       ),
-      matchType("function_call_output", (output) =>
-        Effect.logInfo("tool output", { output }),
-      ),
+      matchType("function_call_output", (output) => Effect.logInfo("tool output", { output })),
       Match.orElse(() => Effect.logDebug("delta", { event })),
     ),
   )
@@ -145,7 +145,7 @@ const program = Effect.gen(function* () {
 const apiKeyLayer = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    return responsesLayer({ apiKey, model: "gpt-5.4-mini" })
+    return responsesLayer({ apiKey })
   }),
 )
 

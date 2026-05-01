@@ -58,7 +58,7 @@ describe("mid-stream-abort", () => {
         loop((state) =>
           Effect.gen(function* () {
             return service
-              .streamTurn(state.history, {})
+              .streamTurn({ history: state.history, model: "mock" })
               .pipe(streamUntilComplete(() => Effect.sync(() => stop)))
           }),
         ),
@@ -104,7 +104,7 @@ describe("mid-stream-abort", () => {
         loop((state) =>
           Effect.gen(function* () {
             return service
-              .streamTurn(state.history, {})
+              .streamTurn({ history: state.history, model: "mock" })
               .pipe(streamUntilComplete(() => Effect.sync(() => stop)))
           }),
         ),

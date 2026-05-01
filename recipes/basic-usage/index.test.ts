@@ -62,21 +62,27 @@ describe("basic-usage", () => {
       loop((state) =>
         Effect.gen(function* () {
           const lm = yield* LanguageModel
-          return lm.streamTurn(state.history, { tools: Toolkit.toDescriptors(toolkit) }).pipe(
-            streamUntilComplete((turn) =>
-              Effect.gen(function* () {
-                const next = Turn.cursor(state, turn)
-                const calls = Turn.functionCalls(turn)
-                if (calls.length === 0) return stop
-                const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-                return nextAfter(Stream.fromIterable(outputs), {
-                  ...next,
-                  history: [...next.history, ...outputs],
-                  index: state.index + 1,
-                })
-              }),
-            ),
-          )
+          return lm
+            .streamTurn({
+              history: state.history,
+              model: "mock",
+              tools: Toolkit.toDescriptors(toolkit),
+            })
+            .pipe(
+              streamUntilComplete((turn) =>
+                Effect.gen(function* () {
+                  const next = Turn.cursor(state, turn)
+                  const calls = Turn.functionCalls(turn)
+                  if (calls.length === 0) return stop
+                  const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
+                  return nextAfter(Stream.fromIterable(outputs), {
+                    ...next,
+                    history: [...next.history, ...outputs],
+                    index: state.index + 1,
+                  })
+                }),
+              ),
+            )
         }),
       ),
     )

@@ -44,7 +44,7 @@ describe("pause-resume", () => {
           yield* Latch.await(pauseLatch)
 
           const lm = yield* LanguageModel
-          return lm.streamTurn(state.history, { tools: [] }).pipe(
+          return lm.streamTurn({ history: state.history, model: "mock", tools: [] }).pipe(
             streamUntilComplete((t) =>
               Effect.gen(function* () {
                 yield* Ref.update(turnsCompleted, (n) => n + 1)

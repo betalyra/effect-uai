@@ -26,7 +26,7 @@ import { Responses, layer as responsesLayer } from "@effect-uai/responses"
 const provider = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    return responsesLayer({ apiKey, model: "gpt-5.4-mini" })
+    return responsesLayer({ apiKey })
   }),
 )
 
@@ -48,31 +48,34 @@ implementation:
 ```ts
 interface Config {
   readonly apiKey: Redacted.Redacted
-  readonly model: OpenAIModel
-  readonly baseUrl?: string  // defaults to https://api.openai.com/v1
+  readonly baseUrl?: string // defaults to https://api.openai.com/v1
 }
 ```
 
-`apiKey` is always `Redacted.Redacted` - never raw `string`. Read it
-with `Config.redacted("OPENAI_API_KEY")` or wrap manually with
+The layer carries connection details only. `model` is per call (see
+below). `apiKey` is always `Redacted.Redacted` - never raw `string`.
+Read it with `Config.redacted("OPENAI_API_KEY")` or wrap manually with
 `Redacted.make`.
 
 `baseUrl` exists for proxies / Azure / local LLM gateways that speak
 the Responses protocol. Most apps leave it unset.
 
-## Request options
+## Request shape
 
 ```ts
-interface ResponsesRequestOptions extends CommonRequestOptions {
+interface ResponsesRequest extends Omit<CommonRequest, "model"> {
+  readonly model: OpenAIModel // narrows CommonRequest.model: string
   readonly reasoning?: { readonly effort: "low" | "medium" | "high" }
   readonly store?: boolean
   readonly previousResponseId?: string
 }
 ```
 
-On top of the core `CommonRequestOptions` (`tools`, `toolChoice`,
-`temperature`, `maxOutputTokens`):
+On top of the core `CommonRequest` (`history`, `model`, `tools`,
+`toolChoice`, `temperature`, `maxOutputTokens`):
 
+- **`model`** - typed against `OpenAIModel` for autocomplete at the
+  call site.
 - **`reasoning.effort`** - reasoning depth for `gpt-5.x` models. With
   `effort` set, the model produces reasoning tokens before any output
   tokens, so streaming text deltas don't start immediately. Drop it for
@@ -91,7 +94,9 @@ import { Responses } from "@effect-uai/responses"
 
 const turn = Effect.gen(function* () {
   const oai = yield* Responses
-  return oai.streamTurn(history, {
+  return oai.streamTurn({
+    history,
+    model: "gpt-5.4-mini",
     tools,
     reasoning: { effort: "low" },
   })
@@ -117,16 +122,16 @@ Known IDs (as of April 2026): `gpt-5.5`, `gpt-5.5-pro`, `gpt-5.4`,
 
 HTTP failures map to typed `AiError` variants:
 
-| Status      | Error                              |
-| ----------- | ---------------------------------- |
-| `429`       | `AiError.RateLimited`              |
-| `408`/`504` | `AiError.Timeout`                  |
-| `401`       | `AiError.AuthFailed` (`auth`)      |
-| `403`       | `AiError.AuthFailed` (`permission`)|
-| `402`       | `AiError.AuthFailed` (`billing`)   |
-| `413`       | `AiError.ContextLengthExceeded`    |
-| `>= 500`    | `AiError.Unavailable`              |
-| other 4xx   | `AiError.InvalidRequest`           |
+| Status      | Error                               |
+| ----------- | ----------------------------------- |
+| `429`       | `AiError.RateLimited`               |
+| `408`/`504` | `AiError.Timeout`                   |
+| `401`       | `AiError.AuthFailed` (`auth`)       |
+| `403`       | `AiError.AuthFailed` (`permission`) |
+| `402`       | `AiError.AuthFailed` (`billing`)    |
+| `413`       | `AiError.ContextLengthExceeded`     |
+| `>= 500`    | `AiError.Unavailable`               |
+| other 4xx   | `AiError.InvalidRequest`            |
 
 Recover per-tag with `Stream.catchTag("RateLimited", handler)`. See
 [multi-model fallback](/recipes/multi-model-fallback/) for cross-provider

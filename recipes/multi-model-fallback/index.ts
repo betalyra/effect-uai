@@ -25,6 +25,7 @@ import { make as makeResponses } from "@effect-uai/responses"
 
 interface Tier {
   readonly name: string
+  readonly model: string
   readonly service: LanguageModelService
 }
 
@@ -61,7 +62,7 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
             Effect.as(nextAfter(Stream.empty, { ...state, tier: state.tier + 1 })),
           )
 
-        return tier.service.streamTurn(state.history, {}).pipe(
+        return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
           // Success path: first complete turn ends the whole loop.
           streamUntilComplete(() => Effect.sync(() => stop)),
           Stream.catchTag("RateLimited", () => Stream.unwrap(advanceTier("rate-limited"))),
@@ -83,17 +84,17 @@ const program = Effect.gen(function* () {
   // we can see the fallback fire in the logs.
   const openai = yield* makeResponses({
     apiKey: openaiKey,
-    model: "gpt-5.4-mini",
     baseUrl: "https://invalid-host.example.invalid/v1",
   })
-  const google = yield* makeGemini({
-    apiKey: googleKey,
-    model: "gemini-3-flash-preview",
-  })
+  const google = yield* makeGemini({ apiKey: googleKey })
 
   const tiers: ReadonlyArray<Tier> = [
-    { name: "openai/gpt-5.4-mini", service: openai },
-    { name: "google/gemini-3-flash-preview", service: google },
+    { name: "openai/gpt-5.4-mini", model: "gpt-5.4-mini", service: openai },
+    {
+      name: "google/gemini-3-flash-preview",
+      model: "gemini-3-flash-preview",
+      service: google,
+    },
   ]
 
   yield* Stream.runForEach(conversation(tiers), (event) =>

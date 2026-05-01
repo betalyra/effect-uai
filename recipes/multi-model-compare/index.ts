@@ -35,8 +35,7 @@ import { type Member, council } from "./council.js"
 // Run
 // ---------------------------------------------------------------------------
 
-const QUESTION =
-  "In one short sentence, what's the most underrated programming language and why?"
+const QUESTION = "In one short sentence, what's the most underrated programming language and why?"
 
 const initialHistory: ReadonlyArray<Items.Item> = [Items.userText(QUESTION)]
 
@@ -53,18 +52,22 @@ const program = Effect.gen(function* () {
   const googleKey = yield* Config.redacted("GOOGLE_API_KEY")
   const anthropicKey = yield* Config.redacted("ANTHROPIC_API_KEY")
 
-  const openai = yield* makeResponses({ apiKey: openaiKey, model: "gpt-5.4-mini" })
-  const google = yield* makeGemini({ apiKey: googleKey, model: "gemini-3-flash-preview" })
-  const anthropic = yield* makeAnthropic({
-    apiKey: anthropicKey,
-    model: "claude-sonnet-4-6",
-    defaultMaxTokens: 256,
-  })
+  const openai = yield* makeResponses({ apiKey: openaiKey })
+  const google = yield* makeGemini({ apiKey: googleKey })
+  const anthropic = yield* makeAnthropic({ apiKey: anthropicKey, defaultMaxTokens: 256 })
 
   const members: ReadonlyArray<Member> = [
-    { name: "openai/gpt-5.4-mini", service: openai },
-    { name: "google/gemini-3-flash-preview", service: google },
-    { name: "anthropic/claude-sonnet-4-6", service: anthropic },
+    { name: "openai/gpt-5.4-mini", model: "gpt-5.4-mini", service: openai },
+    {
+      name: "google/gemini-3-flash-preview",
+      model: "gemini-3-flash-preview",
+      service: google,
+    },
+    {
+      name: "anthropic/claude-sonnet-4-6",
+      model: "claude-sonnet-4-6",
+      service: anthropic,
+    },
   ]
 
   yield* Effect.logInfo("question", { question: QUESTION })
@@ -73,9 +76,7 @@ const program = Effect.gen(function* () {
     Match.value(event).pipe(
       matchType("delta", ({ member, delta }) =>
         Match.value(delta).pipe(
-          matchType("text_delta", ({ text }) =>
-            Effect.logDebug(`${member} | ${text}`),
-          ),
+          matchType("text_delta", ({ text }) => Effect.logDebug(`${member} | ${text}`)),
           matchType("turn_complete", ({ turn }) =>
             Effect.logInfo(`${member} verdict`, {
               stop_reason: turn.stop_reason,
@@ -86,9 +87,7 @@ const program = Effect.gen(function* () {
           Match.orElse(() => Effect.void),
         ),
       ),
-      matchType("error", ({ member, error }) =>
-        Effect.logWarning(`${member} failed`, { error }),
-      ),
+      matchType("error", ({ member, error }) => Effect.logWarning(`${member} failed`, { error })),
       Match.exhaustive,
     ),
   )
@@ -97,10 +96,7 @@ const program = Effect.gen(function* () {
 const runtime = Layer.mergeAll(FetchHttpClient.layer, Logger.layer([Logger.consolePretty()]))
 
 Effect.runPromise(
-  program.pipe(
-    Effect.provide(runtime),
-    Effect.provideService(References.MinimumLogLevel, "Info"),
-  ),
+  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Info")),
 ).catch((err) => {
   console.error("recipe failed:", err)
   process.exit(1)

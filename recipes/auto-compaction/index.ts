@@ -92,16 +92,20 @@ const conversation = pipe(
       // -----------------------------------------------------------------
       if (shouldCompact(state)) {
         const toCompact = state.history.slice(0, -KEEP_RECENT_ITEMS)
+        // Compaction is a cheap summarization job - use the small/fast model
+        // even though normal turns run on the bigger one.
         return oai
-          .streamTurn(
-            [
+          .streamTurn({
+            history: [
               ...toCompact,
               Items.userText(
                 "Summarize the conversation above in 2-3 sentences for use as context.",
               ),
             ],
-            { tools: [], reasoning: { effort: "low" } },
-          )
+            model: "gpt-5.4-mini",
+            tools: [],
+            reasoning: { effort: "low" },
+          })
           .pipe(
             streamUntilComplete((turn) =>
               Effect.sync(() => {
@@ -120,21 +124,28 @@ const conversation = pipe(
       // Normal turn: stream a response, then either inject the next user
       // prompt or stop when the queue is empty.
       // -----------------------------------------------------------------
-      return oai.streamTurn(state.history, { tools: [], reasoning: { effort: "low" } }).pipe(
-        Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-        streamUntilComplete((turn) =>
-          Effect.sync(() => {
-            const next = advance(state, turn)
-            if (state.pendingPrompts.length === 0) return stop
-            const [nextPrompt, ...rest] = state.pendingPrompts
-            return nextAfter(Stream.empty, {
-              ...next,
-              history: [...next.history, Items.userText(nextPrompt!)],
-              pendingPrompts: rest,
-            })
-          }),
-        ),
-      )
+      return oai
+        .streamTurn({
+          history: state.history,
+          model: "gpt-5.4",
+          tools: [],
+          reasoning: { effort: "low" },
+        })
+        .pipe(
+          Stream.tap((delta) => Effect.logDebug("delta", { delta })),
+          streamUntilComplete((turn) =>
+            Effect.sync(() => {
+              const next = advance(state, turn)
+              if (state.pendingPrompts.length === 0) return stop
+              const [nextPrompt, ...rest] = state.pendingPrompts
+              return nextAfter(Stream.empty, {
+                ...next,
+                history: [...next.history, Items.userText(nextPrompt!)],
+                pendingPrompts: rest,
+              })
+            }),
+          ),
+        )
     }),
   ),
 )
@@ -166,7 +177,7 @@ const program = Effect.gen(function* () {
 const apiKeyLayer = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    return responsesLayer({ apiKey, model: "gpt-5.4-mini" })
+    return responsesLayer({ apiKey })
   }),
 )
 

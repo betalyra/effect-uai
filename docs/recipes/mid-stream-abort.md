@@ -41,7 +41,7 @@ const conversation = pipe(
     Effect.gen(function* () {
       const oai = yield* Responses
       return oai
-        .streamTurn(state.history, {})
+        .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
         .pipe(streamUntilComplete(() => Effect.sync(() => stop)))
     }),
   ),

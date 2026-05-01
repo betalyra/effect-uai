@@ -1,9 +1,19 @@
-import { Context, Effect, Layer, Match, Option, Redacted, Result, Schema, Stream, pipe } from "effect"
+import {
+  Context,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Redacted,
+  Result,
+  Schema,
+  Stream,
+  pipe,
+} from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
-import type { Item } from "@effect-uai/core/Items"
 import {
-  type CommonRequestOptions,
+  type CommonRequest,
   LanguageModel,
   type LanguageModelService,
 } from "@effect-uai/core/LanguageModel"
@@ -24,7 +34,12 @@ import { KnownProviderEvent, ProviderEvent, applyEvent } from "./streamEvents.js
 // Public types
 // ---------------------------------------------------------------------------
 
-export interface AnthropicRequestOptions extends CommonRequestOptions {
+export interface AnthropicRequest extends Omit<CommonRequest, "model"> {
+  /**
+   * Narrows `CommonRequest.model` (`string`) to the typed `AnthropicModel`
+   * literal union for autocomplete.
+   */
+  readonly model: AnthropicModel
   /**
    * Top-K nucleus sampling parameter. Anthropic-specific; not exposed on the
    * common surface.
@@ -51,17 +66,13 @@ export interface AnthropicService {
    * encrypted reasoning state). For provider-portable code, use `streamTurn`.
    */
   readonly streamNative: (
-    history: ReadonlyArray<Item>,
-    options?: AnthropicRequestOptions,
+    request: AnthropicRequest,
   ) => Stream.Stream<ProviderEvent, AiError.AiError>
   /**
    * Stream canonical `TurnEvent`s. Implemented as
    * `streamNative |> toCanonical`.
    */
-  readonly streamTurn: (
-    history: ReadonlyArray<Item>,
-    options?: AnthropicRequestOptions,
-  ) => Stream.Stream<TurnEvent, AiError.AiError>
+  readonly streamTurn: (request: AnthropicRequest) => Stream.Stream<TurnEvent, AiError.AiError>
   /**
    * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
    * Stateful (threads an `Accumulator` for tool-call lookup and
@@ -84,12 +95,11 @@ export class Anthropic extends Context.Service<Anthropic, AnthropicService>()(
 
 export interface Config {
   readonly apiKey: Redacted.Redacted
-  readonly model: AnthropicModel
   readonly baseUrl?: string
   /**
    * Default `max_tokens` for requests that don't override via
-   * `options.maxOutputTokens`. Anthropic requires this field; we default to
-   * 4096 if not set on either layer or per-call.
+   * `request.maxOutputTokens`. Anthropic requires this field; we default to
+   * 4096 if neither is set.
    */
   readonly defaultMaxTokens?: number
 }
@@ -98,12 +108,9 @@ const ANTHROPIC_VERSION = "2023-06-01"
 const STRUCTURED_OUTPUTS_BETA = "structured-outputs-2025-11-13"
 const FALLBACK_MAX_TOKENS = 4096
 
-const outputConfig = (
-  options: Option.Option<AnthropicRequestOptions>,
-): Option.Option<Record<string, unknown>> =>
+const outputConfig = (request: AnthropicRequest): Option.Option<Record<string, unknown>> =>
   pipe(
-    options,
-    Option.flatMap((o) => Option.fromUndefinedOr(o.structured)),
+    Option.fromUndefinedOr(request.structured),
     Option.map((format) => ({
       format: {
         type: "json_schema",
@@ -112,39 +119,25 @@ const outputConfig = (
     })),
   )
 
-const resolvedMaxTokens = (
-  cfg: Config,
-  options: Option.Option<AnthropicRequestOptions>,
-): number =>
-  pipe(
-    options,
-    Option.flatMap((o) => Option.fromUndefinedOr(o.maxOutputTokens)),
-    Option.getOrElse(() => cfg.defaultMaxTokens ?? FALLBACK_MAX_TOKENS),
-  )
+const resolvedMaxTokens = (cfg: Config, request: AnthropicRequest): number =>
+  request.maxOutputTokens ?? cfg.defaultMaxTokens ?? FALLBACK_MAX_TOKENS
 
 const toolDescriptors = (
-  options: Option.Option<AnthropicRequestOptions>,
+  request: AnthropicRequest,
 ): Option.Option<ReadonlyArray<Record<string, unknown>>> =>
-  pipe(
-    options,
-    Option.flatMap((o) =>
-      o.tools !== undefined && o.tools.length > 0 ? Option.some(o.tools) : Option.none(),
-    ),
-    Option.map((tools) =>
-      tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        input_schema: t.inputSchema,
-      })),
-    ),
-  )
+  request.tools !== undefined && request.tools.length > 0
+    ? Option.some(
+        request.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.inputSchema,
+        })),
+      )
+    : Option.none()
 
-const toolChoiceWire = (
-  options: Option.Option<AnthropicRequestOptions>,
-): Option.Option<Record<string, unknown>> =>
+const toolChoiceWire = (request: AnthropicRequest): Option.Option<Record<string, unknown>> =>
   pipe(
-    options,
-    Option.flatMap((o) => Option.fromUndefinedOr(o.toolChoice)),
+    Option.fromUndefinedOr(request.toolChoice),
     Option.map((choice) =>
       choice === "auto"
         ? { type: "auto" }
@@ -187,10 +180,7 @@ const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
 // which lives on the accumulator's per-index block.
 // ---------------------------------------------------------------------------
 
-const deltasFromEvent = (
-  next: Accumulator,
-  event: ProviderEvent,
-): ReadonlyArray<TurnEvent> =>
+const deltasFromEvent = (next: Accumulator, event: ProviderEvent): ReadonlyArray<TurnEvent> =>
   Match.value(event).pipe(
     matchType("content_block_start", (e) =>
       e.content_block.type === "tool_use"
@@ -230,14 +220,10 @@ const deltasFromEvent = (
       ),
     ),
     matchType("message_start", (e) =>
-      e.message.usage === undefined
-        ? []
-        : [{ type: "usage_update" as const, usage: next.usage }],
+      e.message.usage === undefined ? [] : [{ type: "usage_update" as const, usage: next.usage }],
     ),
     matchType("message_delta", (e) =>
-      e.usage === undefined
-        ? []
-        : [{ type: "usage_update" as const, usage: next.usage }],
+      e.usage === undefined ? [] : [{ type: "usage_update" as const, usage: next.usage }],
     ),
     matchType("message_stop", () => [
       { type: "turn_complete" as const, turn: accumulatorToTurn(next) },
@@ -271,32 +257,23 @@ const buildNativeStream = (cfg: Config) => {
   const baseUrl = cfg.baseUrl ?? "https://api.anthropic.com"
   const url = `${baseUrl}/v1/messages`
   return (
-    history: ReadonlyArray<Item>,
-    options: Option.Option<AnthropicRequestOptions>,
+    request: AnthropicRequest,
   ): Stream.Stream<ProviderEvent, AiError.AiError, HttpClient.HttpClient> =>
     Stream.unwrap(
       Effect.gen(function* () {
-        const optionsField = <K extends keyof AnthropicRequestOptions>(
-          key: K,
-        ): Option.Option<NonNullable<AnthropicRequestOptions[K]>> =>
-          pipe(
-            options,
-            Option.flatMap((o) => Option.fromUndefinedOr(o[key])),
-          )
-
-        const structured = outputConfig(options)
+        const structured = outputConfig(request)
         const bodyResult = buildRequestBody({
-          model: cfg.model,
-          history,
-          maxTokens: resolvedMaxTokens(cfg, options),
-          temperature: optionsField("temperature"),
-          topP: optionsField("topP"),
-          topK: optionsField("topK"),
-          stopSequences: optionsField("stopSequences"),
-          thinking: optionsField("thinking"),
-          tools: toolDescriptors(options),
-          toolChoice: toolChoiceWire(options),
-          userId: optionsField("user"),
+          model: request.model,
+          history: request.history,
+          maxTokens: resolvedMaxTokens(cfg, request),
+          temperature: Option.fromUndefinedOr(request.temperature),
+          topP: Option.fromUndefinedOr(request.topP),
+          topK: Option.fromUndefinedOr(request.topK),
+          stopSequences: Option.fromUndefinedOr(request.stopSequences),
+          thinking: Option.fromUndefinedOr(request.thinking),
+          tools: toolDescriptors(request),
+          toolChoice: toolChoiceWire(request),
+          userId: Option.fromUndefinedOr(request.user),
           outputConfig: structured,
         })
 
@@ -319,13 +296,11 @@ const buildNativeStream = (cfg: Config) => {
           HttpClientRequest.bodyJsonUnsafe(body),
           HttpClientRequest.accept("text/event-stream"),
         )
-        const request = Option.isSome(structured)
-          ? baseRequest.pipe(
-              HttpClientRequest.setHeader("anthropic-beta", STRUCTURED_OUTPUTS_BETA),
-            )
+        const httpRequest = Option.isSome(structured)
+          ? baseRequest.pipe(HttpClientRequest.setHeader("anthropic-beta", STRUCTURED_OUTPUTS_BETA))
           : baseRequest
         const response = yield* client
-          .execute(request)
+          .execute(httpRequest)
           .pipe(
             Effect.mapError(
               (cause): AiError.AiError =>
@@ -346,9 +321,7 @@ const buildNativeStream = (cfg: Config) => {
           Stream.mapEffect(sseEventToProviderEvent),
           Stream.flatMap((event) =>
             event.type === "error"
-              ? Stream.fail(
-                  new AiError.Unavailable({ provider: "anthropic", raw: event }),
-                )
+              ? Stream.fail(new AiError.Unavailable({ provider: "anthropic", raw: event }))
               : Stream.succeed(event),
           ),
         )
@@ -380,22 +353,15 @@ export const toCanonical = <E, R>(
 // ---------------------------------------------------------------------------
 
 /**
- * Build an `AnthropicService` value scoped to one model + http client. Use
- * this when you want to swap models per iteration via
- * `Effect.provideService(Anthropic, model)`. For Layer-based setup, prefer
- * `layer`.
+ * Build an `AnthropicService` value. For Layer-based setup, prefer `layer`.
  */
-export const make = (
-  cfg: Config,
-): Effect.Effect<AnthropicService, never, HttpClient.HttpClient> =>
+export const make = (cfg: Config): Effect.Effect<AnthropicService, never, HttpClient.HttpClient> =>
   Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
-    const streamNative: AnthropicService["streamNative"] = (history, options) =>
-      buildNativeStream(cfg)(history, Option.fromUndefinedOr(options)).pipe(
-        Stream.provideService(HttpClient.HttpClient, client),
-      )
+    const streamNative: AnthropicService["streamNative"] = (request) =>
+      buildNativeStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
     return {
       streamNative,
-      streamTurn: (history, options) => toCanonical(streamNative(history, options)),
+      streamTurn: (request) => toCanonical(streamNative(request)),
       toCanonical,
     }
   })
@@ -404,8 +370,8 @@ export const make = (
  * Layer that registers both the provider-specific `Anthropic` tag and the
  * generic `LanguageModel` tag, sharing one underlying implementation.
  *
- * The generic tag accepts only `CommonRequestOptions`; the typed tag
- * accepts the full `AnthropicRequestOptions` surface.
+ * The generic tag accepts `CommonRequest`; the typed tag accepts the full
+ * `AnthropicRequest` surface.
  */
 export const layer = (
   cfg: Config,
@@ -416,7 +382,7 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): LanguageModelService => ({
-        streamTurn: (history, options) => s.streamTurn(history, options),
+        streamTurn: (request) => s.streamTurn(request as AnthropicRequest),
       }),
     ),
   )

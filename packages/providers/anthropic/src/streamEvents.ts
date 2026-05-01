@@ -191,32 +191,28 @@ export const isTextDeltaEvent = (
 ): event is Extract<
   ProviderEvent,
   { type: "content_block_delta"; delta: { type: "text_delta" } }
-> =>
-  event.type === "content_block_delta" && event.delta.type === "text_delta"
+> => event.type === "content_block_delta" && event.delta.type === "text_delta"
 
 export const isThinkingDeltaEvent = (
   event: ProviderEvent,
 ): event is Extract<
   ProviderEvent,
   { type: "content_block_delta"; delta: { type: "thinking_delta" } }
-> =>
-  event.type === "content_block_delta" && event.delta.type === "thinking_delta"
+> => event.type === "content_block_delta" && event.delta.type === "thinking_delta"
 
 export const isInputJsonDeltaEvent = (
   event: ProviderEvent,
 ): event is Extract<
   ProviderEvent,
   { type: "content_block_delta"; delta: { type: "input_json_delta" } }
-> =>
-  event.type === "content_block_delta" && event.delta.type === "input_json_delta"
+> => event.type === "content_block_delta" && event.delta.type === "input_json_delta"
 
 export const isToolUseStartEvent = (
   event: ProviderEvent,
 ): event is Extract<
   ProviderEvent,
   { type: "content_block_start"; content_block: { type: "tool_use" } }
-> =>
-  event.type === "content_block_start" && event.content_block.type === "tool_use"
+> => event.type === "content_block_start" && event.content_block.type === "tool_use"
 
 export const isMessageStop = (event: ProviderEvent): boolean => event.type === "message_stop"
 

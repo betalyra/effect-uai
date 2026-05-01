@@ -69,7 +69,7 @@ const makeService = (
   Effect.gen(function* () {
     const cursor = yield* Ref.make(0)
     return LanguageModel.of({
-      streamTurn: (history) =>
+      streamTurn: (request) =>
         Stream.unwrap(
           Effect.gen(function* () {
             const i = yield* Ref.getAndUpdate(cursor, (n) => n + 1)
@@ -83,7 +83,7 @@ const makeService = (
             }
             const turn = scriptedTurns[i]!
             if (recordCall !== undefined) {
-              yield* recordCall(history, turn)
+              yield* recordCall(request.history, turn)
             }
             return pacedDeltas(turn, options)
           }),
@@ -112,7 +112,7 @@ export const make = (
   const cursor = Ref.makeUnsafe(0)
   const callsRef = Ref.makeUnsafe<ReadonlyArray<{ history: ReadonlyArray<Item>; turn: Turn }>>([])
   const service: LanguageModelService = {
-    streamTurn: (history) =>
+    streamTurn: (request) =>
       Stream.unwrap(
         Effect.gen(function* () {
           const i = yield* Ref.getAndUpdate(cursor, (n) => n + 1)
@@ -125,7 +125,7 @@ export const make = (
             )
           }
           const turn = scriptedTurns[i]!
-          yield* Ref.update(callsRef, (xs) => [...xs, { history, turn }])
+          yield* Ref.update(callsRef, (xs) => [...xs, { history: request.history, turn }])
           return pacedDeltas(turn, options)
         }),
       ),

@@ -55,18 +55,18 @@ A `Turn` is the assembled result of one round-trip:
 
 ```ts
 type Turn = {
-  readonly items: ReadonlyArray<Item>     // assistant's outputs (Messages, FunctionCalls, Reasoning)
-  readonly usage: Usage                   // token counts, cache stats
-  readonly stop_reason: StopReason        // "stop" | "tool_use" | "max_tokens" | "refusal" | "other"
+  readonly items: ReadonlyArray<Item> // assistant's outputs (Messages, FunctionCalls, Reasoning)
+  readonly usage: Usage // token counts, cache stats
+  readonly stop_reason: StopReason // "stop" | "tool_use" | "max_tokens" | "refusal" | "other"
 }
 ```
 
 Helpers project specific item kinds:
 
 ```ts
-Turn.functionCalls(turn)        // FunctionCall[] - the tool requests
-Turn.assistantMessages(turn)    // Message[] with role: "assistant"
-Turn.reasonings(turn)           // Reasoning[]
+Turn.functionCalls(turn) // FunctionCall[] - the tool requests
+Turn.assistantMessages(turn) // Message[] with role: "assistant"
+Turn.reasonings(turn) // Reasoning[]
 ```
 
 `Turn.toStructured(turn, format)` decodes the assembled assistant text
@@ -99,13 +99,13 @@ A turn-in-flight is a `Stream.Stream<TurnEvent, AiError, R>`:
 
 ```ts
 type TurnEvent =
-  | { type: "text_delta";           text: string }
-  | { type: "reasoning_delta";      text: string; kind: "trace" | "summary" }
-  | { type: "refusal_delta";        text: string }
-  | { type: "tool_call_start";      call_id: string; name: string }
+  | { type: "text_delta"; text: string }
+  | { type: "reasoning_delta"; text: string; kind: "trace" | "summary" }
+  | { type: "refusal_delta"; text: string }
+  | { type: "tool_call_start"; call_id: string; name: string }
   | { type: "tool_call_args_delta"; call_id: string; delta: string }
-  | { type: "usage_update";         usage: Usage }
-  | { type: "turn_complete";        turn: Turn }
+  | { type: "usage_update"; usage: Usage }
+  | { type: "turn_complete"; turn: Turn }
 ```
 
 The terminal event is always `turn_complete`, carrying the assembled
@@ -116,8 +116,8 @@ same shape.
 Two operators turn a `TurnEvent` stream into something more useful:
 
 ```ts
-Turn.textDeltas(stream)      // Stream<string> - just the text fragments
-Lines.lines(stream)          // accumulate into newline-delimited lines
+Turn.textDeltas(stream) // Stream<string> - just the text fragments
+Lines.lines(stream) // accumulate into newline-delimited lines
 ```
 
 `textDeltas → lines → decodeJsonLines` is the prompted-JSONL streaming

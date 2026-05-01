@@ -98,13 +98,15 @@ const blockToParts = Match.type<ContentBlock>().pipe(
     "input_text",
     (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
   ),
-  matchType("input_image", (b): ReadonlyArray<RequestPart> =>
-    // Gemini's `fileData` form expects a pre-uploaded Files API URI, not an
-    // arbitrary HTTPS URL - we'd need to fetch + re-upload to support that.
-    // Skip URL-form images for now; document as a follow-up.
-    b.source._tag === "base64"
-      ? [{ inlineData: { mimeType: b.source.media_type, data: b.source.data } }]
-      : [],
+  matchType(
+    "input_image",
+    (b): ReadonlyArray<RequestPart> =>
+      // Gemini's `fileData` form expects a pre-uploaded Files API URI, not an
+      // arbitrary HTTPS URL - we'd need to fetch + re-upload to support that.
+      // Skip URL-form images for now; document as a follow-up.
+      b.source._tag === "base64"
+        ? [{ inlineData: { mimeType: b.source.media_type, data: b.source.data } }]
+        : [],
   ),
   matchType(
     "output_text",
@@ -265,9 +267,7 @@ export const accumulatorToTurn = (acc: Accumulator): Turn => ({
   stop_reason: finishReasonToStop(acc.finishReason),
   usage: { ...acc.usage },
   items: [
-    ...(acc.reasoning.length > 0
-      ? [{ type: "reasoning" as const, summary: acc.reasoning }]
-      : []),
+    ...(acc.reasoning.length > 0 ? [{ type: "reasoning" as const, summary: acc.reasoning }] : []),
     ...(acc.text.length === 0
       ? []
       : [

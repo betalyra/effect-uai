@@ -25,7 +25,7 @@ import { Gemini, layer as geminiLayer } from "@effect-uai/google"
 const provider = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("GEMINI_API_KEY")
-    return geminiLayer({ apiKey, model: "gemini-3-flash-preview" })
+    return geminiLayer({ apiKey })
   }),
 )
 
@@ -46,29 +46,32 @@ implementation:
 ```ts
 interface Config {
   readonly apiKey: Redacted.Redacted
-  readonly model: GoogleModel
-  readonly baseUrl?: string  // defaults to https://generativelanguage.googleapis.com/v1beta
+  readonly baseUrl?: string // defaults to https://generativelanguage.googleapis.com/v1beta
 }
 ```
 
-`apiKey` is always `Redacted.Redacted` - never raw `string`. Read it
-with `Config.redacted("GEMINI_API_KEY")` or wrap manually with
+The layer carries connection details only. `model` is per call (see
+below). `apiKey` is always `Redacted.Redacted` - never raw `string`.
+Read it with `Config.redacted("GEMINI_API_KEY")` or wrap manually with
 `Redacted.make`.
 
 `baseUrl` exists for proxies and self-hosted gateways that speak the
 Gemini protocol. Most apps leave it unset.
 
-## Request options
+## Request shape
 
 ```ts
-interface GeminiRequestOptions extends CommonRequestOptions {
+interface GeminiRequest extends Omit<CommonRequest, "model"> {
+  readonly model: GoogleModel // narrows CommonRequest.model: string
   readonly thinkingBudget?: number
 }
 ```
 
-On top of the core `CommonRequestOptions` (`tools`, `toolChoice`,
-`temperature`, `maxOutputTokens`):
+On top of the core `CommonRequest` (`history`, `model`, `tools`,
+`toolChoice`, `temperature`, `maxOutputTokens`):
 
+- **`model`** - typed against `GoogleModel` for autocomplete at the
+  call site.
 - **`thinkingBudget`** - Gemini 2.5+ thinking budget, forwarded as
   `generationConfig.thinkingConfig.thinkingBudget`. Set to `0` to
   disable thinking entirely (lowest latency, fastest first-token);
@@ -82,7 +85,11 @@ import { Gemini } from "@effect-uai/google"
 
 const turn = Effect.gen(function* () {
   const gemini = yield* Gemini
-  return gemini.streamTurn(history, { thinkingBudget: 0 })
+  return gemini.streamTurn({
+    history,
+    model: "gemini-2.5-flash",
+    thinkingBudget: 0,
+  })
 })
 ```
 
@@ -106,16 +113,16 @@ Reference: [Gemini models](https://ai.google.dev/gemini-api/docs/models).
 
 HTTP failures map to typed `AiError` variants:
 
-| Status      | Error                              |
-| ----------- | ---------------------------------- |
-| `429`       | `AiError.RateLimited`              |
-| `408`/`504` | `AiError.Timeout`                  |
-| `401`       | `AiError.AuthFailed` (`auth`)      |
-| `403`       | `AiError.AuthFailed` (`permission`)|
-| `402`       | `AiError.AuthFailed` (`billing`)   |
-| `413`       | `AiError.ContextLengthExceeded`    |
-| `>= 500`    | `AiError.Unavailable`              |
-| other 4xx   | `AiError.InvalidRequest`           |
+| Status      | Error                               |
+| ----------- | ----------------------------------- |
+| `429`       | `AiError.RateLimited`               |
+| `408`/`504` | `AiError.Timeout`                   |
+| `401`       | `AiError.AuthFailed` (`auth`)       |
+| `403`       | `AiError.AuthFailed` (`permission`) |
+| `402`       | `AiError.AuthFailed` (`billing`)    |
+| `413`       | `AiError.ContextLengthExceeded`     |
+| `>= 500`    | `AiError.Unavailable`               |
+| other 4xx   | `AiError.InvalidRequest`            |
 
 Recover per-tag with `Stream.catchTag("RateLimited", handler)`. See
 [multi-model fallback](/recipes/multi-model-fallback/) for cross-provider

@@ -1,8 +1,5 @@
-import type {
-  StandardJSONSchemaV1,
-  StandardSchemaV1,
-} from "@standard-schema/spec";
-import { Data, Effect, Match, Schema, Stream, pipe } from "effect";
+import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
+import { Data, Effect, Match, Schema, Stream, pipe } from "effect"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,11 +11,8 @@ import { Data, Effect, Match, Schema, Stream, pipe } from "effect";
  * JSON Schema (wire encoding) works directly: Zod 4+, Valibot, ArkType,
  * and Effect Schema after `fromEffectSchema`.
  */
-export type StructuredSchema<Output = unknown> = StandardSchemaV1<
-  unknown,
-  Output
-> &
-  StandardJSONSchemaV1<unknown, Output>;
+export type StructuredSchema<Output = unknown> = StandardSchemaV1<unknown, Output> &
+  StandardJSONSchemaV1<unknown, Output>
 
 /**
  * A schema-bound output the user wants the model to produce. Pairs the
@@ -26,20 +20,20 @@ export type StructuredSchema<Output = unknown> = StandardSchemaV1<
  * strict-mode flag).
  */
 export interface StructuredFormat<A> {
-  readonly name: string;
-  readonly description?: string;
-  readonly schema: StructuredSchema<A>;
+  readonly name: string
+  readonly description?: string
+  readonly schema: StructuredSchema<A>
   /**
    * Provider strict-mode flag. OpenAI, Anthropic, and Mistral honour it
    * (constrained decoding); other providers ignore.
    */
-  readonly strict?: boolean;
+  readonly strict?: boolean
 }
 
 /** A single path-scoped validation problem. Library-agnostic shape. */
 export interface DecodeIssue {
-  readonly path: ReadonlyArray<string | number>;
-  readonly message: string;
+  readonly path: ReadonlyArray<string | number>
+  readonly message: string
 }
 
 // ---------------------------------------------------------------------------
@@ -50,22 +44,18 @@ export interface DecodeIssue {
  * Schema validation failed. `raw` is the original text (or stringified
  * value) that failed; `issues` is a flat list of per-field problems.
  */
-export class StructuredDecodeError extends Data.TaggedError(
-  "StructuredDecodeError",
-)<{
-  readonly raw: string;
-  readonly issues: ReadonlyArray<DecodeIssue>;
+export class StructuredDecodeError extends Data.TaggedError("StructuredDecodeError")<{
+  readonly raw: string
+  readonly issues: ReadonlyArray<DecodeIssue>
 }> {}
 
 /**
  * `JSON.parse` threw on a string that was supposed to be JSON. Distinct
  * from `StructuredDecodeError`: the bytes weren't even JSON.
  */
-export class JsonParseError extends Data.TaggedError(
-  "StructuredJsonParseError",
-)<{
-  readonly raw: string;
-  readonly cause: unknown;
+export class JsonParseError extends Data.TaggedError("StructuredJsonParseError")<{
+  readonly raw: string
+  readonly cause: unknown
 }> {}
 
 // ---------------------------------------------------------------------------
@@ -80,9 +70,9 @@ export class JsonParseError extends Data.TaggedError(
 export const fromEffectSchema = <S extends Schema.Codec<any, any, never, any>>(
   schema: S,
   options?: {
-    readonly name?: string;
-    readonly description?: string;
-    readonly strict?: boolean;
+    readonly name?: string
+    readonly description?: string
+    readonly strict?: boolean
   },
 ): StructuredFormat<S["Type"]> => ({
   name: options?.name ?? "output",
@@ -91,7 +81,7 @@ export const fromEffectSchema = <S extends Schema.Codec<any, any, never, any>>(
     description: options.description,
   }),
   ...(options?.strict !== undefined && { strict: options.strict }),
-});
+})
 
 // ---------------------------------------------------------------------------
 // Standard Schema → DecodeIssue
@@ -102,21 +92,19 @@ const propertyKeyToScalar = Match.type<PropertyKey>().pipe(
   Match.when(Match.number, (n) => n),
   Match.when(Match.symbol, (s) => s.toString()),
   Match.exhaustive,
-);
+)
 
-const segmentToKey = Match.type<
-  PropertyKey | StandardSchemaV1.PathSegment
->().pipe(
+const segmentToKey = Match.type<PropertyKey | StandardSchemaV1.PathSegment>().pipe(
   Match.when(Match.string, (s) => s),
   Match.when(Match.number, (n) => n),
   Match.when(Match.symbol, (s) => s.toString()),
   Match.orElse((segment) => propertyKeyToScalar(segment.key)),
-);
+)
 
 const issueToDecode = (issue: StandardSchemaV1.Issue): DecodeIssue => ({
   path: (issue.path ?? []).map(segmentToKey),
   message: issue.message,
-});
+})
 
 // ---------------------------------------------------------------------------
 // Decoding
@@ -142,7 +130,7 @@ export const decode =
               }),
             ),
       ),
-    );
+    )
 
 /**
  * Parse a JSON string then validate against the format's schema. Two
@@ -158,7 +146,7 @@ export const parseJson =
         catch: (cause) => new JsonParseError({ raw, cause }),
       }),
       Effect.flatMap(decode(format)),
-    );
+    )
 
 /**
  * Stream operator: each input string is JSON-parsed and validated.
@@ -169,4 +157,4 @@ export const decodeJsonLines =
   <E, R>(
     self: Stream.Stream<string, E, R>,
   ): Stream.Stream<A, E | JsonParseError | StructuredDecodeError, R> =>
-    self.pipe(Stream.mapEffect(parseJson(format)));
+    self.pipe(Stream.mapEffect(parseJson(format)))

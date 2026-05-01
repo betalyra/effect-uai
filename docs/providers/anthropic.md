@@ -26,11 +26,7 @@ import { Anthropic, layer as anthropicLayer } from "@effect-uai/anthropic"
 const provider = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("ANTHROPIC_API_KEY")
-    return anthropicLayer({
-      apiKey,
-      model: "claude-sonnet-4-6",
-      defaultMaxTokens: 1024,
-    })
+    return anthropicLayer({ apiKey, defaultMaxTokens: 1024 })
   }),
 )
 
@@ -52,15 +48,15 @@ implementation:
 ```ts
 interface Config {
   readonly apiKey: Redacted.Redacted
-  readonly model: AnthropicModel
-  readonly baseUrl?: string  // defaults to https://api.anthropic.com
-  readonly defaultMaxTokens?: number  // falls back to 4096
+  readonly baseUrl?: string // defaults to https://api.anthropic.com
+  readonly defaultMaxTokens?: number // falls back to 4096
 }
 ```
 
-`apiKey` is always `Redacted.Redacted` - never raw `string`. Read it
-with `Config.redacted("ANTHROPIC_API_KEY")` or wrap manually with
-`Redacted.make`.
+The layer carries connection details only. `model` is per call (see
+below). `apiKey` is always `Redacted.Redacted` - never raw `string`.
+Read it with `Config.redacted("ANTHROPIC_API_KEY")` or wrap manually
+with `Redacted.make`.
 
 `defaultMaxTokens` is needed because Anthropic requires `max_tokens` on
 every request; we default to 4096 if neither the layer nor the per-call
@@ -69,20 +65,23 @@ every request; we default to 4096 if neither the layer nor the per-call
 `baseUrl` exists for proxies, AWS Bedrock, and Vertex gateways that
 speak the Messages protocol. Most apps leave it unset.
 
-## Request options
+## Request shape
 
 ```ts
-interface AnthropicRequestOptions extends CommonRequestOptions {
+interface AnthropicRequest extends Omit<CommonRequest, "model"> {
+  readonly model: AnthropicModel // narrows CommonRequest.model: string
   readonly topK?: number
   readonly stopSequences?: ReadonlyArray<string>
   readonly thinking?: { readonly type: "enabled"; readonly budget_tokens: number }
-  readonly user?: string  // becomes metadata.user_id on the wire
+  readonly user?: string // becomes metadata.user_id on the wire
 }
 ```
 
-On top of the core `CommonRequestOptions` (`tools`, `toolChoice`,
-`temperature`, `topP`, `maxOutputTokens`):
+On top of the core `CommonRequest` (`history`, `model`, `tools`,
+`toolChoice`, `temperature`, `topP`, `maxOutputTokens`):
 
+- **`model`** - typed against `AnthropicModel` for autocomplete at the
+  call site.
 - **`topK`** - top-K sampling. Anthropic-specific; not on the common
   surface.
 - **`stopSequences`** - early-termination strings. The model stops as
@@ -90,7 +89,7 @@ On top of the core `CommonRequestOptions` (`tools`, `toolChoice`,
 - **`thinking`** - extended thinking configuration. Set
   `{ type: "enabled", budget_tokens: N }` to let the model reason for
   up to `N` tokens before answering. **Note:** Claude Opus 4.7 does
-  *not* support extended thinking (it uses adaptive thinking
+  _not_ support extended thinking (it uses adaptive thinking
   automatically); the option works on Sonnet 4.6 and Haiku 4.5.
 - **`user`** - end-user identifier, sent as `metadata.user_id`. Useful
   for abuse routing and per-user telemetry.
@@ -103,7 +102,9 @@ import { Anthropic } from "@effect-uai/anthropic"
 
 const turn = Effect.gen(function* () {
   const claude = yield* Anthropic
-  return claude.streamTurn(history, {
+  return claude.streamTurn({
+    history,
+    model: "claude-sonnet-4-6",
     tools,
     thinking: { type: "enabled", budget_tokens: 4096 },
   })
@@ -162,17 +163,17 @@ Reference: [Anthropic models](https://platform.claude.com/docs/en/docs/about-cla
 
 HTTP failures map to typed `AiError` variants:
 
-| Status      | Error                              |
-| ----------- | ---------------------------------- |
-| `429`       | `AiError.RateLimited`              |
-| `408`/`504` | `AiError.Timeout`                  |
-| `401`       | `AiError.AuthFailed` (`auth`)      |
-| `403`       | `AiError.AuthFailed` (`permission`)|
-| `402`       | `AiError.AuthFailed` (`billing`)   |
-| `413`       | `AiError.ContextLengthExceeded`    |
+| Status      | Error                                      |
+| ----------- | ------------------------------------------ |
+| `429`       | `AiError.RateLimited`                      |
+| `408`/`504` | `AiError.Timeout`                          |
+| `401`       | `AiError.AuthFailed` (`auth`)              |
+| `403`       | `AiError.AuthFailed` (`permission`)        |
+| `402`       | `AiError.AuthFailed` (`billing`)           |
+| `413`       | `AiError.ContextLengthExceeded`            |
 | `529`       | `AiError.Unavailable` (`overloaded_error`) |
-| `>= 500`    | `AiError.Unavailable`              |
-| other 4xx   | `AiError.InvalidRequest`           |
+| `>= 500`    | `AiError.Unavailable`                      |
+| other 4xx   | `AiError.InvalidRequest`                   |
 
 Recover per-tag with `Stream.catchTag("RateLimited", handler)`. See
 [multi-model fallback](/recipes/multi-model-fallback/) for cross-provider

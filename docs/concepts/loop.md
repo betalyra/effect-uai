@@ -29,9 +29,9 @@ Each pull, the body emits a chunk of `Event<A, S>`:
 
 ```ts
 type Event<A, S> =
-  | { _tag: "Value"; value: A }   // flows downstream
-  | { _tag: "Next"; state: S }    // end this iteration, continue with new state
-  | { _tag: "Stop" }              // end the loop entirely
+  | { _tag: "Value"; value: A } // flows downstream
+  | { _tag: "Next"; state: S } // end this iteration, continue with new state
+  | { _tag: "Stop" } // end the loop entirely
 ```
 
 A `Next` or `Stop` is **terminal for the iteration**. Anything emitted
@@ -41,11 +41,11 @@ over building events by hand.
 ## Helpers
 
 ```ts
-Loop.value(a)              // wrap a value
-Loop.next(state)           // signal continuation
-Loop.stop                  // a single-element stream that ends the loop
-Loop.nextAfter(stream, s)  // emit values from `stream`, then continue with state `s`
-Loop.stopAfter(stream)     // emit values from `stream`, then end the loop
+Loop.value(a) // wrap a value
+Loop.next(state) // signal continuation
+Loop.stop // a single-element stream that ends the loop
+Loop.nextAfter(stream, s) // emit values from `stream`, then continue with state `s`
+Loop.stopAfter(stream) // emit values from `stream`, then end the loop
 ```
 
 The two `*After` helpers are the workhorses: a body almost always wants
@@ -70,22 +70,24 @@ pipe(
     Effect.gen(function* () {
       const oai = yield* Responses
 
-      return oai.streamTurn(state.history, { tools }).pipe(
-        streamUntilComplete((turn) =>
-          Effect.gen(function* () {
-            const next = Turn.cursor(state, turn)
-            const calls = Turn.functionCalls(turn)
+      return oai
+        .streamTurn({ history: state.history, model: "gpt-5.4-mini", tools })
+        .pipe(
+          streamUntilComplete((turn) =>
+            Effect.gen(function* () {
+              const next = Turn.cursor(state, turn)
+              const calls = Turn.functionCalls(turn)
 
-            if (calls.length === 0) return stop
+              if (calls.length === 0) return stop
 
-            const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-            return nextAfter(Stream.fromIterable(outputs), {
-              ...next,
-              history: [...next.history, ...outputs],
-            })
-          }),
-        ),
-      )
+              const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
+              return nextAfter(Stream.fromIterable(outputs), {
+                ...next,
+                history: [...next.history, ...outputs],
+              })
+            }),
+          ),
+        )
     }),
   ),
 )

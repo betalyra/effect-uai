@@ -39,7 +39,7 @@ describe("structured-output: streaming JSONL", () => {
     ]
     const { layer } = MockProvider.layerWithRecorder([turnWithText(jsonl(recipes))])
 
-    const program = streamTurn([Items.userText("ignored")]).pipe(
+    const program = streamTurn({ history: [Items.userText("ignored")], model: "mock" }).pipe(
       Turn.textDeltas,
       Lines.lines,
       StructuredFormat.decodeJsonLines(recipeFormat),
@@ -55,7 +55,7 @@ describe("structured-output: streaming JSONL", () => {
     const recipes = [{ title: "Solo", ingredients: ["x"], prepMinutes: 5 }]
     const { layer } = MockProvider.layerWithRecorder([turnWithText(jsonl(recipes))])
 
-    const program = streamTurn([Items.userText("ignored")]).pipe(
+    const program = streamTurn({ history: [Items.userText("ignored")], model: "mock" }).pipe(
       Turn.textDeltas,
       Lines.lines,
       StructuredFormat.decodeJsonLines(recipeFormat),
@@ -74,7 +74,7 @@ describe("structured-output: streaming JSONL", () => {
     ].join("\n")
     const { layer } = MockProvider.layerWithRecorder([turnWithText(text)])
 
-    const program = streamTurn([Items.userText("ignored")]).pipe(
+    const program = streamTurn({ history: [Items.userText("ignored")], model: "mock" }).pipe(
       Turn.textDeltas,
       Lines.lines,
       StructuredFormat.decodeJsonLines(recipeFormat),
@@ -97,7 +97,7 @@ describe("structured-output: streaming JSONL", () => {
     ].join("\n")
     const { layer } = MockProvider.layerWithRecorder([turnWithText(text)])
 
-    const program = streamTurn([Items.userText("ignored")]).pipe(
+    const program = streamTurn({ history: [Items.userText("ignored")], model: "mock" }).pipe(
       Turn.textDeltas,
       Lines.lines,
       StructuredFormat.decodeJsonLines(recipeFormat),

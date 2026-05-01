@@ -2,7 +2,7 @@
 
 Pulled out of [responses-tier12.md](responses-tier12.md) item 4 because the
 design is more involved than "set a wire field". The spirit of this doc:
-get structured outputs *right* so consumers don't reproduce the
+get structured outputs _right_ so consumers don't reproduce the
 Vercel-AI-SDK trap of "type-cast and pray".
 
 ## Goals
@@ -46,15 +46,15 @@ Vercel-AI-SDK trap of "type-cast and pray".
 
 ## Provider landscape (verified May 2026)
 
-| Provider | Native JSON Schema | Streaming + structured both work? | Wire shape during streaming |
-| --- | --- | --- | --- |
-| **OpenAI Responses** | Yes (`text.format = { type: "json_schema", strict: true }`) | Yes | `response.output_text.delta` — text fragments |
-| **Anthropic** | Yes (added Nov 2025: `output_config.format = { type: "json_schema" }`, beta header `structured-outputs-2025-11-13`) | Yes | `content_block_delta` with `text_delta` — text fragments |
-| **Google Gemini** | Yes (`responseJsonSchema` + `responseMimeType: "application/json"`, Gemini 3 series) | Yes | `text` parts — text fragments |
-| **Mistral** | Yes (`response_format = { type: "json_schema", strict: true }`) | Yes | text deltas (OpenAI-style SSE) |
-| **Cohere** | Partial (`response_format = { type: "json_object", schema?: ... }`, Command R/R+) | Yes | text deltas |
-| **xAI Grok** | Yes for non-streaming | **No — mutually exclusive with `stream: true`** | n/a |
-| **DeepSeek** | Only `json_object` mode (no schema enforcement) | Yes (json_object only) | text deltas |
+| Provider             | Native JSON Schema                                                                                                  | Streaming + structured both work?               | Wire shape during streaming                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------- |
+| **OpenAI Responses** | Yes (`text.format = { type: "json_schema", strict: true }`)                                                         | Yes                                             | `response.output_text.delta` — text fragments            |
+| **Anthropic**        | Yes (added Nov 2025: `output_config.format = { type: "json_schema" }`, beta header `structured-outputs-2025-11-13`) | Yes                                             | `content_block_delta` with `text_delta` — text fragments |
+| **Google Gemini**    | Yes (`responseJsonSchema` + `responseMimeType: "application/json"`, Gemini 3 series)                                | Yes                                             | `text` parts — text fragments                            |
+| **Mistral**          | Yes (`response_format = { type: "json_schema", strict: true }`)                                                     | Yes                                             | text deltas (OpenAI-style SSE)                           |
+| **Cohere**           | Partial (`response_format = { type: "json_object", schema?: ... }`, Command R/R+)                                   | Yes                                             | text deltas                                              |
+| **xAI Grok**         | Yes for non-streaming                                                                                               | **No — mutually exclusive with `stream: true`** | n/a                                                      |
+| **DeepSeek**         | Only `json_object` mode (no schema enforcement)                                                                     | Yes (json_object only)                          | text deltas                                              |
 
 **Key takeaway**: every provider that supports streaming + structured
 output streams it as **text fragments**. The composition
@@ -90,18 +90,19 @@ The type parameter `A` flows through every consumer:
 
 ```ts
 // Final-only validated decode
-const turn = yield* Turn.collect(streamTurn(history, { structured: format }))
-const value = yield* Turn.toStructured(turn, format)
+const turn = yield * Turn.collect(streamTurn(history, { structured: format }))
+const value = yield * Turn.toStructured(turn, format)
 //    ^? Person   - inferred from `format`, not cast
 
 // Streaming items (recipe composition)
-yield* streamTurn(history, { structured: format }).pipe(
-  textDeltas,
-  accumulateLines,
-  decodeJsonLines(format),
-  Stream.runForEach((person) => ui.append(person)),
-  //                ^? Person
-)
+yield *
+  streamTurn(history, { structured: format }).pipe(
+    textDeltas,
+    accumulateLines,
+    decodeJsonLines(format),
+    Stream.runForEach((person) => ui.append(person)),
+    //                ^? Person
+  )
 ```
 
 Constraints this places on the design:
@@ -110,9 +111,9 @@ Constraints this places on the design:
    pulls `A` directly from the input schema's static type. No `unknown`
    intermediate.
    ```ts
-   const fromEffectSchema:    <A, I>(s: Schema.Schema<A, I>, opts) => StructuredFormat<A>
-   const fromZodSchema:       <A>(s: z.ZodType<A>, opts)            => StructuredFormat<A>
-   const fromStandardSchema:  <A>(s: StandardSchemaV1<unknown, A>, opts) => StructuredFormat<A>
+   const fromEffectSchema: <A, I>(s: Schema.Schema<A, I>, opts) => StructuredFormat<A>
+   const fromZodSchema: <A>(s: z.ZodType<A>, opts) => StructuredFormat<A>
+   const fromStandardSchema: <A>(s: StandardSchemaV1<unknown, A>, opts) => StructuredFormat<A>
    ```
 2. **Helpers thread `A`.** `Turn.toStructured(turn, format)` returns
    `Effect<A, ...>`. `decodeJsonLines(format)` returns
@@ -192,15 +193,15 @@ Adapters are responsible for:
 
 ## Wire format (per provider)
 
-| Provider | Wire shape | Notes |
-| --- | --- | --- |
-| OpenAI Responses | `text.format = { type: "json_schema", name, schema, strict }` | Default (omit) = free text. Strict mode is server-enforced via constrained decoding. |
-| Anthropic | `output_config.format = { type: "json_schema", schema }` + beta header `structured-outputs-2025-11-13` | Native as of Nov 2025. Streams as `text_delta`. |
-| Google Gemini | `generationConfig.responseJsonSchema` (or `responseSchema`) + `responseMimeType: "application/json"` | Available on Gemini 3 series. |
-| Mistral | `response_format = { type: "json_schema", strict: true, json_schema: {...} }` | OpenAI-compatible shape. |
-| Cohere | `response_format = { type: "json_object", schema?: ... }` | Schema is optional; without it the model returns any valid JSON. |
-| xAI Grok | `response_format = { type: "json_schema", json_schema: {...} }` | **Doesn't combine with streaming.** Use non-streaming `make` style; for streaming, fall back to `json_object` or no constraint. |
-| DeepSeek | `response_format = { type: "json_object" }` | No schema-level enforcement. Validation is strictly client-side. |
+| Provider         | Wire shape                                                                                             | Notes                                                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI Responses | `text.format = { type: "json_schema", name, schema, strict }`                                          | Default (omit) = free text. Strict mode is server-enforced via constrained decoding.                                            |
+| Anthropic        | `output_config.format = { type: "json_schema", schema }` + beta header `structured-outputs-2025-11-13` | Native as of Nov 2025. Streams as `text_delta`.                                                                                 |
+| Google Gemini    | `generationConfig.responseJsonSchema` (or `responseSchema`) + `responseMimeType: "application/json"`   | Available on Gemini 3 series.                                                                                                   |
+| Mistral          | `response_format = { type: "json_schema", strict: true, json_schema: {...} }`                          | OpenAI-compatible shape.                                                                                                        |
+| Cohere           | `response_format = { type: "json_object", schema?: ... }`                                              | Schema is optional; without it the model returns any valid JSON.                                                                |
+| xAI Grok         | `response_format = { type: "json_schema", json_schema: {...} }`                                        | **Doesn't combine with streaming.** Use non-streaming `make` style; for streaming, fall back to `json_object` or no constraint. |
+| DeepSeek         | `response_format = { type: "json_object" }`                                                            | No schema-level enforcement. Validation is strictly client-side.                                                                |
 
 Each provider's options surface gains an optional
 `structured?: StructuredFormat<unknown>`. Encoders pull `jsonSchema` and
@@ -224,8 +225,8 @@ is what most production code does in practice: structured-output
 responses are typically sub-second, the streaming UI value is marginal.
 
 ```ts
-const turn = yield* Turn.collect(streamTurn(history, { structured: format }))
-const value = yield* Turn.toStructured(turn, format)
+const turn = yield * Turn.collect(streamTurn(history, { structured: format }))
+const value = yield * Turn.toStructured(turn, format)
 //    ^? Person — typed, validated
 ```
 
@@ -256,9 +257,9 @@ The composition is five lines of stream operators:
 
 ```ts
 streamTurn(history, { structured: format }).pipe(
-  textDeltas,                  // TurnEvent stream → string stream
-  accumulateLines,             // string stream → complete-line stream
-  decodeJsonLines(format),     // complete-line stream → validated A stream
+  textDeltas, // TurnEvent stream → string stream
+  accumulateLines, // string stream → complete-line stream
+  decodeJsonLines(format), // complete-line stream → validated A stream
   Stream.runForEach(handler),
 )
 ```
@@ -295,7 +296,7 @@ streamTurn(...).pipe(
 )
 ```
 
-The schema describes the *value shape*, not the wire format. The parser
+The schema describes the _value shape_, not the wire format. The parser
 slot handles the wire-format variation.
 
 ## Recipe-only streaming
@@ -326,14 +327,14 @@ What this gives us instead:
 
   ```ts
   // @effect-uai/core
-  StructuredFormat<A>                              // type
-  StructuredFormat.fromEffectSchema(schema, opts)  // adapter
-  StructuredDecodeError                            // tagged error
-  parseJson(format)                                // string → Result<A>
-  decodeJsonLines(format)                          // Stream<string> → Stream<A>
-  Turn.toStructured(turn, format)                  // Turn → Effect<A>
-  accumulateLines, accumulateLinesWithFlush        // string streams → line streams
-  textDeltas                                       // TurnEvent stream → string stream
+  StructuredFormat<A> // type
+  StructuredFormat.fromEffectSchema(schema, opts) // adapter
+  StructuredDecodeError // tagged error
+  parseJson(format) // string → Result<A>
+  decodeJsonLines(format) // Stream<string> → Stream<A>
+  Turn.toStructured(turn, format) // Turn → Effect<A>
+  ;(accumulateLines, accumulateLinesWithFlush) // string streams → line streams
+  textDeltas // TurnEvent stream → string stream
   ```
 
 - **Recipes** in `recipes/structured-output/`:
@@ -360,13 +361,13 @@ is correct for some use case:
 
 - **Fail-fast.** One bad line aborts. Strict pipelines, audit logs.
   ```ts
-  pipeline.pipe(Stream.runForEach(handler))   // fails on first bad line
+  pipeline.pipe(Stream.runForEach(handler)) // fails on first bad line
   ```
 - **Skip-bad.** Drop failures, keep collecting. Best-effort scrapers.
   ```ts
   pipeline.pipe(
     Stream.catchTag("StructuredDecodeError", () => Stream.empty),
-    Stream.catchTag("JsonParseError",        () => Stream.empty),
+    Stream.catchTag("JsonParseError", () => Stream.empty),
     Stream.runForEach(handler),
   )
   ```
@@ -375,10 +376,12 @@ is correct for some use case:
   ```ts
   pipeline.pipe(
     Stream.catchAll((err) =>
-      Stream.unwrap(Effect.gen(function* () {
-        yield* Effect.logWarning(`bad line: ${String(err)}`)
-        return Stream.empty
-      })),
+      Stream.unwrap(
+        Effect.gen(function* () {
+          yield* Effect.logWarning(`bad line: ${String(err)}`)
+          return Stream.empty
+        }),
+      ),
     ),
     Stream.runForEach(handler),
   )
@@ -388,10 +391,8 @@ is correct for some use case:
   to render "this row failed".
   ```ts
   pipeline.pipe(
-    Stream.either,                           // Stream<Either<Err, A>>
-    Stream.runForEach((either) =>
-      Either.match(either, { onLeft: showError, onRight: handler }),
-    ),
+    Stream.either, // Stream<Either<Err, A>>
+    Stream.runForEach((either) => Either.match(either, { onLeft: showError, onRight: handler })),
   )
   ```
 
@@ -507,8 +508,8 @@ A tool descriptor is structurally close to what structured outputs need
 — both have `name`, `description`, JSON Schema, decoder. Tempting to
 share. But:
 
-1. Tools have a *handler* — an Effect that runs server-side. Structured
-   outputs have a *decoder*. Different semantics.
+1. Tools have a _handler_ — an Effect that runs server-side. Structured
+   outputs have a _decoder_. Different semantics.
 2. Tool calls round-trip through `function_call` items; structured
    outputs round-trip through `output_text` (or `refusal`). Different
    wire shapes.

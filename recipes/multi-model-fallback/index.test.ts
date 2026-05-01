@@ -10,6 +10,7 @@ import * as Turn from "@effect-uai/core/Turn"
 describe("multi-model-fallback", () => {
   interface Tier {
     readonly name: string
+    readonly model: string
     readonly service: LanguageModelService
   }
 
@@ -55,7 +56,7 @@ describe("multi-model-fallback", () => {
 
           const advance = nextAfter(Stream.empty, { ...state, tier: state.tier + 1 })
 
-          return tier.service.streamTurn(state.history, {}).pipe(
+          return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
             streamUntilComplete(() => Effect.sync(() => stop)),
             Stream.catchTag("RateLimited", () => advance),
             Stream.catchTag("Unavailable", () => advance),
@@ -75,8 +76,8 @@ describe("multi-model-fallback", () => {
     const { service: secondary, recorder } = MockProvider.make([finalTurn("from-secondary")])
 
     const conversation = buildConversation([
-      { name: "primary", service: primary },
-      { name: "secondary", service: secondary },
+      { name: "primary", model: "mock-primary", service: primary },
+      { name: "secondary", model: "mock-secondary", service: secondary },
     ])
 
     const events = await Effect.runPromise(Stream.runCollect(conversation))
@@ -107,8 +108,8 @@ describe("multi-model-fallback", () => {
     const { service: secondary } = MockProvider.make([finalTurn("ok")])
 
     const conversation = buildConversation([
-      { name: "primary", service: primary },
-      { name: "secondary", service: secondary },
+      { name: "primary", model: "mock-primary", service: primary },
+      { name: "secondary", model: "mock-secondary", service: secondary },
     ])
 
     const events = await Effect.runPromise(Stream.runCollect(conversation))
@@ -139,8 +140,8 @@ describe("multi-model-fallback", () => {
     }
 
     const conversation = buildConversation([
-      { name: "primary", service: primary },
-      { name: "secondary", service: secondary },
+      { name: "primary", model: "mock-primary", service: primary },
+      { name: "secondary", model: "mock-secondary", service: secondary },
     ])
 
     const exit = await Effect.runPromiseExit(Stream.runCollect(conversation))
@@ -167,8 +168,8 @@ describe("multi-model-fallback", () => {
     )
 
     const conversation = buildConversation([
-      { name: "primary", service: primary },
-      { name: "secondary", service: secondary },
+      { name: "primary", model: "mock-primary", service: primary },
+      { name: "secondary", model: "mock-secondary", service: secondary },
     ])
 
     const events = await Effect.runPromise(Stream.runCollect(conversation))

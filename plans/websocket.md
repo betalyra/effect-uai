@@ -16,21 +16,21 @@ References:
 
 ## The two protocols at a glance
 
-|                          | OpenResponses WS                                                                | Gemini Live (BidiGenerateContent)                                                                |
-| ------------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Endpoint                 | `wss://.../v1/responses` (same resource as HTTP)                                | `wss://generativelanguage.googleapis.com/ws/.../BidiGenerateContent`                             |
-| Auth                     | Same headers as HTTP                                                            | Ephemeral token via `?access_token=` or `Authorization: Token <value>`                           |
-| Setup phase              | None. First frame is `response.create`.                                         | Required. `BidiGenerateContentSetup` (model, system, tools, generationConfig) → `SetupComplete`. |
-| Turn start               | Client emits `{type: "response.create", ...}`                                   | Client emits `ClientContent` with `turnComplete: true`.                                          |
-| Per-turn model/tool overrides | Yes. Each `response.create` sets its own model, tools, etc.                | No. Model/tools are baked into the session at setup.                                             |
-| Server frames            | Same SSE event objects, raw JSON (no `data:` framing).                          | `ServerContent` (with `modelTurn`, `generationComplete`, `turnComplete`, `interrupted`).         |
-| Tool-call protocol       | `response.completed` carries calls; client opens a new `response.create` with `function_call_output` items as input. | `ToolCall` frame mid-stream; client replies with `ToolResponse` on the **same** stream; generation resumes. Server may also emit `ToolCallCancellation`. |
-| Concurrency              | One in-flight response per connection. Explicit.                                | Implied single logical turn; new client content interrupts current generation.                   |
-| Cancellation             | Undocumented. Effective only by closing the socket → cache eviction.            | Send any `ClientContent` while generating → server emits `interrupted: true`, no `generationComplete`. |
-| Session continuation     | `previous_response_id` → connection-local cache. Lost on reconnect.             | `SessionResumptionUpdate.newHandle` → server-managed, survives reconnect (in-process or not).    |
-| Disconnect signal        | Hard error `websocket_connection_limit_reached` at 60 min.                      | `GoAway` frame with `timeLeft` Duration before terminating.                                      |
-| Keepalive / ping         | Not specified.                                                                  | Not specified beyond standard WS.                                                                |
-| Context window mgmt      | Not specified.                                                                  | Optional `ContextWindowCompressionConfig` with sliding window.                                   |
+|                               | OpenResponses WS                                                                                                     | Gemini Live (BidiGenerateContent)                                                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint                      | `wss://.../v1/responses` (same resource as HTTP)                                                                     | `wss://generativelanguage.googleapis.com/ws/.../BidiGenerateContent`                                                                                     |
+| Auth                          | Same headers as HTTP                                                                                                 | Ephemeral token via `?access_token=` or `Authorization: Token <value>`                                                                                   |
+| Setup phase                   | None. First frame is `response.create`.                                                                              | Required. `BidiGenerateContentSetup` (model, system, tools, generationConfig) → `SetupComplete`.                                                         |
+| Turn start                    | Client emits `{type: "response.create", ...}`                                                                        | Client emits `ClientContent` with `turnComplete: true`.                                                                                                  |
+| Per-turn model/tool overrides | Yes. Each `response.create` sets its own model, tools, etc.                                                          | No. Model/tools are baked into the session at setup.                                                                                                     |
+| Server frames                 | Same SSE event objects, raw JSON (no `data:` framing).                                                               | `ServerContent` (with `modelTurn`, `generationComplete`, `turnComplete`, `interrupted`).                                                                 |
+| Tool-call protocol            | `response.completed` carries calls; client opens a new `response.create` with `function_call_output` items as input. | `ToolCall` frame mid-stream; client replies with `ToolResponse` on the **same** stream; generation resumes. Server may also emit `ToolCallCancellation`. |
+| Concurrency                   | One in-flight response per connection. Explicit.                                                                     | Implied single logical turn; new client content interrupts current generation.                                                                           |
+| Cancellation                  | Undocumented. Effective only by closing the socket → cache eviction.                                                 | Send any `ClientContent` while generating → server emits `interrupted: true`, no `generationComplete`.                                                   |
+| Session continuation          | `previous_response_id` → connection-local cache. Lost on reconnect.                                                  | `SessionResumptionUpdate.newHandle` → server-managed, survives reconnect (in-process or not).                                                            |
+| Disconnect signal             | Hard error `websocket_connection_limit_reached` at 60 min.                                                           | `GoAway` frame with `timeLeft` Duration before terminating.                                                                                              |
+| Keepalive / ping              | Not specified.                                                                                                       | Not specified beyond standard WS.                                                                                                                        |
+| Context window mgmt           | Not specified.                                                                                                       | Optional `ContextWindowCompressionConfig` with sliding window.                                                                                           |
 
 ## What's structurally common
 
@@ -247,15 +247,18 @@ Verdict: only worth it if B turns out to leak the differences badly.
 
    ```ts
    namespace Responses {
-     export const session: (
-       overrides?: { reasoning?: ResponsesRequestOptions["reasoning"]; store?: boolean }
-     ) => Effect<ResponsesSession, AiError, HttpClient.HttpClient | Scope>
+     export const session: (overrides?: {
+       reasoning?: ResponsesRequestOptions["reasoning"]
+       store?: boolean
+     }) => Effect<ResponsesSession, AiError, HttpClient.HttpClient | Scope>
    }
 
    namespace Gemini {
-     export const session: (
-       config: { systemInstruction?: string; tools?: Tool[]; thinkingBudget?: number }
-     ) => Effect<GeminiSession, AiError, HttpClient.HttpClient | Scope>
+     export const session: (config: {
+       systemInstruction?: string
+       tools?: Tool[]
+       thinkingBudget?: number
+     }) => Effect<GeminiSession, AiError, HttpClient.HttpClient | Scope>
    }
    ```
 

@@ -37,22 +37,24 @@ pipe(
     Effect.gen(function* () {
       const oai = yield* Responses
 
-      return oai.streamTurn(state.history, { tools }).pipe(
-        streamUntilComplete((turn) =>
-          Effect.gen(function* () {
-            const next = Turn.cursor(state, turn)
-            const calls = Turn.functionCalls(turn)
-            if (calls.length === 0) return stop
+      return oai
+        .streamTurn({ history: state.history, model: "gpt-5.4-mini", tools })
+        .pipe(
+          streamUntilComplete((turn) =>
+            Effect.gen(function* () {
+              const next = Turn.cursor(state, turn)
+              const calls = Turn.functionCalls(turn)
+              if (calls.length === 0) return stop
 
-            const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-            return nextAfter(Stream.fromIterable(outputs), {
-              ...next,
-              history: [...next.history, ...outputs],
-              index: state.index + 1,
-            })
-          }),
-        ),
-      )
+              const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
+              return nextAfter(Stream.fromIterable(outputs), {
+                ...next,
+                history: [...next.history, ...outputs],
+                index: state.index + 1,
+              })
+            }),
+          ),
+        )
     }),
   ),
 )

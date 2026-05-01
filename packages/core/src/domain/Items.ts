@@ -38,8 +38,7 @@ export const ImageSource = Schema.Union([ImageUrlSource, ImageBase64Source])
 export type ImageSource = typeof ImageSource.Type
 
 export const isImageUrlSource = (s: ImageSource): s is ImageUrlSource => s._tag === "url"
-export const isImageBase64Source = (s: ImageSource): s is ImageBase64Source =>
-  s._tag === "base64"
+export const isImageBase64Source = (s: ImageSource): s is ImageBase64Source => s._tag === "base64"
 
 /**
  * User-provided image content block. Pair with `InputText` inside a
@@ -89,12 +88,7 @@ export const FilePath = Schema.Struct({
 })
 export type FilePath = typeof FilePath.Type
 
-export const Annotation = Schema.Union([
-  UrlCitation,
-  FileCitation,
-  ContainerFileCitation,
-  FilePath,
-])
+export const Annotation = Schema.Union([UrlCitation, FileCitation, ContainerFileCitation, FilePath])
 export type Annotation = typeof Annotation.Type
 
 export const isUrlCitation = (a: Annotation): a is UrlCitation => a.type === "url_citation"

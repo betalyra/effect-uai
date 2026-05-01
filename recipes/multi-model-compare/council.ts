@@ -6,6 +6,7 @@ import type * as Turn from "@effect-uai/core/Turn"
 
 export interface Member {
   readonly name: string
+  readonly model: string
   readonly service: LanguageModelService
 }
 
@@ -17,10 +18,8 @@ const memberStream = (
   member: Member,
   history: ReadonlyArray<Items.Item>,
 ): Stream.Stream<CouncilEvent> =>
-  member.service.streamTurn(history, {}).pipe(
-    Stream.map(
-      (delta): CouncilEvent => ({ type: "delta", member: member.name, delta }),
-    ),
+  member.service.streamTurn({ history, model: member.model }).pipe(
+    Stream.map((delta): CouncilEvent => ({ type: "delta", member: member.name, delta })),
     Stream.catch((error) =>
       Stream.succeed<CouncilEvent>({ type: "error", member: member.name, error }),
     ),

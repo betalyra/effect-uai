@@ -34,7 +34,12 @@ export default defineConfig({
         },
         {
           label: "Concepts",
-          items: [{ label: "The loop primitive", slug: "concepts/loop" }],
+          items: [
+            { label: "The loop primitive", slug: "concepts/loop" },
+            { label: "Items and turns", slug: "concepts/items-and-turns" },
+            { label: "Tools and toolkits", slug: "concepts/tools" },
+            { label: "The LanguageModel tag", slug: "concepts/language-model" },
+          ],
         },
         {
           label: "Providers",

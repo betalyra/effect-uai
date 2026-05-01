@@ -34,7 +34,9 @@
     "./Tool": "./src/tool/Tool.ts",
     "./Toolkit": "./src/tool/Toolkit.ts",
     "./JSONL": "./src/streaming/JSONL.ts",
+    "./Lines": "./src/streaming/Lines.ts",
     "./SSE": "./src/streaming/SSE.ts",
+    "./StructuredFormat": "./src/structured-format/StructuredFormat.ts",
     "./Metrics": "./src/observability/Metrics.ts",
     "./testing/MockProvider": "./src/testing/MockProvider.ts"
   },

@@ -1,8 +1,11 @@
-import { Schema } from "effect"
+import { Data, Effect, Result, Schema, Stream, pipe } from "effect"
+import * as StructuredFormat from "../structured-format/StructuredFormat.js"
 import {
   FunctionCall,
   FunctionCallOutput,
   Item,
+  isOutputText,
+  isRefusal,
   Message,
   Reasoning,
   StopReason,
@@ -105,3 +108,69 @@ export const cursor = <S extends { readonly history: ReadonlyArray<Item> }>(
   history: [...state.history, ...turn.items],
   turn,
 })
+
+// ---------------------------------------------------------------------------
+// Stream operators
+// ---------------------------------------------------------------------------
+
+/**
+ * Project a `TurnEvent` stream onto its `text_delta` payloads. Other
+ * variants are dropped. Composes with `accumulateLines` +
+ * `decodeJsonLines` for prompted-JSONL streaming.
+ */
+export const textDeltas = <E, R>(
+  self: Stream.Stream<TurnEvent, E, R>,
+): Stream.Stream<string, E, R> =>
+  self.pipe(
+    Stream.filterMap((ev) =>
+      ev.type === "text_delta" ? Result.succeed(ev.text) : Result.failVoid,
+    ),
+  )
+
+// ---------------------------------------------------------------------------
+// Structured-output integration
+// ---------------------------------------------------------------------------
+
+/**
+ * The assistant message on the just-completed turn was a refusal block,
+ * not an `output_text` payload. Returned by `toStructured` to short-circuit
+ * decoding before `JSON.parse` / schema validation runs.
+ */
+export class RefusalRejected extends Data.TaggedError("RefusalRejected")<{
+  readonly turn: Turn
+}> {}
+
+const lastAssistantContent = (
+  turn: Turn,
+): { readonly text: string; readonly refused: boolean } => {
+  const assistants = assistantMessages(turn)
+  const last = assistants[assistants.length - 1]
+  if (last === undefined) return { text: "", refused: false }
+  if (last.content.some(isRefusal)) return { text: "", refused: true }
+  const text = last.content
+    .filter(isOutputText)
+    .map((b) => b.text)
+    .join("")
+  return { text, refused: false }
+}
+
+/**
+ * Validate a completed `Turn` against a `StructuredFormat`. Concatenates
+ * `output_text` blocks on the last assistant message, then runs
+ * `JSON.parse` + the format's schema validation.
+ *
+ * Three failure modes:
+ * - `RefusalRejected` — the assistant emitted a refusal block.
+ * - `JsonParseError` — the assembled text wasn't valid JSON.
+ * - `StructuredDecodeError` — the JSON didn't match the schema.
+ */
+export const toStructured = <A>(
+  turn: Turn,
+  format: StructuredFormat.StructuredFormat<A>,
+): Effect.Effect<
+  A,
+  RefusalRejected | StructuredFormat.JsonParseError | StructuredFormat.StructuredDecodeError
+> =>
+  pipe(lastAssistantContent(turn), ({ text, refused }) =>
+    refused ? Effect.fail(new RefusalRejected({ turn })) : StructuredFormat.parseJson(format)(text),
+  )

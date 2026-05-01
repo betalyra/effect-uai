@@ -3,6 +3,7 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { Item } from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
+import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import {
   type CommonRequestOptions,
   LanguageModel,
@@ -35,6 +36,24 @@ export interface ResponsesRequestOptions extends CommonRequestOptions {
   readonly safetyIdentifier?: string
   readonly promptCacheKey?: string
   readonly truncation?: "auto" | "disabled"
+  /**
+   * Schema-bound JSON output. The model's output is constrained to
+   * match the format's JSON Schema. Pair with `Turn.toStructured` (or a
+   * line-accumulation recipe) on the consumer side for runtime
+   * validation.
+   */
+  readonly structured?: StructuredFormat.StructuredFormat<unknown>
+  /**
+   * Free-form JSON output: model emits valid JSON without schema
+   * constraints. Mutually exclusive with `structured` (schema wins if
+   * both are set).
+   */
+  readonly responseFormat?: { readonly type: "json_object" }
+  /**
+   * Answer length / level-of-detail hint. GPT-5+ models honour it;
+   * earlier models ignore.
+   */
+  readonly verbosity?: "low" | "medium" | "high"
 }
 
 export interface ResponsesService {
@@ -85,51 +104,79 @@ export interface Config {
 // Request body
 // ---------------------------------------------------------------------------
 
+const jsonSchemaFormat = (
+  format: StructuredFormat.StructuredFormat<unknown>,
+): Record<string, unknown> => ({
+  type: "json_schema",
+  name: format.name,
+  schema: format.schema["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
+  ...(format.description !== undefined && { description: format.description }),
+  ...(format.strict !== undefined && { strict: format.strict }),
+})
+
+const buildText = (
+  options: ResponsesRequestOptions | undefined,
+): Record<string, unknown> | undefined => {
+  if (options === undefined) return undefined
+  const format =
+    options.structured !== undefined
+      ? jsonSchemaFormat(options.structured)
+      : options.responseFormat
+  const text: Record<string, unknown> = {}
+  if (format !== undefined) text.format = format
+  if (options.verbosity !== undefined) text.verbosity = options.verbosity
+  return Object.keys(text).length === 0 ? undefined : text
+}
+
 const buildBody = (
   history: ReadonlyArray<Item>,
   model: string,
   options: ResponsesRequestOptions | undefined,
-): Record<string, unknown> => ({
-  model,
-  input: itemsToInput(history),
-  stream: true,
-  ...(options?.tools !== undefined &&
-    options.tools.length > 0 && {
-      tools: options.tools.map((t) => ({
-        type: "function",
-        name: t.name,
-        description: t.description,
-        parameters: t.inputSchema,
-        ...(t.strict !== undefined && { strict: t.strict }),
-      })),
+): Record<string, unknown> => {
+  const text = buildText(options)
+  return {
+    model,
+    input: itemsToInput(history),
+    stream: true,
+    ...(options?.tools !== undefined &&
+      options.tools.length > 0 && {
+        tools: options.tools.map((t) => ({
+          type: "function",
+          name: t.name,
+          description: t.description,
+          parameters: t.inputSchema,
+          ...(t.strict !== undefined && { strict: t.strict }),
+        })),
+      }),
+    ...(options?.toolChoice !== undefined && { tool_choice: options.toolChoice }),
+    ...(options?.temperature !== undefined && {
+      temperature: options.temperature,
     }),
-  ...(options?.toolChoice !== undefined && { tool_choice: options.toolChoice }),
-  ...(options?.temperature !== undefined && {
-    temperature: options.temperature,
-  }),
-  ...(options?.maxOutputTokens !== undefined && {
-    max_output_tokens: options.maxOutputTokens,
-  }),
-  ...(options?.reasoning !== undefined && { reasoning: options.reasoning }),
-  ...(options?.store !== undefined && { store: options.store }),
-  ...(options?.previousResponseId !== undefined && {
-    previous_response_id: options.previousResponseId,
-  }),
-  ...(options?.instructions !== undefined && { instructions: options.instructions }),
-  ...(options?.topP !== undefined && { top_p: options.topP }),
-  ...(options?.parallelToolCalls !== undefined && {
-    parallel_tool_calls: options.parallelToolCalls,
-  }),
-  ...(options?.metadata !== undefined && { metadata: options.metadata }),
-  ...(options?.user !== undefined && { user: options.user }),
-  ...(options?.safetyIdentifier !== undefined && {
-    safety_identifier: options.safetyIdentifier,
-  }),
-  ...(options?.promptCacheKey !== undefined && {
-    prompt_cache_key: options.promptCacheKey,
-  }),
-  ...(options?.truncation !== undefined && { truncation: options.truncation }),
-})
+    ...(options?.maxOutputTokens !== undefined && {
+      max_output_tokens: options.maxOutputTokens,
+    }),
+    ...(options?.reasoning !== undefined && { reasoning: options.reasoning }),
+    ...(options?.store !== undefined && { store: options.store }),
+    ...(options?.previousResponseId !== undefined && {
+      previous_response_id: options.previousResponseId,
+    }),
+    ...(options?.instructions !== undefined && { instructions: options.instructions }),
+    ...(options?.topP !== undefined && { top_p: options.topP }),
+    ...(options?.parallelToolCalls !== undefined && {
+      parallel_tool_calls: options.parallelToolCalls,
+    }),
+    ...(options?.metadata !== undefined && { metadata: options.metadata }),
+    ...(options?.user !== undefined && { user: options.user }),
+    ...(options?.safetyIdentifier !== undefined && {
+      safety_identifier: options.safetyIdentifier,
+    }),
+    ...(options?.promptCacheKey !== undefined && {
+      prompt_cache_key: options.promptCacheKey,
+    }),
+    ...(options?.truncation !== undefined && { truncation: options.truncation }),
+    ...(text !== undefined && { text }),
+  }
+}
 
 // ---------------------------------------------------------------------------
 // SSE event → provider event

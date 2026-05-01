@@ -58,6 +58,20 @@ export class Cancelled extends Data.TaggedError("Cancelled")<{
 }> {}
 
 /**
+ * The model errored mid-generation. Distinct from `Unavailable` (transport
+ * problem before generation started) and from `IncompleteTurn` (provider
+ * stream ended without a terminal event). The provider's own error message,
+ * if any, is on `message`.
+ */
+export class GenerationFailed extends Data.TaggedError("GenerationFailed")<{
+  provider: string
+  code?: string
+  message?: string
+  requestId?: string
+  raw: unknown
+}> {}
+
+/**
  * The provider's delta stream ended without a terminal `turn_complete`.
  * Indicates a misbehaving provider or a connection that dropped mid-flight.
  * Non-terminal deltas seen so far have already been emitted downstream.
@@ -76,3 +90,4 @@ export type AiError =
   | AuthFailed
   | Cancelled
   | IncompleteTurn
+  | GenerationFailed

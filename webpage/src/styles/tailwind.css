@@ -1,0 +1,47 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Match Starlight's data-theme="dark" attribute. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* shadcn theme tokens, mapped onto the existing modernist palette
+   (--sl-color-*, --color-mark) so cards/buttons inherit the same
+   black/white/red discipline as the rest of the site. */
+@theme inline {
+  --font-sans: var(--sl-font);
+  --font-mono: var(--sl-font-system-mono);
+
+  --color-background: var(--sl-color-bg);
+  --color-foreground: var(--sl-color-text);
+
+  --color-card: var(--sl-color-bg);
+  --color-card-foreground: var(--sl-color-text);
+
+  --color-popover: var(--sl-color-bg);
+  --color-popover-foreground: var(--sl-color-text);
+
+  --color-primary: var(--sl-color-accent);
+  --color-primary-foreground: var(--sl-color-bg);
+
+  --color-secondary: var(--sl-color-gray-7);
+  --color-secondary-foreground: var(--sl-color-text);
+
+  --color-muted: var(--sl-color-gray-7);
+  --color-muted-foreground: var(--sl-color-gray-3);
+
+  --color-accent: var(--color-mark);
+  --color-accent-foreground: var(--sl-color-bg);
+
+  --color-destructive: var(--color-mark);
+  --color-destructive-foreground: var(--sl-color-bg);
+
+  --color-border: var(--sl-color-hairline);
+  --color-input: var(--sl-color-hairline);
+  --color-ring: var(--sl-color-accent);
+
+  /* Squared corners with a hairline radius for inline code parity. */
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+}

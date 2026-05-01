@@ -1,12 +1,19 @@
 import { defineConfig } from "astro/config"
 import starlight from "@astrojs/starlight"
+import mdx from "@astrojs/mdx"
+import react from "@astrojs/react"
+import tailwindcss from "@tailwindcss/vite"
 
 export default defineConfig({
+  vite: {
+    plugins: [tailwindcss()],
+  },
   integrations: [
+    react(),
     starlight({
       title: "effect-uai",
       description: "Low-level primitives for AI agents in Effect.",
-      customCss: ["./src/styles/custom.css"],
+      customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
       components: {
         ThemeSelect: "./src/components/ThemeSelect.astro",
       },
@@ -58,5 +65,6 @@ export default defineConfig({
         },
       ],
     }),
+    mdx(),
   ],
 })

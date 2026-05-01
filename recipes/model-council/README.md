@@ -7,7 +7,7 @@ description: Three models answer the same question, score each other's answers (
 
 **Scenario.** You have a question and three different models (OpenAI,
 Google, Anthropic). You want all three to answer concurrently, then
-have each model score the *others'* answers, and finally surface the
+have each model score the _others'_ answers, and finally surface the
 winner — both who won and what they said. Everything streams; nothing
 blocks longer than it has to.
 
@@ -29,12 +29,12 @@ If you only want side-by-side answers without cross-evaluation, see
   right moment).
 - **`Stream.flatMap` as a spawn point** — when a `candidate_complete`
   flows through, it's replaced with a merged stream of `[the event
-  itself, ...judge streams for that subject]`. Judges over the same
+itself, ...judge streams for that subject]`. Judges over the same
   subject share the subject's answer in scope.
 - **`Schema.fromJsonString`** to parse the judge's `{score,
-  rationale}` JSON in one shot. Decode failures map to typed
+rationale}` JSON in one shot. Decode failures map to typed
   `AiError.InvalidRequest` and surface as `error` events with `phase:
-  "judge"` instead of silently scoring zero.
+"judge"` instead of silently scoring zero.
 - **Per-phase error isolation** — a candidate's generate failure
   cancels nothing else; a judge's failure surfaces as one `error`
   event and the remaining judges continue.
@@ -66,7 +66,7 @@ on terminal:
 
 ```ts
 const candidatePipeline = (member, judges, history) =>
-  member.service.streamTurn(history, {}).pipe(
+  member.service.streamTurn({ history, model: member.model }).pipe(
     Stream.mapAccum(
       () => "",
       (acc, delta) => {
@@ -105,7 +105,12 @@ const ScoreSchema = Schema.Struct({
 const decodeScore = Schema.decodeResult(Schema.fromJsonString(ScoreSchema))
 
 const judgeStream = (judge, subject, subjectAnswer, history) =>
-  judge.service.streamTurn(judgeHistory(history, subject, subjectAnswer), {}).pipe(
+  judge.service
+    .streamTurn({
+      history: judgeHistory(history, subject, subjectAnswer),
+      model: judge.model,
+    })
+    .pipe(
     Stream.mapAccum(
       () => "",
       (acc, delta) => {
@@ -113,7 +118,10 @@ const judgeStream = (judge, subject, subjectAnswer, history) =>
         if (delta.type !== "turn_complete") return [acc, []]
         return Result.match(decodeScore(acc.trim()), {
           onSuccess: (s) => [acc, [{ type: "score", judge: judge.name, subject, ...s }]],
-          onFailure: (issue) => [acc, [{ type: "error", member: judge.name, phase: "judge", error: invalidRequest(issue) }]],
+          onFailure: (issue) => [
+            acc,
+            [{ type: "error", member: judge.name, phase: "judge", error: invalidRequest(issue) }],
+          ],
         })
       },
     ),
@@ -132,14 +140,17 @@ export const council = (members, history) =>
     Stream.mapAccum(
       () => emptyTally,
       (tally, event) => {
-        if (event.type === "candidate_complete") return [recordCandidate(tally, event.member, event.answer), [event]]
-        if (event.type === "score")               return [recordScore(tally, event.subject, event.score), [event]]
+        if (event.type === "candidate_complete")
+          return [recordCandidate(tally, event.member, event.answer), [event]]
+        if (event.type === "score") return [recordScore(tally, event.subject, event.score), [event]]
         return [tally, [event]]
       },
       {
         onHalt: (tally) => {
           const w = pickWinner(tally)
-          return w === null ? [] : [{ type: "winner", member: w.member, answer: w.answer, averageScore: w.averageScore }]
+          return w === null
+            ? []
+            : [{ type: "winner", member: w.member, answer: w.answer, averageScore: w.averageScore }]
         },
       },
     ),
@@ -155,7 +166,7 @@ then pick the best from whatever scores actually landed.
 
 If one model returns malformed JSON, you don't want it to silently
 score zero (which would unfairly penalize the subject it was judging)
-*and* you don't want it to take the whole council down. Schema decode
+_and_ you don't want it to take the whole council down. Schema decode
 failures become typed `AiError.InvalidRequest` events with `phase:
 "judge"` — the rest of the scores still land, the tally still
 averages over what arrived, and the winner is still emitted.

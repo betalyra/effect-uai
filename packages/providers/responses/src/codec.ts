@@ -203,8 +203,7 @@ const wireMessageContentToBlock = Match.type<typeof WireMessageContent.Type>().p
     (c): ContentBlock => ({
       type: "output_text",
       text: c.text,
-      ...(c.annotations !== undefined &&
-        c.annotations !== null && { annotations: c.annotations }),
+      ...(c.annotations !== undefined && c.annotations !== null && { annotations: c.annotations }),
     }),
   ),
   matchType("refusal", (c): ContentBlock => ({ type: "refusal", text: c.refusal })),

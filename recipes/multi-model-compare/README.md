@@ -17,7 +17,7 @@ tagged outputs.
 
 **Want a winner picked for you?** The
 [model council](/recipes/model-council/) recipe extends this fan-out
-with cross-evaluation: each model scores the *others'* answers (no
+with cross-evaluation: each model scores the _others'_ answers (no
 self-judging), and the highest-rated answer is streamed as the
 winner.
 
@@ -46,11 +46,8 @@ export type CouncilEvent =
   | { readonly type: "delta"; readonly member: string; readonly delta: TurnDelta }
   | { readonly type: "error"; readonly member: string; readonly error: AiError }
 
-const memberStream = (
-  member: Member,
-  history: ReadonlyArray<Item>,
-): Stream.Stream<CouncilEvent> =>
-  member.service.streamTurn(history, {}).pipe(
+const memberStream = (member: Member, history: ReadonlyArray<Item>): Stream.Stream<CouncilEvent> =>
+  member.service.streamTurn({ history, model: member.model }).pipe(
     Stream.map((delta): CouncilEvent => ({ type: "delta", member: member.name, delta })),
     Stream.catch((error) =>
       Stream.succeed<CouncilEvent>({ type: "error", member: member.name, error }),
@@ -70,18 +67,14 @@ export const council = (
 The runner builds the three providers and consumes the merged stream:
 
 ```ts
-const openai = yield* makeResponses({ apiKey: openaiKey, model: "gpt-5.4-mini" })
-const google = yield* makeGemini({ apiKey: googleKey, model: "gemini-3-flash-preview" })
-const anthropic = yield* makeAnthropic({
-  apiKey: anthropicKey,
-  model: "claude-sonnet-4-6",
-  defaultMaxTokens: 256,
-})
+const openai = yield* makeResponses({ apiKey: openaiKey })
+const google = yield* makeGemini({ apiKey: googleKey })
+const anthropic = yield* makeAnthropic({ apiKey: anthropicKey, defaultMaxTokens: 256 })
 
 const members = [
-  { name: "openai/gpt-5.4-mini", service: openai },
-  { name: "google/gemini-3-flash-preview", service: google },
-  { name: "anthropic/claude-sonnet-4-6", service: anthropic },
+  { name: "openai/gpt-5.4-mini", model: "gpt-5.4-mini", service: openai },
+  { name: "google/gemini-3-flash-preview", model: "gemini-3-flash-preview", service: google },
+  { name: "anthropic/claude-sonnet-4-6", model: "claude-sonnet-4-6", service: anthropic },
 ]
 
 yield* Stream.runForEach(council(members, history), (event) =>

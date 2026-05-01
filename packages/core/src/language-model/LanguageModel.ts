@@ -6,11 +6,18 @@ import type { ToolDescriptor } from "../tool/Tool.js"
 import { isTurnComplete, type Turn, type TurnEvent } from "../domain/Turn.js"
 
 /**
- * Cross-provider request options. Anything specific to a single provider
- * (reasoning effort, prompt caching, store flags, ...) lives in that
- * provider's own options interface, which extends this.
+ * Cross-provider request shape. Every call carries its own `history` and
+ * `model` - models are not bound at layer construction. Anything specific
+ * to a single provider (reasoning effort, prompt caching, store flags,
+ * ...) lives in that provider's own request interface, which extends this.
  */
-export interface CommonRequestOptions {
+export interface CommonRequest {
+  readonly history: ReadonlyArray<Item>
+  /**
+   * Model identifier. Each provider narrows this to its typed literal union,
+   * so code that yields a typed provider tag gets autocompletion.
+   */
+  readonly model: string
   readonly tools?: ReadonlyArray<ToolDescriptor>
   readonly toolChoice?:
     | "auto"
@@ -30,10 +37,7 @@ export interface CommonRequestOptions {
 }
 
 export interface LanguageModelService {
-  readonly streamTurn: (
-    history: ReadonlyArray<Item>,
-    options?: CommonRequestOptions,
-  ) => Stream.Stream<TurnEvent, AiError.AiError>
+  readonly streamTurn: (request: CommonRequest) => Stream.Stream<TurnEvent, AiError.AiError>
 }
 
 export class LanguageModel extends Context.Service<LanguageModel, LanguageModelService>()(
@@ -44,10 +48,9 @@ export class LanguageModel extends Context.Service<LanguageModel, LanguageModelS
  * Stream the deltas of a single turn.
  */
 export const streamTurn = (
-  history: ReadonlyArray<Item>,
-  options?: CommonRequestOptions,
+  request: CommonRequest,
 ): Stream.Stream<TurnEvent, AiError.AiError, LanguageModel> =>
-  Stream.unwrap(Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(history, options)))
+  Stream.unwrap(Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(request)))
 
 /**
  * Run a single turn to completion and return the assembled `Turn`.
@@ -56,11 +59,8 @@ export const streamTurn = (
  * `turn_complete` event. The provider is contractually required to emit
  * exactly one such event as the last delta.
  */
-export const turn = (
-  history: ReadonlyArray<Item>,
-  options?: CommonRequestOptions,
-): Effect.Effect<Turn, AiError.AiError, LanguageModel> =>
-  Effect.flatMap(Stream.runCollect(streamTurn(history, options)), (deltas) => {
+export const turn = (request: CommonRequest): Effect.Effect<Turn, AiError.AiError, LanguageModel> =>
+  Effect.flatMap(Stream.runCollect(streamTurn(request)), (deltas) => {
     const last = deltas[deltas.length - 1]
     return last !== undefined && isTurnComplete(last)
       ? Effect.succeed(last.turn)

@@ -37,9 +37,13 @@ loop((state) =>
 
     if (shouldCompact(state)) {
       // Compaction step: summarize the early history, replace it.
+      // Cheap/fast model for the summarization, even though normal turns
+      // below run on the bigger one.
       const toCompact = state.history.slice(0, -KEEP_RECENT_ITEMS)
       return oai
-        .streamTurn([...toCompact, Items.userText("Summarize the conversation above...")], {
+        .streamTurn({
+          history: [...toCompact, Items.userText("Summarize the conversation above...")],
+          model: "gpt-5.4-mini",
           tools: [],
           reasoning: { effort: "low" },
         })
@@ -52,21 +56,23 @@ loop((state) =>
         )
     }
 
-    // Normal turn: stream a response, inject the next user prompt or stop.
-    return oai.streamTurn(state.history, { tools: [] }).pipe(
-      streamUntilComplete((turn) =>
-        Effect.sync(() => {
-          const next = advance(state, turn)
-          if (state.pendingPrompts.length === 0) return stop
-          const [nextPrompt, ...rest] = state.pendingPrompts
-          return nextAfter(Stream.empty, {
-            ...next,
-            history: [...next.history, Items.userText(nextPrompt!)],
-            pendingPrompts: rest,
-          })
-        }),
-      ),
-    )
+    // Normal turn: bigger model, stream a response, inject the next user prompt or stop.
+    return oai
+      .streamTurn({ history: state.history, model: "gpt-5.4", tools: [] })
+      .pipe(
+        streamUntilComplete((turn) =>
+          Effect.sync(() => {
+            const next = advance(state, turn)
+            if (state.pendingPrompts.length === 0) return stop
+            const [nextPrompt, ...rest] = state.pendingPrompts
+            return nextAfter(Stream.empty, {
+              ...next,
+              history: [...next.history, Items.userText(nextPrompt!)],
+              pendingPrompts: rest,
+            })
+          }),
+        ),
+      )
   }),
 )
 ```

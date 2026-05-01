@@ -2,7 +2,7 @@
 
 Companion to [internal-docs/llm-provider-design.md](../internal-docs/llm-provider-design.md).
 This doc compares the brainstorm against the current code, names the concrete
-deltas, and flags what probably should *not* be adopted as-is.
+deltas, and flags what probably should _not_ be adopted as-is.
 
 ## Decisions
 
@@ -44,16 +44,14 @@ from internal to public, (b) giving the typed Tag a method that streams natives,
 
 ## Where we are today
 
-
 | Design layer                    | What we have                                                                                                                              | Where it lives                                                                                                                                                                                                   |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Native event union per provider | `ProviderEvent` schema per provider, internal artifact.                                                                                   | [packages/providers/responses/src/streamEvents.ts](../packages/providers/responses/src/streamEvents.ts), [packages/providers/anthropic/src/streamEvents.ts](../packages/providers/anthropic/src/streamEvents.ts) |
 | Projector                       | `eventToDeltas` (Responses, stateless) and `applyEvent`+`deltasFromEvent` (Anthropic, accumulator).                                       | [responses/streamEvents.ts](../packages/providers/responses/src/streamEvents.ts), [anthropic/Anthropic.ts](../packages/providers/anthropic/src/Anthropic.ts)                                                     |
 | Per-provider Tag + generic Tag  | Both registered by `layer`, sharing one impl.                                                                                             | [responses/Responses.ts](../packages/providers/responses/src/Responses.ts)                                                                                                                                       |
 | Canonical taxonomy              | `TurnDelta`: `text_delta`, `reasoning_summary_delta`, `tool_call_start`, `tool_call_args_delta`, `turn_complete`.                         | [packages/core/src/domain/Turn.ts](../packages/core/src/domain/Turn.ts)                                                                                                                                          |
-| Native stream surfaced          | Not exposed. Typed Tag (`Responses`/`Anthropic`/`Gemini`) returns `Stream<TurnDelta>` — the typed-ness only differs in *request options*. | [responses/Responses.ts](../packages/providers/responses/src/Responses.ts)                                                                                                                                       |
+| Native stream surfaced          | Not exposed. Typed Tag (`Responses`/`Anthropic`/`Gemini`) returns `Stream<TurnDelta>` — the typed-ness only differs in _request options_. | [responses/Responses.ts](../packages/providers/responses/src/Responses.ts)                                                                                                                                       |
 | `Other` escape hatch            | Not present. `Schema.decodeUnknownEffect(ProviderEvent)                                                                                   | > Effect.option` drops unknowns.                                                                                                                                                                                 |
-
 
 ## What would need to change
 
@@ -65,7 +63,7 @@ The typed Tags gain a second method returning `Stream<ProviderEvent, AiError>`.
 - Export `ProviderEvent` from each `streamEvents.ts`.
 - Extend `ResponsesService` / `AnthropicService` / `GeminiService` with `streamNative`.
 - Refactor each provider's HTTP+SSE chain into a shared inner stream;
-`streamTurn = streamNative |> toCanonical`.
+  `streamTurn = streamNative |> toCanonical`.
 
 Side benefit: each provider's main file currently bundles SSE pipeline +
 `mapAccum`-to-delta translation in one block (Anthropic: ~lines 272-305).
@@ -77,9 +75,9 @@ win on its own.
 Two viable shapes:
 
 - Add a `Schema.Unknown`-style fallback variant in each `ProviderEvent` so
-decode always succeeds.
+  decode always succeeds.
 - Or model `ProviderEvent = Tagged | Unknown { type: string; raw: unknown }`
-and let the projector map `Unknown` to the canonical `other` event.
+  and let the projector map `Unknown` to the canonical `other` event.
 
 Either way the rule "every native event has an explicit branch" becomes a
 typecheck via `Match.exhaustive`, which we already use.
@@ -122,7 +120,7 @@ The assembled `Turn` is the contract our `loop` primitive depends on —
 ([Turn.ts](../packages/core/src/domain/Turn.ts)), every recipe relies on it.
 The design assumes consumers reassemble from per-item events.
 
-**Keep** the terminal `turn_complete` as a *richer* canonical event than
+**Keep** the terminal `turn_complete` as a _richer_ canonical event than
 `CommonView.Finish`, not a replacement. If we followed the spec to the
 letter we'd emit a `Finish` mid-stream for reason+usage, then a final
 `TurnAssembled` — two events for one boundary, not worth it.
@@ -134,7 +132,7 @@ separates failure from value for a reason: `Stream.catchTag`, `Stream.retry`,
 `Stream.scoped` cleanup. Our `AiError` tagged union flowing through
 `Stream.fail` is the right channel for transport/HTTP/auth/rate-limit.
 
-**Don't move these to values.** What *could* fit as a value is a non-fatal
+**Don't move these to values.** What _could_ fit as a value is a non-fatal
 in-stream provider-emitted error (Anthropic ships an SSE `error` mid-stream
 for some scenarios). Even there, escalating to `Stream.fail(AiError.Unavailable)`
 like we do today is defensible. If we add a value-form `error` event,
@@ -149,7 +147,7 @@ multimodal event shape with the [responses-gaps.md](responses-gaps.md)
 Tier-1 #5 plan so the event type and the historical `ContentBlock` agree.
 Do the work there, not as a one-off in `TurnEvent`.
 
-### Native as the *primary* surface on the typed Tag
+### Native as the _primary_ surface on the typed Tag
 
 The design suggests the typed Tag's `streamTurn` returns native, and
 `toCommon` is a downstream transform. **Flip it:** `streamTurn` keeps
@@ -177,7 +175,7 @@ In roughly this order, each step independently shippable:
    `kind`. One PR; coordinated rename + the first canonical broadening.
 4. **Broaden the rest** — `refusal_delta`, `usage_update`, `citation`,
    `cache_info` — gated by recipe demand. Each new variant only forces
-   work where consumers want to *handle* it, because of `Match.exhaustive`
+   work where consumers want to _handle_ it, because of `Match.exhaustive`
    discipline.
 5. **Multimodal + server-side tool results.** Separate effort, joined to
    the multimodal `ContentBlock` extension in

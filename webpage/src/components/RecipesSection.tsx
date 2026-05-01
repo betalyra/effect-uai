@@ -10,13 +10,7 @@ import {
   PiPause,
 } from "react-icons/pi"
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface Recipe {
   readonly title: string
@@ -47,29 +41,25 @@ const recipes: ReadonlyArray<Recipe> = [
   },
   {
     title: "Pause and resume",
-    description:
-      "Checkpoint after each turn, resume later via previousResponseId.",
+    description: "Checkpoint after each turn, resume later via previousResponseId.",
     href: "/recipes/pause-resume/",
     Icon: PiPause,
   },
   {
     title: "Mid-stream abort",
-    description:
-      "Cancel the loop and the upstream HTTP request via scope-based cleanup.",
+    description: "Cancel the loop and the upstream HTTP request via scope-based cleanup.",
     href: "/recipes/mid-stream-abort/",
     Icon: PiHandPalm,
   },
   {
     title: "Multi-model compare",
-    description:
-      "Fan one prompt out to OpenAI, Google, and Anthropic concurrently.",
+    description: "Fan one prompt out to OpenAI, Google, and Anthropic concurrently.",
     href: "/recipes/multi-model-compare/",
     Icon: PiGitFork,
   },
   {
     title: "Model council",
-    description:
-      "Same fan-out, but the models cross-evaluate and the winner is streamed back.",
+    description: "Same fan-out, but the models cross-evaluate and the winner is streamed back.",
     href: "/recipes/model-council/",
     Icon: PiGavel,
   },
@@ -78,13 +68,8 @@ const recipes: ReadonlyArray<Recipe> = [
 export default function RecipesSection() {
   return (
     <section className="not-content mt-20 mb-24 border-t border-border pt-16 lg:mt-24 lg:pt-20">
-      <div
-        style={{ marginBottom: "2.5rem" }}
-        className="flex items-baseline justify-between gap-4"
-      >
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">
-          Recipes
-        </h2>
+      <div style={{ marginBottom: "2.5rem" }} className="flex items-baseline justify-between gap-4">
+        <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
         <a
           href="/recipes/"
           className="group inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-(--color-mark)"
@@ -105,9 +90,7 @@ export default function RecipesSection() {
                 <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
                   {title}
                 </CardTitle>
-                <CardDescription className="text-sm leading-relaxed">
-                  {description}
-                </CardDescription>
+                <CardDescription className="text-sm leading-relaxed">{description}</CardDescription>
               </CardHeader>
               <CardContent className="mt-auto flex items-center gap-1.5 px-7 pt-1 text-sm text-muted-foreground transition-colors group-hover:text-(--color-mark)">
                 <span>Read recipe</span>

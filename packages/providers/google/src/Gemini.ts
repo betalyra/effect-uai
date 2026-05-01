@@ -1,9 +1,8 @@
-import { Context, Effect, Layer, Option, Redacted, Schema, Stream, pipe } from "effect"
+import { Context, Effect, Layer, Option, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
-import type { Item } from "@effect-uai/core/Items"
 import {
-  type CommonRequestOptions,
+  type CommonRequest,
   LanguageModel,
   type LanguageModelService,
 } from "@effect-uai/core/LanguageModel"
@@ -33,7 +32,12 @@ export type ProviderEvent = WireChunk
 // Public types
 // ---------------------------------------------------------------------------
 
-export interface GeminiRequestOptions extends CommonRequestOptions {
+export interface GeminiRequest extends Omit<CommonRequest, "model"> {
+  /**
+   * Narrows `CommonRequest.model` (`string`) to the typed `GoogleModel`
+   * literal union for autocomplete.
+   */
+  readonly model: GoogleModel
   /**
    * Gemini 2.5 thinking budget. `0` disables thinking entirely (lowest
    * latency); higher values let the model think longer. Forwarded as
@@ -50,18 +54,12 @@ export interface GeminiService {
    * (`thoughtSignature`, granular `safetyRatings`, etc.). For
    * provider-portable code, use `streamTurn`.
    */
-  readonly streamNative: (
-    history: ReadonlyArray<Item>,
-    options?: GeminiRequestOptions,
-  ) => Stream.Stream<ProviderEvent, AiError.AiError>
+  readonly streamNative: (request: GeminiRequest) => Stream.Stream<ProviderEvent, AiError.AiError>
   /**
    * Stream canonical `TurnEvent`s. Implemented as
    * `streamNative |> toCanonical`.
    */
-  readonly streamTurn: (
-    history: ReadonlyArray<Item>,
-    options?: GeminiRequestOptions,
-  ) => Stream.Stream<TurnEvent, AiError.AiError>
+  readonly streamTurn: (request: GeminiRequest) => Stream.Stream<TurnEvent, AiError.AiError>
   /**
    * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
    * Threads a fresh `Accumulator` so chunk-level text/usage merging happens
@@ -83,7 +81,6 @@ export class Gemini extends Context.Service<Gemini, GeminiService>()(
 
 export interface Config {
   readonly apiKey: Redacted.Redacted
-  readonly model: GoogleModel
   readonly baseUrl?: string
 }
 
@@ -91,17 +88,17 @@ export interface Config {
 // Request body
 // ---------------------------------------------------------------------------
 
-const buildGenerationConfig = (options: GeminiRequestOptions): Option.Option<GenerationConfig> => {
+const buildGenerationConfig = (request: GeminiRequest): Option.Option<GenerationConfig> => {
   const cfg: GenerationConfig = {
-    ...(options.temperature !== undefined && { temperature: options.temperature }),
-    ...(options.maxOutputTokens !== undefined && { maxOutputTokens: options.maxOutputTokens }),
-    ...(options.topP !== undefined && { topP: options.topP }),
-    ...(options.thinkingBudget !== undefined && {
-      thinkingConfig: { thinkingBudget: options.thinkingBudget },
+    ...(request.temperature !== undefined && { temperature: request.temperature }),
+    ...(request.maxOutputTokens !== undefined && { maxOutputTokens: request.maxOutputTokens }),
+    ...(request.topP !== undefined && { topP: request.topP }),
+    ...(request.thinkingBudget !== undefined && {
+      thinkingConfig: { thinkingBudget: request.thinkingBudget },
     }),
-    ...(options.structured !== undefined && {
+    ...(request.structured !== undefined && {
       responseMimeType: "application/json",
-      responseJsonSchema: options.structured.schema["~standard"].jsonSchema.input({
+      responseJsonSchema: request.structured.schema["~standard"].jsonSchema.input({
         target: "draft-2020-12",
       }),
     }),
@@ -148,22 +145,21 @@ const httpStatusError = (status: number, body: string): AiError.AiError => {
 const buildNativeStream = (cfg: Config) => {
   const baseUrl = cfg.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta"
   return (
-    history: ReadonlyArray<Item>,
-    options: Option.Option<GeminiRequestOptions>,
+    request: GeminiRequest,
   ): Stream.Stream<ProviderEvent, AiError.AiError, HttpClient.HttpClient> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
-        const url = `${baseUrl}/models/${cfg.model}:streamGenerateContent?alt=sse`
-        const generationConfig = pipe(options, Option.flatMap(buildGenerationConfig))
-        const body = buildRequestBody(history, generationConfig)
-        const request = HttpClientRequest.post(url).pipe(
+        const url = `${baseUrl}/models/${request.model}:streamGenerateContent?alt=sse`
+        const generationConfig = buildGenerationConfig(request)
+        const body = buildRequestBody(request.history, generationConfig)
+        const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.setHeader("x-goog-api-key", Redacted.value(cfg.apiKey)),
           HttpClientRequest.bodyJsonUnsafe(body),
           HttpClientRequest.accept("text/event-stream"),
         )
         const response = yield* client
-          .execute(request)
+          .execute(httpRequest)
           .pipe(
             Effect.mapError(
               (cause): AiError.AiError =>
@@ -230,20 +226,15 @@ export const toCanonical = <E, R>(
 // ---------------------------------------------------------------------------
 
 /**
- * Build a `GeminiService` value scoped to one model + http client. Use
- * this when you want to swap models per iteration via
- * `Effect.provideService(Gemini, model)`. For Layer-based setup, prefer
- * `layer`.
+ * Build a `GeminiService` value. For Layer-based setup, prefer `layer`.
  */
 export const make = (cfg: Config): Effect.Effect<GeminiService, never, HttpClient.HttpClient> =>
   Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
-    const streamNative: GeminiService["streamNative"] = (history, options) =>
-      buildNativeStream(cfg)(history, Option.fromUndefinedOr(options)).pipe(
-        Stream.provideService(HttpClient.HttpClient, client),
-      )
+    const streamNative: GeminiService["streamNative"] = (request) =>
+      buildNativeStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
     return {
       streamNative,
-      streamTurn: (history, options) => toCanonical(streamNative(history, options)),
+      streamTurn: (request) => toCanonical(streamNative(request)),
       toCanonical,
     }
   })
@@ -252,8 +243,8 @@ export const make = (cfg: Config): Effect.Effect<GeminiService, never, HttpClien
  * Layer that registers both the provider-specific `Gemini` tag and the
  * generic `LanguageModel` tag, sharing one underlying implementation.
  *
- * The generic tag accepts only `CommonRequestOptions`; the typed tag
- * accepts the full `GeminiRequestOptions` surface.
+ * The generic tag accepts `CommonRequest`; the typed tag accepts the full
+ * `GeminiRequest` surface.
  */
 export const layer = (
   cfg: Config,
@@ -264,7 +255,7 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): LanguageModelService => ({
-        streamTurn: (history, options) => s.streamTurn(history, options),
+        streamTurn: (request) => s.streamTurn(request as GeminiRequest),
       }),
     ),
   )

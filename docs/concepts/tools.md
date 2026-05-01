@@ -22,8 +22,7 @@ const getCurrentTime = Tool.make({
   name: "get_current_time",
   description: "Look up the current local time for an IANA timezone.",
   inputSchema: Tool.fromEffectSchema(GetCurrentTimeInput),
-  run: ({ timezone }) =>
-    Effect.succeed({ timezone, iso: new Date().toISOString() }),
+  run: ({ timezone }) => Effect.succeed({ timezone, iso: new Date().toISOString() }),
   strict: true,
 })
 ```
@@ -64,7 +63,7 @@ by name and the provider can render them all at once.
 import * as Toolkit from "@effect-uai/core/Toolkit"
 
 const toolkit = Toolkit.make([getCurrentTime, lookupWeather, sendEmail])
-const tools = Toolkit.toDescriptors(toolkit)  // pass to streamTurn options
+const tools = Toolkit.toDescriptors(toolkit) // pass to streamTurn options
 ```
 
 `toDescriptors` produces the provider-agnostic `ToolDescriptor[]` the
@@ -80,7 +79,7 @@ runs them:
 
 ```ts
 const calls = Turn.functionCalls(turn)
-const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
+const outputs = yield * Toolkit.executeAllSafe(toolkit, calls)
 ```
 
 Two execution modes:
@@ -97,7 +96,7 @@ Two execution modes:
 Both run with `concurrency: "unbounded"` by default; pass
 `{ concurrency: 4 }` to bound parallelism.
 
-Defects (e.g. unknown tool name) are *never* caught by `executeAllSafe`.
+Defects (e.g. unknown tool name) are _never_ caught by `executeAllSafe`.
 Those are programming errors, not model errors.
 
 ## The round-trip shape
@@ -125,7 +124,7 @@ streamUntilComplete((turn) =>
 `Turn.cursor` extends history with the turn's items (including the
 `FunctionCall`s themselves), then the loop appends the
 `FunctionCallOutput`s. Both must be present for the model to see what
-it asked for *and* what came back.
+it asked for _and_ what came back.
 
 ## What's not built in
 

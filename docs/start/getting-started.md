@@ -29,12 +29,13 @@ import { matchType } from "@effect-uai/core/Match"
 import { layer as responsesLayer } from "@effect-uai/responses"
 
 const program = Stream.runForEach(
-  streamTurn([Items.userText("Write a haiku about the sea.")]),
+  streamTurn({
+    history: [Items.userText("Write a haiku about the sea.")],
+    model: "gpt-5.4-mini",
+  }),
   (event) =>
     Match.value(event).pipe(
-      matchType("text_delta", ({ text }) =>
-        Effect.sync(() => process.stdout.write(text)),
-      ),
+      matchType("text_delta", ({ text }) => Effect.sync(() => process.stdout.write(text))),
       Match.orElse(() => Effect.void),
     ),
 )
@@ -42,13 +43,11 @@ const program = Stream.runForEach(
 const provider = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    return responsesLayer({ apiKey, model: "gpt-5.4-mini" })
+    return responsesLayer({ apiKey })
   }),
 )
 
-Effect.runPromise(
-  program.pipe(Effect.provide(Layer.provide(provider, FetchHttpClient.layer))),
-)
+Effect.runPromise(program.pipe(Effect.provide(Layer.provide(provider, FetchHttpClient.layer))))
 ```
 
 Run it:
@@ -67,10 +66,11 @@ process exits.
   Here we only care about `text_delta`; everything else is ignored.
 - **`matchType`** narrows the discriminated union of events. Add cases
   as you start caring about more of them.
-- **`responsesLayer({ apiKey, model })`** registers the OpenAI provider
-  under the generic `LanguageModel` tag, so `streamTurn` is
-  provider-agnostic. Swap to `@effect-uai/anthropic` or
-  `@effect-uai/google` and the `program` above is unchanged.
+- **`responsesLayer({ apiKey })`** registers the OpenAI provider under
+  the generic `LanguageModel` tag. Connection details (key, base URL)
+  live on the layer; the model is named per call. Swap to
+  `@effect-uai/anthropic` or `@effect-uai/google` and the `program`
+  above stays the same shape - just point `model` at one of theirs.
 
 One turn, no tools, no continuation. To keep going after a tool call or
 across multiple turns, you need `loop`, which is what the next page is

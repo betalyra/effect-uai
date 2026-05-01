@@ -88,10 +88,7 @@ interface RequestImageContent {
     | { readonly type: "base64"; readonly media_type: string; readonly data: string }
 }
 
-type RequestUserContentBlock =
-  | RequestTextContent
-  | RequestToolResultContent
-  | RequestImageContent
+type RequestUserContentBlock = RequestTextContent | RequestToolResultContent | RequestImageContent
 
 type RequestAssistantContentBlock =
   | RequestTextContent
@@ -119,8 +116,7 @@ const blockText = Match.type<Items.ContentBlock>().pipe(
   Match.exhaustive,
 )
 
-const messageText = (message: Items.Message): string =>
-  message.content.map(blockText).join("")
+const messageText = (message: Items.Message): string => message.content.map(blockText).join("")
 
 const userContentBlock = (
   block: Items.ContentBlock,
@@ -249,10 +245,7 @@ const flushAcc = (acc: GroupAcc): ReadonlyArray<RequestMessage> =>
           : acc.messages,
   })
 
-const appendUser = (
-  acc: GroupAcc,
-  blocks: ReadonlyArray<RequestUserContentBlock>,
-): GroupAcc =>
+const appendUser = (acc: GroupAcc, blocks: ReadonlyArray<RequestUserContentBlock>): GroupAcc =>
   blocks.length === 0
     ? acc
     : Option.isSome(acc.currentRole) && acc.currentRole.value === "user"
@@ -279,10 +272,7 @@ const appendAssistant = (
           assistantBuf: blocks,
         }
 
-const groupStep = (
-  acc: GroupAcc,
-  item: Items.Item,
-): Result.Result<GroupAcc, JsonParseError> => {
+const groupStep = (acc: GroupAcc, item: Items.Item): Result.Result<GroupAcc, JsonParseError> => {
   const bucket = roleBucket(item)
   if (bucket === "system") return Result.succeed(acc)
   if (bucket === "user") {
@@ -628,9 +618,8 @@ const mergeStep = (acc: MergeAcc, item: Items.Item): MergeAcc => {
   return { out: [...acc.out, item] }
 }
 
-const mergeAdjacentAssistantText = (
-  items: ReadonlyArray<Items.Item>,
-): ReadonlyArray<Items.Item> => Arr.reduce(items, { out: [] } as MergeAcc, mergeStep).out
+const mergeAdjacentAssistantText = (items: ReadonlyArray<Items.Item>): ReadonlyArray<Items.Item> =>
+  Arr.reduce(items, { out: [] } as MergeAcc, mergeStep).out
 
 export const accumulatorToTurn = (acc: Accumulator): Turn => ({
   items: pipe(blocksByIndex(acc), Arr.flatMap(blockToItems), mergeAdjacentAssistantText),

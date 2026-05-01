@@ -5,7 +5,7 @@ description: One generic service tag, three providers, and the seam between port
 
 `LanguageModel` is the generic provider tag. Every provider's `layer`
 registers itself under both its own typed tag (`Responses`, `Anthropic`,
-`Gemini`) *and* `LanguageModel`. Code that yields `LanguageModel` is
+`Gemini`) _and_ `LanguageModel`. Code that yields `LanguageModel` is
 provider-agnostic; code that yields the typed tag gets the provider's
 extended options.
 
@@ -13,41 +13,39 @@ extended options.
 
 ```ts
 interface LanguageModelService {
-  readonly streamTurn: (
-    history: ReadonlyArray<Item>,
-    options?: CommonRequestOptions,
-  ) => Stream.Stream<TurnEvent, AiError>
+  readonly streamTurn: (request: CommonRequest) => Stream.Stream<TurnEvent, AiError>
 }
 
 class LanguageModel extends Context.Service<LanguageModel, LanguageModelService>()(...)
 ```
 
-One method. One options bag. The full union of `TurnEvent`. The
-`CommonRequestOptions` interface is the lowest common denominator
-across providers:
+One method, one request bag. `history` and `model` are required; the
+rest is the lowest common denominator across providers:
 
 ```ts
-interface CommonRequestOptions {
-  readonly tools?:           ReadonlyArray<ToolDescriptor>
-  readonly toolChoice?:      "auto" | "required" | "none" | { type: "function"; name: string }
-  readonly temperature?:     number
-  readonly topP?:            number
+interface CommonRequest {
+  readonly history: ReadonlyArray<Item>
+  readonly model: string
+  readonly tools?: ReadonlyArray<ToolDescriptor>
+  readonly toolChoice?: "auto" | "required" | "none" | { type: "function"; name: string }
+  readonly temperature?: number
+  readonly topP?: number
   readonly maxOutputTokens?: number
-  readonly structured?:      StructuredFormat<unknown>
+  readonly structured?: StructuredFormat<unknown>
 }
 ```
 
 Anything outside this set (reasoning effort, prompt caching, store
-flags, safety settings) lives on the provider-specific options, not
-here.
+flags, safety settings) lives on the provider-specific request shape,
+not here.
 
 ## Two top-level helpers
 
 ```ts
 import { streamTurn, turn } from "@effect-uai/core/LanguageModel"
 
-streamTurn(history, options)  // Stream<TurnEvent, AiError, LanguageModel>
-turn(history, options)        // Effect<Turn, AiError, LanguageModel>
+streamTurn(request) // Stream<TurnEvent, AiError, LanguageModel>
+turn(request) // Effect<Turn, AiError, LanguageModel>
 ```
 
 `streamTurn` is the streaming primitive; `turn` runs the stream to
@@ -62,21 +60,23 @@ Yield `LanguageModel` when your code should work under any provider:
 ```ts
 import { streamTurn } from "@effect-uai/core/LanguageModel"
 
-const program = streamTurn(history, { tools }).pipe(/* ... */)
+const program = streamTurn({ history, model: "gpt-5.4-mini", tools }).pipe(/* ... */)
 ```
 
 Yield the typed tag when you need provider-specific options at the
-call site:
+call site (and to get autocomplete on `model`):
 
 ```ts
 import { Responses } from "@effect-uai/responses"
 
 const program = Effect.gen(function* () {
   const oai = yield* Responses
-  return oai.streamTurn(history, {
+  return oai.streamTurn({
+    history,
+    model: "gpt-5.4-mini", // OpenAIModel literal completion
     tools,
-    reasoning: { effort: "low" },   // Responses-only
-    store: true,                     // Responses-only
+    reasoning: { effort: "low" }, // Responses-only
+    store: true, // Responses-only
   })
 })
 ```
@@ -85,6 +85,23 @@ The same underlying implementation serves both tags - no double layer
 construction, no fork. Mix them in the same program: yield `Responses`
 for the one call that needs `reasoning.effort`, yield `LanguageModel`
 everywhere else.
+
+## Per-call model selection
+
+Because `model` is per call rather than per layer, switching models
+mid-program is just a different field. This is the seam recipes like
+[auto-compaction](/recipes/auto-compaction/) and
+[multi-model-fallback](/recipes/multi-model-fallback/) ride on:
+
+```ts
+const oai = yield* Responses
+const draft = yield* runTurn({ history, model: "gpt-5.4-mini" }) // cheap
+const final = yield* runTurn({ history, model: "gpt-5.4" }) // big
+```
+
+One layer, two models. The provider's HTTP API takes `model` in the
+request body anyway, so this matches the wire shape - no abstraction
+penalty.
 
 ## Layer registration
 
@@ -109,7 +126,7 @@ providers, swap the layer - the rest of the program is unchanged.
 
 The [multi-model fallback](/recipes/multi-model-fallback/) and
 [multi-model compare](/recipes/multi-model-compare/) recipes show
-patterns that *do* mix providers within one program. They yield each
+patterns that _do_ mix providers within one program. They yield each
 provider's typed tag explicitly, because the point is to talk to two
 distinct backends - not to abstract over them. Use `LanguageModel` for
 "any provider"; use the typed tags when "which provider" is the

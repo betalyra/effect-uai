@@ -1,11 +1,10 @@
 import { Context, Effect, Layer, Match, Option, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
-import type { Item } from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import {
-  type CommonRequestOptions,
+  type CommonRequest,
   LanguageModel,
   type LanguageModelService,
 } from "@effect-uai/core/LanguageModel"
@@ -24,12 +23,16 @@ import {
 // Public types
 // ---------------------------------------------------------------------------
 
-export interface ResponsesRequestOptions extends CommonRequestOptions {
+export interface ResponsesRequest extends Omit<CommonRequest, "model"> {
+  /**
+   * Narrows `CommonRequest.model` (`string`) to the typed `OpenAIModel`
+   * literal union for autocomplete.
+   */
+  readonly model: OpenAIModel
   readonly reasoning?: { readonly effort: "low" | "medium" | "high" }
   readonly store?: boolean
   readonly previousResponseId?: string
   readonly instructions?: string
-  readonly topP?: number
   readonly parallelToolCalls?: boolean
   readonly metadata?: Readonly<Record<string, string>>
   readonly user?: string
@@ -56,17 +59,13 @@ export interface ResponsesService {
    * code, use `streamTurn` instead.
    */
   readonly streamNative: (
-    history: ReadonlyArray<Item>,
-    options?: ResponsesRequestOptions,
+    request: ResponsesRequest,
   ) => Stream.Stream<ProviderEvent, AiError.AiError>
   /**
    * Stream canonical `TurnEvent`s. Implemented as
    * `streamNative |> toCanonical`.
    */
-  readonly streamTurn: (
-    history: ReadonlyArray<Item>,
-    options?: ResponsesRequestOptions,
-  ) => Stream.Stream<TurnEvent, AiError.AiError>
+  readonly streamTurn: (request: ResponsesRequest) => Stream.Stream<TurnEvent, AiError.AiError>
   /**
    * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
    * Exposed for cases where consumers want to compose with `streamNative`
@@ -89,7 +88,6 @@ export class Responses extends Context.Service<Responses, ResponsesService>()(
 
 export interface Config {
   readonly apiKey: Redacted.Redacted
-  readonly model: OpenAIModel
   readonly baseUrl?: string
 }
 
@@ -107,33 +105,24 @@ const jsonSchemaFormat = (
   ...(format.strict !== undefined && { strict: format.strict }),
 })
 
-const buildText = (
-  options: ResponsesRequestOptions | undefined,
-): Record<string, unknown> | undefined => {
-  if (options === undefined) return undefined
+const buildText = (request: ResponsesRequest): Record<string, unknown> | undefined => {
   const format =
-    options.structured !== undefined
-      ? jsonSchemaFormat(options.structured)
-      : options.responseFormat
+    request.structured !== undefined ? jsonSchemaFormat(request.structured) : request.responseFormat
   const text: Record<string, unknown> = {}
   if (format !== undefined) text.format = format
-  if (options.verbosity !== undefined) text.verbosity = options.verbosity
+  if (request.verbosity !== undefined) text.verbosity = request.verbosity
   return Object.keys(text).length === 0 ? undefined : text
 }
 
-const buildBody = (
-  history: ReadonlyArray<Item>,
-  model: string,
-  options: ResponsesRequestOptions | undefined,
-): Record<string, unknown> => {
-  const text = buildText(options)
+const buildBody = (request: ResponsesRequest): Record<string, unknown> => {
+  const text = buildText(request)
   return {
-    model,
-    input: itemsToInput(history),
+    model: request.model,
+    input: itemsToInput(request.history),
     stream: true,
-    ...(options?.tools !== undefined &&
-      options.tools.length > 0 && {
-        tools: options.tools.map((t) => ({
+    ...(request.tools !== undefined &&
+      request.tools.length > 0 && {
+        tools: request.tools.map((t) => ({
           type: "function",
           name: t.name,
           description: t.description,
@@ -141,32 +130,30 @@ const buildBody = (
           ...(t.strict !== undefined && { strict: t.strict }),
         })),
       }),
-    ...(options?.toolChoice !== undefined && { tool_choice: options.toolChoice }),
-    ...(options?.temperature !== undefined && {
-      temperature: options.temperature,
+    ...(request.toolChoice !== undefined && { tool_choice: request.toolChoice }),
+    ...(request.temperature !== undefined && { temperature: request.temperature }),
+    ...(request.maxOutputTokens !== undefined && {
+      max_output_tokens: request.maxOutputTokens,
     }),
-    ...(options?.maxOutputTokens !== undefined && {
-      max_output_tokens: options.maxOutputTokens,
+    ...(request.reasoning !== undefined && { reasoning: request.reasoning }),
+    ...(request.store !== undefined && { store: request.store }),
+    ...(request.previousResponseId !== undefined && {
+      previous_response_id: request.previousResponseId,
     }),
-    ...(options?.reasoning !== undefined && { reasoning: options.reasoning }),
-    ...(options?.store !== undefined && { store: options.store }),
-    ...(options?.previousResponseId !== undefined && {
-      previous_response_id: options.previousResponseId,
+    ...(request.instructions !== undefined && { instructions: request.instructions }),
+    ...(request.topP !== undefined && { top_p: request.topP }),
+    ...(request.parallelToolCalls !== undefined && {
+      parallel_tool_calls: request.parallelToolCalls,
     }),
-    ...(options?.instructions !== undefined && { instructions: options.instructions }),
-    ...(options?.topP !== undefined && { top_p: options.topP }),
-    ...(options?.parallelToolCalls !== undefined && {
-      parallel_tool_calls: options.parallelToolCalls,
+    ...(request.metadata !== undefined && { metadata: request.metadata }),
+    ...(request.user !== undefined && { user: request.user }),
+    ...(request.safetyIdentifier !== undefined && {
+      safety_identifier: request.safetyIdentifier,
     }),
-    ...(options?.metadata !== undefined && { metadata: options.metadata }),
-    ...(options?.user !== undefined && { user: options.user }),
-    ...(options?.safetyIdentifier !== undefined && {
-      safety_identifier: options.safetyIdentifier,
+    ...(request.promptCacheKey !== undefined && {
+      prompt_cache_key: request.promptCacheKey,
     }),
-    ...(options?.promptCacheKey !== undefined && {
-      prompt_cache_key: options.promptCacheKey,
-    }),
-    ...(options?.truncation !== undefined && { truncation: options.truncation }),
+    ...(request.truncation !== undefined && { truncation: request.truncation }),
     ...(text !== undefined && { text }),
   }
 }
@@ -180,19 +167,14 @@ const decodeKnown = Schema.decodeUnknownEffect(KnownProviderEvent)
 const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
 
 /**
- * Parse one SSE event's `data` payload into a typed `ProviderEvent`. Never
- * fails: JSON-parse and schema-decode failures both produce a synthesized
- * `_unknown` event so consumers of `streamNative` never silently miss a
- * wire event we didn't model.
- */
-/**
  * Lift events that carry a terminal failure signal (`error`,
  * `response.failed`) to a typed `AiError`. Other events are not failures
  * and produce `Option.none`.
  */
 const eventToError = Match.type<ProviderEvent>().pipe(
-  matchType("error", (e): AiError.AiError =>
-    new AiError.Unavailable({ provider: "responses", raw: e }),
+  matchType(
+    "error",
+    (e): AiError.AiError => new AiError.Unavailable({ provider: "responses", raw: e }),
   ),
   matchType("response.failed", (e): AiError.AiError => {
     const code = e.response.error?.code
@@ -238,19 +220,18 @@ const httpStatusError = (status: number, body: string): AiError.AiError => {
 const buildNativeStream = (cfg: Config) => {
   const url = `${cfg.baseUrl ?? "https://api.openai.com/v1"}/responses`
   return (
-    history: ReadonlyArray<Item>,
-    options: ResponsesRequestOptions | undefined,
+    request: ResponsesRequest,
   ): Stream.Stream<ProviderEvent, AiError.AiError, HttpClient.HttpClient> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
-        const request = HttpClientRequest.post(url).pipe(
+        const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.bearerToken(cfg.apiKey),
-          HttpClientRequest.bodyJsonUnsafe(buildBody(history, cfg.model, options)),
+          HttpClientRequest.bodyJsonUnsafe(buildBody(request)),
           HttpClientRequest.accept("text/event-stream"),
         )
         const response = yield* client
-          .execute(request)
+          .execute(httpRequest)
           .pipe(
             Effect.mapError(
               (cause) => new AiError.Unavailable({ provider: "responses", raw: cause }),
@@ -289,9 +270,7 @@ export const toCanonical = <E, R>(
   Stream.unwrap(
     Effect.sync(() => {
       const lookup = makeCallIdLookup()
-      return s.pipe(
-        Stream.flatMap((event) => Stream.fromIterable(eventToDeltas(event, lookup))),
-      )
+      return s.pipe(Stream.flatMap((event) => Stream.fromIterable(eventToDeltas(event, lookup))))
     }),
   )
 
@@ -300,20 +279,15 @@ export const toCanonical = <E, R>(
 // ---------------------------------------------------------------------------
 
 /**
- * Build a `ResponsesService` value scoped to one model + http client. Use
- * this when you want to swap models per iteration via
- * `Effect.provideService(Responses, model)`. For Layer-based setup, prefer
- * `layer`.
+ * Build a `ResponsesService` value. For Layer-based setup, prefer `layer`.
  */
 export const make = (cfg: Config): Effect.Effect<ResponsesService, never, HttpClient.HttpClient> =>
   Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
-    const streamNative: ResponsesService["streamNative"] = (history, options) =>
-      buildNativeStream(cfg)(history, options).pipe(
-        Stream.provideService(HttpClient.HttpClient, client),
-      )
+    const streamNative: ResponsesService["streamNative"] = (request) =>
+      buildNativeStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
     return {
       streamNative,
-      streamTurn: (history, options) => toCanonical(streamNative(history, options)),
+      streamTurn: (request) => toCanonical(streamNative(request)),
       toCanonical,
     }
   })
@@ -322,8 +296,8 @@ export const make = (cfg: Config): Effect.Effect<ResponsesService, never, HttpCl
  * Layer that registers both the provider-specific `Responses` tag and the
  * generic `LanguageModel` tag, sharing one underlying implementation.
  *
- * The generic tag accepts only `CommonRequestOptions`; the typed tag
- * accepts the full `ResponsesRequestOptions` surface.
+ * The generic tag accepts `CommonRequest`; the typed tag accepts the full
+ * `ResponsesRequest` surface.
  */
 export const layer = (
   cfg: Config,
@@ -334,7 +308,7 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): LanguageModelService => ({
-        streamTurn: (history, options) => s.streamTurn(history, options),
+        streamTurn: (request) => s.streamTurn(request as ResponsesRequest),
       }),
     ),
   )

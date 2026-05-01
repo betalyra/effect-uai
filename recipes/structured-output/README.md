@@ -36,7 +36,9 @@ const Recipe = Schema.Struct({
 const recipeFormat = StructuredFormat.fromEffectSchema(Recipe)
 
 const program = Effect.gen(function* () {
-  const turn = yield* runTurn([Items.userText("Give me a recipe for one-pan lemon chicken.")], {
+  const turn = yield* runTurn({
+    history: [Items.userText("Give me a recipe for one-pan lemon chicken.")],
+    model: "gpt-5.4-mini",
     structured: recipeFormat,
   })
   const recipe: Recipe = yield* Turn.toStructured(turn, recipeFormat)
@@ -52,7 +54,10 @@ The model is prompted to emit one JSON object per line, and each line is
 validated as it arrives.
 
 ```ts
-const program = streamTurn([Items.userText(prompt)]).pipe(
+const program = streamTurn({
+  history: [Items.userText(prompt)],
+  model: "gpt-5.4-mini",
+}).pipe(
   Turn.textDeltas,
   Lines.lines,
   StructuredFormat.decodeJsonLines(recipeFormat),
@@ -61,7 +66,7 @@ const program = streamTurn([Items.userText(prompt)]).pipe(
 )
 ```
 
-This is *prompt-driven*, not server-enforced - JSONL has no native wire
+This is _prompt-driven_, not server-enforced - JSONL has no native wire
 format. Errors surface in the stream's failure channel, distinguished by
 tag, so the caller can pick fail-fast (`Stream.runDrain`), skip-bad
 (`Stream.catchTag` → `Stream.empty`), or log-and-continue.

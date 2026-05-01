@@ -11,15 +11,7 @@
  *   OPENAI_API_KEY=... GOOGLE_API_KEY=... ANTHROPIC_API_KEY=... \
  *     pnpm tsx recipes/model-council/index.ts
  */
-import {
-  Config,
-  Effect,
-  Layer,
-  Logger,
-  Match,
-  References,
-  Stream,
-} from "effect"
+import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
@@ -36,9 +28,7 @@ const initialHistory: ReadonlyArray<Items.Item> = [Items.userText(QUESTION)]
 const logEvent = (event: CouncilEvent): Effect.Effect<void> =>
   Match.value(event).pipe(
     matchType("candidate_delta", ({ member, delta }) =>
-      delta.type === "text_delta"
-        ? Effect.logDebug(`${member} | ${delta.text}`)
-        : Effect.void,
+      delta.type === "text_delta" ? Effect.logDebug(`${member} | ${delta.text}`) : Effect.void,
     ),
     matchType("candidate_complete", ({ member, answer }) =>
       Effect.logInfo(`candidate complete: ${member}`, { answer }),
@@ -64,18 +54,22 @@ const program = Effect.gen(function* () {
   const googleKey = yield* Config.redacted("GOOGLE_API_KEY")
   const anthropicKey = yield* Config.redacted("ANTHROPIC_API_KEY")
 
-  const openai = yield* makeResponses({ apiKey: openaiKey, model: "gpt-5.4-mini" })
-  const google = yield* makeGemini({ apiKey: googleKey, model: "gemini-3-flash-preview" })
-  const anthropic = yield* makeAnthropic({
-    apiKey: anthropicKey,
-    model: "claude-sonnet-4-6",
-    defaultMaxTokens: 512,
-  })
+  const openai = yield* makeResponses({ apiKey: openaiKey })
+  const google = yield* makeGemini({ apiKey: googleKey })
+  const anthropic = yield* makeAnthropic({ apiKey: anthropicKey, defaultMaxTokens: 512 })
 
   const members: ReadonlyArray<Member> = [
-    { name: "openai/gpt-5.4-mini", service: openai },
-    { name: "google/gemini-3-flash-preview", service: google },
-    { name: "anthropic/claude-sonnet-4-6", service: anthropic },
+    { name: "openai/gpt-5.4-mini", model: "gpt-5.4-mini", service: openai },
+    {
+      name: "google/gemini-3-flash-preview",
+      model: "gemini-3-flash-preview",
+      service: google,
+    },
+    {
+      name: "anthropic/claude-sonnet-4-6",
+      model: "claude-sonnet-4-6",
+      service: anthropic,
+    },
   ]
 
   yield* Effect.logInfo("question", { question: QUESTION })
@@ -86,10 +80,7 @@ const program = Effect.gen(function* () {
 const runtime = Layer.mergeAll(FetchHttpClient.layer, Logger.layer([Logger.consolePretty()]))
 
 Effect.runPromise(
-  program.pipe(
-    Effect.provide(runtime),
-    Effect.provideService(References.MinimumLogLevel, "Info"),
-  ),
+  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Info")),
 ).catch((err) => {
   Effect.runSync(Effect.logError("recipe failed", { err }))
   process.exit(1)

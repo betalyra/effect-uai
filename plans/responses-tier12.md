@@ -1,7 +1,7 @@
 # Plan — Responses Tier 1 & 2
 
 Closes the outstanding items in [responses-gaps.md](responses-gaps.md). This
-doc only covers what's *still missing* — Tier-1 cheap wins (top-level
+doc only covers what's _still missing_ — Tier-1 cheap wins (top-level
 request fields, annotations, usage details, refusal streaming) already
 shipped and aren't repeated here.
 
@@ -36,6 +36,7 @@ export const InputFile = Schema.Struct({
 Add `isInputImage` / `isInputFile` type guards.
 
 **Per-provider encoders** (`itemsToInput` / equivalent):
+
 - **Responses** — pass through almost verbatim (matches the wire).
 - **Anthropic** — encode as `{ type: "image", source: { type: "url" | "base64", ... } }` content blocks. `input_file` doesn't have a clean Anthropic equivalent — skip for v1, document.
 - **Gemini** — encode as `inlineData: { mimeType, data: base64 }` parts. URL form requires fetching first; document as a follow-up.
@@ -79,8 +80,8 @@ distinguishes them.
   - New `AiError.GenerationFailed` variant (cleaner for `Stream.catchTag`)
   - Or extend `AiError.Unavailable` with `subtype: "generation"` (less
     surface area)
-  Lean: new variant. The fail/retry semantics are different from transport
-  unavailability.
+    Lean: new variant. The fail/retry semantics are different from transport
+    unavailability.
 - **`response.incomplete`** — content_filter, max_output_tokens,
   max_tool_calls, etc. Should produce a `turn_complete` with `stop_reason`
   reflecting the reason. Today only `max_tokens` lands via
@@ -140,7 +141,7 @@ implementation pattern is the same for each:
 2. Add the tool's `tools[]` entry shape to `ResponsesRequestOptions.tools`.
    Currently tools are `ToolDescriptor` (function only). Generalise to
    accept a tagged union: `FunctionTool | WebSearchTool | FileSearchTool |
-   ...`.
+...`.
 3. Model the SSE events in `streamEvents.ts`. Each tool has
    `.in_progress` / `.completed` (and tool-specific intermediate events
    like `.searching`, `.executing`).
@@ -168,6 +169,7 @@ Discriminator on `tool` lets future canonical refinement pick into
 typed shapes per provider-hosted tool without breaking existing matches.
 
 **5b. Web search.** Most universally useful starting point.
+
 - `Items.WebSearchCall` item type (with `id`, `status`, `query?`, `results?`).
 - `tools[]` entry: `{ type: "web_search" }` (plus optional config like
   `user_location`, `search_context_size`).
@@ -176,11 +178,13 @@ typed shapes per provider-hosted tool without breaking existing matches.
 - `tool_result` emit on `.completed`.
 
 **5c. File search.** Same shape as web_search; results are file matches.
+
 - `Items.FileSearchCall` item type.
 - `tools[]` entry: `{ type: "file_search", vector_store_ids: ... }`.
 - Same SSE event triple.
 
 **5d. Code interpreter.** Generates outputs (text, files, images).
+
 - `Items.CodeInterpreterCall` item type with `code` + `outputs`.
 - `tools[]` entry: `{ type: "code_interpreter" }`.
 - SSE: `.in_progress`, `.executing`, `.completed`. Plus
@@ -190,6 +194,7 @@ typed shapes per provider-hosted tool without breaking existing matches.
 
 **5e. Image generation.** Streams partial images; final output is an
 image item. Touches `image_part` on `TurnEvent` (step 5 of LLM redesign).
+
 - `Items.ImageGenerationCall` item type.
 - `tools[]` entry: `{ type: "image_generation", ... }`.
 - Wire: SSE event taxonomy not enumerated in spec excerpt; verify
@@ -197,17 +202,20 @@ image item. Touches `image_part` on `TurnEvent` (step 5 of LLM redesign).
 
 **5f. MCP.** Bridges to Model Context Protocol servers. Multiple item
 types.
+
 - `Items.McpCall`, `Items.McpListTools`, `Items.McpApprovalRequest`.
 - `tools[]` entry: `{ type: "mcp", server_url, ... }`.
 - SSE: `.in_progress` / `.completed`. Approvals likely need a separate
   in-loop callback path — design open.
 
 **5g. Computer use.** Visual + action loop. The most complex.
+
 - `Items.ComputerCall` / `ComputerCallOutput`.
 - `tools[]` entry: `{ type: "computer_use_preview", ... }`.
 - Round-trip the `output.image_url` (screenshot) via `include[]`.
 
 **5h. Custom tools.** User-defined tool slugs.
+
 - `Items.CustomToolCall`.
 - `tools[]` entry: `{ type: "<slug>:<name>", ... }`.
 - SSE: `custom_tool_call_input.delta` / `.done`.

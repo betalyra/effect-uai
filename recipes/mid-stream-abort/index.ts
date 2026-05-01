@@ -11,17 +11,7 @@
  *
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/mid-stream-abort/index.ts`
  */
-import {
-  Config,
-  Deferred,
-  Effect,
-  Layer,
-  Logger,
-  Match,
-  References,
-  Stream,
-  pipe,
-} from "effect"
+import { Config, Deferred, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
 import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
@@ -58,7 +48,7 @@ const conversation = pipe(
       // with `reasoning.effort` the model thinks before emitting text and
       // a short abort window can land before any delta arrives.
       return oai
-        .streamTurn(state.history, {})
+        .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
         .pipe(streamUntilComplete(() => Effect.sync(() => stop)))
     }),
   ),
@@ -107,7 +97,7 @@ const program = Effect.gen(function* () {
 const apiKeyLayer = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    return responsesLayer({ apiKey, model: "gpt-5.4-mini" })
+    return responsesLayer({ apiKey })
   }),
 )
 

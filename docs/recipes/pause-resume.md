@@ -39,8 +39,10 @@ const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) 
         yield* Latch.await(pauseLatch)
 
         const oai = yield* Responses
-        return oai.streamTurn(state.history, { tools: [] }).pipe(
-          streamUntilComplete((turn) =>
+        return oai
+          .streamTurn({ history: state.history, model: "gpt-5.4-mini", tools: [] })
+          .pipe(
+            streamUntilComplete((turn) =>
             Effect.gen(function* () {
               yield* Ref.update(turnsCompleted, (n) => n + 1)
               const next = advance(state, turn)

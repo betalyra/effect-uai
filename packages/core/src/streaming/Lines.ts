@@ -11,18 +11,15 @@ import { Stream } from "effect"
  * emit JSONL (or any other newline-delimited format), then parse /
  * validate each emitted line.
  */
-export const lines = <E, R>(
-  self: Stream.Stream<string, E, R>,
-): Stream.Stream<string, E, R> => linesStrict(Stream.concat(self, Stream.make("\n")))
+export const lines = <E, R>(self: Stream.Stream<string, E, R>): Stream.Stream<string, E, R> =>
+  linesStrict(Stream.concat(self, Stream.make("\n")))
 
 /**
  * Like `lines`, but only emits lines that were terminated by `\n`. Any
  * partial trailing content is dropped at stream end. Use when you want
  * strict "complete-line-or-nothing" semantics.
  */
-export const linesStrict = <E, R>(
-  self: Stream.Stream<string, E, R>,
-): Stream.Stream<string, E, R> =>
+export const linesStrict = <E, R>(self: Stream.Stream<string, E, R>): Stream.Stream<string, E, R> =>
   self.pipe(
     Stream.mapAccum(
       (): string => "",

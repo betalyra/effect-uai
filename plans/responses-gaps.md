@@ -76,7 +76,7 @@ interface ResponseFormat {
         readonly type: "json_schema"
         readonly name: string
         readonly description?: string
-        readonly schema: object  // JSON Schema
+        readonly schema: object // JSON Schema
         readonly strict?: boolean
       }
   readonly verbosity?: "low" | "medium" | "high"
@@ -169,15 +169,15 @@ matching set of streaming events. None of them are blocking for current
 recipes, but together they're the biggest argument for using Responses
 over chat completions.
 
-| Tool             | `tools[]` entry                  | Output item type        | SSE events                               |
-| ---------------- | -------------------------------- | ----------------------- | ---------------------------------------- |
-| File search      | `{ type: "file_search", ... }`   | `file_search_call`      | `.in_progress` / `.searching` / `.completed` |
-| Web search       | `{ type: "web_search" }`         | `web_search_call`       | `.in_progress` / `.searching` / `.completed` |
-| Code interpreter | `{ type: "code_interpreter" }`   | `code_interpreter_call` | `.in_progress` / `.executing` / `.completed` |
-| Image generation | `{ type: "image_generation" }`   | `image_generation_call` | (not enumerated in spec excerpt)         |
-| MCP              | `{ type: "mcp", server_url, ... }` | `mcp_call` (+ `mcp_list_tools`, `mcp_approval_request`) | `.in_progress` / `.completed` |
-| Computer use     | `{ type: "computer_use_preview", ... }` | `computer_call` / `computer_call_output` | not enumerated |
-| Custom           | `{ type: "<slug>:<name>", ... }` | `custom_tool_call`      | `custom_tool_call_input.delta` / `.done` |
+| Tool             | `tools[]` entry                         | Output item type                                        | SSE events                                   |
+| ---------------- | --------------------------------------- | ------------------------------------------------------- | -------------------------------------------- |
+| File search      | `{ type: "file_search", ... }`          | `file_search_call`                                      | `.in_progress` / `.searching` / `.completed` |
+| Web search       | `{ type: "web_search" }`                | `web_search_call`                                       | `.in_progress` / `.searching` / `.completed` |
+| Code interpreter | `{ type: "code_interpreter" }`          | `code_interpreter_call`                                 | `.in_progress` / `.executing` / `.completed` |
+| Image generation | `{ type: "image_generation" }`          | `image_generation_call`                                 | (not enumerated in spec excerpt)             |
+| MCP              | `{ type: "mcp", server_url, ... }`      | `mcp_call` (+ `mcp_list_tools`, `mcp_approval_request`) | `.in_progress` / `.completed`                |
+| Computer use     | `{ type: "computer_use_preview", ... }` | `computer_call` / `computer_call_output`                | not enumerated                               |
+| Custom           | `{ type: "<slug>:<name>", ... }`        | `custom_tool_call`                                      | `custom_tool_call_input.delta` / `.done`     |
 
 Implementation strategy: each becomes its own discriminator on `Item`
 (extending the union beyond `message`/`function_call`/`function_call_output`/`reasoning`)

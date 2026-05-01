@@ -125,6 +125,8 @@
 @media (min-width: 50rem) {
   .hero {
     padding-block: clamp(1.5rem, calc(0.5rem + 4vmin), 4rem) !important;
+    min-height: calc(100vh - var(--sl-nav-height));
+    border-bottom: 1px solid var(--sl-color-hairline);
   }
 }
 
@@ -159,6 +161,13 @@ code:not(pre code) {
   padding: 0.1em 0.3em;
   border-radius: 2px;
   font-size: 0.9em;
+}
+
+/* Splash pages (no sidebar) get a wider content cap than Starlight's 67.5rem
+   default so the hero and recipes grid align with the 87.5rem navbar instead
+   of drifting narrower. */
+html:not([data-has-sidebar]) {
+  --sl-content-width: 87.5rem;
 }
 
 /* Hairline header, modernist discipline. Inner content is constrained to

@@ -34,6 +34,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "dev:webpage": "pnpm --filter webpage dev",
+    "start:webpage": "pnpm --filter webpage start",
     "build:webpage": "pnpm --filter webpage build",
     "preview:webpage": "pnpm --filter webpage preview"
   },

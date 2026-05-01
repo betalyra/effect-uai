@@ -225,7 +225,16 @@ export const Usage = Schema.Struct({
 })
 export type Usage = typeof Usage.Type
 
-export const StopReason = Schema.Literals(["stop", "tool_calls", "max_tokens", "refusal"])
+export const StopReason = Schema.Literals([
+  "stop",
+  "tool_calls",
+  "max_tokens",
+  "refusal",
+  /** Provider-side safety classifier flagged the output. */
+  "content_filter",
+  /** Server-enforced cap on tool calls per turn was hit. */
+  "max_tool_calls",
+])
 export type StopReason = typeof StopReason.Type
 
 // ---------------------------------------------------------------------------

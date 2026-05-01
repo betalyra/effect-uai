@@ -1,7 +1,8 @@
-import { Context, Effect, Layer, Redacted, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Match, Option, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { Item } from "@effect-uai/core/Items"
+import { matchType } from "@effect-uai/core/Match"
 import {
   type CommonRequestOptions,
   LanguageModel,
@@ -144,6 +145,28 @@ const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
  * `_unknown` event so consumers of `streamNative` never silently miss a
  * wire event we didn't model.
  */
+/**
+ * Lift events that carry a terminal failure signal (`error`,
+ * `response.failed`) to a typed `AiError`. Other events are not failures
+ * and produce `Option.none`.
+ */
+const eventToError = Match.type<ProviderEvent>().pipe(
+  matchType("error", (e): AiError.AiError =>
+    new AiError.Unavailable({ provider: "responses", raw: e }),
+  ),
+  matchType("response.failed", (e): AiError.AiError => {
+    const code = e.response.error?.code
+    const message = e.response.error?.message
+    return new AiError.GenerationFailed({
+      provider: "responses",
+      ...(code !== undefined && code !== null && { code }),
+      ...(message !== undefined && message !== null && { message }),
+      raw: e,
+    })
+  }),
+  Match.option,
+)
+
 const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
   Effect.try({
     try: () => JSON.parse(ev.data) as unknown,
@@ -205,11 +228,10 @@ const buildNativeStream = (cfg: Config) => {
           SSE.fromBytes,
           Stream.mapEffect(sseEventToProviderEvent),
           Stream.flatMap((event) =>
-            event.type === "error"
-              ? Stream.fail(
-                  new AiError.Unavailable({ provider: "responses", raw: event }),
-                )
-              : Stream.succeed(event),
+            Option.match(eventToError(event), {
+              onNone: () => Stream.succeed(event),
+              onSome: Stream.fail,
+            }),
           ),
         )
       }),

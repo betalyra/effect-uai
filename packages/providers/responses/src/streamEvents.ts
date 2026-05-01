@@ -50,6 +50,16 @@ const Completed = Schema.Struct({
   response: WireResponseCompleted,
 })
 
+const Incomplete = Schema.Struct({
+  type: Schema.Literal("response.incomplete"),
+  response: WireResponseCompleted,
+})
+
+const Failed = Schema.Struct({
+  type: Schema.Literal("response.failed"),
+  response: WireResponseCompleted,
+})
+
 const ErrorEvent = Schema.Struct({
   type: Schema.Literal("error"),
   message: Schema.optional(Schema.String),
@@ -80,6 +90,8 @@ export const KnownProviderEvent = Schema.Union([
   RefusalDelta,
   RefusalDone,
   Completed,
+  Incomplete,
+  Failed,
   ErrorEvent,
 ])
 
@@ -97,6 +109,8 @@ export const ProviderEvent = Schema.Union([
   RefusalDelta,
   RefusalDone,
   Completed,
+  Incomplete,
+  Failed,
   ErrorEvent,
   Unknown,
 ])
@@ -166,7 +180,17 @@ export const eventToDeltas = (
     matchType("response.completed", ({ response }) => [
       { type: "turn_complete" as const, turn: turnFromCompleted(response) },
     ]),
-    matchType("error", () => []), // surfaced separately as AiError
+    // Incomplete = the model stopped early but produced a usable partial
+    // turn (max_tokens, content_filter, max_tool_calls, refusal). Same
+    // payload shape as `response.completed`; the stop_reason carries the
+    // reason.
+    matchType("response.incomplete", ({ response }) => [
+      { type: "turn_complete" as const, turn: turnFromCompleted(response) },
+    ]),
+    // Failed and error are surfaced separately as `AiError` by the stream
+    // pipeline, not as canonical events.
+    matchType("response.failed", () => []),
+    matchType("error", () => []),
     // No silent drops: unknown wire events flow through `streamNative` but
     // produce no canonical delta. Step 3 (canonical `other` event) replaces
     // this with a forwarded `other` delta on `TurnEvent`.

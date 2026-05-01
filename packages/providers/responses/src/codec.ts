@@ -1,4 +1,4 @@
-import { Match, Schema } from "effect"
+import { Match, Option, Schema } from "effect"
 import type { ContentBlock, Item } from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
 import type { Turn } from "@effect-uai/core/Turn"
@@ -102,9 +102,17 @@ const WireUsage = Schema.Struct({
   output_tokens_details: Schema.optional(Schema.NullOr(WireOutputTokensDetails)),
 })
 
+const WireResponseError = Schema.Struct({
+  code: Schema.optional(Schema.NullOr(Schema.String)),
+  message: Schema.optional(Schema.NullOr(Schema.String)),
+})
+
 // Many Responses-API fields are emitted as explicit `null` rather than
 // missing - `Schema.optional` alone (T | undefined) doesn't cover that, so
-// we lift each through `NullOr` first.
+// we lift each through `NullOr` first. Used by `response.completed`,
+// `response.incomplete`, and `response.failed` events; not every field is
+// populated on every event (e.g. `error` only on failed, `incomplete_details`
+// only on incomplete).
 export const WireResponseCompleted = Schema.Struct({
   id: Schema.optional(Schema.NullOr(Schema.String)),
   status: Schema.optional(Schema.NullOr(Schema.String)),
@@ -117,6 +125,7 @@ export const WireResponseCompleted = Schema.Struct({
       }),
     ),
   ),
+  error: Schema.optional(Schema.NullOr(WireResponseError)),
 })
 export type WireResponseCompleted = typeof WireResponseCompleted.Type
 
@@ -233,27 +242,29 @@ export const wireItemToItem = (wire: WireOutputItem): Item =>
 // response.completed → Turn
 // ---------------------------------------------------------------------------
 
-const stopReasonFromCompleted = (payload: WireResponseCompleted): Turn["stop_reason"] => {
-  if (payload.incomplete_details?.reason === "max_output_tokens") {
-    return "max_tokens"
-  }
-  if (payload.incomplete_details?.reason === "refusal") {
-    return "refusal"
-  }
-  const output = payload.output ?? []
-  // A refusal-shaped message content also signals a refusal stop, even when
-  // `incomplete_details` is absent.
-  if (
-    output.some(
-      (i) =>
-        i.type === "message" &&
-        i.content.some((c) => c.type === "refusal"),
-    )
-  ) {
-    return "refusal"
-  }
-  return output.some((i) => i.type === "function_call") ? "tool_calls" : "stop"
-}
+const reasonToStop = Match.type<string>().pipe(
+  Match.when("max_output_tokens", () => "max_tokens" as const),
+  Match.when("refusal", () => "refusal" as const),
+  Match.when("content_filter", () => "content_filter" as const),
+  Match.when("max_tool_calls", () => "max_tool_calls" as const),
+  Match.option,
+)
+
+const hasRefusalContent = (payload: WireResponseCompleted): boolean =>
+  (payload.output ?? []).some(
+    (i) => i.type === "message" && i.content.some((c) => c.type === "refusal"),
+  )
+
+const stopReasonFromCompleted = (payload: WireResponseCompleted): Turn["stop_reason"] =>
+  Option.match(reasonToStop(payload.incomplete_details?.reason ?? ""), {
+    onSome: (s) => s,
+    onNone: () =>
+      hasRefusalContent(payload)
+        ? ("refusal" as const)
+        : (payload.output ?? []).some((i) => i.type === "function_call")
+          ? ("tool_calls" as const)
+          : ("stop" as const),
+  })
 
 const cachedTokens = (payload: WireResponseCompleted): number | undefined =>
   payload.usage?.input_tokens_details?.cached_tokens ?? undefined

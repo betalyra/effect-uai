@@ -79,18 +79,18 @@ export class JsonParseError extends Data.TaggedError(
  */
 export const fromEffectSchema = <S extends Schema.Codec<any, any, never, any>>(
   schema: S,
-  options: {
-    readonly name: string;
+  options?: {
+    readonly name?: string;
     readonly description?: string;
     readonly strict?: boolean;
   },
 ): StructuredFormat<S["Type"]> => ({
-  name: options.name,
+  name: options?.name ?? "output",
   schema: Schema.toStandardJSONSchemaV1(Schema.toStandardSchemaV1(schema)),
-  ...(options.description !== undefined && {
+  ...(options?.description !== undefined && {
     description: options.description,
   }),
-  ...(options.strict !== undefined && { strict: options.strict }),
+  ...(options?.strict !== undefined && { strict: options.strict }),
 });
 
 // ---------------------------------------------------------------------------

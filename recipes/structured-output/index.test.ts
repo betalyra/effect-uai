@@ -9,11 +9,7 @@ const Recipe = Schema.Struct({
   prepMinutes: Schema.Number,
 })
 
-const recipeFormat = StructuredFormat.fromEffectSchema(Recipe, {
-  name: "Recipe",
-  description: "A short cooking recipe.",
-  strict: true,
-})
+const recipeFormat = StructuredFormat.fromEffectSchema(Recipe)
 
 const turnWithText = (text: string): Turn.Turn => ({
   stop_reason: "stop",

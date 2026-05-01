@@ -37,13 +37,6 @@ export interface ResponsesRequestOptions extends CommonRequestOptions {
   readonly promptCacheKey?: string
   readonly truncation?: "auto" | "disabled"
   /**
-   * Schema-bound JSON output. The model's output is constrained to
-   * match the format's JSON Schema. Pair with `Turn.toStructured` (or a
-   * line-accumulation recipe) on the consumer side for runtime
-   * validation.
-   */
-  readonly structured?: StructuredFormat.StructuredFormat<unknown>
-  /**
    * Free-form JSON output: model emits valid JSON without schema
    * constraints. Mutually exclusive with `structured` (schema wins if
    * both are set).

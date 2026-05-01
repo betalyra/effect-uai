@@ -20,11 +20,9 @@ export const accumulateLines = <E, R>(
         const combined = buffer + chunk
         const parts = combined.split("\n")
         const tail = parts.pop() ?? ""
-        return [tail, parts] as const
+        return [tail, parts.map((line) => line.replace(/\r/g, ""))] as const
       },
     ),
-    Stream.flattenIterable,
-    Stream.map((line) => line.replace(/\r/g, "")),
     Stream.filter((line) => line.trim().length > 0),
   )
 

@@ -99,6 +99,12 @@ const buildGenerationConfig = (options: GeminiRequestOptions): Option.Option<Gen
     ...(options.thinkingBudget !== undefined && {
       thinkingConfig: { thinkingBudget: options.thinkingBudget },
     }),
+    ...(options.structured !== undefined && {
+      responseMimeType: "application/json",
+      responseJsonSchema: options.structured.schema["~standard"].jsonSchema.input({
+        target: "draft-2020-12",
+      }),
+    }),
   }
   return Object.keys(cfg).length === 0 ? Option.none() : Option.some(cfg)
 }

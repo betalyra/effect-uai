@@ -71,6 +71,10 @@ export interface GenerationConfig {
   readonly maxOutputTokens?: number
   readonly topP?: number
   readonly thinkingConfig?: ThinkingConfig
+  /** Set together with `responseJsonSchema` to constrain output to JSON. */
+  readonly responseMimeType?: string
+  /** JSON Schema constraint on the output. */
+  readonly responseJsonSchema?: Record<string, unknown>
 }
 
 export interface RequestBody {

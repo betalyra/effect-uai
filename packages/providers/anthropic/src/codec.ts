@@ -348,6 +348,7 @@ export interface RequestBody {
   readonly tools?: ReadonlyArray<Record<string, unknown>>
   readonly tool_choice?: Record<string, unknown>
   readonly metadata?: { readonly user_id: string }
+  readonly output_config?: Record<string, unknown>
   readonly stream: true
 }
 
@@ -363,6 +364,7 @@ export const buildRequestBody = (params: {
   readonly tools: Option.Option<ReadonlyArray<Record<string, unknown>>>
   readonly toolChoice: Option.Option<Record<string, unknown>>
   readonly userId: Option.Option<string>
+  readonly outputConfig: Option.Option<Record<string, unknown>>
 }): Result.Result<RequestBody, JsonParseError> =>
   pipe(
     groupedMessages(params.history),
@@ -406,6 +408,10 @@ export const buildRequestBody = (params: {
         ...Option.match(params.userId, {
           onNone: () => ({}),
           onSome: (user_id) => ({ metadata: { user_id } }),
+        }),
+        ...Option.match(params.outputConfig, {
+          onNone: () => ({}),
+          onSome: (output_config) => ({ output_config }),
         }),
         stream: true,
       }),

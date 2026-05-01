@@ -1,5 +1,5 @@
 import { Match, Schema } from "effect"
-import type { Item } from "@effect-uai/core/Items"
+import type { ContentBlock, Item } from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
 import type { Turn } from "@effect-uai/core/Turn"
 
@@ -49,6 +49,13 @@ const WireOutputTextContent = Schema.Struct({
   annotations: Schema.optional(Schema.NullOr(Schema.Array(WireAnnotation))),
 })
 
+const WireRefusalContent = Schema.Struct({
+  type: Schema.Literal("refusal"),
+  refusal: Schema.String,
+})
+
+const WireMessageContent = Schema.Union([WireOutputTextContent, WireRefusalContent])
+
 const WireSummaryText = Schema.Struct({
   type: Schema.Literal("summary_text"),
   text: Schema.String,
@@ -58,7 +65,7 @@ const WireMessage = Schema.Struct({
   type: Schema.Literal("message"),
   id: Schema.optional(Schema.String),
   role: Schema.Literal("assistant"),
-  content: Schema.Array(WireOutputTextContent),
+  content: Schema.Array(WireMessageContent),
 })
 
 const WireFunctionCall = Schema.Struct({
@@ -129,13 +136,27 @@ const passthrough = (item: Item): Record<string, unknown> | undefined =>
     ? (item.providerData as Record<string, unknown>)
     : undefined
 
+const contentBlockToInput = Match.type<ContentBlock>().pipe(
+  matchType("input_text", (b) => ({ type: "input_text", text: b.text })),
+  matchType("input_image", (b) => ({
+    type: "input_image",
+    image_url:
+      b.source._tag === "url"
+        ? b.source.url
+        : `data:${b.source.media_type};base64,${b.source.data}`,
+  })),
+  matchType("output_text", (b) => ({ type: "output_text", text: b.text })),
+  matchType("refusal", (b) => ({ type: "refusal", refusal: b.text })),
+  Match.exhaustive,
+)
+
 const itemToInput = (item: Item): Record<string, unknown> =>
   passthrough(item) ??
   Match.value(item).pipe(
     matchType("message", (m) => ({
       type: "message",
       role: m.role,
-      content: m.content.map((c) => ({ type: c.type, text: c.text })),
+      content: m.content.map(contentBlockToInput),
     })),
     matchType("function_call", (f) => ({
       type: "function_call",
@@ -167,17 +188,26 @@ export const itemsToInput = (items: ReadonlyArray<Item>): ReadonlyArray<Record<s
 // Wire output items → our Items
 // ---------------------------------------------------------------------------
 
+const wireMessageContentToBlock = Match.type<typeof WireMessageContent.Type>().pipe(
+  matchType(
+    "output_text",
+    (c): ContentBlock => ({
+      type: "output_text",
+      text: c.text,
+      ...(c.annotations !== undefined &&
+        c.annotations !== null && { annotations: c.annotations }),
+    }),
+  ),
+  matchType("refusal", (c): ContentBlock => ({ type: "refusal", text: c.refusal })),
+  Match.exhaustive,
+)
+
 export const wireItemToItem = (wire: WireOutputItem): Item =>
   Match.value(wire).pipe(
     matchType("message", (m) => ({
       type: "message" as const,
       role: m.role,
-      content: m.content.map((c) => ({
-        type: "output_text" as const,
-        text: c.text,
-        ...(c.annotations !== undefined &&
-          c.annotations !== null && { annotations: c.annotations }),
-      })),
+      content: m.content.map(wireMessageContentToBlock),
       providerData: m,
     })),
     matchType("function_call", (f) => ({
@@ -207,7 +237,21 @@ const stopReasonFromCompleted = (payload: WireResponseCompleted): Turn["stop_rea
   if (payload.incomplete_details?.reason === "max_output_tokens") {
     return "max_tokens"
   }
+  if (payload.incomplete_details?.reason === "refusal") {
+    return "refusal"
+  }
   const output = payload.output ?? []
+  // A refusal-shaped message content also signals a refusal stop, even when
+  // `incomplete_details` is absent.
+  if (
+    output.some(
+      (i) =>
+        i.type === "message" &&
+        i.content.some((c) => c.type === "refusal"),
+    )
+  ) {
+    return "refusal"
+  }
   return output.some((i) => i.type === "function_call") ? "tool_calls" : "stop"
 }
 

@@ -81,7 +81,17 @@ interface RequestRedactedThinkingContent {
   readonly data: string
 }
 
-type RequestUserContentBlock = RequestTextContent | RequestToolResultContent
+interface RequestImageContent {
+  readonly type: "image"
+  readonly source:
+    | { readonly type: "url"; readonly url: string }
+    | { readonly type: "base64"; readonly media_type: string; readonly data: string }
+}
+
+type RequestUserContentBlock =
+  | RequestTextContent
+  | RequestToolResultContent
+  | RequestImageContent
 
 type RequestAssistantContentBlock =
   | RequestTextContent
@@ -101,8 +111,44 @@ interface RequestAssistantMessage {
 
 type RequestMessage = RequestUserMessage | RequestAssistantMessage
 
+const blockText = Match.type<Items.ContentBlock>().pipe(
+  matchType("input_text", (b) => b.text),
+  matchType("input_image", () => ""),
+  matchType("output_text", (b) => b.text),
+  matchType("refusal", (b) => b.text),
+  Match.exhaustive,
+)
+
 const messageText = (message: Items.Message): string =>
-  message.content.map((b) => b.text).join("")
+  message.content.map(blockText).join("")
+
+const userContentBlock = (
+  block: Items.ContentBlock,
+): Result.Result<RequestUserContentBlock, void> =>
+  Match.value(block).pipe(
+    matchType("input_text", (b) =>
+      b.text.length === 0
+        ? Result.failVoid
+        : Result.succeed({ type: "text" as const, text: b.text }),
+    ),
+    matchType("input_image", (b) =>
+      Result.succeed({
+        type: "image" as const,
+        source:
+          b.source._tag === "url"
+            ? { type: "url" as const, url: b.source.url }
+            : {
+                type: "base64" as const,
+                media_type: b.source.media_type,
+                data: b.source.data,
+              },
+      }),
+    ),
+    // Assistant content; never appears on a user message in practice. Skip.
+    matchType("output_text", () => Result.failVoid),
+    matchType("refusal", () => Result.failVoid),
+    Match.exhaustive,
+  )
 
 const parseJson = (s: string): Result.Result<unknown, JsonParseError> =>
   Result.try({
@@ -126,7 +172,7 @@ const itemToUserBlocks = (item: Items.Item): ReadonlyArray<RequestUserContentBlo
     matchType(
       "message",
       (m): ReadonlyArray<RequestUserContentBlock> =>
-        m.role === "user" ? [{ type: "text", text: messageText(m) }] : [],
+        m.role === "user" ? pipe(m.content, Arr.filterMap(userContentBlock)) : [],
     ),
     matchType("function_call", (): ReadonlyArray<RequestUserContentBlock> => []),
     matchType(

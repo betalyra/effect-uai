@@ -49,9 +49,13 @@ export type WireChunk = typeof WireChunk.Type
 // History → request body
 // ---------------------------------------------------------------------------
 
+type RequestPart =
+  | { readonly text: string }
+  | { readonly inlineData: { readonly mimeType: string; readonly data: string } }
+
 interface RequestContent {
   readonly role: "user" | "model"
-  readonly parts: ReadonlyArray<{ readonly text: string }>
+  readonly parts: ReadonlyArray<RequestPart>
 }
 
 interface RequestSystemInstruction {
@@ -77,21 +81,43 @@ export interface RequestBody {
 
 const blockText = Match.type<ContentBlock>().pipe(
   matchType("input_text", (b) => b.text),
+  matchType("input_image", () => ""),
   matchType("output_text", (b) => b.text),
+  matchType("refusal", (b) => b.text),
   Match.exhaustive,
 )
 
 const messageText = (message: Message): string => message.content.map(blockText).join("")
 
-const userContent = (text: string): RequestContent => ({ role: "user", parts: [{ text }] })
-const modelContent = (text: string): RequestContent => ({ role: "model", parts: [{ text }] })
+const blockToParts = Match.type<ContentBlock>().pipe(
+  matchType(
+    "input_text",
+    (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
+  ),
+  matchType("input_image", (b): ReadonlyArray<RequestPart> =>
+    // Gemini's `fileData` form expects a pre-uploaded Files API URI, not an
+    // arbitrary HTTPS URL - we'd need to fetch + re-upload to support that.
+    // Skip URL-form images for now; document as a follow-up.
+    b.source._tag === "base64"
+      ? [{ inlineData: { mimeType: b.source.media_type, data: b.source.data } }]
+      : [],
+  ),
+  matchType(
+    "output_text",
+    (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
+  ),
+  // Refusals are assistant-side content; they don't round-trip into Gemini's
+  // request body as parts. Skip.
+  matchType("refusal", (): ReadonlyArray<RequestPart> => []),
+  Match.exhaustive,
+)
 
 const messageToContent = (message: Message): Result.Result<RequestContent, void> => {
-  const text = messageText(message)
-  if (text.length === 0) return Result.failVoid
+  const parts = pipe(message.content, Arr.flatMap(blockToParts))
+  if (parts.length === 0) return Result.failVoid
   return Match.value(message.role).pipe(
-    Match.when("user", () => Result.succeed(userContent(text))),
-    Match.when("assistant", () => Result.succeed(modelContent(text))),
+    Match.when("user", () => Result.succeed({ role: "user" as const, parts })),
+    Match.when("assistant", () => Result.succeed({ role: "model" as const, parts })),
     Match.when("system", () => Result.failVoid),
     Match.exhaustive,
   )

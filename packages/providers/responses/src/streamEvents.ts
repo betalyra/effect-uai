@@ -40,6 +40,11 @@ const RefusalDelta = Schema.Struct({
   delta: Schema.String,
 })
 
+const RefusalDone = Schema.Struct({
+  type: Schema.Literal("response.refusal.done"),
+  refusal: Schema.optional(Schema.String),
+})
+
 const Completed = Schema.Struct({
   type: Schema.Literal("response.completed"),
   response: WireResponseCompleted,
@@ -73,6 +78,7 @@ export const KnownProviderEvent = Schema.Union([
   ReasoningTextDelta,
   ReasoningSummaryDelta,
   RefusalDelta,
+  RefusalDone,
   Completed,
   ErrorEvent,
 ])
@@ -89,6 +95,7 @@ export const ProviderEvent = Schema.Union([
   ReasoningTextDelta,
   ReasoningSummaryDelta,
   RefusalDelta,
+  RefusalDone,
   Completed,
   ErrorEvent,
   Unknown,
@@ -153,6 +160,9 @@ export const eventToDeltas = (
     matchType("response.refusal.delta", ({ delta }) => [
       { type: "refusal_delta" as const, text: delta },
     ]),
+    // Terminal marker for the refusal stream; the deltas already covered
+    // the text, so no canonical event is emitted here.
+    matchType("response.refusal.done", () => []),
     matchType("response.completed", ({ response }) => [
       { type: "turn_complete" as const, turn: turnFromCompleted(response) },
     ]),

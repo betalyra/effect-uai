@@ -10,6 +10,47 @@ export const InputText = Schema.Struct({
 })
 export type InputText = typeof InputText.Type
 
+/**
+ * Where an image lives. `url` covers HTTP(S) URLs (the model fetches
+ * them); `base64` covers inline bytes embedded in the request. Provider
+ * encoders dispatch on `_tag`. File-id / uploaded-asset references are
+ * provider-specific and stay out of this union for now.
+ */
+export const ImageUrlSource = Schema.Struct({
+  _tag: Schema.Literal("url"),
+  url: Schema.String,
+})
+export type ImageUrlSource = typeof ImageUrlSource.Type
+
+/**
+ * Inline image bytes. `data` is **already base64-encoded** (matches what
+ * the wire formats expect; no double-encoding needed downstream).
+ * `media_type` is the MIME type, e.g. `"image/png"`.
+ */
+export const ImageBase64Source = Schema.Struct({
+  _tag: Schema.Literal("base64"),
+  media_type: Schema.String,
+  data: Schema.String,
+})
+export type ImageBase64Source = typeof ImageBase64Source.Type
+
+export const ImageSource = Schema.Union([ImageUrlSource, ImageBase64Source])
+export type ImageSource = typeof ImageSource.Type
+
+export const isImageUrlSource = (s: ImageSource): s is ImageUrlSource => s._tag === "url"
+export const isImageBase64Source = (s: ImageSource): s is ImageBase64Source =>
+  s._tag === "base64"
+
+/**
+ * User-provided image content block. Pair with `InputText` inside a
+ * `Message.content` array to ask "what's in this image?" style questions.
+ */
+export const InputImage = Schema.Struct({
+  type: Schema.Literal("input_image"),
+  source: ImageSource,
+})
+export type InputImage = typeof InputImage.Type
+
 // ---------------------------------------------------------------------------
 // Annotations - source / citation pointers attached to `output_text` blocks.
 // Mirrors OpenAI Responses API; other providers can omit or map onto these
@@ -69,7 +110,19 @@ export const OutputText = Schema.Struct({
 })
 export type OutputText = typeof OutputText.Type
 
-export const ContentBlock = Schema.Union([InputText, OutputText])
+/**
+ * Model-emitted refusal. Distinct from `output_text`: the model declined
+ * to answer rather than producing normal output. Pair with
+ * `stop_reason: "refusal"` on the surrounding `Turn`. Streamed via the
+ * `refusal_delta` `TurnEvent`.
+ */
+export const Refusal = Schema.Struct({
+  type: Schema.Literal("refusal"),
+  text: Schema.String,
+})
+export type Refusal = typeof Refusal.Type
+
+export const ContentBlock = Schema.Union([InputText, InputImage, OutputText, Refusal])
 export type ContentBlock = typeof ContentBlock.Type
 
 export const Role = Schema.Literals(["user", "assistant", "system"])
@@ -137,8 +190,11 @@ export type Item = typeof Item.Type
 // ---------------------------------------------------------------------------
 
 export const isInputText = (block: ContentBlock): block is InputText => block.type === "input_text"
+export const isInputImage = (block: ContentBlock): block is InputImage =>
+  block.type === "input_image"
 export const isOutputText = (block: ContentBlock): block is OutputText =>
   block.type === "output_text"
+export const isRefusal = (block: ContentBlock): block is Refusal => block.type === "refusal"
 
 export const isMessage = (item: Item): item is Message => item.type === "message"
 export const isFunctionCall = (item: Item): item is FunctionCall => item.type === "function_call"
@@ -169,7 +225,7 @@ export const Usage = Schema.Struct({
 })
 export type Usage = typeof Usage.Type
 
-export const StopReason = Schema.Literals(["stop", "tool_calls", "max_tokens"])
+export const StopReason = Schema.Literals(["stop", "tool_calls", "max_tokens", "refusal"])
 export type StopReason = typeof StopReason.Type
 
 // ---------------------------------------------------------------------------

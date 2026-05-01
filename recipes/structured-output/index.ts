@@ -42,11 +42,7 @@ const Recipe = Schema.Struct({
 });
 type Recipe = typeof Recipe.Type;
 
-const recipeFormat = StructuredFormat.fromEffectSchema(Recipe, {
-  name: "Recipe",
-  description: "A short cooking recipe with title, ingredients, and prep time.",
-  strict: true,
-});
+const recipeFormat = StructuredFormat.fromEffectSchema(Recipe);
 
 // ---------------------------------------------------------------------------
 // Program

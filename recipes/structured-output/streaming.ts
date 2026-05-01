@@ -5,7 +5,7 @@
  * makes JSONL native. Compose three primitives:
  *
  *   textDeltas         (TurnEvent stream → text fragments)
- *   accumulateLines    (text fragments → newline-delimited lines)
+ *   lines              (text fragments → newline-delimited lines)
  *   decodeJsonLines    (lines → typed, validated objects)
  *
  * Each operator's failures are surfaced in the stream channel with a
@@ -54,11 +54,7 @@ const Recipe = Schema.Struct({
 });
 type Recipe = typeof Recipe.Type;
 
-const recipeFormat = StructuredFormat.fromEffectSchema(Recipe, {
-  name: "Recipe",
-  description: "A short cooking recipe with title, ingredients, and prep time.",
-  strict: true,
-});
+const recipeFormat = StructuredFormat.fromEffectSchema(Recipe);
 
 // ---------------------------------------------------------------------------
 // Prompt
@@ -75,7 +71,7 @@ const prompt = [
 
 const program = streamTurn([Items.userText(prompt)]).pipe(
   Turn.textDeltas,
-  Lines.accumulateLinesWithFlush,
+  Lines.lines,
   StructuredFormat.decodeJsonLines(recipeFormat),
   Stream.tap((recipe: Recipe) =>
     Effect.logInfo("recipe (streamed)", { recipe }),

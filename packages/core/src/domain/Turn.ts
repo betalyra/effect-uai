@@ -115,7 +115,7 @@ export const cursor = <S extends { readonly history: ReadonlyArray<Item> }>(
 
 /**
  * Project a `TurnEvent` stream onto its `text_delta` payloads. Other
- * variants are dropped. Composes with `accumulateLines` +
+ * variants are dropped. Composes with `Lines.lines` +
  * `decodeJsonLines` for prompted-JSONL streaming.
  */
 export const textDeltas = <E, R>(

@@ -1,16 +1,26 @@
 import { Stream } from "effect"
 
 /**
- * Accumulate streaming string chunks into complete newline-delimited
- * lines. Chunks may arrive split across line boundaries; the operator
- * buffers until it sees a `\n`. Empty lines are dropped, `\r` is
- * stripped (handles `\r\n` line endings).
+ * Split a string stream on `\n`, emitting one line per element. Buffers
+ * partial chunks until a newline arrives, and flushes any non-newline
+ * tail at stream end - so streams that don't terminate with `\n`
+ * (typical of LLM token streams) still get their last line. Empty lines
+ * are dropped, `\r` is stripped (handles `\r\n` endings).
  *
- * Intended use: feed text deltas from a model stream that has been
- * prompted to emit JSONL (or any other newline-delimited format), then
- * parse / validate each emitted line.
+ * Intended use: feed text deltas from a model that has been prompted to
+ * emit JSONL (or any other newline-delimited format), then parse /
+ * validate each emitted line.
  */
-export const accumulateLines = <E, R>(
+export const lines = <E, R>(
+  self: Stream.Stream<string, E, R>,
+): Stream.Stream<string, E, R> => linesStrict(Stream.concat(self, Stream.make("\n")))
+
+/**
+ * Like `lines`, but only emits lines that were terminated by `\n`. Any
+ * partial trailing content is dropped at stream end. Use when you want
+ * strict "complete-line-or-nothing" semantics.
+ */
+export const linesStrict = <E, R>(
   self: Stream.Stream<string, E, R>,
 ): Stream.Stream<string, E, R> =>
   self.pipe(
@@ -25,12 +35,3 @@ export const accumulateLines = <E, R>(
     ),
     Stream.filter((line) => line.trim().length > 0),
   )
-
-/**
- * Same as `accumulateLines` but flushes any non-empty buffered tail at
- * stream end. Use when the upstream stream may not terminate with a
- * trailing newline (typical of LLM token streams).
- */
-export const accumulateLinesWithFlush = <E, R>(
-  self: Stream.Stream<string, E, R>,
-): Stream.Stream<string, E, R> => accumulateLines(Stream.concat(self, Stream.make("\n")))

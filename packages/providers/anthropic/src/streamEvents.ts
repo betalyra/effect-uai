@@ -100,6 +100,37 @@ const ErrorEvent = Schema.Struct({
   ),
 })
 
+/**
+ * Catch-all variant for wire events that fail to decode against any known
+ * schema, plus events that fail to JSON-parse. The decoder never produces
+ * this directly - it's synthesized by `sseEventToProviderEvent` when
+ * `decodeKnown` fails.
+ */
+const Unknown = Schema.Struct({
+  type: Schema.Literal("_unknown"),
+  raw: Schema.Unknown,
+})
+
+/**
+ * Internal: union of variants we actually know how to decode from the wire.
+ * Used as the decode target; failures are caught and re-emitted as `Unknown`.
+ */
+export const KnownProviderEvent = Schema.Union([
+  MessageStart,
+  ContentBlockStart,
+  ContentBlockDelta,
+  ContentBlockStop,
+  MessageDelta,
+  MessageStop,
+  Ping,
+  ErrorEvent,
+])
+
+/**
+ * Public: every event the native stream can emit. Discriminated on `type`.
+ * The `_unknown` branch closes the cardinality so downstream `Match.exhaustive`
+ * cannot silently miss a wire event we didn't model.
+ */
 export const ProviderEvent = Schema.Union([
   MessageStart,
   ContentBlockStart,
@@ -109,6 +140,7 @@ export const ProviderEvent = Schema.Union([
   MessageStop,
   Ping,
   ErrorEvent,
+  Unknown,
 ])
 export type ProviderEvent = typeof ProviderEvent.Type
 
@@ -143,11 +175,15 @@ export const applyEvent = (acc: Accumulator, event: ProviderEvent): Accumulator 
     matchType("message_stop", () => acc),
     matchType("ping", () => acc),
     matchType("error", () => acc),
+    // No silent drops: unknown wire events flow through `streamNative` but
+    // produce no accumulator change. Step 3 (canonical `other` event) will
+    // also forward them to `TurnEvent`.
+    matchType("_unknown", () => acc),
     Match.exhaustive,
   )
 
 // ---------------------------------------------------------------------------
-// Helpers for producing TurnDelta from a step.
+// Helpers for producing TurnEvent from a step.
 // ---------------------------------------------------------------------------
 
 export const isTextDeltaEvent = (

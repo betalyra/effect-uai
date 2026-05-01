@@ -22,7 +22,7 @@ export type CouncilEvent =
   | {
       readonly type: "candidate_delta"
       readonly member: string
-      readonly delta: Turn.TurnDelta
+      readonly delta: Turn.TurnEvent
     }
   | {
       readonly type: "candidate_complete"

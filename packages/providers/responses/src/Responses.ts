@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Redacted, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { Item } from "@effect-uai/core/Items"
@@ -7,12 +7,16 @@ import {
   LanguageModel,
   type LanguageModelService,
 } from "@effect-uai/core/LanguageModel"
-import { JsonParseError } from "@effect-uai/core/JSONL"
 import * as SSE from "@effect-uai/core/SSE"
-import type { TurnDelta } from "@effect-uai/core/Turn"
+import type { TurnEvent } from "@effect-uai/core/Turn"
 import { itemsToInput } from "./codec.js"
 import type { OpenAIModel } from "./models.js"
-import { ProviderEvent, eventToDeltas, makeCallIdLookup } from "./streamEvents.js"
+import {
+  KnownProviderEvent,
+  ProviderEvent,
+  eventToDeltas,
+  makeCallIdLookup,
+} from "./streamEvents.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -33,10 +37,31 @@ export interface ResponsesRequestOptions extends CommonRequestOptions {
 }
 
 export interface ResponsesService {
+  /**
+   * Stream the provider's native event vocabulary (post-SSE-decode).
+   * Use this when you need full vendor fidelity. For provider-portable
+   * code, use `streamTurn` instead.
+   */
+  readonly streamNative: (
+    history: ReadonlyArray<Item>,
+    options?: ResponsesRequestOptions,
+  ) => Stream.Stream<ProviderEvent, AiError.AiError>
+  /**
+   * Stream canonical `TurnEvent`s. Implemented as
+   * `streamNative |> toCanonical`.
+   */
   readonly streamTurn: (
     history: ReadonlyArray<Item>,
     options?: ResponsesRequestOptions,
-  ) => Stream.Stream<TurnDelta, AiError.AiError>
+  ) => Stream.Stream<TurnEvent, AiError.AiError>
+  /**
+   * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
+   * Exposed for cases where consumers want to compose with `streamNative`
+   * directly (e.g. tap into natives + still get canonical downstream).
+   */
+  readonly toCanonical: <E, R>(
+    s: Stream.Stream<ProviderEvent, E, R>,
+  ) => Stream.Stream<TurnEvent, E, R>
 }
 
 /**
@@ -109,18 +134,26 @@ const buildBody = (
 // SSE event → provider event
 // ---------------------------------------------------------------------------
 
-const decodeProviderEvent = Schema.decodeUnknownEffect(ProviderEvent)
+const decodeKnown = Schema.decodeUnknownEffect(KnownProviderEvent)
+
+const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
 
 /**
- * Parse one SSE event's `data` payload into a typed `ProviderEvent`.
- * JSON-parse failures and schema-decode failures both produce
- * `Option.none()` - unknown event types are silently ignored.
+ * Parse one SSE event's `data` payload into a typed `ProviderEvent`. Never
+ * fails: JSON-parse and schema-decode failures both produce a synthesized
+ * `_unknown` event so consumers of `streamNative` never silently miss a
+ * wire event we didn't model.
  */
-const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<Option.Option<ProviderEvent>> =>
+const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
   Effect.try({
     try: () => JSON.parse(ev.data) as unknown,
-    catch: (cause) => new JsonParseError({ line: ev.data, cause }),
-  }).pipe(Effect.flatMap(decodeProviderEvent), Effect.option)
+    catch: () => ev.data,
+  }).pipe(
+    Effect.flatMap((parsed) =>
+      decodeKnown(parsed).pipe(Effect.orElseSucceed(() => makeUnknown(parsed))),
+    ),
+    Effect.orElseSucceed(() => makeUnknown(ev.data)),
+  )
 
 // ---------------------------------------------------------------------------
 // Service implementation
@@ -139,12 +172,12 @@ const httpStatusError = (status: number, body: string): AiError.AiError => {
   return new AiError.InvalidRequest({ provider, raw })
 }
 
-const buildStream = (cfg: Config) => {
+const buildNativeStream = (cfg: Config) => {
   const url = `${cfg.baseUrl ?? "https://api.openai.com/v1"}/responses`
   return (
     history: ReadonlyArray<Item>,
     options: ResponsesRequestOptions | undefined,
-  ): Stream.Stream<TurnDelta, AiError.AiError, HttpClient.HttpClient> =>
+  ): Stream.Stream<ProviderEvent, AiError.AiError, HttpClient.HttpClient> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
@@ -165,31 +198,40 @@ const buildStream = (cfg: Config) => {
           return Stream.fail(httpStatusError(response.status, body))
         }
 
-        const lookup = makeCallIdLookup()
         return response.stream.pipe(
           Stream.mapError(
             (cause) => new AiError.Unavailable({ provider: "responses", raw: cause }),
           ),
           SSE.fromBytes,
           Stream.mapEffect(sseEventToProviderEvent),
-          Stream.flatMap(
-            Option.match({
-              onNone: () => Stream.empty,
-              onSome: (event) =>
-                event.type === "error"
-                  ? Stream.fail(
-                      new AiError.Unavailable({
-                        provider: "responses",
-                        raw: event,
-                      }),
-                    )
-                  : Stream.fromIterable(eventToDeltas(event, lookup)),
-            }),
+          Stream.flatMap((event) =>
+            event.type === "error"
+              ? Stream.fail(
+                  new AiError.Unavailable({ provider: "responses", raw: event }),
+                )
+              : Stream.succeed(event),
           ),
         )
       }),
     )
 }
+
+/**
+ * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
+ * Threads a fresh `CallIdLookup` per stream so `function_call_arguments.delta`
+ * can be tagged with the right `call_id`.
+ */
+export const toCanonical = <E, R>(
+  s: Stream.Stream<ProviderEvent, E, R>,
+): Stream.Stream<TurnEvent, E, R> =>
+  Stream.unwrap(
+    Effect.sync(() => {
+      const lookup = makeCallIdLookup()
+      return s.pipe(
+        Stream.flatMap((event) => Stream.fromIterable(eventToDeltas(event, lookup))),
+      )
+    }),
+  )
 
 // ---------------------------------------------------------------------------
 // Constructors
@@ -202,10 +244,17 @@ const buildStream = (cfg: Config) => {
  * `layer`.
  */
 export const make = (cfg: Config): Effect.Effect<ResponsesService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
-    streamTurn: (history, options) =>
-      buildStream(cfg)(history, options).pipe(Stream.provideService(HttpClient.HttpClient, client)),
-  }))
+  Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
+    const streamNative: ResponsesService["streamNative"] = (history, options) =>
+      buildNativeStream(cfg)(history, options).pipe(
+        Stream.provideService(HttpClient.HttpClient, client),
+      )
+    return {
+      streamNative,
+      streamTurn: (history, options) => toCanonical(streamNative(history, options)),
+      toCanonical,
+    }
+  })
 
 /**
  * Layer that registers both the provider-specific `Responses` tag and the

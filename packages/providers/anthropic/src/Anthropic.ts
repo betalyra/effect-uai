@@ -95,7 +95,22 @@ export interface Config {
 }
 
 const ANTHROPIC_VERSION = "2023-06-01"
+const STRUCTURED_OUTPUTS_BETA = "structured-outputs-2025-11-13"
 const FALLBACK_MAX_TOKENS = 4096
+
+const outputConfig = (
+  options: Option.Option<AnthropicRequestOptions>,
+): Option.Option<Record<string, unknown>> =>
+  pipe(
+    options,
+    Option.flatMap((o) => Option.fromUndefinedOr(o.structured)),
+    Option.map((format) => ({
+      format: {
+        type: "json_schema",
+        schema: format.schema["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
+      },
+    })),
+  )
 
 const resolvedMaxTokens = (
   cfg: Config,
@@ -269,6 +284,7 @@ const buildNativeStream = (cfg: Config) => {
             Option.flatMap((o) => Option.fromUndefinedOr(o[key])),
           )
 
+        const structured = outputConfig(options)
         const bodyResult = buildRequestBody({
           model: cfg.model,
           history,
@@ -281,6 +297,7 @@ const buildNativeStream = (cfg: Config) => {
           tools: toolDescriptors(options),
           toolChoice: toolChoiceWire(options),
           userId: optionsField("user"),
+          outputConfig: structured,
         })
 
         const body = yield* Result.match(bodyResult, {
@@ -296,12 +313,17 @@ const buildNativeStream = (cfg: Config) => {
         })
 
         const client = yield* HttpClient.HttpClient
-        const request = HttpClientRequest.post(url).pipe(
+        const baseRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.setHeader("x-api-key", Redacted.value(cfg.apiKey)),
           HttpClientRequest.setHeader("anthropic-version", ANTHROPIC_VERSION),
           HttpClientRequest.bodyJsonUnsafe(body),
           HttpClientRequest.accept("text/event-stream"),
         )
+        const request = Option.isSome(structured)
+          ? baseRequest.pipe(
+              HttpClientRequest.setHeader("anthropic-beta", STRUCTURED_OUTPUTS_BETA),
+            )
+          : baseRequest
         const response = yield* client
           .execute(request)
           .pipe(

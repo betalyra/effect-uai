@@ -1,6 +1,7 @@
 import { Context, Effect, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { Item } from "../domain/Items.js"
+import type * as StructuredFormat from "../structured-format/StructuredFormat.js"
 import type { ToolDescriptor } from "../tool/Tool.js"
 import { isTurnComplete, type Turn, type TurnEvent } from "../domain/Turn.js"
 
@@ -19,6 +20,13 @@ export interface CommonRequestOptions {
   readonly temperature?: number
   readonly topP?: number
   readonly maxOutputTokens?: number
+  /**
+   * Schema-bound JSON output. The provider constrains the wire to match the
+   * schema; pair with `Turn.toStructured` for runtime validation. Supported
+   * across all current providers (OpenAI Responses json_schema, Anthropic
+   * `output_config`, Gemini `responseJsonSchema`).
+   */
+  readonly structured?: StructuredFormat.StructuredFormat<unknown>
 }
 
 export interface LanguageModelService {

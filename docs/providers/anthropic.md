@@ -176,8 +176,8 @@ HTTP failures map to typed `AiError` variants:
 
 Recover per-tag with `Stream.catchTag("RateLimited", handler)`. See
 [multi-model fallback](/recipes/multi-model-fallback/) for cross-provider
-recovery and [model council](/recipes/model-council/) for fan-out across
-all three providers.
+recovery and [multi-model compare](/recipes/multi-model-compare/) for
+fan-out across all three providers.
 
 ## Token accounting
 

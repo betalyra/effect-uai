@@ -1,19 +1,17 @@
 /**
  * Model council: send the same question to OpenAI, Google, and Anthropic
- * concurrently, and stream their tagged deltas as they arrive.
+ * concurrently; once each candidate finishes, every other model judges its
+ * answer (no self-judging); once all scores are in, stream the winner.
  *
- * Each council member is a `LanguageModelService`; their delta streams are
- * tagged with the member's name and merged via `Stream.mergeAll` so the
- * consumer sees a live, interleaved transcript. A failure in one member
- * surfaces as an `error` event on the merged stream and does not affect the
- * other two.
+ * The whole pipeline is non-blocking: candidate deltas stream live, judge
+ * calls fire as soon as their subject completes, and the winner is emitted
+ * the moment the last score lands.
  *
  * Run with:
  *   OPENAI_API_KEY=... GOOGLE_API_KEY=... ANTHROPIC_API_KEY=... \
  *     pnpm tsx recipes/model-council/index.ts
  */
 import {
-  Array as Arr,
   Config,
   Effect,
   Layer,
@@ -21,33 +19,45 @@ import {
   Match,
   References,
   Stream,
-  pipe,
 } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@betalyra/effect-uai-core/Items"
 import { matchType } from "@betalyra/effect-uai-core/Match"
-import * as Turn from "@betalyra/effect-uai-core/Turn"
 import { make as makeAnthropic } from "@betalyra/effect-uai-anthropic"
 import { make as makeGemini } from "@betalyra/effect-uai-google"
 import { make as makeResponses } from "@betalyra/effect-uai-responses"
-import { type Member, council } from "./council.js"
-
-// ---------------------------------------------------------------------------
-// Run
-// ---------------------------------------------------------------------------
+import { type CouncilEvent, type Member, council } from "./council.js"
 
 const QUESTION =
-  "In one short sentence, what's the most underrated programming language and why?"
+  "Name a piece of conventional life wisdom you believe is wrong. Defend your pick in 3 sentences."
 
 const initialHistory: ReadonlyArray<Items.Item> = [Items.userText(QUESTION)]
 
-const finalText = (turn: Turn.Turn): string =>
-  pipe(
-    Turn.assistantMessages(turn),
-    Arr.flatMap((m) => m.content),
-    Arr.filter(Items.isOutputText),
-    Arr.map((c) => c.text),
-  ).join("")
+const logEvent = (event: CouncilEvent): Effect.Effect<void> =>
+  Match.value(event).pipe(
+    matchType("candidate_delta", ({ member, delta }) =>
+      delta.type === "text_delta"
+        ? Effect.logDebug(`${member} | ${delta.text}`)
+        : Effect.void,
+    ),
+    matchType("candidate_complete", ({ member, answer }) =>
+      Effect.logInfo(`candidate complete: ${member}`, { answer }),
+    ),
+    matchType("score", ({ judge, subject, score, rationale }) =>
+      Effect.logInfo(`score ${judge} -> ${subject}: ${score}`, { rationale }),
+    ),
+    matchType("winner", ({ member, answer, averageScore }) =>
+      Effect.logInfo(`WINNER: ${member} (avg ${averageScore.toFixed(2)})`, {
+        winner: member,
+        averageScore,
+        answer,
+      }),
+    ),
+    matchType("error", ({ member, phase, error }) =>
+      Effect.logWarning(`${member} failed in ${phase}`, { error }),
+    ),
+    Match.exhaustive,
+  )
 
 const program = Effect.gen(function* () {
   const openaiKey = yield* Config.redacted("OPENAI_API_KEY")
@@ -59,7 +69,7 @@ const program = Effect.gen(function* () {
   const anthropic = yield* makeAnthropic({
     apiKey: anthropicKey,
     model: "claude-sonnet-4-6",
-    defaultMaxTokens: 256,
+    defaultMaxTokens: 512,
   })
 
   const members: ReadonlyArray<Member> = [
@@ -70,29 +80,7 @@ const program = Effect.gen(function* () {
 
   yield* Effect.logInfo("question", { question: QUESTION })
 
-  yield* Stream.runForEach(council(members, initialHistory), (event) =>
-    Match.value(event).pipe(
-      matchType("delta", ({ member, delta }) =>
-        Match.value(delta).pipe(
-          matchType("text_delta", ({ text }) =>
-            Effect.logDebug(`${member} | ${text}`),
-          ),
-          matchType("turn_complete", ({ turn }) =>
-            Effect.logInfo(`${member} verdict`, {
-              stop_reason: turn.stop_reason,
-              usage: turn.usage,
-              answer: finalText(turn),
-            }),
-          ),
-          Match.orElse(() => Effect.void),
-        ),
-      ),
-      matchType("error", ({ member, error }) =>
-        Effect.logWarning(`${member} failed`, { error }),
-      ),
-      Match.exhaustive,
-    ),
-  )
+  yield* Stream.runForEach(council(members, initialHistory), logEvent)
 })
 
 const runtime = Layer.mergeAll(FetchHttpClient.layer, Logger.layer([Logger.consolePretty()]))
@@ -103,6 +91,6 @@ Effect.runPromise(
     Effect.provideService(References.MinimumLogLevel, "Info"),
   ),
 ).catch((err) => {
-  console.error("recipe failed:", err)
+  Effect.runSync(Effect.logError("recipe failed", { err }))
   process.exit(1)
 })

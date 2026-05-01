@@ -49,6 +49,10 @@ export default defineConfig({
             { label: "Auto-compaction", slug: "recipes/auto-compaction" },
             { label: "Pause and resume", slug: "recipes/pause-resume" },
             { label: "Mid-stream abort", slug: "recipes/mid-stream-abort" },
+            {
+              label: "Multi-model compare",
+              slug: "recipes/multi-model-compare",
+            },
             { label: "Model council", slug: "recipes/model-council" },
           ],
         },

@@ -1,109 +1,167 @@
 ---
 title: Model council
-description: Fan a single prompt out to OpenAI, Google, and Anthropic concurrently and stream their tagged answers as they arrive.
+description: Three models answer the same question, score each other's answers (no self-judging), and the highest-rated answer is streamed as the winner.
 ---
 
 # Recipe: Model council
 
-**Scenario.** You want a side-by-side answer from multiple models for
-the same prompt - to compare reasoning quality, audit verdicts, or
-ensemble. Each provider's deltas should arrive concurrently and be
-tagged with which model produced them, and a failure in one provider
-shouldn't kill the others.
+**Scenario.** You have a question and three different models (OpenAI,
+Google, Anthropic). You want all three to answer concurrently, then
+have each model score the *others'* answers, and finally surface the
+winner — both who won and what they said. Everything streams; nothing
+blocks longer than it has to.
 
-This is the simplest fan-out shape: three `LanguageModelService`
-instances, one shared history, `Stream.mergeAll` to interleave their
-tagged outputs.
+The only barrier is the `winner` event itself: it lands the moment
+the last of the six judge calls returns. Candidate text streams live;
+each judge call fires the instant its subject finishes (it does not
+wait on its own answer or on the other judges).
+
+If you only want side-by-side answers without cross-evaluation, see
+[multi-model compare](/recipes/multi-model-compare/).
 
 ## What it shows
 
-- Building three providers from the three packages
-  ([`@betalyra/effect-uai-responses`](/providers/responses/),
-  [`@betalyra/effect-uai-google`](/providers/gemini/),
-  [`@betalyra/effect-uai-anthropic`](/providers/anthropic/)) and
-  treating them uniformly as `LanguageModelService` values.
-- Wrapping each in a small `memberStream` that tags every delta with
-  the member's name.
-- Per-member error isolation via `Stream.catch` - a failure surfaces
-  as an `error` event on the merged stream, not as a stream
-  termination.
-- Concurrency via `Stream.mergeAll(streams, { concurrency })` - all
-  members start in parallel; their deltas interleave naturally.
+- **Pure stream composition** — no `Queue`, no `Deferred`, no manual
+  forks. The dependency graph is implicit in where `flatMap` runs.
+- **`Stream.mapAccum`** for two jobs: per-candidate text accumulation
+  (so the `candidate_complete` event can carry the full answer) and
+  the global score tally (so the `winner` event can be emitted at the
+  right moment).
+- **`Stream.flatMap` as a spawn point** — when a `candidate_complete`
+  flows through, it's replaced with a merged stream of `[the event
+  itself, ...judge streams for that subject]`. Judges over the same
+  subject share the subject's answer in scope.
+- **`Schema.fromJsonString`** to parse the judge's `{score,
+  rationale}` JSON in one shot. Decode failures map to typed
+  `AiError.InvalidRequest` and surface as `error` events with `phase:
+  "judge"` instead of silently scoring zero.
+- **Per-phase error isolation** — a candidate's generate failure
+  cancels nothing else; a judge's failure surfaces as one `error`
+  event and the remaining judges continue.
+
+## The event taxonomy
+
+```ts
+export type CouncilEvent =
+  | { type: "candidate_delta"; member: string; delta: TurnDelta }
+  | { type: "candidate_complete"; member: string; answer: string }
+  | { type: "score"; judge: string; subject: string; score: number; rationale: string }
+  | { type: "winner"; member: string; answer: string; averageScore: number }
+  | { type: "error"; member: string; phase: "generate" | "judge"; error: AiError }
+```
+
+A consumer that just wants the verdict can `runCollect` the stream
+and `find(e => e.type === "winner")`. A consumer that wants live UX
+can render `candidate_delta`, then drop in scores as they arrive,
+then highlight the winner.
 
 ## The pattern
 
 The library bit lives in
-[`council.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-council/council.ts):
+[`council.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-council/council.ts).
+The shape, in three layers:
+
+**Per candidate** — accumulate text, emit deltas live, emit complete
+on terminal:
 
 ```ts
-export type CouncilEvent =
-  | { readonly type: "delta"; readonly member: string; readonly delta: TurnDelta }
-  | { readonly type: "error"; readonly member: string; readonly error: AiError }
-
-const memberStream = (
-  member: Member,
-  history: ReadonlyArray<Item>,
-): Stream.Stream<CouncilEvent> =>
+const candidatePipeline = (member, judges, history) =>
   member.service.streamTurn(history, {}).pipe(
-    Stream.map((delta): CouncilEvent => ({ type: "delta", member: member.name, delta })),
+    Stream.mapAccum(
+      () => "",
+      (acc, delta) => {
+        if (delta.type === "text_delta")
+          return [acc + delta.text, [{ type: "candidate_delta", member: member.name, delta }]]
+        if (delta.type === "turn_complete")
+          return [acc, [{ type: "candidate_complete", member: member.name, answer: acc }]]
+        return [acc, [{ type: "candidate_delta", member: member.name, delta }]]
+      },
+    ),
     Stream.catch((error) =>
-      Stream.succeed<CouncilEvent>({ type: "error", member: member.name, error }),
+      Stream.succeed({ type: "error", member: member.name, phase: "generate", error }),
+    ),
+    Stream.flatMap((event) => {
+      if (event.type !== "candidate_complete") return Stream.succeed(event)
+      const others = judges.filter((j) => j.name !== member.name)
+      return Stream.merge(
+        Stream.succeed(event),
+        Stream.mergeAll(
+          others.map((j) => judgeStream(j, member.name, event.answer, history)),
+          { concurrency: "unbounded" },
+        ),
+      )
+    }),
+  )
+```
+
+**Per judge** — accumulate the JSON, decode with a schema, emit one
+`score` event:
+
+```ts
+const ScoreSchema = Schema.Struct({
+  score: Schema.Number,
+  rationale: Schema.optional(Schema.String),
+})
+const decodeScore = Schema.decodeResult(Schema.fromJsonString(ScoreSchema))
+
+const judgeStream = (judge, subject, subjectAnswer, history) =>
+  judge.service.streamTurn(judgeHistory(history, subject, subjectAnswer), {}).pipe(
+    Stream.mapAccum(
+      () => "",
+      (acc, delta) => {
+        if (delta.type === "text_delta") return [acc + delta.text, []]
+        if (delta.type !== "turn_complete") return [acc, []]
+        return Result.match(decodeScore(acc.trim()), {
+          onSuccess: (s) => [acc, [{ type: "score", judge: judge.name, subject, ...s }]],
+          onFailure: (issue) => [acc, [{ type: "error", member: judge.name, phase: "judge", error: invalidRequest(issue) }]],
+        })
+      },
     ),
   )
+```
 
-export const council = (
-  members: ReadonlyArray<Member>,
-  history: ReadonlyArray<Item>,
-): Stream.Stream<CouncilEvent> =>
+**Top level** — merge all candidate pipelines, tally scores, emit
+winner on halt:
+
+```ts
+export const council = (members, history) =>
   Stream.mergeAll(
-    members.map((m) => memberStream(m, history)),
+    members.map((m) => candidatePipeline(m, members, history)),
     { concurrency: members.length },
+  ).pipe(
+    Stream.mapAccum(
+      () => emptyTally,
+      (tally, event) => {
+        if (event.type === "candidate_complete") return [recordCandidate(tally, event.member, event.answer), [event]]
+        if (event.type === "score")               return [recordScore(tally, event.subject, event.score), [event]]
+        return [tally, [event]]
+      },
+      {
+        onHalt: (tally) => {
+          const w = pickWinner(tally)
+          return w === null ? [] : [{ type: "winner", member: w.member, answer: w.answer, averageScore: w.averageScore }]
+        },
+      },
+    ),
   )
 ```
 
-The runner builds the three providers and consumes the merged stream:
+`onHalt` is the key bit for the winner: instead of tracking how many
+scores are "expected" (which gets tricky when a candidate fails and
+no one judges it), we wait until the entire upstream stream halts and
+then pick the best from whatever scores actually landed.
 
-```ts
-const openai = yield* makeResponses({ apiKey: openaiKey, model: "gpt-5.4-mini" })
-const google = yield* makeGemini({ apiKey: googleKey, model: "gemini-3-flash-preview" })
-const anthropic = yield* makeAnthropic({
-  apiKey: anthropicKey,
-  model: "claude-sonnet-4-6",
-  defaultMaxTokens: 256,
-})
+## Why per-judge error isolation matters
 
-const members = [
-  { name: "openai/gpt-5.4-mini", service: openai },
-  { name: "google/gemini-3-flash-preview", service: google },
-  { name: "anthropic/claude-sonnet-4-6", service: anthropic },
-]
+If one model returns malformed JSON, you don't want it to silently
+score zero (which would unfairly penalize the subject it was judging)
+*and* you don't want it to take the whole council down. Schema decode
+failures become typed `AiError.InvalidRequest` events with `phase:
+"judge"` — the rest of the scores still land, the tally still
+averages over what arrived, and the winner is still emitted.
 
-yield* Stream.runForEach(council(members, history), (event) =>
-  /* match on event.type and log the delta or verdict */,
-)
-```
-
-## Why per-member error isolation matters
-
-Without `Stream.catch`, a single provider's `RateLimited` or
-`Unavailable` would terminate the merged stream and lose the answers
-the other two had already produced. The error wrapper turns failures
-into ordinary stream values, so the council always emits one event
-per member - either a `turn_complete` or an `error`.
-
-If you want strict consensus (cancel everyone the moment one fails),
-drop the `Stream.catch` and let the failure propagate out of
-`Stream.mergeAll` - it will interrupt the sibling streams.
-
-## Common-model parity check
-
-Running the same prompt through all three providers is also the
-fastest way to verify the common
-[`LanguageModelService`](/concepts/loop/#streamuntilcomplete)
-abstraction holds: same history shape in, same `TurnDelta` stream
-out, same `Turn` shape on completion. The token accounting carries
-the cached-tokens / reasoning-tokens detail across providers
-identically.
+Same for transport failures (`RateLimited`, `Unavailable`, etc.):
+`Stream.catch` turns them into `error` events of the right phase.
 
 ## Run it
 
@@ -112,10 +170,38 @@ OPENAI_API_KEY=sk-... GOOGLE_API_KEY=... ANTHROPIC_API_KEY=... \
   pnpm tsx recipes/model-council/index.ts
 ```
 
-You'll see one verdict log per member as each completes - in whatever
-order they finish - with the assistant text, stop reason, and usage
-(including `cached_tokens` / `reasoning_tokens` where the provider
-reports them).
+The runner streams each candidate's text live (prefixed with the
+member name), logs each score as it lands, and prints a final summary
+that shows **who won** and what they said:
+
+```
+================================================================
+  WINNER: anthropic/claude-sonnet-4-6  (average score 8.50)
+================================================================
+
+A black hole is a place in space where gravity is so strong that...
+
+----- judge scores -----
+  openai/gpt-5.4-mini -> google/gemini-3-flash-preview: 7  (...)
+  openai/gpt-5.4-mini -> anthropic/claude-sonnet-4-6: 9  (...)
+  google/gemini-3-flash-preview -> openai/gpt-5.4-mini: 6  (...)
+  google/gemini-3-flash-preview -> anthropic/claude-sonnet-4-6: 8  (...)
+  anthropic/claude-sonnet-4-6 -> openai/gpt-5.4-mini: 7  (...)
+  anthropic/claude-sonnet-4-6 -> google/gemini-3-flash-preview: 7  (...)
+```
 
 The full source lives next to this README at
 [`recipes/model-council/`](https://github.com/betalyra/effect-uai/tree/main/recipes/model-council).
+
+## Caveats
+
+- **Self-bias.** Even with the no-self-judging rule, models tend to
+  prefer answers that match their own style. Averaging across the two
+  judges per subject mitigates but does not eliminate this — read the
+  scores, not just the winner.
+- **JSON discipline.** A judge model that ignores the "JSON only"
+  instruction will produce a parse failure for that judge call. The
+  recipe handles it gracefully, but the affected subject loses one
+  vote.
+- **Cost.** Three generations + six judge calls = nine LLM calls per
+  question. Use cheap-tier models for production fan-out.

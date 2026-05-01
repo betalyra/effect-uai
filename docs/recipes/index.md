@@ -21,5 +21,9 @@ Currently scaffolded:
   resume later via `previousResponseId`.
 - [Mid-stream abort](/recipes/mid-stream-abort/) - cancel the loop and the
   upstream HTTP request via scope-based cleanup.
-- [Model council](/recipes/model-council/) - fan one prompt out to OpenAI,
-  Google, and Anthropic concurrently with per-member error isolation.
+- [Multi-model compare](/recipes/multi-model-compare/) - fan one prompt out
+  to OpenAI, Google, and Anthropic concurrently with per-member error
+  isolation, streaming their tagged answers as they arrive.
+- [Model council](/recipes/model-council/) - same fan-out, but each model
+  scores the others' answers (no self-judging) and the highest-rated
+  answer is streamed as the winner.

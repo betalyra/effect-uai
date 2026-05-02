@@ -9,6 +9,7 @@ import {
   PiHandWaving,
   PiPause,
 } from "react-icons/pi"
+import ReactMarkdown, { type Components } from "react-markdown"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -23,51 +24,67 @@ const recipes: ReadonlyArray<Recipe> = [
   {
     title: "Basic usage",
     description:
-      "The smallest end-to-end shape: streaming deltas, a tool call, and a final answer.",
+      "Get **up and running fast**. Streaming, tools, and a final answer in one minimal example.",
     href: "/recipes/basic-usage/",
     Icon: PiHandWaving,
   },
   {
     title: "Multi-model fallback",
-    description: "Fall back across providers on RateLimited / Unavailable.",
+    description:
+      "**Stay online** when a provider fails. Switch automatically on rate limits or outages.",
     href: "/recipes/multi-model-fallback/",
     Icon: PiArrowsClockwise,
   },
   {
     title: "Auto-compaction",
-    description: "Summarize history when token / turn budget is exceeded.",
+    description:
+      "**Never run out of context.** Summarize history before the token budget runs dry.",
     href: "/recipes/auto-compaction/",
     Icon: PiArrowsInLineHorizontal,
   },
   {
     title: "Pause and resume",
-    description: "Checkpoint after each turn, resume later via previousResponseId.",
+    description:
+      "**Pause without losing progress.** Hold the loop between turns and continue right where it stopped.",
     href: "/recipes/pause-resume/",
     Icon: PiPause,
   },
   {
     title: "Mid-stream abort",
-    description: "Cancel the loop and the upstream HTTP request via scope-based cleanup.",
+    description:
+      "**Stop on a dime.** Cancel a running turn, drop the HTTP connection, and keep the partial output.",
     href: "/recipes/mid-stream-abort/",
     Icon: PiHandPalm,
   },
   {
     title: "Multi-model compare",
-    description: "Fan one prompt out to OpenAI, Google, and Anthropic concurrently.",
+    description:
+      "**See how models differ.** Send one prompt to OpenAI, Google, and Anthropic at once.",
     href: "/recipes/multi-model-compare/",
     Icon: PiGitFork,
   },
   {
     title: "Model council",
-    description: "Same fan-out, but the models cross-evaluate and the winner is streamed back.",
+    description:
+      "**Get the best answer.** Models judge each other, the winner streams back.",
     href: "/recipes/model-council/",
     Icon: PiGavel,
   },
 ]
 
+const markdownComponents: Components = {
+  p: ({ children }) => <>{children}</>,
+  strong: ({ children }) => (
+    <strong className="font-semibold text-foreground">{children}</strong>
+  ),
+  code: ({ children }) => (
+    <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>
+  ),
+}
+
 export default function RecipesSection() {
   return (
-    <section className="not-content mt-20 mb-24 border-t border-border pt-16 lg:mt-24 lg:pt-20">
+    <section className="not-content mb-24 border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12">
       <div style={{ marginBottom: "2.5rem" }} className="flex items-baseline justify-between gap-4">
         <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
         <a
@@ -82,15 +99,19 @@ export default function RecipesSection() {
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
         {recipes.map(({ title, description, href, Icon }) => (
           <a key={href} href={href} className="group block no-underline">
-            <Card className="h-full gap-5 border-border bg-card py-7 shadow-none transition-colors hover:border-(--color-mark)">
+            <Card className="h-full gap-5 rounded-[14px] border-border bg-card py-7 shadow-none transition-colors hover:border-(--color-mark)">
               <CardHeader className="gap-3 px-7">
-                <div className="mb-2 flex h-10 w-10 items-center justify-center border border-border text-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
-                  <Icon className="h-4 w-4" />
+                <div className="flex items-center gap-3">
+                  <div className="flex aspect-square h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-border text-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
+                    {title}
+                  </CardTitle>
                 </div>
-                <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
-                  {title}
-                </CardTitle>
-                <CardDescription className="text-sm leading-relaxed">{description}</CardDescription>
+                <CardDescription className="text-sm leading-relaxed">
+                  <ReactMarkdown components={markdownComponents}>{description}</ReactMarkdown>
+                </CardDescription>
               </CardHeader>
               <CardContent className="mt-auto flex items-center gap-1.5 px-7 pt-1 text-sm text-muted-foreground transition-colors group-hover:text-(--color-mark)">
                 <span>Read recipe</span>

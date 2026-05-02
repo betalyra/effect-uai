@@ -16,6 +16,7 @@ export default defineConfig({
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
       components: {
         ThemeSelect: "./src/components/ThemeSelect.astro",
+        Hero: "./src/components/Hero.astro",
       },
       social: [
         {

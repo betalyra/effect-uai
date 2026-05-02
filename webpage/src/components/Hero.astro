@@ -1,0 +1,65 @@
+---
+import { buttonVariants } from "@/components/ui/button"
+import { docsData } from "@/lib/hero-data"
+import { cn } from "@/lib/utils"
+import { PiArrowRight, PiArrowSquareOut } from "react-icons/pi"
+
+const data = docsData(Astro.locals.starlightRoute)
+const { title = data.title, tagline, actions = [] } = data.hero ?? {}
+
+const variantToButton = {
+  primary: "default",
+  secondary: "outline",
+  minimal: "ghost",
+} as const
+---
+
+<div class="hero grid items-center gap-4 pb-4">
+  <div
+    class="flex flex-col gap-[clamp(1.25rem,calc(1rem+1vw),1.75rem)] text-center min-[50rem]:text-start"
+  >
+    <div
+      class="copy flex flex-col items-center gap-4 min-[50rem]:items-start *:max-w-[50ch]"
+    >
+      <h1 id="_top" data-page-title set:html={title} />
+      {
+        tagline && (
+          <div
+            class="tagline text-[clamp(var(--sl-text-base),calc(0.0625rem+2vw),var(--sl-text-xl))] text-(--sl-color-gray-2)"
+            set:html={tagline}
+          />
+        )
+      }
+    </div>
+    {
+      actions.length > 0 && (
+        <div class="flex flex-wrap justify-center gap-x-4 gap-y-3 min-[50rem]:justify-start">
+          {actions.map((action) => {
+            const isExternal = /^https?:\/\//.test(action.link)
+            const buttonVariant = variantToButton[action.variant]
+            const iconName =
+              action.icon && action.icon.type === "icon" ? action.icon.name : undefined
+            const className = cn(buttonVariants({ variant: buttonVariant, size: "hero" }))
+            return (
+              <a
+                class={className}
+                href={action.link}
+                {...(isExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              >
+                <span>{action.text}</span>
+                {iconName === "right-arrow" && <PiArrowRight aria-hidden="true" />}
+                {iconName === "external" && <PiArrowSquareOut aria-hidden="true" />}
+              </a>
+            )
+          })}
+        </div>
+      )
+    }
+    <p
+      class="max-w-[55ch] text-base leading-relaxed text-(--sl-color-gray-2) mx-auto min-[50rem]:mx-0"
+    >
+      Most ai frameworks hide the LLM interaction loop. Great to get started, painful when you need to customize it. effect-uai keeps the LLM interaction explicit: small Effect-native <strong>building blocks</strong>, <strong>practical recipes</strong>, and <strong>full control</strong> over your agent loop.
+    </p>
+  </div>
+</div>
+

@@ -84,13 +84,18 @@ const next = Turn.cursor(state, turn)
 ```
 
 It extends the existing history with the turn's items and stamps the
-turn onto state. Append your own `FunctionCallOutput`s on top:
+turn onto state. Append your own tool results on top — typically via
+`Toolkit.nextStateFrom`, which collects `ToolResult`s from the
+executor stream and applies `toFunctionCallOutput` at the wire boundary:
 
 ```ts
-return nextAfter(Stream.fromIterable(outputs), {
+import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+
+const events = Toolkit.executeAll(allTools, calls)
+return Toolkit.nextStateFrom(events, (results) => ({
   ...next,
-  history: [...next.history, ...outputs],
-})
+  history: [...next.history, ...results.map(toFunctionCallOutput)],
+}))
 ```
 
 ## `TurnEvent` - the stream
@@ -121,12 +126,20 @@ Lines.lines(stream) // accumulate into newline-delimited lines
 ```
 
 `textDeltas → lines → decodeJsonLines` is the prompted-JSONL streaming
-pattern; see the [structured output recipe](/recipes/structured-output/).
+pattern; see the [streaming structured output recipe](/recipes/streaming-structured-output/).
 
-## `InteractionEvent` - what a loop body emits
+## What a loop body emits
 
-A loop body's outer stream emits `InteractionEvent`, which is
-`TurnEvent | FunctionCallOutput`. The provider's `TurnEvent`s pass
-through; tool outputs the loop computes are interleaved as
-`FunctionCallOutput` items so a consumer can observe the full
-interaction.
+A loop body's outer stream emits a union of `TurnEvent` (provider
+deltas) and `ToolEvent` (executor signals). The `ToolEvent` variants:
+
+```ts
+type ToolEvent =
+  | { _tag: "ApprovalRequested"; call_id; tool; arguments }  // gated, before resolution
+  | { _tag: "Intermediate";      call_id; tool; data }        // streaming-tool element
+  | { _tag: "Output";            result: ToolResult }         // terminal per-call result
+```
+
+A consumer pattern-matches on `type` (TurnEvent) or `_tag` (ToolEvent)
+to drive UI / persistence / observability. See [Tools and toolkits](/concepts/tools/)
+for `ToolEvent` and `ToolResult` details.

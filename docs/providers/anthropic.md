@@ -3,8 +3,6 @@ title: Anthropic
 description: The Anthropic Messages API provider - typed options, layer wiring, and supported models.
 ---
 
-# Anthropic
-
 The Anthropic provider wraps `POST /v1/messages` with SSE streaming and
 maps Claude's content-block model onto the core `LanguageModelService`
 shape. Tool use, extended thinking, and prompt-caching token accounting

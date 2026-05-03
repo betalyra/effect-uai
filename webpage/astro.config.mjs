@@ -30,7 +30,9 @@ export default defineConfig({
           label: "Start here",
           items: [
             { label: "Installation", slug: "start/installation" },
-            { label: "Getting started", slug: "start/getting-started" },
+            { label: "Quickstart", slug: "start/getting-started" },
+            { label: "Basic usage", slug: "recipes/basic-usage" },
+            { label: "Structured output", slug: "recipes/structured-output" },
           ],
         },
         {
@@ -39,7 +41,7 @@ export default defineConfig({
             { label: "The loop primitive", slug: "concepts/loop" },
             { label: "Items and turns", slug: "concepts/items-and-turns" },
             { label: "Tools and toolkits", slug: "concepts/tools" },
-            { label: "The LanguageModel tag", slug: "concepts/language-model" },
+            { label: "Language model", slug: "concepts/language-model" },
           ],
         },
         {
@@ -54,8 +56,12 @@ export default defineConfig({
           label: "Recipes",
           items: [
             { label: "Overview", slug: "recipes" },
-            { label: "Basic usage", slug: "recipes/basic-usage" },
-            { label: "Structured output", slug: "recipes/structured-output" },
+            { label: "Tool call approval", slug: "recipes/tool-call-approval" },
+            { label: "Streaming tool output", slug: "recipes/streaming-tool-output" },
+            {
+              label: "Streaming structured output",
+              slug: "recipes/streaming-structured-output",
+            },
             {
               label: "Multi-model fallback",
               slug: "recipes/multi-model-fallback",

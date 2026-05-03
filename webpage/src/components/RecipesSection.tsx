@@ -6,8 +6,10 @@ import {
   PiGavel,
   PiGitFork,
   PiHandPalm,
-  PiHandWaving,
+  PiListBullets,
   PiPause,
+  PiPulse,
+  PiShieldCheck,
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
 
@@ -22,11 +24,25 @@ interface Recipe {
 
 const recipes: ReadonlyArray<Recipe> = [
   {
-    title: "Basic usage",
+    title: "Tool call approval",
     description:
-      "Get **up and running fast**. Streaming, tools, and a final answer in one minimal example.",
-    href: "/recipes/basic-usage/",
-    Icon: PiHandWaving,
+      "**Pause on sensitive tools.** HTTP-bundled or queue-driven verdicts; same primitive.",
+    href: "/recipes/tool-call-approval/",
+    Icon: PiShieldCheck,
+  },
+  {
+    title: "Live tool updates",
+    description:
+      "**Watch tools work.** Stream progress and reasoning as they run; the model gets one clean result.",
+    href: "/recipes/streaming-tool-output/",
+    Icon: PiPulse,
+  },
+  {
+    title: "Stream typed objects",
+    description:
+      "**Stream data as it arrives.** Decode and validate one object at a time as the model writes.",
+    href: "/recipes/streaming-structured-output/",
+    Icon: PiListBullets,
   },
   {
     title: "Multi-model fallback",

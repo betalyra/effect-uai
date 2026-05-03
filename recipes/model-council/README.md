@@ -3,8 +3,6 @@ title: Model council
 description: Three models answer the same question, score each other's answers (no self-judging), and the highest-rated answer is streamed as the winner.
 ---
 
-# Recipe: Model council
-
 **Scenario.** You have a question and three different models (OpenAI,
 Google, Anthropic). You want all three to answer concurrently, then
 have each model score the _others'_ answers, and finally surface the

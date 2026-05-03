@@ -3,8 +3,6 @@ title: Mid-stream abort
 description: Cancel an in-flight streamTurn cleanly via Stream.interruptWhen, tearing down the upstream HTTP request.
 ---
 
-# Recipe: Mid-stream abort
-
 **Scenario.** A turn is mid-generation - text deltas are arriving from the
 provider - and something external (user clicks "stop", a new prompt
 arrives, a deadline elapses) needs to cancel it. The upstream HTTP

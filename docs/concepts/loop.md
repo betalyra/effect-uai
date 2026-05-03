@@ -41,26 +41,34 @@ over building events by hand.
 ## Helpers
 
 ```ts
-Loop.value(a) // wrap a value
-Loop.next(state) // signal continuation
-Loop.stop // a single-element stream that ends the loop
-Loop.nextAfter(stream, s) // emit values from `stream`, then continue with state `s`
-Loop.stopAfter(stream) // emit values from `stream`, then end the loop
+Loop.value(a)                              // wrap a value
+Loop.next(state)                           // signal continuation
+Loop.stop                                  // a single-element stream that ends the loop
+Loop.nextAfter(stream, s)                  // emit values from `stream`, then continue with state `s`
+Loop.stopAfter(stream)                     // emit values from `stream`, then end the loop
+Loop.nextAfterFold(stream, b, fold, build) // drain stream, fold to acc, then continue with build(acc)
 ```
 
-The two `*After` helpers are the workhorses: a body almost always wants
-to "stream this turn's deltas, then advance / stop."
+`nextAfter` / `stopAfter` are the everyday workhorses. `nextAfterFold`
+is the general primitive — drain a stream, fold its elements into an
+accumulator, then advance with state derived from the fold. The
+streaming-tool helper [`Toolkit.nextStateFrom`](/concepts/tools/) is
+built on top.
 
 ## `streamUntilComplete`
 
-Most loop bodies wrap a provider's `Stream<TurnDelta>`. The pattern is
-always the same: forward deltas to the consumer, wait for the terminal
+Most loop bodies wrap a provider's `Stream<TurnEvent>`. The pattern is
+always the same: forward events to the consumer, wait for the terminal
 `turn_complete`, then decide what to do with the assembled `Turn`.
 `Loop.streamUntilComplete` packages exactly that:
 
 ```ts
-import { Effect, Stream } from "effect"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { Effect } from "effect"
+import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import * as Tool from "@effect-uai/core/Tool"
+import type { ToolEvent } from "@effect-uai/core/ToolEvent"
+import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses } from "@effect-uai/responses"
 
@@ -71,20 +79,24 @@ pipe(
       const oai = yield* Responses
 
       return oai
-        .streamTurn({ history: state.history, model: "gpt-5.4-mini", tools })
+        .streamTurn({
+          history: state.history,
+          model: "gpt-5.4-mini",
+          tools: Tool.toDescriptors(allTools),
+        })
         .pipe(
-          streamUntilComplete((turn) =>
+          streamUntilComplete<State, ToolEvent>((turn) =>
             Effect.gen(function* () {
               const next = Turn.cursor(state, turn)
               const calls = Turn.functionCalls(turn)
 
               if (calls.length === 0) return stop
 
-              const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-              return nextAfter(Stream.fromIterable(outputs), {
+              const events = Toolkit.executeAll(allTools, calls)
+              return Toolkit.nextStateFrom(events, (results) => ({
                 ...next,
-                history: [...next.history, ...outputs],
-              })
+                history: [...next.history, ...results.map(toFunctionCallOutput)],
+              }))
             }),
           ),
         )
@@ -95,13 +107,16 @@ pipe(
 
 What it does:
 
-- Each `TurnDelta` passes through as `Loop.value(delta)` - including the
-  terminal `turn_complete`, so the consumer sees turn boundaries.
+- Each `TurnEvent` passes through as `Loop.value(event)` — including
+  the terminal `turn_complete`, so the consumer sees turn boundaries.
 - Once the terminal arrives, the callback runs with the assembled
-  `Turn` and its returned event-stream is concatenated. Typically that's
-  tool outputs followed by `nextAfter(...)` or just `stop`.
+  `Turn` and its returned event-stream is concatenated. Typically that
+  stream comes from `Toolkit.executeAll` (or `executeAllWithResolver`)
+  threaded through `nextStateFrom` to advance — or just `stop`.
+- `ToolEvent`s emitted by the executor (`Intermediate`, `Output`,
+  `ApprovalRequested`) flow through alongside the `TurnEvent`s.
 - Pre-pipe transforms work as you'd expect: `Stream.tap` for logging,
-  `Stream.filter` to drop deltas you don't care about, `Stream.map` to
+  `Stream.filter` to drop events you don't care about, `Stream.map` to
   reshape them.
 
 If the upstream ends without a `turn_complete`, the resulting stream

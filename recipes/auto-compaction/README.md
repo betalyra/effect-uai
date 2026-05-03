@@ -3,8 +3,6 @@ title: Auto-compaction
 description: Summarize history when turn count or token budget is exceeded.
 ---
 
-# Recipe: Auto memory compaction
-
 **Scenario.** A multi-turn conversation grows. Once the running history
 crosses a turn or token budget, summarize all but the last few items via
 the model and replace them with the summary. Then keep going.

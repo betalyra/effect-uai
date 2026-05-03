@@ -78,6 +78,34 @@ export const stopAfter = <A, E, R>(
 ): Stream.Stream<Event<A, never>, E, R> =>
   Stream.concat(Stream.map(stream, value), Stream.fromIterable([stopEvent]))
 
+/**
+ * General `nextAfter` variant: drain `stream` to the consumer, fold elements
+ * into an accumulator, and at end-of-stream emit one `next(build(finalAcc))`.
+ *
+ * Subsumes `nextAfter` when state is constant (`reduce: (s, _) => s`,
+ * `build: (s) => s`). Used by `Toolkit.nextStateFrom` to collect tool
+ * results and build next state without exposing a Ref to recipes.
+ */
+export const nextAfterFold = <A, B, S, E, R>(
+  stream: Stream.Stream<A, E, R>,
+  initial: B,
+  reduce: (acc: B, a: A) => B,
+  build: (b: B) => S,
+): Stream.Stream<Event<A, S>, E, R> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const ref = yield* Ref.make(initial)
+      const tapped = stream.pipe(
+        Stream.tap((a) => Ref.update(ref, (acc) => reduce(acc, a))),
+        Stream.map(value),
+      )
+      const continuation = Stream.fromEffect(
+        Ref.get(ref).pipe(Effect.map((acc) => next(build(acc)))),
+      )
+      return tapped.pipe(Stream.concat(continuation))
+    }),
+  )
+
 // ---------------------------------------------------------------------------
 // streamUntilComplete - turn-aware stream operator for loop bodies
 // ---------------------------------------------------------------------------

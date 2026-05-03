@@ -170,6 +170,37 @@ describe("buildConversation (HTTP / approval map)", () => {
     expect(by.get("c3")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
   })
 
+  it("hallucinated tool name: emits Failure(unknown_tool), other calls still execute", async () => {
+    // Override one of the scripted calls to a bogus tool name. The other
+    // two should still produce normal results; the bogus one yields a
+    // synthesized Failure - the turn does not die.
+    const hallucinatedTurn: Turn.Turn = {
+      stop_reason: "tool_calls",
+      usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 },
+      items: [
+        fc("c1", "web_search", { query: "effect" }),
+        fc("c2", "does_not_exist", { whatever: 1 }),
+        fc("c3", "delete_database", { name: "prod" }),
+      ],
+    }
+    const collected = await Effect.runPromise(
+      Stream.runCollect(
+        buildConversation(
+          new Map<string, ApprovalMapEntry>([["c3", { decision: "approve" }]]),
+          { history: [Items.userText("Do the thing")] },
+        ),
+      ).pipe(Effect.provide(MockProvider.layer([hallucinatedTurn, finalTurn]))),
+    )
+
+    const by = byCallId(resultsFrom(collected))
+    expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
+    expect(by.get("c2")).toMatchObject({
+      _tag: "Failure",
+      kind: "unknown_tool",
+    })
+    expect(by.get("c3")).toMatchObject({ _tag: "Value", value: { status: "dropped" } })
+  })
+
   it("toFunctionCallOutput round-trips a Value result", () => {
     const call = fc("c1", "web_search", { query: "effect" })
     const result: ToolResult = {

@@ -1,0 +1,31 @@
+import { defineConfig } from "tsdown"
+
+export default defineConfig({
+  entry: [
+    "src/index.ts",
+    "src/domain/AiError.ts",
+    "src/domain/Items.ts",
+    "src/domain/Turn.ts",
+    "src/language-model/LanguageModel.ts",
+    "src/loop/Loop.ts",
+    "src/match/Match.ts",
+    "src/tool/Tool.ts",
+    "src/tool/Toolkit.ts",
+    "src/tool/Outcome.ts",
+    "src/tool/ToolEvent.ts",
+    "src/tool/Resolvers.ts",
+    "src/tool/HistoryCheck.ts",
+    "src/streaming/JSONL.ts",
+    "src/streaming/Lines.ts",
+    "src/streaming/SSE.ts",
+    "src/structured-format/StructuredFormat.ts",
+    "src/observability/Metrics.ts",
+    "src/testing/MockProvider.ts",
+  ],
+  format: "esm",
+  dts: { sourcemap: true },
+  sourcemap: true,
+  clean: true,
+  target: "es2022",
+  outDir: "dist",
+})

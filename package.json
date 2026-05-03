@@ -31,16 +31,22 @@
     "typecheck:responses": "pnpm --filter @effect-uai/responses typecheck",
     "typecheck:recipes": "pnpm --filter @effect-uai/recipes typecheck",
     "typecheck:webpage": "pnpm --filter webpage typecheck",
+    "build": "pnpm --filter \"@effect-uai/*\" -r build",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "dev:webpage": "pnpm --filter webpage dev",
     "start:webpage": "pnpm --filter webpage start",
     "build:webpage": "pnpm --filter webpage build",
-    "preview:webpage": "pnpm --filter webpage preview"
+    "preview:webpage": "pnpm --filter webpage preview",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@types/node": "^25.6.0",
     "oxfmt": "^0.46.0",
+    "tsdown": "^0.21.10",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"

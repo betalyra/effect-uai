@@ -21,37 +21,108 @@
     "directory": "packages/core"
   },
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
-    ".": "./src/index.ts",
-    "./AiError": "./src/domain/AiError.ts",
-    "./Items": "./src/domain/Items.ts",
-    "./Turn": "./src/domain/Turn.ts",
-    "./LanguageModel": "./src/language-model/LanguageModel.ts",
-    "./Loop": "./src/loop/Loop.ts",
-    "./Match": "./src/match/Match.ts",
-    "./Tool": "./src/tool/Tool.ts",
-    "./Toolkit": "./src/tool/Toolkit.ts",
-    "./Outcome": "./src/tool/Outcome.ts",
-    "./ToolEvent": "./src/tool/ToolEvent.ts",
-    "./Resolvers": "./src/tool/Resolvers.ts",
-    "./HistoryCheck": "./src/tool/HistoryCheck.ts",
-    "./JSONL": "./src/streaming/JSONL.ts",
-    "./Lines": "./src/streaming/Lines.ts",
-    "./SSE": "./src/streaming/SSE.ts",
-    "./StructuredFormat": "./src/structured-format/StructuredFormat.ts",
-    "./Metrics": "./src/observability/Metrics.ts",
-    "./testing/MockProvider": "./src/testing/MockProvider.ts"
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./AiError": {
+      "types": "./dist/domain/AiError.d.mts",
+      "import": "./dist/domain/AiError.mjs"
+    },
+    "./Items": {
+      "types": "./dist/domain/Items.d.mts",
+      "import": "./dist/domain/Items.mjs"
+    },
+    "./Turn": {
+      "types": "./dist/domain/Turn.d.mts",
+      "import": "./dist/domain/Turn.mjs"
+    },
+    "./LanguageModel": {
+      "types": "./dist/language-model/LanguageModel.d.mts",
+      "import": "./dist/language-model/LanguageModel.mjs"
+    },
+    "./Loop": {
+      "types": "./dist/loop/Loop.d.mts",
+      "import": "./dist/loop/Loop.mjs"
+    },
+    "./Match": {
+      "types": "./dist/match/Match.d.mts",
+      "import": "./dist/match/Match.mjs"
+    },
+    "./Tool": {
+      "types": "./dist/tool/Tool.d.mts",
+      "import": "./dist/tool/Tool.mjs"
+    },
+    "./Toolkit": {
+      "types": "./dist/tool/Toolkit.d.mts",
+      "import": "./dist/tool/Toolkit.mjs"
+    },
+    "./Outcome": {
+      "types": "./dist/tool/Outcome.d.mts",
+      "import": "./dist/tool/Outcome.mjs"
+    },
+    "./ToolEvent": {
+      "types": "./dist/tool/ToolEvent.d.mts",
+      "import": "./dist/tool/ToolEvent.mjs"
+    },
+    "./Resolvers": {
+      "types": "./dist/tool/Resolvers.d.mts",
+      "import": "./dist/tool/Resolvers.mjs"
+    },
+    "./HistoryCheck": {
+      "types": "./dist/tool/HistoryCheck.d.mts",
+      "import": "./dist/tool/HistoryCheck.mjs"
+    },
+    "./JSONL": {
+      "types": "./dist/streaming/JSONL.d.mts",
+      "import": "./dist/streaming/JSONL.mjs"
+    },
+    "./Lines": {
+      "types": "./dist/streaming/Lines.d.mts",
+      "import": "./dist/streaming/Lines.mjs"
+    },
+    "./SSE": {
+      "types": "./dist/streaming/SSE.d.mts",
+      "import": "./dist/streaming/SSE.mjs"
+    },
+    "./StructuredFormat": {
+      "types": "./dist/structured-format/StructuredFormat.d.mts",
+      "import": "./dist/structured-format/StructuredFormat.mjs"
+    },
+    "./Metrics": {
+      "types": "./dist/observability/Metrics.d.mts",
+      "import": "./dist/observability/Metrics.mjs"
+    },
+    "./testing/MockProvider": {
+      "types": "./dist/testing/MockProvider.d.mts",
+      "import": "./dist/testing/MockProvider.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm typecheck && pnpm build"
   },
   "dependencies": {
-    "@standard-schema/spec": "^1.1.0",
+    "@standard-schema/spec": "^1.1.0"
+  },
+  "peerDependencies": {
     "effect": "4.0.0-beta.57"
   },
   "devDependencies": {
+    "effect": "4.0.0-beta.57",
     "typescript": "^6.0.3"
   }
 }

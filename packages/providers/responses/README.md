@@ -1,11 +1,11 @@
 # @effect-uai/responses
 
-OpenAI Responses API provider for `@effect-uai/core`.
+OpenAI Responses API provider for [`@effect-uai/core`](https://www.npmjs.com/package/@effect-uai/core).
 
 Implements the `LanguageModel` contract against OpenAI's Responses API
-(`POST /v1/responses` with SSE streaming). Tagged as a separate provider so
-its model-specific options (`reasoning.effort`, `store`, `previousResponseId`)
-can be reached at the call site without polluting the cross-provider surface.
+(`POST /v1/responses` with SSE streaming). Provider-specific options
+(`reasoning.effort`, `store`, `previousResponseId`) are reachable at
+the call site without polluting the cross-provider surface.
 
 ## Install
 
@@ -13,16 +13,33 @@ can be reached at the call site without polluting the cross-provider surface.
 pnpm add @effect-uai/responses @effect-uai/core effect
 ```
 
+ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+
 ## Usage
 
 ```ts
+import { Config, Effect, Layer } from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
 import { layer as responsesLayer } from "@effect-uai/responses"
 
-const layer = responsesLayer({
-  apiKey: process.env.OPENAI_API_KEY!,
-  model: "gpt-5",
-})
+const provider = Layer.unwrap(
+  Effect.gen(function* () {
+    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+    return responsesLayer({ apiKey })
+  }),
+)
+
+const layer = Layer.provide(provider, FetchHttpClient.layer)
 ```
 
-The layer registers both the provider-typed `Responses` tag and the
-generic `LanguageModel` tag.
+The layer registers both the provider-typed `Responses` tag (for
+provider-specific calls) and the generic `LanguageModel` tag (for
+provider-agnostic loop bodies).
+
+## Docs
+
+<https://effect-uai.betalyra.com/providers/responses/>
+
+## License
+
+MIT

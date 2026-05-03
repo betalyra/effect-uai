@@ -25,7 +25,13 @@ import {
   type AnyStreamingTool,
   isStreamingTool,
 } from "./StreamingTool.js"
-import { type ToolDecision, type ToolResult, execute, executionError } from "./Outcome.js"
+import {
+  type ToolDecision,
+  type ToolResult,
+  execute,
+  executionError,
+  rejected,
+} from "./Outcome.js"
 import type { ToolEvent } from "./ToolEvent.js"
 
 export type Resolver = (call: Items.FunctionCall) => Effect.Effect<ToolDecision>
@@ -88,7 +94,13 @@ const runOne = (
 ): Stream.Stream<ToolEvent> => {
   const tool = tools.find((t) => t.name === call.name)
   if (tool === undefined) {
-    return Stream.fromEffect(Effect.die(`Unknown tool: ${call.name}`))
+    // Graceful: emit a synthetic Failure so OTHER calls in this turn
+    // still execute. LLMs hallucinate tool names, MCP tools come and go;
+    // a single bad call_id should not kill the whole turn.
+    return Stream.succeed<ToolEvent>({
+      _tag: "Output",
+      result: rejected(call, "unknown_tool", `No tool registered with name "${call.name}"`),
+    })
   }
   if (isStreamingTool(tool)) return runStreaming(tool, call)
   return runPlain(tool, call)

@@ -71,14 +71,16 @@ process exits.
   above stays the same shape - just point `model` at one of theirs.
 
 One turn, no tools, no continuation. To keep going after a tool call or
-across multiple turns, you need `loop`, which is what the next page is
-about.
+across multiple turns, you need `loop`.
 
-## Next steps
+## Next step
+
+Head to **[Basic usage](/recipes/basic-usage/)** - the same skeleton
+plus a tool call and a continuation turn, with `loop` doing real work.
+
+## See also
 
 - [The loop primitive](/concepts/loop/) - what `loop` is for, its shape,
   and how `streamUntilComplete` decides when to continue.
-- [Basic usage](/recipes/basic-usage/) - the same skeleton plus a tool
-  call and a continuation turn, with `loop` doing real work.
 - [Providers](/providers/responses/) - OpenAI Responses, Anthropic, and
   Google Gemini, their typed options, and how to swap between them.

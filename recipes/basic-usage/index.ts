@@ -3,29 +3,17 @@
  * loop. Model deltas are forwarded as they arrive; the loop continues whenever
  * the assistant asks for tool calls and stops once it produces a final answer.
  *
- * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-usage/index.ts`
+ * `index.ts` exports the building blocks; the runner lives in `run.ts`.
  */
-import {
-  Config,
-  DateTime,
-  Effect,
-  Layer,
-  Logger,
-  Match,
-  Option,
-  pipe,
-  References,
-  Schema,
-  Stream,
-} from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { DateTime, Effect, Option, pipe, Schema, Stream } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
-import { matchType } from "@effect-uai/core/Match"
+import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
+import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
-import { Responses, layer as responsesLayer } from "@effect-uai/responses"
+import { Responses } from "@effect-uai/responses"
 
 // ---------------------------------------------------------------------------
 // Tool - get_current_time (uses Effect's DateTime)
@@ -84,7 +72,7 @@ const initial: State = {
 // Run a multi-turn conversation: stream the model's response, execute any
 // tools it asks for, feed the results back, and keep going until the model
 // produces a final answer.
-const conversation = pipe(
+export const conversation = pipe(
   initial,
   loop((state) =>
     Effect.gen(function* () {
@@ -99,23 +87,25 @@ const conversation = pipe(
         })
         .pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-          streamUntilComplete((turn) =>
-            Effect.gen(function* () {
+          streamUntilComplete<State, ToolEvent>((turn) =>
+            Effect.sync(() => {
               const next = Turn.cursor(state, turn)
               const calls = Turn.functionCalls(turn)
 
               // No tool calls - the assistant is done.
               if (calls.length === 0) return stop
 
-              // `executeAllSafe` reflects tool failures as `FunctionCallOutput`
-              // items so the model can self-correct on the next turn.
-              const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-
-              return nextAfter(Stream.fromIterable(outputs), {
+              // Streaming executor: tool intermediates flow through in
+              // real time, terminal Outputs carry structured ToolResults.
+              // `nextStateFrom` collects the results and hands them to
+              // build for next-state construction; `toFunctionCallOutput`
+              // converts to wire form when appending to history.
+              const events = Toolkit.executeAll(toolkit.tools, calls)
+              return Toolkit.nextStateFrom(events, (results) => ({
                 ...next,
-                history: [...next.history, ...outputs],
+                history: [...next.history, ...results.map(toFunctionCallOutput)],
                 index: state.index + 1,
-              })
+              }))
             }),
           ),
         )
@@ -123,40 +113,3 @@ const conversation = pipe(
   ),
 )
 
-// ---------------------------------------------------------------------------
-// Run
-// ---------------------------------------------------------------------------
-
-const program = Effect.gen(function* () {
-  yield* Stream.runForEach(conversation, (event) =>
-    Match.value(event).pipe(
-      matchType("turn_complete", ({ turn }) =>
-        Effect.logInfo("turn complete", {
-          stop_reason: turn.stop_reason,
-          usage: turn.usage,
-        }),
-      ),
-      matchType("function_call_output", (output) => Effect.logInfo("tool output", { output })),
-      Match.orElse(() => Effect.logDebug("delta", { event })),
-    ),
-  )
-})
-
-const apiKeyLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    return responsesLayer({ apiKey })
-  }),
-)
-
-const runtime = Layer.mergeAll(
-  apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
-  Logger.layer([Logger.consolePretty()]),
-)
-
-Effect.runPromise(
-  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Debug")),
-).catch((err) => {
-  console.error("recipe failed:", err)
-  process.exit(1)
-})

@@ -1,14 +1,28 @@
 ---
 title: Tools and toolkits
-description: Define a tool with a Standard Schema input, group tools into a toolkit, and round-trip results back to the model.
+description: Plain and streaming tools, the resolver-based executor, structured results, approval gating, and history reconciliation.
 ---
 
 A tool is a typed function the model can request. The framework owns
 three jobs: render the tool's schema to the provider's wire format,
-validate incoming arguments, and translate failures back into something
-the model can read on the next turn. You own the `run` function.
+validate incoming arguments and run the tool, and translate the
+outcome (success, denied, cancelled, error) into something the model
+can read on the next turn. You own the `run` function and the policy
+around it.
 
-## `Tool.make`
+Two flavors:
+
+- **Plain tools** — `run` returns an `Effect<Output>`. One value, one
+  shot. The vast majority of tools.
+- **Streaming tools** — `run` returns a `Stream<Event>`. Each event
+  flows through to the consumer in real time; `finalize(events)`
+  reduces the collected events into the model-facing `Output`. For
+  sub-agents, progress reporting, and any tool whose internal
+  reasoning the user should see live.
+
+Both kinds dispatch through the same executor.
+
+## `Tool.make` — plain tools
 
 ```ts
 import { Effect, Schema } from "effect"
@@ -27,17 +41,47 @@ const getCurrentTime = Tool.make({
 })
 ```
 
-A `Tool` is `{ name, description, inputSchema, run, strict? }`. The
-`run` function returns an `Effect`; whatever requirements it has flow
-through to `Toolkit.executeAll` and out via `ToolsR<typeof toolkit>`.
+A plain `Tool` is `{ name, description, inputSchema, run, strict? }`.
+`run` returns an `Effect`; its requirements flow out via the executor.
 
 `strict` (default `true`) controls whether the provider renders the
-tool with its strict-mode flag (OpenAI's `strict: true`, etc). The
-framework never rewrites your schema; if the rendered JSON Schema is
-incompatible with strict mode, the provider returns an error and you
-either drop `strict` or simplify the schema.
+tool with its strict-mode flag (OpenAI's `strict: true`, Gemini's
+equivalent). The framework never rewrites your schema; if the rendered
+JSON Schema is incompatible with strict mode, the provider returns an
+error and you either drop `strict` or simplify the schema.
 
-## `inputSchema` - any Standard Schema
+## `Tool.streaming` — streaming tools
+
+```ts
+import { Stream } from "effect"
+
+const askSubagent = Tool.streaming({
+  name: "ask_subagent",
+  description: "Ask a specialist sub-agent for help.",
+  inputSchema: Tool.fromEffectSchema(SubAgentInput),
+  run: ({ question }) => runInner(question),  // Stream<TurnEvent>
+  finalize: (events): SubAgentOutput => ({
+    answer: events
+      .filter((e) => e.type === "text_delta")
+      .map((e) => e.text)
+      .join(""),
+  }),
+  strict: true,
+})
+```
+
+A `StreamingTool` is `{ name, description, inputSchema, run, finalize, strict? }`.
+`run` returns `Stream<Event, unknown, R>`; events flow through to the
+consumer real-time as `ToolEvent.Intermediate`s. When the stream ends,
+`finalize(events)` reduces the collected events into the structured
+`Output` the model sees in the next turn.
+
+Three canonical `finalize` patterns: text concat (sub-agents), result
+list (recipe streamers, search hits), progress + terminal result
+(downloads, sandboxed exec). See the [Streaming tool output recipe](/recipes/streaming-tool-output/)
+for all three side-by-side.
+
+## `inputSchema` — any Standard Schema
 
 `inputSchema` is `StandardSchemaV1 & StandardJSONSchemaV1`: any library
 that implements both interfaces works directly. That includes Zod 4+,
@@ -46,93 +90,202 @@ attach the two extensions.
 
 The same schema is used for two things:
 
-- **Wire rendering**: `Toolkit.toDescriptors` calls
+- **Wire rendering**: `Tool.toDescriptors` calls
   `inputSchema.~standard.jsonSchema.input({ target: "draft-2020-12" })`
   to produce the JSON Schema each provider sends.
 - **Argument validation**: when the model returns a `FunctionCall`,
-  `Tool.execute` parses the arguments string as JSON, runs the schema's
-  `validate`, and either passes the parsed value to `run` or surfaces
-  a `ToolError`.
+  the executor parses the arguments string, runs the schema's
+  `validate`, and either passes the parsed value to `run` or
+  synthesizes a `Failure(execution_error)` result.
 
-## `Toolkit.make`
+## Wiring tools up
 
-A toolkit groups tools into one collection so the loop can find them
-by name and the provider can render them all at once.
+For homogeneous plain-tool toolkits, use `Toolkit.make`:
 
 ```ts
 import * as Toolkit from "@effect-uai/core/Toolkit"
 
-const toolkit = Toolkit.make([getCurrentTime, lookupWeather, sendEmail])
-const tools = Toolkit.toDescriptors(toolkit) // pass to streamTurn options
+const toolkit = Toolkit.make([getCurrentTime, lookupWeather])
+const tools = Toolkit.toDescriptors(toolkit)
 ```
 
-`toDescriptors` produces the provider-agnostic `ToolDescriptor[]` the
-generic `LanguageModel` accepts. Each provider maps `inputSchema` onto
-its own wire field (`parameters` for OpenAI, `input_schema` for
-Anthropic, `parameters` again for Gemini).
-
-## Executing a turn's calls
-
-After a turn completes, the assistant may have emitted any number of
-`FunctionCall`s. `Turn.functionCalls(turn)` extracts them; the toolkit
-runs them:
+For mixed plain + streaming tools, use a flat array typed
+`ReadonlyArray<Tool.AnyKindTool>` and `Tool.toDescriptors`:
 
 ```ts
-const calls = Turn.functionCalls(turn)
-const outputs = yield * Toolkit.executeAllSafe(toolkit, calls)
+const allTools: ReadonlyArray<Tool.AnyKindTool> = [
+  getCurrentTime,   // plain
+  askSubagent,      // streaming
+]
+const tools = Tool.toDescriptors(allTools)
 ```
 
-Two execution modes:
+Both forms produce the provider-agnostic `ToolDescriptor[]` the
+generic `LanguageModel` accepts. Providers map `inputSchema` to their
+own wire field (`parameters` for OpenAI, `input_schema` for Anthropic).
 
-- **`executeAll(toolkit, calls)`** - any `ToolError` short-circuits the
-  Effect with the failure. Use when bad arguments should abort the loop.
-- **`executeAllSafe(toolkit, calls, onError?)`** - per-call `ToolError`s
-  are caught and translated into `FunctionCallOutput`s carrying a
-  structured JSON error, so the model can self-correct on the next turn.
-  This is the default for a robust agent loop. The default `onError`
-  (`Toolkit.defaultRepair`) emits
-  `{ error: "argument_validation_failed", tool, message }`.
+## `Toolkit.executeAll` — the executor
 
-Both run with `concurrency: "unbounded"` by default; pass
-`{ concurrency: 4 }` to bound parallelism.
+```ts
+import * as Toolkit from "@effect-uai/core/Toolkit"
 
-Defects (e.g. unknown tool name) are _never_ caught by `executeAllSafe`.
-Those are programming errors, not model errors.
+const events = Toolkit.executeAll(allTools, calls)
+//   ^? Stream<ToolEvent>
+```
+
+`executeAll` runs every requested tool concurrently and emits a
+`Stream<ToolEvent>` in real time. Three event variants:
+
+- **`Intermediate`** — one per element from a streaming tool's `run`
+  stream. Plain tools don't emit any.
+- **`Output`** — one per call, terminal. Carries a structured
+  `ToolResult` (see below).
+- **`ApprovalRequested`** — emitted by the `fromVerdictQueue` resolver
+  for gated calls (see "Approval gating").
+
+The executor is graceful by default. A single hallucinated tool name
+produces a `Failure(unknown_tool)` for that call only; other calls in
+the turn execute normally. Tool runtime errors and schema validation
+failures become `Failure(execution_error)` results — never thrown.
+Defects from tool code itself flow through the stream's failure
+channel.
+
+Concurrency defaults to `"unbounded"`; pass `{ concurrency: 4 }` to
+bound it.
+
+## `ToolResult` — structured results
+
+The executor speaks in `ToolResult` (structured), not `FunctionCallOutput`
+(wire-shaped). This lets recipes inspect, redact, audit, or re-route
+tool values *before* serialization without parse-and-restringify.
+
+```ts
+type ToolResult =
+  | { _tag: "Value";   call_id: string; tool: string; value: unknown }
+  | { _tag: "Failure"; call_id: string; tool: string; kind: string; reason?: string }
+```
+
+Synthesizers from `@effect-uai/core/Outcome`:
+
+```ts
+import { denied, cancelled, rejected, executionError } from "@effect-uai/core/Outcome"
+
+denied(call, reason?)            // { kind: "denied", reason? }
+cancelled(call, reason?)         // { kind: "cancelled", reason? }
+rejected(call, "permission_denied", "...")  // any custom kind
+executionError(call, "...")      // { kind: "execution_error", reason }
+```
+
+The executor doesn't inspect `kind`. It's recipe-level metadata for
+audit logs, analytics, and downstream pattern-matching. Two canonical
+kinds (`denied`, `cancelled`); anything else is a `rejected(call, kind, reason)`
+with a recipe-chosen string.
+
+## Wire conversion at the boundary
+
+`Stream<ToolEvent>` carries structured values; `state.history` carries
+wire-shaped `FunctionCallOutput`s. The single explicit conversion
+point: `toFunctionCallOutput`, applied where results meet history.
+
+```ts
+import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+
+return Toolkit.nextStateFrom(events, (results) => ({
+  ...next,
+  history: [...next.history, ...results.map(toFunctionCallOutput)],
+}))
+```
+
+`nextStateFrom` collects `ToolResult`s from the executor stream and
+hands them to the builder; the recipe applies `toFunctionCallOutput`
+to wire-encode each one before appending to history.
 
 ## The round-trip shape
 
-The full pattern is in [Basic usage](/recipes/basic-usage/). The shape
-of the loop body:
+The full pattern is in [Basic usage](/recipes/basic-usage/). The body:
 
 ```ts
-streamUntilComplete((turn) =>
-  Effect.gen(function* () {
+streamUntilComplete<State, ToolEvent>((turn) =>
+  Effect.sync(() => {
     const next = Turn.cursor(state, turn)
     const calls = Turn.functionCalls(turn)
-
     if (calls.length === 0) return stop
 
-    const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-    return nextAfter(Stream.fromIterable(outputs), {
+    const events = Toolkit.executeAll(allTools, calls)
+    return Toolkit.nextStateFrom(events, (results) => ({
       ...next,
-      history: [...next.history, ...outputs],
-    })
+      history: [...next.history, ...results.map(toFunctionCallOutput)],
+    }))
   }),
 )
 ```
 
 `Turn.cursor` extends history with the turn's items (including the
-`FunctionCall`s themselves), then the loop appends the
+`FunctionCall`s themselves), then `nextStateFrom` appends the
 `FunctionCallOutput`s. Both must be present for the model to see what
-it asked for _and_ what came back.
+it asked for *and* what came back.
+
+## Approval gating — `executeAllWithResolver`
+
+For HITL flows, swap `executeAll` for `executeAllWithResolver`. The
+resolver decides per-call whether to execute or reject, and what
+synthetic result to surface if rejected:
+
+```ts
+type Resolver = (call: FunctionCall) => Effect<ToolDecision>
+type ToolDecision =
+  | { _tag: "Execute" }
+  | { _tag: "Reject"; result: ToolResult }
+```
+
+Two ready-made resolvers cover both transport flavors:
+
+- **`fromApprovalMap(predicate, approvals)`** — for HTTP / request-shaped
+  flows. Approvals arrive synchronously bundled in a `Map<call_id, entry>`.
+  Missing entries become `cancelled`.
+- **`fromVerdictQueue(predicate, verdicts)(calls)`** — for WebSocket /
+  long-lived channels. Returns `{ resolve, announce }`: the resolver
+  parks each gated call until its specific verdict lands on the queue,
+  and `announce` is a `Stream<ApprovalRequested>` the recipe merges
+  into consumer view to drive the UI.
+
+Combinators stack: `withPermissions(inner, canApprove, onForbidden?)`
+runs an authz check before the inner resolver; `withFallback(inner,
+recoverable, fallback)` recovers selected `Reject` results by running
+an alternate decision.
+
+Full walkthrough in the [Tool call approval recipe](/recipes/tool-call-approval/).
+
+## History reconciliation
+
+Every provider rejects a new request if any prior `function_call`
+lacks a matching `function_call_output`. Multi-turn flows that can be
+interrupted, restarted, or branched (HITL, mid-stream abort,
+checkpoints, stateless HTTP servers) need to detect orphans and
+synthesize closure outputs before submitting:
+
+```ts
+import {
+  cancelAllPending,
+  findUnansweredCalls,
+  isReconciled,
+} from "@effect-uai/core/HistoryCheck"
+
+const closures = cancelAllPending(history, "user moved on")
+const reconciled = [...history, ...closures.map(toFunctionCallOutput)]
+```
+
+Use whenever a checkpoint, timeout, or new user message could leave
+function calls without matching outputs. Recipe author calls these at
+known transition points; not invoked from inside the loop.
 
 ## What's not built in
 
-- **No retry policies for tool execution.** Wrap `tool.run` with
-  `Effect.retry` if you want them.
+- **No retry policies.** Wrap `tool.run` with `Effect.retry` if you
+  want them.
 - **No timeout per tool.** Compose with `Effect.timeout`.
-- **No "approve before running" gate.** Inspect calls in the loop
-  body, prompt the user, then execute (or skip) by hand.
+- **No magic history reconciliation.** `cancelAllPending` is explicit;
+  the recipe decides when to call it.
 
-These are policy decisions, and the loop primitive gives you the seam
-to plug them in without forking the framework.
+These are policy decisions, and the primitives give you the seam to
+plug them in without forking the framework.

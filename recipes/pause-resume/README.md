@@ -3,8 +3,6 @@ title: Pause and resume
 description: Soft pause/resume of an in-flight agent loop using Effect's Latch.
 ---
 
-# Recipe: Pause and resume
-
 **Scenario.** An agent loop is running. Something - a user clicking
 "pause", a rate-limit cool-down, an external admin signal - needs to
 _pause_ the loop without tearing it down: hold the current state, stop

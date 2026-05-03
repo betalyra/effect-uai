@@ -2,9 +2,11 @@ import { Effect, Schema, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
+import { type ToolEvent, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -69,17 +71,18 @@ describe("basic-usage", () => {
               tools: Toolkit.toDescriptors(toolkit),
             })
             .pipe(
-              streamUntilComplete((turn) =>
-                Effect.gen(function* () {
+              streamUntilComplete<State, ToolEvent>((turn) =>
+                Effect.sync(() => {
                   const next = Turn.cursor(state, turn)
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
-                  const outputs = yield* Toolkit.executeAllSafe(toolkit, calls)
-                  return nextAfter(Stream.fromIterable(outputs), {
+
+                  const events = Toolkit.executeAll(toolkit.tools, calls)
+                  return Toolkit.nextStateFrom(events, (results) => ({
                     ...next,
-                    history: [...next.history, ...outputs],
+                    history: [...next.history, ...results.map(toFunctionCallOutput)],
                     index: state.index + 1,
-                  })
+                  }))
                 }),
               ),
             )
@@ -95,18 +98,21 @@ describe("basic-usage", () => {
       (e): e is Extract<Turn.TurnEvent, { type: "turn_complete" }> =>
         "type" in e && e.type === "turn_complete",
     )
-    const toolOutputs = events.filter(
-      (e): e is Items.FunctionCallOutput => "type" in e && e.type === "function_call_output",
-    )
+    const toolResults: ReadonlyArray<ToolResult> = events
+      .filter((e): e is ToolEvent => "_tag" in e)
+      .filter(isOutput)
+      .map((e) => e.result)
 
     expect(turnCompletes).toHaveLength(2)
     expect(turnCompletes[0]!.turn.stop_reason).toBe("tool_calls")
     expect(turnCompletes[1]!.turn.stop_reason).toBe("stop")
 
-    expect(toolOutputs).toHaveLength(1)
-    expect(toolOutputs[0]!.call_id).toBe("c1")
-    expect(JSON.parse(toolOutputs[0]!.output)).toEqual({
-      greeting: "Hello, World!",
+    expect(toolResults).toHaveLength(1)
+    expect(toolResults[0]).toMatchObject({
+      _tag: "Value",
+      call_id: "c1",
+      tool: "greet",
+      value: { greeting: "Hello, World!" },
     })
   })
 })

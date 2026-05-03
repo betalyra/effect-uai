@@ -1,6 +1,23 @@
-import { Effect } from "effect"
-import { functionCallOutput, type FunctionCall, type FunctionCallOutput } from "../domain/Items.js"
-import { execute, type Tool, type ToolDescriptor, type ToolError } from "./Tool.js"
+import { Array as Arr, Effect, Match, Ref, Stream } from "effect"
+import * as Loop from "../loop/Loop.js"
+import type { FunctionCall } from "../domain/Items.js"
+import {
+  type AnyKindTool,
+  type AnyPlainTool,
+  type AnyStreamingTool,
+  isStreamingTool,
+  type Tool,
+  type ToolDescriptor,
+} from "./Tool.js"
+import {
+  type ToolDecision,
+  type ToolResult,
+  execute as executeDecision,
+  executionError,
+  rejected,
+} from "./Outcome.js"
+import type { ToolEvent } from "./ToolEvent.js"
+import { isOutput } from "./ToolEvent.js"
 
 export type AnyTool = Tool<string, any, any, any>
 
@@ -14,70 +31,6 @@ export type ToolsR<Tools extends ReadonlyArray<AnyTool>> =
 export const make = <const Tools extends ReadonlyArray<AnyTool>>(tools: Tools): Toolkit<Tools> => ({
   tools,
 })
-
-const findTool = <Tools extends ReadonlyArray<AnyTool>>(
-  toolkit: Toolkit<Tools>,
-  name: string,
-): AnyTool | undefined => toolkit.tools.find((t) => t.name === name)
-
-export const executeOne = <Tools extends ReadonlyArray<AnyTool>>(
-  toolkit: Toolkit<Tools>,
-  call: FunctionCall,
-): Effect.Effect<FunctionCallOutput, ToolError, ToolsR<Tools>> => {
-  const tool = findTool(toolkit, call.name)
-  if (tool === undefined) {
-    return Effect.die(`Unknown tool: ${call.name}`)
-  }
-  return execute(tool, call) as Effect.Effect<FunctionCallOutput, ToolError, ToolsR<Tools>>
-}
-
-export const executeAll = <Tools extends ReadonlyArray<AnyTool>>(
-  toolkit: Toolkit<Tools>,
-  calls: ReadonlyArray<FunctionCall>,
-  options?: { readonly concurrency?: number | "unbounded" },
-): Effect.Effect<ReadonlyArray<FunctionCallOutput>, ToolError, ToolsR<Tools>> =>
-  Effect.forEach(calls, (call) => executeOne(toolkit, call), {
-    concurrency: options?.concurrency ?? "unbounded",
-  })
-
-/**
- * Default repair: turn a `ToolError` into a `FunctionCallOutput` carrying a
- * structured JSON error payload. The model reads it on the next turn and
- * self-corrects (e.g. retries with the right argument names). Override by
- * passing your own `onError` to `executeAllSafe`.
- */
-export const defaultRepair = (err: ToolError, call: FunctionCall): FunctionCallOutput =>
-  functionCallOutput(
-    call.call_id,
-    JSON.stringify({
-      error: "argument_validation_failed",
-      tool: err.tool,
-      message: err.message,
-    }),
-  )
-
-/**
- * Like `executeAll`, but per-call `ToolError`s are caught and translated by
- * `onError` (defaults to `defaultRepair`) into a `FunctionCallOutput` that
- * can be appended to the history and fed back to the model.
- *
- * Defects (e.g. unknown tool name) are NOT caught - those are programming
- * errors, not model errors.
- */
-export const executeAllSafe = <Tools extends ReadonlyArray<AnyTool>>(
-  toolkit: Toolkit<Tools>,
-  calls: ReadonlyArray<FunctionCall>,
-  onError: (err: ToolError, call: FunctionCall) => FunctionCallOutput = defaultRepair,
-  options?: { readonly concurrency?: number | "unbounded" },
-): Effect.Effect<ReadonlyArray<FunctionCallOutput>, never, ToolsR<Tools>> =>
-  Effect.forEach(
-    calls,
-    (call) =>
-      executeOne(toolkit, call).pipe(
-        Effect.catchTag("ToolError", (err) => Effect.succeed(onError(err, call))),
-      ),
-    { concurrency: options?.concurrency ?? "unbounded" },
-  )
 
 /**
  * Render every tool in a toolkit to a provider-agnostic descriptor.
@@ -95,3 +48,181 @@ export const toDescriptors = <Tools extends ReadonlyArray<AnyTool>>(
       ? { name: tool.name, description: tool.description, inputSchema, strict: tool.strict }
       : { name: tool.name, description: tool.description, inputSchema }
   })
+
+// ---------------------------------------------------------------------------
+// Resolver-based executor. Streams `ToolEvent`s in real time, dispatches
+// streaming and plain tools uniformly, and lets the caller decide what
+// happens to each call (Execute or Reject) before execution.
+//
+// `executeAllWithResolver` is the general primitive. `executeAllStream` is
+// the no-resolver shortcut.
+// ---------------------------------------------------------------------------
+
+export type Resolver = (call: FunctionCall) => Effect.Effect<ToolDecision>
+
+export interface ExecuteOptions {
+  readonly concurrency?: number | "unbounded"
+}
+
+export const executeAllWithResolver = (
+  tools: ReadonlyArray<AnyKindTool>,
+  calls: ReadonlyArray<FunctionCall>,
+  resolve: Resolver,
+  options?: ExecuteOptions,
+): Stream.Stream<ToolEvent> =>
+  Stream.fromIterable(calls).pipe(
+    Stream.flatMap(
+      (call) =>
+        Stream.unwrap(
+          resolve(call).pipe(Effect.map((decision) => dispatch(tools, call, decision))),
+        ),
+      { concurrency: options?.concurrency ?? "unbounded" },
+    ),
+  )
+
+/** No-resolver shortcut: every call gets `Execute`. */
+export const executeAll = (
+  tools: ReadonlyArray<AnyKindTool>,
+  calls: ReadonlyArray<FunctionCall>,
+  options?: ExecuteOptions,
+): Stream.Stream<ToolEvent> =>
+  executeAllWithResolver(tools, calls, () => Effect.succeed(executeDecision), options)
+
+const dispatch = (
+  tools: ReadonlyArray<AnyKindTool>,
+  call: FunctionCall,
+  decision: ToolDecision,
+): Stream.Stream<ToolEvent> =>
+  Match.value(decision).pipe(
+    Match.tag("Execute", () => runOne(tools, call)),
+    Match.tag("Reject", (d) =>
+      Stream.succeed<ToolEvent>({ _tag: "Output", result: d.result }),
+    ),
+    Match.exhaustive,
+  )
+
+const valueResult = (call: FunctionCall, tool: string, value: unknown): ToolResult => ({
+  _tag: "Value",
+  call_id: call.call_id,
+  tool,
+  value,
+})
+
+const runOne = (
+  tools: ReadonlyArray<AnyKindTool>,
+  call: FunctionCall,
+): Stream.Stream<ToolEvent> => {
+  const tool = tools.find((t) => t.name === call.name)
+  if (tool === undefined) {
+    // Graceful: emit a synthetic Failure so OTHER calls in this turn
+    // still execute. LLMs hallucinate tool names; MCP tools come and go.
+    return Stream.succeed<ToolEvent>({
+      _tag: "Output",
+      result: rejected(call, "unknown_tool", `No tool registered with name "${call.name}"`),
+    })
+  }
+  if (isStreamingTool(tool)) return runStreaming(tool, call)
+  return runPlain(tool, call)
+}
+
+const runPlain = (
+  tool: AnyPlainTool,
+  call: FunctionCall,
+): Stream.Stream<ToolEvent> =>
+  Stream.fromEffect(
+    Effect.gen(function* () {
+      const parsed = yield* Effect.try({
+        try: () => JSON.parse(call.arguments) as unknown,
+        catch: () => "json_parse_error" as const,
+      })
+      const validated = yield* Effect.tryPromise({
+        try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
+        catch: () => "validation_threw" as const,
+      })
+      if (validated.issues !== undefined) {
+        return executionError(call, "Tool input failed schema validation")
+      }
+      const output = yield* tool.run(validated.value)
+      return valueResult(call, tool.name, output)
+    }).pipe(
+      Effect.catchCause(() => Effect.succeed(executionError(call, "Tool execution failed"))),
+      Effect.map((result) => ({ _tag: "Output", result }) satisfies ToolEvent),
+    ),
+  )
+
+const runStreaming = (
+  tool: AnyStreamingTool,
+  call: FunctionCall,
+): Stream.Stream<ToolEvent> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const parsed = yield* Effect.try({
+        try: () => JSON.parse(call.arguments) as unknown,
+        catch: () => "json_parse_error" as const,
+      })
+      const validated = yield* Effect.tryPromise({
+        try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
+        catch: () => "validation_threw" as const,
+      })
+      if (validated.issues !== undefined) {
+        return Stream.succeed<ToolEvent>({
+          _tag: "Output",
+          result: executionError(call, "Tool input failed schema validation"),
+        })
+      }
+
+      // Real-time: tap each event into a Ref as it flows; emit one
+      // Intermediate per event; then concat one synthetic Output element
+      // built from the accumulated Ref via `finalize`.
+      const ref = yield* Ref.make<Array<unknown>>([])
+      const intermediates = tool.run(validated.value).pipe(
+        Stream.tap((event) => Ref.update(ref, Arr.append(event))),
+        Stream.map(
+          (data) =>
+            ({
+              _tag: "Intermediate",
+              call_id: call.call_id,
+              tool: tool.name,
+              data,
+            }) satisfies ToolEvent,
+        ),
+      )
+      const output = Stream.fromEffect(
+        Ref.get(ref).pipe(
+          Effect.map(
+            (events) =>
+              ({
+                _tag: "Output",
+                result: valueResult(call, tool.name, tool.finalize(events)),
+              }) satisfies ToolEvent,
+          ),
+        ),
+      )
+      return intermediates.pipe(Stream.concat(output))
+    }),
+  ).pipe(
+    Stream.catchCause(() =>
+      Stream.succeed<ToolEvent>({
+        _tag: "Output",
+        result: executionError(call, "Tool execution failed"),
+      }),
+    ),
+  )
+
+// ---------------------------------------------------------------------------
+// `nextStateFrom` - bridge from a `Stream<ToolEvent>` to the loop's emit
+// shape. Drains the stream to the consumer in real-time, taps every
+// `Output` into an internal Ref, and at end-of-stream emits
+// `Loop.next(build(results))`. Recipe never sees the Ref.
+// ---------------------------------------------------------------------------
+
+export const nextStateFrom = <S>(
+  stream: Stream.Stream<ToolEvent>,
+  build: (results: ReadonlyArray<ToolResult>) => S,
+): Stream.Stream<Loop.Event<ToolEvent, S>> =>
+  Loop.nextAfterFold(
+    stream,
+    [] as ReadonlyArray<ToolResult>,
+    (acc, e) => (isOutput(e) ? Arr.append(acc, e.result) : acc),
+    build,
+  )

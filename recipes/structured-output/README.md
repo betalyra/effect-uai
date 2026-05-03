@@ -3,28 +3,23 @@ title: Structured output
 description: Constrain the model's output to a JSON Schema, then validate the assembled text against an Effect Schema.
 ---
 
-# Recipe: Structured output
-
-**Scenario.** You want the model to return data, not prose. Two patterns
-in this recipe:
-
-- **Single object** ([`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/structured-output/index.ts))
-  - one `Recipe` per turn, server-enforced via JSON Schema, validated locally with `Turn.toStructured`.
-- **Streaming JSONL** ([`streaming.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/structured-output/streaming.ts))
-  - prompted JSONL, decoded one object at a time as the stream advances.
+**Scenario.** You want the model to return data, not prose. Define a
+schema, hand it to the provider as a wire-level constraint, and
+validate the assembled output locally before using it.
 
 ## What it shows
 
-- `StructuredFormat.fromEffectSchema` adapts an Effect Schema for use as
-  the wire-level JSON Schema and the local validator.
-- `structured` on the request options constrains the model's output
-  across all three providers via the generic `LanguageModel` tag.
+- `StructuredFormat.fromEffectSchema` adapts an Effect Schema for use
+  as both the wire-level JSON Schema (sent to the provider) and the
+  local validator (run after the turn lands).
+- The `structured` option on the request constrains the model's
+  output across all three providers via the generic `LanguageModel`
+  tag.
 - `Turn.toStructured` validates the assembled output, surfacing
-  `RefusalRejected`, `JsonParseError`, or `StructuredDecodeError`.
-- For streaming, `textDeltas → lines → decodeJsonLines`
-  composes into a typed, per-object stream.
+  `RefusalRejected`, `JsonParseError`, or `StructuredDecodeError` as
+  typed failures.
 
-## Pattern 1 - single object
+## Single object
 
 ```ts
 const Recipe = Schema.Struct({
@@ -46,47 +41,33 @@ const program = Effect.gen(function* () {
 })
 ```
 
-Server-enforced shape plus local validation.
+Server-enforced shape plus local validation. The model can't return
+anything that doesn't match the schema; if it tries (or refuses), the
+local validator surfaces a typed error.
 
-## Pattern 2 - streaming JSONL
+## Multi-object output
 
-The model is prompted to emit one JSON object per line, and each line is
-validated as it arrives.
+For multiple items in a single response, wrap the array in an object:
 
 ```ts
-const program = streamTurn({
-  history: [Items.userText(prompt)],
-  model: "gpt-5.4-mini",
-}).pipe(
-  Turn.textDeltas,
-  Lines.lines,
-  StructuredFormat.decodeJsonLines(recipeFormat),
-  Stream.tap((recipe) => Effect.logInfo("recipe", { recipe })),
-  Stream.runDrain,
-)
+const RecipeList = Schema.Struct({ recipes: Schema.Array(Recipe) })
 ```
 
-This is _prompt-driven_, not server-enforced - JSONL has no native wire
-format. Errors surface in the stream's failure channel, distinguished by
-tag, so the caller can pick fail-fast (`Stream.runDrain`), skip-bad
-(`Stream.catchTag` → `Stream.empty`), or log-and-continue.
+All three providers require the top-level schema to be `type: object`,
+so a bare `Schema.Array(Recipe)` is rejected at the wire.
 
-For server-enforced multi-item output, wrap the array in an object:
-`Schema.Struct({ recipes: Schema.Array(Recipe) })`. All three providers
-require the top-level schema to be `type: object`, so a bare
-`Schema.Array(Recipe)` is rejected.
+For *streaming* multi-object output (one object decoded as soon as its
+JSON is complete), see the
+[Streaming structured output](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-structured-output)
+recipe.
 
 ## Run it
 
 ```sh
-op run --env-file=./.env.dev -- pnpm tsx recipes/structured-output/index.ts --provider=responses
-op run --env-file=./.env.dev -- pnpm tsx recipes/structured-output/index.ts --provider=anthropic
-op run --env-file=./.env.dev -- pnpm tsx recipes/structured-output/index.ts --provider=gemini
+OPENAI_API_KEY=sk-... pnpm tsx recipes/structured-output/index.ts --provider=responses
+ANTHROPIC_API_KEY=... pnpm tsx recipes/structured-output/index.ts --provider=anthropic
+GOOGLE_API_KEY=...    pnpm tsx recipes/structured-output/index.ts --provider=gemini
 ```
 
-```sh
-op run --env-file=./.env.dev -- pnpm tsx recipes/structured-output/streaming.ts --provider=responses
-```
-
-Requires the matching API key in the environment: `OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`.
+The full source lives next to this README at
+[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/structured-output/index.ts).

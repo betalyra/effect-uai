@@ -1,5 +1,5 @@
 ---
-title: The LanguageModel tag
+title: Language model
 description: One generic service tag, three providers, and the seam between portable and provider-specific code.
 ---
 

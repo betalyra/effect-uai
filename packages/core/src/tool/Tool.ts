@@ -1,5 +1,5 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
-import { Effect, Schema } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import type { FunctionCall, FunctionCallOutput } from "../domain/Items.js"
 import { functionCallOutput } from "../domain/Items.js"
 
@@ -65,6 +65,53 @@ export interface ToolDescriptor {
 export const make = <Name extends string, Input, Output, R = never>(
   spec: Tool<Name, Input, Output, R>,
 ): Tool<Name, Input, Output, R> => spec
+
+// ---------------------------------------------------------------------------
+// Streaming tools
+//
+// `run` returns a `Stream<Event>` instead of an `Effect<Output>`. Events
+// flow through to the consumer as `ToolEvent.Intermediate`s in real time;
+// at end-of-stream `finalize(events)` reduces them to the model-facing
+// `Output`. Sub-agents, slow downloads with progress, recipe streamers.
+// ---------------------------------------------------------------------------
+
+export interface StreamingTool<Name extends string, Input, Event, Output, R = never> {
+  readonly _kind: "streaming"
+  readonly name: Name
+  readonly description: string
+  readonly inputSchema: ToolInputSchema<Input>
+  readonly run: (input: Input) => Stream.Stream<Event, unknown, R>
+  readonly finalize: (events: ReadonlyArray<Event>) => Output
+  readonly strict?: boolean
+}
+
+export const streaming = <Name extends string, Input, Event, Output, R = never>(
+  spec: Omit<StreamingTool<Name, Input, Event, Output, R>, "_kind">,
+): StreamingTool<Name, Input, Event, Output, R> => ({ _kind: "streaming", ...spec })
+
+export type AnyStreamingTool = StreamingTool<string, any, any, any, never>
+export type AnyPlainTool = Tool<string, any, any, never>
+export type AnyKindTool = AnyStreamingTool | AnyPlainTool
+
+export const isStreamingTool = (t: AnyKindTool): t is AnyStreamingTool =>
+  "_kind" in t && t._kind === "streaming"
+
+/**
+ * Render any-kind tools (mixed plain and streaming) to provider-agnostic
+ * descriptors. Mirrors `Toolkit.toDescriptors` but accepts the union type
+ * so a single list can carry both kinds.
+ */
+export const toDescriptors = (
+  tools: ReadonlyArray<AnyKindTool>,
+): ReadonlyArray<ToolDescriptor> =>
+  tools.map((tool) => {
+    const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
+      target: "draft-2020-12",
+    })
+    return tool.strict !== undefined
+      ? { name: tool.name, description: tool.description, inputSchema, strict: tool.strict }
+      : { name: tool.name, description: tool.description, inputSchema }
+  })
 
 const toToolError = (call: FunctionCall, toolName: string, message: string) => (cause: unknown) =>
   new ToolError({ call_id: call.call_id, tool: toolName, message, cause })

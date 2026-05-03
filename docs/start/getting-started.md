@@ -1,9 +1,7 @@
 ---
-title: Getting started
+title: Quickstart
 description: Stream a one-shot reply from OpenAI in ~30 lines.
 ---
-
-# Getting started
 
 The smallest end-to-end shape: ask the model a question, stream its reply
 to the console, and exit. No tools, no multi-turn loop, no provider

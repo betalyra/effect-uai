@@ -3,8 +3,6 @@ title: Responses / OpenAI
 description: The OpenAI Responses API provider - typed options, layer wiring, and supported models.
 ---
 
-# Responses / OpenAI
-
 The Responses provider wraps OpenAI's `/v1/responses` SSE endpoint and
 maps it onto the core `LanguageModelService` shape. Reasoning models,
 tool calls, and response storage are all first-class via the typed

@@ -3,8 +3,6 @@ title: Google Gemini
 description: The Google Gemini provider - typed options, layer wiring, and supported models.
 ---
 
-# Google Gemini
-
 The Gemini provider wraps Google's `streamGenerateContent` SSE endpoint
 and maps it onto the core `LanguageModelService` shape. Thinking budget
 is a first-class option for the 2.5+ model line.

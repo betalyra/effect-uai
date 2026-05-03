@@ -3,8 +3,6 @@ title: Multi-model fallback
 description: Try OpenAI; on RateLimited or Unavailable, fall back to Gemini; on ContentFiltered, give up.
 ---
 
-# Recipe: Multi-model fallback
-
 **Scenario.** Try OpenAI (`gpt-5.4-mini`). If it returns `RateLimited` or
 `Unavailable`, advance to the next tier (Gemini `gemini-3-flash-preview`)
 with the same `state.history` and try again. Other typed `AiError`

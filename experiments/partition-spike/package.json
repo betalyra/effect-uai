@@ -1,0 +1,18 @@
+{
+  "name": "@effect-uai/spike-partition",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@effect-uai/core": "workspace:*",
+    "effect": "4.0.0-beta.57"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}

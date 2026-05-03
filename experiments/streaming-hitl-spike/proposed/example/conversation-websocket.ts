@@ -26,6 +26,7 @@ import {
   fromVerdictQueue,
   nextStateFrom,
   toDescriptors,
+  toFunctionCallOutput,
 } from "../lib/index.js"
 import { isSensitive } from "./approval.js"
 import { allTools } from "./tools.js"
@@ -63,9 +64,9 @@ export const buildConversation = (verdicts: Queue.Queue<Verdict>, initial: State
                   executeWithResolver(allTools, calls, resolve),
                 )
 
-                return nextStateFrom(events, (outputs) => ({
+                return nextStateFrom(events, (results) => ({
                   ...next,
-                  history: [...next.history, ...outputs],
+                  history: [...next.history, ...results.map(toFunctionCallOutput)],
                 }))
               }),
             ),

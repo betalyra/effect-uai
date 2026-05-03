@@ -13,12 +13,11 @@
  */
 import {
   type FunctionCall,
-  type FunctionCallOutput,
   type Item,
   isFunctionCall,
   isFunctionCallOutput,
 } from "@effect-uai/core/Items"
-import { cancelled } from "./Outcome.js"
+import { type ToolResult, cancelled } from "./Outcome.js"
 
 /**
  * Return every `function_call` in `history` that does not have a matching
@@ -52,5 +51,5 @@ export const isReconciled = (history: ReadonlyArray<Item>): boolean =>
 export const cancelAllPending = (
   history: ReadonlyArray<Item>,
   reason?: string,
-): ReadonlyArray<FunctionCallOutput> =>
+): ReadonlyArray<ToolResult> =>
   findUnansweredCalls(history).map((call) => cancelled(call, reason))

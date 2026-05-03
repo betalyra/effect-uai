@@ -15,6 +15,7 @@
     "@astrojs/mdx": "^5.0.4",
     "@astrojs/react": "^5.0.4",
     "@astrojs/starlight": "^0.38.4",
+    "@astrojs/starlight-tailwind": "^5.0.0",
     "@fontsource-variable/albert-sans": "^5.2.8",
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "astro": "^6.2.1",

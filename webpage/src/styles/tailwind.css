@@ -1,8 +1,18 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+/* Tailwind v4 + Starlight integration via @astrojs/starlight-tailwind.
 
-/* Match Starlight's data-theme="dark" attribute. */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+   Layer order is canonical for this stack: `base` (Tailwind preflight
+   subset shipped by the plugin) comes first so Starlight's content
+   layer can override resets, then `starlight`, then `theme` /
+   `components` / `utilities`. Pre-declaring the order here pins it
+   regardless of which CSS file Astro happens to inject first, which
+   was the source of dev/prod drift. */
+@layer base, starlight, theme, components, utilities;
+
+@import "@astrojs/starlight-tailwind";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@import "tw-animate-css";
 
 /* shadcn theme tokens, mapped onto the existing modernist palette
    (--sl-color-*, --color-mark) so cards/buttons inherit the same

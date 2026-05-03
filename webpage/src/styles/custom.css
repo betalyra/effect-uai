@@ -10,7 +10,13 @@
   /* The graphic accent. Reserved for the triangle, the active-page mark,
      and link hover. Nothing else. */
   --color-mark: #d62828;
+
+  /* Page gutter. Wider than Starlight's 1.5rem default so the hero,
+     features, and recipes sections breathe between viewport edge and
+     the content cap on mid-width screens. */
+  --sl-content-pad-x: 2.5rem;
 }
+
 
 /* Light, the modernist default. Clean white, full black ink. */
 :root[data-theme="light"] {
@@ -169,7 +175,7 @@ code:not(pre code) {
    only there to outweigh Starlight's inline rule of the same selector, which
    otherwise wins on source order in production builds and ties in dev. */
 html[data-theme]:not([data-has-sidebar]) {
-  --sl-content-width: 87.5rem;
+  --sl-content-width: 1400px;
 }
 
 /* Hairline header, modernist discipline. Inner content is constrained to
@@ -177,7 +183,7 @@ html[data-theme]:not([data-has-sidebar]) {
    the page content below. Uses dynamic padding-inline rather than a wrapper
    element so we don't have to override Starlight's Header component. */
 .header {
-  --nav-max-width: 87.5rem;
+  --nav-max-width: 1400px;
   border-bottom: 0;
   box-shadow: none;
   padding-inline: max(
@@ -221,4 +227,73 @@ html[data-theme]:not([data-has-sidebar]) {
 .sl-markdown-content a:hover {
   color: var(--color-mark);
   text-decoration-color: var(--color-mark);
+}
+
+/* Pagefind search popup: map its variables onto the modernist palette so
+   it matches the rest of the site. Pagefind ships its own defaults
+   (off-white bg, gray borders, blue focus ring) which look out of place. */
+:root {
+  --pagefind-ui-primary: var(--sl-color-text);
+  --pagefind-ui-text: var(--sl-color-gray-2);
+  --pagefind-ui-background: var(--sl-color-bg);
+  --pagefind-ui-border: var(--sl-color-hairline);
+  --pagefind-ui-tag: var(--sl-color-bg-sidebar);
+  --pagefind-ui-border-radius: 2px;
+  --pagefind-ui-border-width: 1px;
+  --pagefind-ui-font: var(--sl-font);
+}
+
+/* Starlight's search dialog: flatten to a single panel on the site bg,
+   squared corners, hairline border, restrained shadow. */
+site-search dialog {
+  background: var(--sl-color-bg) !important;
+  border: 1px solid var(--sl-color-hairline) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Pagefind paints `.pagefind-ui__result-title` and `__result-nested` with
+   a hardcoded white bg that bypasses --pagefind-ui-background, producing
+   white cards on the dialog bg. Flatten them so result blocks are part of
+   the same panel. */
+.pagefind-ui__result-title,
+.pagefind-ui__result-nested {
+  background: transparent !important;
+}
+
+/* Soften the row separators between results from heavy grey lines to a
+   single hairline rule. */
+.pagefind-ui__result {
+  border-color: var(--sl-color-hairline) !important;
+}
+
+/* Replace the browser default blue focus ring on the search input with a
+   restrained black ring (white in dark mode via --sl-color-text). */
+.pagefind-ui__search-input:focus,
+.pagefind-ui__search-input:focus-visible {
+  outline: 2px solid var(--sl-color-text);
+  outline-offset: 2px;
+  border-color: var(--sl-color-text) !important;
+}
+
+/* Highlighted query terms in result snippets pick up the brand red. */
+.pagefind-ui__result mark {
+  background: transparent;
+  color: var(--color-mark);
+  font-weight: 600;
+}
+
+/* Result-link focus ring: thin red rule on the leading edge instead of a
+   thick black box border around the whole card. */
+.pagefind-ui__result-link:focus,
+.pagefind-ui__result-link:focus-visible {
+  outline: none;
+  color: var(--color-mark);
+}
+
+/* Dim the dialog backdrop in our palette rather than Starlight's default
+   translucent black. */
+dialog[open]::backdrop {
+  background: color-mix(in srgb, var(--sl-color-bg) 60%, transparent);
+  backdrop-filter: blur(4px);
 }

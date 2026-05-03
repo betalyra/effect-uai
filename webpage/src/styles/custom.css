@@ -165,8 +165,10 @@ code:not(pre code) {
 
 /* Splash pages (no sidebar) get a wider content cap than Starlight's 67.5rem
    default so the hero and recipes grid align with the 87.5rem navbar instead
-   of drifting narrower. */
-html:not([data-has-sidebar]) {
+   of drifting narrower. The `[data-theme]` matcher (always set on <html>) is
+   only there to outweigh Starlight's inline rule of the same selector, which
+   otherwise wins on source order in production builds and ties in dev. */
+html[data-theme]:not([data-has-sidebar]) {
   --sl-content-width: 87.5rem;
 }
 

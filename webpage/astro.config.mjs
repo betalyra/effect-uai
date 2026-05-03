@@ -29,6 +29,7 @@ export default defineConfig({
         {
           label: "Start here",
           items: [
+            { label: "Why effect-uai", slug: "start/why" },
             { label: "Installation", slug: "start/installation" },
             { label: "Quickstart", slug: "start/getting-started" },
             { label: "Basic usage", slug: "recipes/basic-usage" },

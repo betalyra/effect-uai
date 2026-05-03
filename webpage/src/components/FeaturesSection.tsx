@@ -92,14 +92,14 @@ export default function FeaturesSection() {
         {features.map(({ title, description, Icon }) => (
           <Card
             key={title}
-            className="h-full gap-3 rounded-[14px] border-border bg-card py-6 shadow-none"
+            className="group h-full gap-3 rounded-[14px] border-border bg-card py-6 shadow-none transition-colors hover:border-(--color-mark)"
           >
             <CardHeader className="gap-3 px-6">
               <div className="flex items-center gap-3">
-                <div className="flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-border text-foreground">
+                <div className="flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-border text-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
                   <Icon className="h-4 w-4" />
                 </div>
-                <CardTitle className="text-base text-foreground">
+                <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
                   {title}
                 </CardTitle>
               </div>

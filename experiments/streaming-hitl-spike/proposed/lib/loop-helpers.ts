@@ -7,15 +7,17 @@
  *     `Loop.nextAfter` (state constant, ignore elements).
  *
  *   - `nextStateFrom` is the streaming-tool specialization: collects every
- *     `ToolEvent.Output` into an array and hands it to `build` for state
- *     construction. The recipe never sees a Ref.
+ *     `ToolEvent.Output`'s `ToolResult` into an array and hands it to
+ *     `build` for state construction. The recipe is responsible for
+ *     converting results to `FunctionCallOutput`s when threading into
+ *     history (one explicit `.map(toFunctionCallOutput)`).
  *
  * In the framework `nextAfterFold` would extend `@effect-uai/core/Loop`
  * and `nextStateFrom` would live alongside the executor.
  */
 import { Array as Arr, Effect, Ref, Stream } from "effect"
-import type * as Items from "@effect-uai/core/Items"
 import * as Loop from "@effect-uai/core/Loop"
+import type { ToolResult } from "./Outcome.js"
 import { isOutput, type ToolEvent } from "./ToolEvent.js"
 
 export const nextAfterFold = <A, B, S, E, R>(
@@ -40,11 +42,11 @@ export const nextAfterFold = <A, B, S, E, R>(
 
 export const nextStateFrom = <S>(
   stream: Stream.Stream<ToolEvent>,
-  build: (outputs: ReadonlyArray<Items.FunctionCallOutput>) => S,
+  build: (results: ReadonlyArray<ToolResult>) => S,
 ): Stream.Stream<Loop.Event<ToolEvent, S>> =>
   nextAfterFold(
     stream,
-    [] as ReadonlyArray<Items.FunctionCallOutput>,
-    (acc, e) => (isOutput(e) ? Arr.append(acc, e.output) : acc),
+    [] as ReadonlyArray<ToolResult>,
+    (acc, e) => (isOutput(e) ? Arr.append(acc, e.result) : acc),
     build,
   )

@@ -1,42 +1,63 @@
 /**
- * Library: pre-execution decision and post-execution synthesizers.
+ * Library: pre-execution decision + post-execution result type.
  *
- * `ToolDecision` is the verdict a resolver returns for each pending call.
- * Two shapes cover everything:
+ * The executor speaks in `ToolResult` (structured), not `FunctionCallOutput`
+ * (wire). This lets recipes inspect, transform, redact, audit, or re-route
+ * tool values BEFORE serialization without having to parse-and-restringify.
+ * Wire conversion is one explicit `.map(toFunctionCallOutput)` at the
+ * recipe boundary.
  *
- *   - Execute        : run the tool
- *   - Reject(output) : skip execution, emit this synthetic output
+ * `ToolResult` is a two-tag discriminated union:
  *
- * Argument-rewriting use cases (sanitize, redact, "approve with edits")
- * compose as a Resolver→Resolver wrapper that mutates `call.arguments`
- * before delegating to the inner resolver. They don't need to be in
- * the decision type.
+ *   - Value(call_id, tool, value)         : tool produced this output
+ *   - Failure(call_id, tool, kind, reason): synthesized non-execution
  *
- * Synthesized output shape: `{ kind: string, reason?: string }` JSON-encoded
- * into `FunctionCallOutput.output`. The lib blesses two canonical kinds
+ * The `kind` field on Failure is open: the lib blesses two canonical kinds
  * because they're operationally distinct:
  *
  *   - `denied`    : explicit user/policy rejection (we know "no")
  *   - `cancelled` : implicit, no answer arrived (follow-up, timeout, ...)
  *
  * Anything else (permission_denied, rate_limited, sandboxed, ...) is just
- * a recipe-level kind via `rejected(call, kind, reason)`. The executor
- * doesn't inspect `kind`; it's metadata for downstream pattern-matching,
- * audit trails, or analytics.
+ * a recipe-level kind via `rejected(call, kind, reason)`.
  *
- * Why `output: string` (not `unknown`)? The wire wants a string (every
- * provider). Holding it structured forces JSON.stringify on every send
- * and invites non-serializable values (Date, Map, fn) to slip through.
- * Serialize once at the executor's edge; stay wire-faithful.
+ * Why structured ToolResult on the executor side, but `string` on the wire
+ * (`FunctionCallOutput.output`)? The wire wants a string (every provider).
+ * Holding the wire-form `unknown` invites non-serializable values to slip
+ * through. Holding it structured BEFORE the wire keeps recipes ergonomic.
+ * Both shapes have their place; we serialize once at the recipe's edge.
  *
- * Why `reason: string` (not `unknown` / object)? Same reasoning, applied
- * one level deeper. `unknown` doesn't guarantee JSON-serializability;
- * `JSON.stringify(new Date())` silently coerces, `JSON.stringify(BigInt)`
- * throws, `JSON.stringify(new Map())` becomes `{}`. With `string` we're
- * correct-by-construction. Recipes that want structured detail call
- * `JSON.stringify(detail)` themselves and pass the result.
+ * Why `reason: string` (not unknown / object)? `unknown` doesn't guarantee
+ * JSON-serializability. Recipes that want structured detail call
+ * `JSON.stringify(detail)` themselves and pass the resulting string.
  */
+import { Match } from "effect"
 import * as Items from "@effect-uai/core/Items"
+
+// ---------------------------------------------------------------------------
+// ToolResult - the executor's structured output type.
+// ---------------------------------------------------------------------------
+
+export type ToolResult =
+  | {
+      readonly _tag: "Value"
+      readonly call_id: string
+      readonly tool: string
+      readonly value: unknown
+    }
+  | {
+      readonly _tag: "Failure"
+      readonly call_id: string
+      readonly tool: string
+      readonly kind: string
+      readonly reason?: string
+    }
+
+export const isValue = (r: ToolResult): r is Extract<ToolResult, { _tag: "Value" }> =>
+  r._tag === "Value"
+
+export const isFailure = (r: ToolResult): r is Extract<ToolResult, { _tag: "Failure" }> =>
+  r._tag === "Failure"
 
 // ---------------------------------------------------------------------------
 // Decision
@@ -44,23 +65,22 @@ import * as Items from "@effect-uai/core/Items"
 
 export type ToolDecision =
   | { readonly _tag: "Execute" }
-  | { readonly _tag: "Reject"; readonly output: Items.FunctionCallOutput }
+  | { readonly _tag: "Reject"; readonly result: ToolResult }
 
 export const execute: ToolDecision = { _tag: "Execute" }
 
-export const reject = (output: Items.FunctionCallOutput): ToolDecision => ({
+export const reject = (result: ToolResult): ToolDecision => ({
   _tag: "Reject",
-  output,
+  result,
 })
 
 // ---------------------------------------------------------------------------
-// Synthesized outputs - generic constructor + two named conveniences.
-// `reason` is genuinely optional: omit it when `kind` says enough on its
-// own; pass a sentence when there's something to clarify.
+// Synthesizers - generic constructor + two named conveniences. All return
+// ToolResult.Failure (structured), NOT FunctionCallOutput (wire).
 // ---------------------------------------------------------------------------
 
 /**
- * Generic synthesized output. `kind` is open: pass any string the recipe
+ * Generic synthesized failure. `kind` is open: pass any string the recipe
  * wants to pattern-match on later (e.g. `"permission_denied"`,
  * `"rate_limited"`, `"sandboxed"`).
  */
@@ -68,20 +88,50 @@ export const rejected = (
   call: Items.FunctionCall,
   kind: string,
   reason?: string,
-): Items.FunctionCallOutput =>
-  Items.functionCallOutput(
-    call.call_id,
-    JSON.stringify(reason !== undefined ? { kind, reason } : { kind }),
-  )
+): ToolResult => ({
+  _tag: "Failure",
+  call_id: call.call_id,
+  tool: call.name,
+  kind,
+  ...(reason !== undefined ? { reason } : {}),
+})
 
 /** Explicit user/policy rejection. */
-export const denied = (
-  call: Items.FunctionCall,
-  reason?: string,
-): Items.FunctionCallOutput => rejected(call, "denied", reason)
+export const denied = (call: Items.FunctionCall, reason?: string): ToolResult =>
+  rejected(call, "denied", reason)
 
 /** Implicit non-answer (follow-up, inactivity, abort). */
-export const cancelled = (
+export const cancelled = (call: Items.FunctionCall, reason?: string): ToolResult =>
+  rejected(call, "cancelled", reason)
+
+/**
+ * Tool's own execution failed. Mirrors `Toolkit.defaultRepair` but produces
+ * a structured `ToolResult.Failure` instead of a wire-form
+ * `FunctionCallOutput`. Use kind `"execution_error"` so recipes can route
+ * tool failures consistently.
+ */
+export const executionError = (
   call: Items.FunctionCall,
-  reason?: string,
-): Items.FunctionCallOutput => rejected(call, "cancelled", reason)
+  reason: string,
+): ToolResult => rejected(call, "execution_error", reason)
+
+// ---------------------------------------------------------------------------
+// Wire conversion - the explicit boundary recipes hit when appending to
+// history. One place where structured → string happens.
+// ---------------------------------------------------------------------------
+
+export const toFunctionCallOutput = (r: ToolResult): Items.FunctionCallOutput =>
+  Match.value(r).pipe(
+    Match.tag("Value", (v) =>
+      Items.functionCallOutput(v.call_id, JSON.stringify(v.value)),
+    ),
+    Match.tag("Failure", (f) =>
+      Items.functionCallOutput(
+        f.call_id,
+        JSON.stringify(
+          f.reason !== undefined ? { kind: f.kind, reason: f.reason } : { kind: f.kind },
+        ),
+      ),
+    ),
+    Match.exhaustive,
+  )

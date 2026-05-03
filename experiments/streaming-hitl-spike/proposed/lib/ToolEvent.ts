@@ -1,12 +1,13 @@
 /**
- * Library: the event type emitted by `executeWithApproval`. Three variants
- * cover the full lifecycle of a streamed, possibly approval-gated tool
+ * Library: the event type emitted by `executeWithResolver`. Three variants
+ * cover the full lifecycle of an approval-gated, possibly streaming tool
  * call.
  *
- * In the framework this would live somewhere like
- * `@effect-uai/core/Toolkit` or its own `ToolEvent` module.
+ * `Output.result` is a `ToolResult` (structured), not a `FunctionCallOutput`
+ * (wire). The recipe applies `toFunctionCallOutput` when threading into
+ * history.
  */
-import type * as Items from "@effect-uai/core/Items"
+import type { ToolResult } from "./Outcome.js"
 
 export type ToolEvent =
   | {
@@ -21,7 +22,7 @@ export type ToolEvent =
       readonly tool: string
       readonly data: unknown
     }
-  | { readonly _tag: "Output"; readonly output: Items.FunctionCallOutput }
+  | { readonly _tag: "Output"; readonly result: ToolResult }
 
 export const isApprovalRequested = (
   e: ToolEvent,

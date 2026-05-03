@@ -11,9 +11,8 @@
  *                       pending. Test exercises `cancelAllPending` to
  *                       synthesize closing outputs before continuing.
  *
- * The HTTP recipe is the simplest carrier for these scenarios: approvals
- * are a synchronous Map, no queue or router fiber. Same primitives apply
- * to the WebSocket recipe.
+ * Assertions inspect the structured `ToolResult` directly (no JSON.parse
+ * round-trip) - one of the wins of the resolver+ToolResult shape.
  */
 import { Effect, Stream } from "effect"
 import { describe, expect, it } from "vitest"
@@ -23,11 +22,15 @@ import * as Turn from "@effect-uai/core/Turn"
 import {
   type ApprovalMapEntry,
   type ToolEvent,
+  type ToolResult,
   cancelAllPending,
   findUnansweredCalls,
   isApprovalRequested,
+  isFailure,
   isIntermediate,
   isOutput,
+  isValue,
+  toFunctionCallOutput,
 } from "../lib/index.js"
 import { type State, buildConversation } from "./conversation-http.js"
 
@@ -72,27 +75,42 @@ const runRecipe = (
     ),
   )
 
-const outputsFromCollected = (collected: ReadonlyArray<Turn.TurnEvent | ToolEvent>) =>
+const resultsFrom = (
+  collected: ReadonlyArray<Turn.TurnEvent | ToolEvent>,
+): ReadonlyArray<ToolResult> =>
   collected
     .filter(isToolEvent)
     .filter(isOutput)
-    .map((e) => e.output)
+    .map((e) => e.result)
+
+const byCallId = (results: ReadonlyArray<ToolResult>) =>
+  new Map(results.map((r) => [r.call_id, r]))
 
 describe("buildConversation (HTTP / approval map)", () => {
-  it("approval scenario: all gated calls approved → tools execute, structured outputs", async () => {
+  it("approval scenario: all gated calls approved → tools execute, structured values", async () => {
     const approvals = new Map<string, ApprovalMapEntry>([
       ["c2", { decision: "approve" }],
       ["c3", { decision: "approve" }],
     ])
 
     const collected = await runRecipe(approvals)
-    const outputs = outputsFromCollected(collected)
-    expect(outputs).toHaveLength(3)
+    const results = resultsFrom(collected)
+    expect(results).toHaveLength(3)
 
-    const byId = new Map(outputs.map((o) => [o.call_id, o]))
-    expect(JSON.parse(byId.get("c1")!.output)).toMatchObject({ count: 3 })
-    expect(JSON.parse(byId.get("c2")!.output)).toMatchObject({ status: "sent", delivered: 2 })
-    expect(JSON.parse(byId.get("c3")!.output)).toMatchObject({
+    const by = byCallId(results)
+    const c1 = by.get("c1")!
+    const c2 = by.get("c2")!
+    const c3 = by.get("c3")!
+
+    expect(isValue(c1)).toBe(true)
+    expect((c1 as Extract<ToolResult, { _tag: "Value" }>).value).toMatchObject({ count: 3 })
+    expect(isValue(c2)).toBe(true)
+    expect((c2 as Extract<ToolResult, { _tag: "Value" }>).value).toMatchObject({
+      status: "sent",
+      delivered: 2,
+    })
+    expect(isValue(c3)).toBe(true)
+    expect((c3 as Extract<ToolResult, { _tag: "Value" }>).value).toMatchObject({
       status: "dropped",
       name: "prod",
     })
@@ -103,7 +121,7 @@ describe("buildConversation (HTTP / approval map)", () => {
     expect(approvalReqs).toHaveLength(0)
   })
 
-  it("denial scenario: gated calls denied → denied outputs, no execution", async () => {
+  it("denial scenario: gated calls denied → Failure results, no execution", async () => {
     const approvals = new Map<string, ApprovalMapEntry>([
       ["c2", { decision: "deny", reason: "spam concern" }],
       ["c3", { decision: "deny", reason: "prod is sacred" }],
@@ -116,32 +134,26 @@ describe("buildConversation (HTTP / approval map)", () => {
     expect(intermediates.filter((e) => e.tool === "bulk_email")).toHaveLength(0)
     expect(intermediates.filter((e) => e.tool === "web_search")).toHaveLength(3)
 
-    const outputs = outputsFromCollected(collected)
-    const byId = new Map(outputs.map((o) => [o.call_id, o]))
-    expect(JSON.parse(byId.get("c2")!.output)).toEqual({
-      kind: "denied",
-      reason: "spam concern",
-    })
-    expect(JSON.parse(byId.get("c3")!.output)).toEqual({
-      kind: "denied",
-      reason: "prod is sacred",
-    })
+    const by = byCallId(resultsFrom(collected))
+    const c2 = by.get("c2")!
+    const c3 = by.get("c3")!
+
+    expect(c2).toMatchObject({ _tag: "Failure", kind: "denied", reason: "spam concern" })
+    expect(c3).toMatchObject({ _tag: "Failure", kind: "denied", reason: "prod is sacred" })
   })
 
-  it("cancelled scenario: gated calls without verdicts → cancelled outputs", async () => {
-    // Empty approvals map. Both gated calls get synthesized `cancelled`.
+  it("cancelled scenario: gated calls without verdicts → Failure(cancelled)", async () => {
     const approvals = new Map<string, ApprovalMapEntry>()
 
     const collected = await runRecipe(approvals)
-    const outputs = outputsFromCollected(collected)
-    const byId = new Map(outputs.map((o) => [o.call_id, o]))
+    const by = byCallId(resultsFrom(collected))
 
     // c1 (safe) ran normally.
-    expect(JSON.parse(byId.get("c1")!.output)).toMatchObject({ count: 3 })
+    expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
 
-    // c2 and c3 were cancelled because the user submitted no verdicts for them.
-    expect(JSON.parse(byId.get("c2")!.output)).toEqual({ kind: "cancelled" })
-    expect(JSON.parse(byId.get("c3")!.output)).toEqual({ kind: "cancelled" })
+    // c2 and c3 were cancelled because the user submitted no verdicts.
+    expect(by.get("c2")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
+    expect(by.get("c3")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
   })
 
   it("mixed scenario: approve, deny, omit → all three kinds present", async () => {
@@ -151,20 +163,45 @@ describe("buildConversation (HTTP / approval map)", () => {
     ])
 
     const collected = await runRecipe(approvals)
-    const outputs = outputsFromCollected(collected)
-    const byId = new Map(outputs.map((o) => [o.call_id, o]))
+    const by = byCallId(resultsFrom(collected))
 
-    expect(JSON.parse(byId.get("c1")!.output)).toMatchObject({ count: 3 })
-    expect(JSON.parse(byId.get("c2")!.output)).toMatchObject({ status: "sent" })
-    expect(JSON.parse(byId.get("c3")!.output)).toEqual({ kind: "cancelled" })
+    expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
+    expect(by.get("c2")).toMatchObject({ _tag: "Value", value: { status: "sent" } })
+    expect(by.get("c3")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
+  })
+
+  it("toFunctionCallOutput round-trips a Value result", () => {
+    const call = fc("c1", "web_search", { query: "effect" })
+    const result: ToolResult = {
+      _tag: "Value",
+      call_id: call.call_id,
+      tool: call.name,
+      value: { count: 3 },
+    }
+    const out = toFunctionCallOutput(result)
+    expect(out.call_id).toBe("c1")
+    expect(JSON.parse(out.output)).toEqual({ count: 3 })
+  })
+
+  it("toFunctionCallOutput round-trips a Failure result", () => {
+    const call = fc("c2", "bulk_email", {})
+    const result: ToolResult = {
+      _tag: "Failure",
+      call_id: call.call_id,
+      tool: call.name,
+      kind: "denied",
+      reason: "spam concern",
+    }
+    const out = toFunctionCallOutput(result)
+    expect(out.call_id).toBe("c2")
+    expect(JSON.parse(out.output)).toEqual({ kind: "denied", reason: "spam concern" })
   })
 })
 
 // ---------------------------------------------------------------------------
-// Follow-up scenario tested at the helper level - the recipe author calls
-// these BEFORE submitting the next provider request when state was left
-// with orphan calls (e.g. user sent a new message mid-approval, or a
-// stateless HTTP server reconstructed history from a stale checkpoint).
+// Follow-up scenario at the helper level. `cancelAllPending` returns
+// ToolResult[]; recipe maps via `toFunctionCallOutput` when appending to
+// history.
 // ---------------------------------------------------------------------------
 
 describe("history reconciliation (cancelAllPending / findUnansweredCalls)", () => {
@@ -187,7 +224,7 @@ describe("history reconciliation (cancelAllPending / findUnansweredCalls)", () =
     expect(unanswered[0]!.call_id).toBe("c99")
   })
 
-  it("cancelAllPending synthesizes one cancelled output per orphan", () => {
+  it("cancelAllPending synthesizes one Failure(cancelled) per orphan", () => {
     const history: ReadonlyArray<Items.Item> = [
       Items.userText("hi"),
       answeredCall,
@@ -196,16 +233,17 @@ describe("history reconciliation (cancelAllPending / findUnansweredCalls)", () =
     ]
     const closures = cancelAllPending(history, "user moved on")
     expect(closures).toHaveLength(1)
-    expect(closures[0]!.call_id).toBe("c99")
-    expect(JSON.parse(closures[0]!.output)).toEqual({
+    const c = closures[0]!
+    expect(isFailure(c)).toBe(true)
+    expect(c).toMatchObject({
+      _tag: "Failure",
+      call_id: "c99",
       kind: "cancelled",
       reason: "user moved on",
     })
   })
 
-  it("follow-up: append cancelAllPending(history) before adding the new user message", () => {
-    // Simulating: previous turn left c99 unanswered; user sent a new message.
-    // Recipe pattern: reconcile first, then append the new turn.
+  it("follow-up: map closures to FunctionCallOutput before appending and adding the new user message", () => {
     const stale: ReadonlyArray<Items.Item> = [
       Items.userText("first request"),
       orphanCall,
@@ -213,7 +251,7 @@ describe("history reconciliation (cancelAllPending / findUnansweredCalls)", () =
     const closures = cancelAllPending(stale, "user redirected")
     const reconciled: ReadonlyArray<Items.Item> = [
       ...stale,
-      ...closures,
+      ...closures.map(toFunctionCallOutput),
       Items.userText("never mind, do this instead"),
     ]
     expect(findUnansweredCalls(reconciled)).toHaveLength(0)

@@ -19,6 +19,7 @@ import {
   fromVerdictQueue,
   nextStateFrom,
   toDescriptors,
+  toFunctionCallOutput,
   withPermissions,
 } from "../lib/index.js"
 import { isSensitive } from "./approval.js"
@@ -66,9 +67,9 @@ export const buildConversation = (
                   executeWithResolver(allTools, calls, guarded),
                 )
 
-                return nextStateFrom(events, (outputs) => ({
+                return nextStateFrom(events, (results) => ({
                   ...next,
-                  history: [...next.history, ...outputs],
+                  history: [...next.history, ...results.map(toFunctionCallOutput)],
                 }))
               }),
             ),

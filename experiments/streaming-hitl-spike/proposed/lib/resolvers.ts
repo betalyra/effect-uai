@@ -29,6 +29,7 @@ import { Deferred, Effect, Queue, Stream } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import {
   type ToolDecision,
+  type ToolResult,
   cancelled,
   denied,
   execute,
@@ -135,9 +136,8 @@ export const withPermissions =
   (
     inner: Resolver,
     canApprove: (call: Items.FunctionCall) => Effect.Effect<boolean>,
-    onForbidden: (call: Items.FunctionCall) => Items.FunctionCallOutput = (
-      call,
-    ) => rejected(call, "permission_denied", "missing permissions"),
+    onForbidden: (call: Items.FunctionCall) => ToolResult = (call) =>
+      rejected(call, "permission_denied", "missing permissions"),
   ): Resolver =>
   (call) =>
     canApprove(call).pipe(
@@ -147,20 +147,20 @@ export const withPermissions =
     )
 
 /**
- * Fallback gate. If `inner` returns a Reject whose output matches the
+ * Fallback gate. If `inner` returns a Reject whose result matches the
  * `recoverable` predicate, run `fallback(call)` instead and use that
  * decision. Otherwise pass the original Reject through untouched.
  */
 export const withFallback =
   (
     inner: Resolver,
-    recoverable: (output: Items.FunctionCallOutput) => boolean,
+    recoverable: (result: ToolResult) => boolean,
     fallback: (call: Items.FunctionCall) => Effect.Effect<ToolDecision>,
   ): Resolver =>
   (call) =>
     inner(call).pipe(
       Effect.flatMap((decision) =>
-        decision._tag === "Reject" && recoverable(decision.output)
+        decision._tag === "Reject" && recoverable(decision.result)
           ? fallback(call)
           : Effect.succeed(decision),
       ),

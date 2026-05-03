@@ -24,6 +24,7 @@ import {
   fromApprovalMap,
   nextStateFrom,
   toDescriptors,
+  toFunctionCallOutput,
 } from "../lib/index.js"
 import { isSensitive } from "./approval.js"
 import { allTools } from "./tools.js"
@@ -65,9 +66,9 @@ export const buildConversation = (
                   fromApprovalMap(isSensitive, approvals),
                 )
 
-                return nextStateFrom(events, (outputs) => ({
+                return nextStateFrom(events, (results) => ({
                   ...next,
-                  history: [...next.history, ...outputs],
+                  history: [...next.history, ...results.map(toFunctionCallOutput)],
                 }))
               }),
             ),

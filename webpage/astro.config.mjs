@@ -14,6 +14,20 @@ export default defineConfig({
       title: "effect-uai",
       description: "Low-level primitives for AI agents in Effect.",
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
+      head: [
+        {
+          tag: "script",
+          attrs: {
+            async: true,
+            src: "https://plausible.io/js/pa-yDUj4fz1BbZ6quQM9sZXf.js",
+          },
+        },
+        {
+          tag: "script",
+          content:
+            "window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()",
+        },
+      ],
       components: {
         ThemeSelect: "./src/components/ThemeSelect.astro",
         Hero: "./src/components/Hero.astro",

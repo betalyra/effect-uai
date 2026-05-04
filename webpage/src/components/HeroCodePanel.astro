@@ -165,14 +165,14 @@ const codeHtml = tokens
   .join("")
 ---
 
-<aside class="hidden justify-self-end lg:block lg:w-full" aria-label="effect-uai loop">
+<aside class="hidden justify-self-end lg:flex lg:h-full lg:w-full" aria-label="effect-uai loop">
   <div
     id="hero-code-panel"
-    class="overflow-hidden rounded-[14px] border border-border bg-card shadow-none transition-colors hover:border-(--color-mark)"
+    class="flex h-full max-h-[calc(100svh-var(--sl-nav-height,4rem)-4rem)] w-full flex-col overflow-hidden rounded-[14px] border border-border bg-card shadow-none transition-colors hover:border-(--color-mark)"
     data-interactive={JSON.stringify(interactiveIndices)}
   >
     <div
-      class="flex items-center justify-between gap-3 border-b border-border px-5 py-3 font-mono text-[0.62rem] tracking-[0.08em] text-muted-foreground uppercase"
+      class="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3 font-mono text-[0.62rem] tracking-[0.08em] text-muted-foreground uppercase"
     >
       <div class="flex items-center gap-2.5">
         <span class="inline-block h-1.5 w-1.5 bg-(--color-mark)" aria-hidden="true"></span>
@@ -187,10 +187,10 @@ const codeHtml = tokens
     </div>
 
     <pre
-      class="m-0 border-0 bg-transparent px-4 py-4 font-mono text-[0.82rem] leading-[1.7]"><code set:html={codeHtml} /></pre>
+      class="hero-code-scroll m-0 min-h-0 flex-1 overflow-y-auto border-0 bg-transparent px-4 py-4 font-mono text-[0.68rem] leading-[1.65] xl:text-[0.76rem] xl:leading-[1.7] 2xl:text-[0.82rem]"><code set:html={codeHtml} /></pre>
 
     <div
-      class="flex h-25 flex-col justify-center gap-1.5 border-t border-border bg-[color-mix(in_srgb,var(--sl-color-bg)_92%,var(--sl-color-text)_8%)] px-5 py-3"
+      class="flex h-22 shrink-0 flex-col justify-center gap-1.5 border-t border-border bg-[color-mix(in_srgb,var(--sl-color-bg)_92%,var(--sl-color-text)_8%)] px-5 py-3 xl:h-25"
     >
       <div
         class="font-mono text-[0.62rem] tracking-widest text-(--color-mark) uppercase"
@@ -199,7 +199,7 @@ const codeHtml = tokens
         {initialLine.label}
       </div>
       <p
-        class="line-clamp-2 text-[0.92rem] leading-snug text-muted-foreground"
+        class="line-clamp-2 text-[0.8rem] leading-snug text-muted-foreground xl:text-[0.92rem]"
         data-current-desc
       >
         {initialLine.description}
@@ -223,7 +223,23 @@ const codeHtml = tokens
   }
   #hero-code-panel pre code .hcl-content {
     display: inline;
-    white-space: pre;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  /* Thin, restrained scrollbar — the panel only needs to scroll on
+     short viewports (e.g. 13" MacBook) where the full snippet doesn't
+     fit. The annotation strip stays pinned regardless. */
+  #hero-code-panel .hero-code-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--sl-color-text) 18%, transparent)
+      transparent;
+  }
+  #hero-code-panel .hero-code-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  #hero-code-panel .hero-code-scroll::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--sl-color-text) 18%, transparent);
+    border-radius: 3px;
   }
 </style>
 
@@ -241,13 +257,17 @@ const codeHtml = tokens
     let pos = 0
     let timer = null
 
-    const setActive = (idx) => {
+    const setActive = (idx, smooth) => {
       lines.forEach((el) => el.removeAttribute("data-active"))
       const el = lines[idx]
       if (!el) return
       el.setAttribute("data-active", "true")
       labelEl.textContent = el.dataset.label || ""
       descEl.textContent = el.dataset.desc || ""
+      el.scrollIntoView({
+        block: "nearest",
+        behavior: smooth ? "smooth" : "auto",
+      })
     }
 
     const stopAuto = () => {
@@ -261,11 +281,11 @@ const codeHtml = tokens
       stopAuto()
       timer = setInterval(() => {
         pos = (pos + 1) % interactive.length
-        setActive(interactive[pos])
+        setActive(interactive[pos], true)
       }, 2600)
     }
 
-    setActive(interactive[0])
+    setActive(interactive[0], false)
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     if (!reduced) startAuto()
@@ -281,7 +301,7 @@ const codeHtml = tokens
       const focusOnLine = () => {
         stopAuto()
         pos = interactive.indexOf(idx)
-        setActive(idx)
+        setActive(idx, false)
       }
       el.addEventListener("mouseenter", focusOnLine)
       el.addEventListener("focus", focusOnLine)

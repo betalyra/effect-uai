@@ -16,10 +16,10 @@ const variantToButton = {
 ---
 
 <div
-  class="hero grid items-center gap-4 pb-4 min-[50rem]:min-h-[calc(100vh-var(--sl-nav-height))]! min-[50rem]:py-[clamp(1.5rem,calc(0.5rem+4vmin),4rem)]! lg:grid-cols-[minmax(0,1fr)_minmax(24rem,38rem)]! lg:gap-[clamp(2rem,5vw,5rem)]!"
+  class="hero grid items-stretch gap-4 pb-4 min-[50rem]:min-h-[calc(100vh-var(--sl-nav-height))]! min-[50rem]:py-[clamp(1.5rem,calc(0.5rem+4vmin),4rem)]! lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)]! lg:gap-[clamp(2rem,5vw,5rem)]! xl:grid-cols-[minmax(0,1fr)_minmax(22rem,34rem)]! 2xl:grid-cols-[minmax(0,1fr)_minmax(24rem,38rem)]!"
 >
   <div
-    class="flex flex-col gap-[clamp(1.25rem,calc(1rem+1vw),1.75rem)] text-center min-[50rem]:text-start"
+    class="flex flex-col justify-center gap-[clamp(1.25rem,calc(1rem+1vw),1.75rem)] text-center min-[50rem]:text-start"
   >
     <div
       class="copy flex flex-col items-center gap-4 min-[50rem]:items-start *:max-w-[50ch]"
@@ -36,13 +36,20 @@ const variantToButton = {
     </div>
     {
       actions.length > 0 && (
-        <div class="flex flex-wrap justify-center gap-x-4 gap-y-3 min-[50rem]:justify-start">
+        <div class="flex flex-wrap justify-center gap-x-4 gap-y-3 min-[50rem]:justify-start lg:grid lg:max-w-md lg:grid-cols-2 2xl:max-w-lg">
           {actions.map((action) => {
             const isExternal = /^https?:\/\//.test(action.link)
             const buttonVariant = variantToButton[action.variant]
             const iconName =
               action.icon && action.icon.type === "icon" ? action.icon.name : undefined
-            const className = cn(buttonVariants({ variant: buttonVariant, size: "hero" }))
+            const className = cn(
+              buttonVariants({ variant: buttonVariant, size: "hero" }),
+              // At lg+ the buttons sit in a 2-column grid (see parent
+              // div) so they share width evenly. Drop min-w-52 there
+              // and stretch to fill the cell. Full hero size returns
+              // at 2xl with a wider grid cap.
+              "lg:h-10 lg:w-full lg:min-w-0 lg:px-4 lg:text-[length:var(--sl-text-base)] xl:h-11 xl:px-5 2xl:h-12 2xl:px-6 2xl:text-[length:var(--sl-text-lg)]",
+            )
             return (
               <a
                 class={className}
@@ -59,7 +66,7 @@ const variantToButton = {
       )
     }
     <p
-      class="max-w-[55ch] text-base leading-relaxed text-(--sl-color-gray-2) mx-auto min-[50rem]:mx-0"
+      class="max-w-[55ch] text-base leading-relaxed text-(--sl-color-gray-2) mx-auto min-[50rem]:mx-0 lg:text-[0.85rem] xl:text-[0.92rem] 2xl:text-base"
     >
       Agents should be ordinary programs: <strong>explicit state</strong>, <strong>typed effects</strong>, <strong>visible streams</strong>, and <strong>tools you control</strong>. effect-uai gives you the primitives to build that loop without handing your architecture to a framework.
     </p>

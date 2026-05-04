@@ -11,10 +11,11 @@
      and link hover. Nothing else. */
   --color-mark: #d62828;
 
-  /* Page gutter. Wider than Starlight's 1.5rem default so the hero,
-     features, and recipes sections breathe between viewport edge and
-     the content cap on mid-width screens. */
-  --sl-content-pad-x: 2.5rem;
+  /* Page gutter. Fluid: tight on narrow viewports so the hero / cards
+     don't lose ~100px of usable width to side padding, generous on
+     wide screens where there's room to breathe between viewport edge
+     and the 1400px content cap. */
+  --sl-content-pad-x: clamp(1rem, 2.5vw, 2.5rem);
 }
 
 
@@ -75,15 +76,20 @@
   letter-spacing: -0.02em;
 }
 
-/* Hero: large, bold grotesque. Modernist proportions. */
+/* Hero: large, bold grotesque. Modernist proportions.
+   The clamp slope is intentionally gentle: at iPad-landscape widths
+   (~1024–1366px) the right column is narrow and the title needs to
+   stay on one line so the red triangle and the clipped white "uai"
+   overlay land on the same baseline. */
 .hero h1 {
   font-weight: 800;
   letter-spacing: -0.035em;
-  font-size: clamp(3.5rem, calc(1rem + 8vw), 6rem);
+  font-size: clamp(2.75rem, calc(0.5rem + 5.5vw), 6rem);
   position: relative;
   display: inline-block;
   isolation: isolate;
   line-height: 1;
+  white-space: nowrap;
 }
 
 /* The graphic mark. An equilateral red triangle (Minas Gerais flag

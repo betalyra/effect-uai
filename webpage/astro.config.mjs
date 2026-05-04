@@ -49,6 +49,7 @@ export default defineConfig({
             { label: "Quickstart", slug: "start/getting-started" },
             { label: "Basic usage", slug: "recipes/basic-usage" },
             { label: "Structured output", slug: "recipes/structured-output" },
+            { label: "Skills", slug: "skills" },
           ],
         },
         {

@@ -33,4 +33,17 @@ loop.
 The core package has no provider dependencies, so server, edge, and browser
 builds only pull in the providers you actually use.
 
+## Teach Your Coding Agent
+
+If you build with an AI coding agent (Claude Code, Cursor, Continue, …),
+install the agent skills bundle so the agent learns the philosophy,
+primitives, and recipe patterns:
+
+```sh
+npx skills add betalyra/effect-uai
+```
+
+One main skill plus fourteen recipe sub-skills, loaded lazily —
+[Skills](/skills/) has the catalog and per-skill install commands.
+
 Next: [stream one model turn](/start/getting-started/).

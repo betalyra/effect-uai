@@ -36,14 +36,14 @@ jobs:
 
       - run: pnpm test
 
-      - name: Create release PR or publish
+      # Publish is handled separately by `release-manual.yml` (which takes
+      # an OTP input) because the @effect-uai npm scope has 2FA-on-writes
+      # enabled and CI has no way to provide a one-time password.
+      - name: Create release PR
         uses: changesets/action@v1
         with:
-          publish: pnpm release
           version: pnpm version-packages
           commit: "chore: release"
           title: "chore: release"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

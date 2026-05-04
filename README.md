@@ -118,8 +118,8 @@ Full docs: <https://effect-uai.betalyra.com>
 
 Recommended reading order:
 
-1. [Quickstart](https://effect-uai.betalyra.com/start/getting-started/) - stream a one-shot reply in ~30 lines.
-2. [Basic usage](https://effect-uai.betalyra.com/recipes/basic-usage/) - same skeleton plus a tool call and continuation.
+1. [One turn is a stream](https://effect-uai.betalyra.com/start/getting-started/) - the smallest provider-agnostic primitive.
+2. [Basic usage](https://effect-uai.betalyra.com/recipes/basic-usage/) - the core agent harness: state, stream, tools, continuation.
 3. [The loop primitive](https://effect-uai.betalyra.com/concepts/loop/) - what `loop` is, its shape, and `streamUntilComplete`.
 4. [Items and turns](https://effect-uai.betalyra.com/concepts/items-and-turns/) - the conversation as a flat list, the assembled turn, the event stream.
 5. [Tools and toolkits](https://effect-uai.betalyra.com/concepts/tools/) - `Tool.make`, `Tool.streaming`, approval planners, `ToolEvent`.

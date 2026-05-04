@@ -68,5 +68,5 @@ love for you to give it a try and share what works and what doesn't.
 
 ## Next step
 
-Head to **[Installation](/start/installation/)** and then the
-**[Quickstart](/start/getting-started/)**.
+Head to **[Installation](/start/installation/)** and then
+**[One turn is a stream](/start/getting-started/)**.

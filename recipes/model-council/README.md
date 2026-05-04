@@ -3,11 +3,12 @@ title: Model council
 description: Three models answer the same question, score each other's answers (no self-judging), and the highest-rated answer is streamed as the winner.
 ---
 
-**Scenario.** You have a question and three different models (OpenAI,
-Google, Anthropic). You want all three to answer concurrently, then
-have each model score the _others'_ answers, and finally surface the
-winner — both who won and what they said. Everything streams; nothing
-blocks longer than it has to.
+A model council is a stream graph.
+
+You have a question and three different models (OpenAI, Google, Anthropic).
+All three answer concurrently, each model scores the _others'_ answers, and
+the final stream surfaces the winner — both who won and what they said.
+Everything streams; nothing blocks longer than it has to.
 
 The only barrier is the `winner` event itself: it lands the moment
 the last of the six judge calls returns. Candidate text streams live;

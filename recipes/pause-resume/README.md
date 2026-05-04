@@ -3,11 +3,13 @@ title: Pause and resume
 description: Soft pause/resume of an in-flight agent loop using Effect's Latch.
 ---
 
-**Scenario.** An agent loop is running. Something - a user clicking
-"pause", a rate-limit cool-down, an external admin signal - needs to
-_pause_ the loop without tearing it down: hold the current state, stop
-making provider calls, release HTTP resources. Later, _resume_ and
-continue from exactly where the pause landed.
+Pause between turns, not inside provider magic.
+
+An agent loop is running. Something - a user clicking "pause", a rate-limit
+cool-down, an external admin signal - needs to _pause_ the loop without
+tearing it down: hold the current state, stop making provider calls, release
+HTTP resources. Later, _resume_ and continue from exactly where the pause
+landed.
 
 This is **soft pause**: in-process, no persistence. State threads through
 the loop as it normally does, so when the latch reopens the next
@@ -46,6 +48,7 @@ const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) 
               const next = advance(state, turn)
               if (next.pendingPrompts.length === 0) return stop
               const [nextPrompt, ...rest] = next.pendingPrompts
+              // Resume continues from this state after the latch opens again.
               return nextAfter(Stream.empty, {
                 ...next,
                 history: [...next.history, Items.userText(nextPrompt!)],

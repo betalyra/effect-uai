@@ -1,11 +1,18 @@
 ---
-title: Quickstart
-description: Stream a one-shot reply from OpenAI in ~30 lines.
+title: One Turn Is A Stream
+description: Stream one provider-agnostic model turn and handle the events you care about.
 ---
 
-The smallest end-to-end shape: ask the model a question, stream its reply
-to the console, and exit. No tools, no multi-turn loop, no provider
-abstractions you don't need yet.
+Start with the smallest primitive: one model turn.
+
+A turn is not hidden behind an agent object or callback lifecycle. It is a
+`Stream<TurnEvent>`. Text deltas, reasoning, tool-call events, usage updates,
+and the final assembled turn all flow through the same typed stream. You can
+render what you care about and ignore the rest.
+
+This first example asks one question, prints streamed text, and exits. The
+shape is intentionally small because the same stream is what later becomes a
+tool-using conversation, a fallback ladder, or a resumable agent harness.
 
 ## Install
 
@@ -16,7 +23,7 @@ pnpm add @effect-uai/core @effect-uai/responses effect
 Each provider is its own package. The core package has no provider deps,
 so edge / browser builds only pull in what you actually use.
 
-## A first conversation
+## Stream One Turn
 
 ```ts
 import { Config, Effect, Layer, Match, Stream } from "effect"
@@ -57,26 +64,27 @@ OPENAI_API_KEY=sk-... pnpm tsx your-file.ts
 You'll see the haiku stream into the terminal token-by-token, then the
 process exits.
 
-## What just happened
+## What This Buys You
 
-- **`streamTurn`** runs one turn and yields a `Stream<TurnEvent>`:
-  text deltas, reasoning, tool calls, and a terminal `turn_complete`.
-  Here we only care about `text_delta`; everything else is ignored.
-- **`matchType`** narrows the discriminated union of events. Add cases
-  as you start caring about more of them.
-- **`responsesLayer({ apiKey })`** registers the OpenAI provider under
-  the generic `LanguageModel` tag. Connection details (key, base URL)
-  live on the layer; the model is named per call. Swap to
-  `@effect-uai/anthropic` or `@effect-uai/google` and the `program`
-  above stays the same shape - just point `model` at one of theirs.
+- **The provider does not own your control flow.** You receive a normal
+  Effect stream and decide how to consume it.
+- **Events are typed data.** `matchType("text_delta", ...)` narrows the
+  union; add cases when you want reasoning, usage, or tool-call events.
+- **Provider choice is runtime wiring.** `responsesLayer({ apiKey })`
+  implements the generic `LanguageModel` service. The program shape stays
+  the same when you provide Anthropic or Gemini instead.
+- **The final turn is still available.** The terminal `turn_complete` event
+  carries the assembled `Turn`, which is what loops and structured-output
+  validation build on.
 
-One turn, no tools, no continuation. To keep going after a tool call or
-across multiple turns, you need `loop`.
+One turn is enough for rendering a simple answer. To build an agent or chat,
+you keep this stream shape and add one more primitive: `loop`.
 
 ## Next step
 
-Head to **[Basic usage](/recipes/basic-usage/)** - the same skeleton
-plus a tool call and a continuation turn, with `loop` doing real work.
+Head to **[Basic usage](/recipes/basic-usage/)** to turn this into a
+tool-using conversation: stream a turn, inspect the completed turn, run the
+requested tools, append their outputs, and continue.
 
 ## See also
 

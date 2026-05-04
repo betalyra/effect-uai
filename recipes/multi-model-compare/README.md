@@ -3,11 +3,12 @@ title: Multi-model compare
 description: Fan a single prompt out to OpenAI, Google, and Anthropic concurrently and stream their tagged answers as they arrive.
 ---
 
-**Scenario.** You want a side-by-side answer from multiple models for
-the same prompt - to compare reasoning quality, audit verdicts, or
-ensemble. Each provider's deltas should arrive concurrently and be
-tagged with which model produced them, and a failure in one provider
-shouldn't kill the others.
+Multi-model comparison is stream fan-out.
+
+You want a side-by-side answer from multiple models for the same prompt - to
+compare reasoning quality, audit verdicts, or ensemble. Each provider's deltas
+should arrive concurrently and be tagged with which model produced them, and a
+failure in one provider shouldn't kill the others.
 
 This is the simplest fan-out shape: three `LanguageModelService`
 instances, one shared history, `Stream.mergeAll` to interleave their

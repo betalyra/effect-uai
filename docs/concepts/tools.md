@@ -3,11 +3,14 @@ title: Tools and toolkits
 description: Plain and streaming tools, explicit execution, structured results, approval gating, and history reconciliation.
 ---
 
-A tool is a typed function the model can request. The framework owns
-three jobs: render the tool's schema to the provider's wire format,
-validate incoming arguments and run the tool, and translate the
-outcome (success, denied, cancelled, error) into something the model
-can read on the next turn. You own the `run` function and the policy
+Tools are not callbacks hidden inside an agent runtime. They are typed Effects
+that your loop decides to run.
+
+The model emits `FunctionCall` items. Your harness inspects them, applies any
+policy it wants, and passes the approved calls to `Toolkit.executeAll`. The
+executor owns the mechanical work: render schemas to provider wire format,
+validate incoming arguments, run the tool, and turn success or failure into
+structured `ToolResult`s. You own the `run` function and every policy decision
 around it.
 
 Two flavors:
@@ -190,10 +193,10 @@ point: `toFunctionCallOutput`, applied where results meet history.
 ```ts
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 
-return Toolkit.nextStateFrom(events, (results) => ({
-  ...next,
-  history: [...next.history, ...results.map(toFunctionCallOutput)],
-}))
+return Toolkit.nextStateFrom(events, (results) =>
+  // Convert structured results only when they cross into provider history.
+  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+)
 ```
 
 `nextStateFrom` collects `ToolResult`s from the executor stream and
@@ -208,10 +211,12 @@ The full pattern is in [Basic usage](/recipes/basic-usage/). The body:
 streamUntilComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
     const calls = Turn.functionCalls(turn)
+    // If the model did not ask for tools, this conversation is done.
     if (calls.length === 0) return stop
 
     const events = Toolkit.executeAll(allTools, calls)
     return Toolkit.nextStateFrom(events, (results) =>
+      // Provider history needs both the function_call items and their outputs.
       Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
     )
   }),
@@ -239,6 +244,7 @@ HTTP/request-shaped flows:
 ```ts
 const plan = fromApprovalMap(isSensitive, approvals)(calls)
 const events = Stream.merge(
+  // Approved calls run normally; rejected calls still become Output events.
   Toolkit.executeAll(allTools, plan.approved),
   Toolkit.outputEvents(plan.rejected),
 )

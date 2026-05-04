@@ -1,0 +1,51 @@
+/**
+ * Runner for the model-retry recipe. Wires up the real Responses
+ * provider + logging and drives the conversation built in `index.ts`.
+ *
+ * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/model-retry/run.ts`
+ */
+import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
+import * as Items from "@effect-uai/core/Items"
+import { matchType } from "@effect-uai/core/Match"
+import * as Turn from "@effect-uai/core/Turn"
+import { layer as responsesLayer } from "@effect-uai/responses"
+import { conversation } from "./index.js"
+
+const program = Stream.runForEach(conversation, (event) =>
+  Match.value(event).pipe(
+    matchType("turn_complete", ({ turn }) =>
+      Effect.logInfo("turn complete", {
+        stop_reason: turn.stop_reason,
+        assistant: Turn.assistantMessages(turn)
+          .flatMap((m) => m.content)
+          .filter(Items.isOutputText)
+          .map((c) => c.text)
+          .join(" "),
+      }),
+    ),
+    Match.orElse(() => Effect.void),
+  ),
+)
+
+const apiKeyLayer = Layer.unwrap(
+  Effect.gen(function* () {
+    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+    return responsesLayer({ apiKey })
+  }),
+)
+
+const runtime = Layer.mergeAll(
+  apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
+  Logger.layer([Logger.consolePretty()]),
+)
+
+Effect.runPromise(
+  program.pipe(
+    Effect.provide(runtime),
+    Effect.provideService(References.MinimumLogLevel, "Info"),
+  ),
+).catch((err) => {
+  console.error("recipe failed:", err)
+  process.exit(1)
+})

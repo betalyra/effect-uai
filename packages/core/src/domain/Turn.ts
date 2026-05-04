@@ -1,4 +1,5 @@
 import { Data, Effect, Result, Schema, Stream, pipe } from "effect"
+import type * as SSE from "../streaming/SSE.js"
 import * as StructuredFormat from "../structured-format/StructuredFormat.js"
 import {
   FunctionCall,
@@ -116,6 +117,74 @@ export const textDeltas = <E, R>(
       ev.type === "text_delta" ? Result.succeed(ev.text) : Result.failVoid,
     ),
   )
+
+// ---------------------------------------------------------------------------
+// Wire formatters - project a `TurnEvent` onto a transport-friendly frame.
+//
+// Use as `Stream.filterMap(toSSE)` (browser EventSource) or
+// `Stream.filterMap(toJSONL)` (CLI pipes, queue payloads, log shipping).
+// Reasoning deltas, tool-call argument deltas, and other observability
+// events are dropped; recipes that need them write their own projection.
+// ---------------------------------------------------------------------------
+
+const finalText = (turn: Turn): string =>
+  assistantMessages(turn)
+    .flatMap((m) => m.content)
+    .filter(isOutputText)
+    .map((c) => c.text)
+    .join("")
+
+/** Project one `TurnEvent` into one named SSE event, or drop it. */
+export const toSSE = (event: TurnEvent): Result.Result<SSE.Event, void> => {
+  if (event.type === "text_delta") {
+    return Result.succeed({ event: "text", data: JSON.stringify({ text: event.text }) })
+  }
+  if (event.type === "turn_complete") {
+    return Result.succeed({
+      event: "done",
+      data: JSON.stringify({
+        stop_reason: event.turn.stop_reason,
+        text: finalText(event.turn),
+        usage: event.turn.usage,
+      }),
+    })
+  }
+  return Result.failVoid
+}
+
+/** Project one `TurnEvent` into one JSONL line (newline-terminated), or drop it. */
+export const toJSONL = (event: TurnEvent): Result.Result<string, void> => {
+  if (event.type === "text_delta") {
+    return Result.succeed(JSON.stringify({ type: "text", text: event.text }) + "\n")
+  }
+  if (event.type === "turn_complete") {
+    return Result.succeed(
+      JSON.stringify({
+        type: "done",
+        stop_reason: event.turn.stop_reason,
+        text: finalText(event.turn),
+        usage: event.turn.usage,
+      }) + "\n",
+    )
+  }
+  return Result.failVoid
+}
+
+/**
+ * Curried `Stream.filterMap(toSSE)`. Drop into a `pipe` directly:
+ * `stream.pipe(asSSE)`.
+ */
+export const asSSE: <E, R>(
+  self: Stream.Stream<TurnEvent, E, R>,
+) => Stream.Stream<SSE.Event, E, R> = Stream.filterMap(toSSE)
+
+/**
+ * Curried `Stream.filterMap(toJSONL)`. Drop into a `pipe` directly:
+ * `stream.pipe(asJSONL)`.
+ */
+export const asJSONL: <E, R>(
+  self: Stream.Stream<TurnEvent, E, R>,
+) => Stream.Stream<string, E, R> = Stream.filterMap(toJSONL)
 
 // ---------------------------------------------------------------------------
 // Structured-output integration

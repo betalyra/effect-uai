@@ -27,6 +27,9 @@ that double as living regression tests for the primitive surface.
   latch; no provider call remains open.
 - [`mid-stream-abort/`](./mid-stream-abort/) - cancel the loop and the
   upstream HTTP request via scope-based cleanup.
+- [`agentic-loop/`](./agentic-loop/) - long-lived loop driven by a user
+  message queue, with a small debounce window so bursts of messages
+  collapse into one user batch.
 - [`modify-output-stream/`](./modify-output-stream/) - format the loop's
   output for the wire (SSE / JSONL) by mapping a single function over
   the stream.

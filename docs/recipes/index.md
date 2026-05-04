@@ -32,6 +32,7 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Auto-compaction](/recipes/auto-compaction/)          | Rewrite oversized history as an ordinary state transition.                               |
 | [Pause and resume](/recipes/pause-resume/)            | Pause between loop iterations with a latch; no provider call remains open.               |
 | [Mid-stream abort](/recipes/mid-stream-abort/)        | Cancel an in-flight turn through stream interruption and scope cleanup.                  |
+| [Agentic loop](/recipes/agentic-loop/)                | Long-lived loop driven by a user-message queue with a debounce window for bursts.       |
 
 ## Transport
 

@@ -3,6 +3,7 @@ import {
   PiArrowRight,
   PiArrowsClockwise,
   PiArrowsInLineHorizontal,
+  PiChatCircleDots,
   PiClockCounterClockwise,
   PiFlowArrow,
   PiGavel,
@@ -73,6 +74,13 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Stop on a dime.** Cancel a running turn, drop the HTTP connection, and keep the partial output.",
     href: "/recipes/mid-stream-abort/",
     Icon: PiHandPalm,
+  },
+  {
+    title: "Agentic loop",
+    description:
+      "**Stay online for the whole chat.** Pull user messages from a queue; debounce bursts into one batch.",
+    href: "/recipes/agentic-loop/",
+    Icon: PiChatCircleDots,
   },
   {
     title: "Modify output stream",

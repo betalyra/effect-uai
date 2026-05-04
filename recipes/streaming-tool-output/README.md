@@ -90,15 +90,13 @@ Identical to basic-usage; the only difference is the toolkit:
 ```ts
 streamUntilComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
-    const next = Turn.cursor(state, turn)
     const calls = Turn.functionCalls(turn)
     if (calls.length === 0) return stop
 
     const events = Toolkit.executeAll(allTools, calls)
-    return Toolkit.nextStateFrom(events, (results) => ({
-      ...next,
-      history: [...next.history, ...results.map(toFunctionCallOutput)],
-    }))
+    return Toolkit.nextStateFrom(events, (results) =>
+      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    )
   }),
 )
 ```

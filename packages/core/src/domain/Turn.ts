@@ -86,27 +86,17 @@ export const assistantMessages = (turn: Turn): ReadonlyArray<Message> =>
   turn.items.filter((i): i is Message => i.type === "message" && i.role === "assistant")
 
 /**
- * State stamped with the just-completed `Turn`. Recipes use this as the
- * intermediate value between "turn lands" and "compute next state": extend
- * `state.history` with the turn's items, and keep the assembled turn
- * around for stop-reason / usage / function-call inspection.
- *
- * Generic over the recipe's state shape - any record carrying a
- * `history: ReadonlyArray<Item>` field works.
+ * Append a completed turn and optional follow-up items to a state record's
+ * history. Recipes use this at the point where structured tool results are
+ * converted to model-facing `FunctionCallOutput`s.
  */
-export type Cursor<S> = S & { readonly turn: Turn }
-
-/**
- * Build a `Cursor<S>` from a state record and the just-completed turn.
- * Extends `state.history` with `turn.items` and stamps the turn.
- */
-export const cursor = <S extends { readonly history: ReadonlyArray<Item> }>(
+export const appendTurn = <S extends { readonly history: ReadonlyArray<Item> }>(
   state: S,
   turn: Turn,
-): Cursor<S> => ({
+  items: ReadonlyArray<Item> = [],
+): S => ({
   ...state,
-  history: [...state.history, ...turn.items],
-  turn,
+  history: [...state.history, ...turn.items, ...items],
 })
 
 // ---------------------------------------------------------------------------

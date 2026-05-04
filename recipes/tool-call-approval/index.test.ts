@@ -89,7 +89,6 @@ describe("tool-call-approval", () => {
             .pipe(
               streamUntilComplete<State, ToolEvent>((turn) =>
                 Effect.sync(() => {
-                  const next = Turn.cursor(state, turn)
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
 
@@ -109,10 +108,9 @@ describe("tool-call-approval", () => {
                     }),
                   )
 
-                  return Toolkit.nextStateFrom(events, (results) => ({
-                    ...next,
-                    history: [...next.history, ...results.map(toFunctionCallOutput)],
-                  }))
+                  return Toolkit.nextStateFrom(events, (results) =>
+                    Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                  )
                 }),
               ),
             )
@@ -356,7 +354,6 @@ describe("tool-call-approval (HTTP variant)", () => {
             .pipe(
               streamUntilComplete<State, ToolEvent>((turn) =>
                 Effect.sync(() => {
-                  const next = Turn.cursor(state, turn)
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
 
@@ -366,10 +363,9 @@ describe("tool-call-approval (HTTP variant)", () => {
                     Toolkit.outputEvents(plan.rejected),
                   )
 
-                  return Toolkit.nextStateFrom(events, (results) => ({
-                    ...next,
-                    history: [...next.history, ...results.map(toFunctionCallOutput)],
-                  }))
+                  return Toolkit.nextStateFrom(events, (results) =>
+                    Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                  )
                 }),
               ),
             )

@@ -40,7 +40,6 @@ import * as Toolkit from "@effect-uai/core/Toolkit"
 
 streamUntilComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
-    const next = Turn.cursor(state, turn)
     const calls = Turn.functionCalls(turn)
     if (calls.length === 0) return stop
 
@@ -50,10 +49,9 @@ streamUntilComplete<State, ToolEvent>((turn) =>
       Toolkit.outputEvents(plan.rejected),
     )
 
-    return Toolkit.nextStateFrom(events, (results) => ({
-      ...next,
-      history: [...next.history, ...results.map(toFunctionCallOutput)],
-    }))
+    return Toolkit.nextStateFrom(events, (results) =>
+      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    )
   }),
 )
 ```
@@ -104,7 +102,6 @@ import { fromVerdictQueue } from "@effect-uai/core/Resolvers"
 
 streamUntilComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
-    const next = Turn.cursor(state, turn)
     const calls = Turn.functionCalls(turn)
     if (calls.length === 0) return stop
 
@@ -133,10 +130,9 @@ streamUntilComplete<State, ToolEvent>((turn) =>
       }),
     )
 
-    return Toolkit.nextStateFrom(events, (results) => ({
-      ...next,
-      history: [...next.history, ...results.map(toFunctionCallOutput)],
-    }))
+    return Toolkit.nextStateFrom(events, (results) =>
+      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    )
   }),
 )
 ```

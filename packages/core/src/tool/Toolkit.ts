@@ -1,4 +1,4 @@
-import { Array as Arr, Effect, Match, Ref, Stream } from "effect"
+import { Array as Arr, Effect, Ref, Stream } from "effect"
 import * as Loop from "../loop/Loop.js"
 import type { FunctionCall } from "../domain/Items.js"
 import {
@@ -10,9 +10,7 @@ import {
   type ToolDescriptor,
 } from "./Tool.js"
 import {
-  type ToolDecision,
   type ToolResult,
-  execute as executeDecision,
   executionError,
   rejected,
 } from "./Outcome.js"
@@ -50,56 +48,32 @@ export const toDescriptors = <Tools extends ReadonlyArray<AnyTool>>(
   })
 
 // ---------------------------------------------------------------------------
-// Resolver-based executor. Streams `ToolEvent`s in real time, dispatches
-// streaming and plain tools uniformly, and lets the caller decide what
-// happens to each call (Execute or Reject) before execution.
-//
-// `executeAllWithResolver` is the general primitive. `executeAllStream` is
-// the no-resolver shortcut.
+// Tool executor. Streams `ToolEvent`s in real time and dispatches streaming
+// and plain tools uniformly. Policy stays outside this module: callers pass
+// only the calls they have already decided should run.
 // ---------------------------------------------------------------------------
-
-export type Resolver = (call: FunctionCall) => Effect.Effect<ToolDecision>
 
 export interface ExecuteOptions {
   readonly concurrency?: number | "unbounded"
 }
 
-export const executeAllWithResolver = (
-  tools: ReadonlyArray<AnyKindTool>,
-  calls: ReadonlyArray<FunctionCall>,
-  resolve: Resolver,
-  options?: ExecuteOptions,
-): Stream.Stream<ToolEvent> =>
-  Stream.fromIterable(calls).pipe(
-    Stream.flatMap(
-      (call) =>
-        Stream.unwrap(
-          resolve(call).pipe(Effect.map((decision) => dispatch(tools, call, decision))),
-        ),
-      { concurrency: options?.concurrency ?? "unbounded" },
-    ),
-  )
-
-/** No-resolver shortcut: every call gets `Execute`. */
+/** Execute every provided call. Approval/rejection policy belongs upstream. */
 export const executeAll = (
   tools: ReadonlyArray<AnyKindTool>,
   calls: ReadonlyArray<FunctionCall>,
   options?: ExecuteOptions,
 ): Stream.Stream<ToolEvent> =>
-  executeAllWithResolver(tools, calls, () => Effect.succeed(executeDecision), options)
-
-const dispatch = (
-  tools: ReadonlyArray<AnyKindTool>,
-  call: FunctionCall,
-  decision: ToolDecision,
-): Stream.Stream<ToolEvent> =>
-  Match.value(decision).pipe(
-    Match.tag("Execute", () => runOne(tools, call)),
-    Match.tag("Reject", (d) =>
-      Stream.succeed<ToolEvent>({ _tag: "Output", result: d.result }),
-    ),
-    Match.exhaustive,
+  Stream.fromIterable(calls).pipe(
+    Stream.flatMap((call) => runOne(tools, call), {
+      concurrency: options?.concurrency ?? "unbounded",
+    }),
   )
+
+export const outputEvent = (result: ToolResult): ToolEvent => ({ _tag: "Output", result })
+
+export const outputEvents = (
+  results: ReadonlyArray<ToolResult>,
+): Stream.Stream<ToolEvent> => Stream.fromIterable(results.map(outputEvent))
 
 const valueResult = (call: FunctionCall, tool: string, value: unknown): ToolResult => ({
   _tag: "Value",

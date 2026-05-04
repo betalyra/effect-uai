@@ -1,6 +1,6 @@
 ---
 title: Tools and toolkits
-description: Plain and streaming tools, the resolver-based executor, structured results, approval gating, and history reconciliation.
+description: Plain and streaming tools, explicit execution, structured results, approval gating, and history reconciliation.
 ---
 
 A tool is a typed function the model can request. The framework owns
@@ -140,7 +140,7 @@ const events = Toolkit.executeAll(allTools, calls)
   stream. Plain tools don't emit any.
 - **`Output`** — one per call, terminal. Carries a structured
   `ToolResult` (see below).
-- **`ApprovalRequested`** — emitted by the `fromVerdictQueue` resolver
+- **`ApprovalRequested`** — emitted by the `fromVerdictQueue` approval planner
   for gated calls (see "Approval gating").
 
 The executor is graceful by default. A single hallucinated tool name
@@ -225,34 +225,54 @@ streamUntilComplete<State, ToolEvent>((turn) =>
 `FunctionCallOutput`s. Both must be present for the model to see what
 it asked for *and* what came back.
 
-## Approval gating — `executeAllWithResolver`
+## Approval gating
 
-For HITL flows, swap `executeAll` for `executeAllWithResolver`. The
-resolver decides per-call whether to execute or reject, and what
-synthetic result to surface if rejected:
+For HITL flows, keep `executeAll` as the only executor. Approval helpers
+return plain data that the recipe composes explicitly:
 
 ```ts
-type Resolver = (call: FunctionCall) => Effect<ToolDecision>
-type ToolDecision =
-  | { _tag: "Execute" }
-  | { _tag: "Reject"; result: ToolResult }
+type ToolCallPlan = {
+  readonly approved: ReadonlyArray<FunctionCall>
+  readonly rejected: ReadonlyArray<ToolResult>
+}
 ```
 
-Two ready-made resolvers cover both transport flavors:
+HTTP/request-shaped flows:
 
-- **`fromApprovalMap(predicate, approvals)`** — for HTTP / request-shaped
-  flows. Approvals arrive synchronously bundled in a `Map<call_id, entry>`.
-  Missing entries become `cancelled`.
-- **`fromVerdictQueue(predicate, verdicts)(calls)`** — for WebSocket /
-  long-lived channels. Returns `{ resolve, announce }`: the resolver
-  parks each gated call until its specific verdict lands on the queue,
-  and `announce` is a `Stream<ApprovalRequested>` the recipe merges
-  into consumer view to drive the UI.
+```ts
+const plan = fromApprovalMap(isSensitive, approvals)(calls)
+const events = Stream.merge(
+  Toolkit.executeAll(allTools, plan.approved),
+  Toolkit.outputEvents(plan.rejected),
+)
+```
 
-Combinators stack: `withPermissions(inner, canApprove, onForbidden?)`
-runs an authz check before the inner resolver; `withFallback(inner,
-recoverable, fallback)` recovers selected `Reject` results by running
-an alternate decision.
+`fromApprovalMap(predicate, approvals)(calls)` looks up gated calls by
+`call_id`. Approved calls go into `plan.approved`; denied or missing
+entries become synthetic `ToolResult`s in `plan.rejected`. Those rejected
+results are still emitted as `Output` events, so every model-requested
+tool call receives a matching tool result in history.
+
+Long-lived queue flows:
+
+```ts
+const { approved, decisions, announce } =
+  yield* fromVerdictQueue(isSensitive, verdicts)(calls)
+
+const events = Stream.merge(
+  announce,
+  Stream.merge(
+    Toolkit.executeAll(allTools, approved),
+    decisions.pipe(Stream.flatMap(decisionToEvents)),
+  ),
+)
+```
+
+`fromVerdictQueue(predicate, verdicts)(calls)` returns safe calls up
+front, an `announce` stream of `ApprovalRequested` events, and a decision
+stream for gated calls as verdicts arrive. The recipe decides how to turn
+approved decisions into `executeAll` calls and rejected decisions into
+`Output` events.
 
 Full walkthrough in the [Tool call approval recipe](/recipes/tool-call-approval/).
 

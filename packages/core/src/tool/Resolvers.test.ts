@@ -1,7 +1,7 @@
 /**
- * Tests for the resolver-based executor + resolvers + history-reconciliation
- * primitives. Exercises the full HITL + streaming-tool stack end-to-end via
- * `executeAllWithResolver`, with the four wire-shaped scenarios:
+ * Tests for approval planners + history-reconciliation primitives. Exercises
+ * the full HITL + streaming-tool stack end-to-end by composing approval plans
+ * with `executeAll`, with the four wire-shaped scenarios:
  *
  *   1. Approval        : gated calls approved → tools execute, structured Values
  *   2. Denial          : gated calls denied   → Failure(denied) results
@@ -22,13 +22,12 @@ import {
 } from "./Outcome.js"
 import {
   type ApprovalMapEntry,
+  type ToolCallDecision,
   fromApprovalMap,
   fromVerdictQueue,
-  withFallback,
-  withPermissions,
 } from "./Resolvers.js"
 import { fromEffectSchema, make as makeTool, streaming } from "./Tool.js"
-import { executeAll, executeAllWithResolver } from "./Toolkit.js"
+import { executeAll, outputEvent, outputEvents } from "./Toolkit.js"
 import {
   type ToolEvent,
   isApprovalRequested,
@@ -104,20 +103,28 @@ const resultsFrom = (
 const byCallId = (results: ReadonlyArray<ToolResult>) =>
   new Map(results.map((r) => [r.call_id, r]))
 
+const eventsFromApprovalMap = (approvals: ReadonlyMap<string, ApprovalMapEntry>) => {
+  const plan = fromApprovalMap(isSensitive, approvals)(calls)
+  return Stream.merge(executeAll(allTools, plan.approved), outputEvents(plan.rejected))
+}
+
+const eventsFromDecision = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
+  decision._tag === "Approved"
+    ? executeAll(allTools, [decision.call])
+    : Stream.succeed(outputEvent(decision.result))
+
 // ---------------------------------------------------------------------------
 // fromApprovalMap: HTTP-style scenarios
 // ---------------------------------------------------------------------------
 
-describe("executeAllWithResolver + fromApprovalMap", () => {
+describe("fromApprovalMap + executeAll", () => {
   it("approval: all gated approved → tools execute, structured Values", async () => {
     const approvals = new Map<string, ApprovalMapEntry>([
       ["c2", { decision: "approve" }],
       ["c3", { decision: "approve" }],
     ])
     const collected = await Effect.runPromise(
-      Stream.runCollect(
-        executeAllWithResolver(allTools, calls, fromApprovalMap(isSensitive, approvals)),
-      ),
+      Stream.runCollect(eventsFromApprovalMap(approvals)),
     )
     const by = byCallId(resultsFrom(collected))
     expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
@@ -140,9 +147,7 @@ describe("executeAllWithResolver + fromApprovalMap", () => {
       ["c3", { decision: "deny", reason: "prod is sacred" }],
     ])
     const collected = await Effect.runPromise(
-      Stream.runCollect(
-        executeAllWithResolver(allTools, calls, fromApprovalMap(isSensitive, approvals)),
-      ),
+      Stream.runCollect(eventsFromApprovalMap(approvals)),
     )
 
     // bulk_email never ran.
@@ -165,13 +170,7 @@ describe("executeAllWithResolver + fromApprovalMap", () => {
 
   it("cancellation: missing verdicts → Failure(cancelled)", async () => {
     const collected = await Effect.runPromise(
-      Stream.runCollect(
-        executeAllWithResolver(
-          allTools,
-          calls,
-          fromApprovalMap(isSensitive, new Map()),
-        ),
-      ),
+      Stream.runCollect(eventsFromApprovalMap(new Map())),
     )
     const by = byCallId(resultsFrom(collected))
     expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
@@ -185,9 +184,7 @@ describe("executeAllWithResolver + fromApprovalMap", () => {
       // c3 omitted → cancelled
     ])
     const collected = await Effect.runPromise(
-      Stream.runCollect(
-        executeAllWithResolver(allTools, calls, fromApprovalMap(isSensitive, approvals)),
-      ),
+      Stream.runCollect(eventsFromApprovalMap(approvals)),
     )
     const by = byCallId(resultsFrom(collected))
     expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
@@ -200,7 +197,7 @@ describe("executeAllWithResolver + fromApprovalMap", () => {
 // Graceful degradation: hallucinated tool name doesn't kill the turn.
 // ---------------------------------------------------------------------------
 
-describe("executeAllWithResolver: graceful degradation", () => {
+describe("executeAll: graceful degradation", () => {
   it("unknown tool name → Failure(unknown_tool); other calls still execute", async () => {
     const callsWithBogus = [
       fc("c1", "web_search", { query: "x" }),
@@ -209,11 +206,13 @@ describe("executeAllWithResolver: graceful degradation", () => {
     ]
     const collected = await Effect.runPromise(
       Stream.runCollect(
-        executeAllWithResolver(
-          allTools,
-          callsWithBogus,
-          fromApprovalMap(isSensitive, new Map([["c3", { decision: "approve" }]])),
-        ),
+        (() => {
+          const plan = fromApprovalMap(
+            isSensitive,
+            new Map([["c3", { decision: "approve" }]]),
+          )(callsWithBogus)
+          return Stream.merge(executeAll(allTools, plan.approved), outputEvents(plan.rejected))
+        })(),
       ),
     )
     const by = byCallId(resultsFrom(collected))
@@ -227,7 +226,7 @@ describe("executeAllWithResolver: graceful degradation", () => {
 // fromVerdictQueue: WebSocket-style scenarios
 // ---------------------------------------------------------------------------
 
-describe("executeAllWithResolver + fromVerdictQueue", () => {
+describe("fromVerdictQueue + executeAll", () => {
   it("queue-driven: approve + deny resolve correctly with ApprovalRequested events", async () => {
     const collected = await Effect.runPromise(
       Effect.gen(function* () {
@@ -246,11 +245,17 @@ describe("executeAllWithResolver + fromVerdictQueue", () => {
         // Stream.unwrap supplies the Scope for fromVerdictQueue's router.
         const events = Stream.unwrap(
           Effect.gen(function* () {
-            const { resolve, announce } = yield* fromVerdictQueue(
+            const { approved, decisions, announce } = yield* fromVerdictQueue(
               isSensitive,
               verdicts,
             )(calls)
-            return Stream.merge(announce, executeAllWithResolver(allTools, calls, resolve))
+            return Stream.merge(
+              announce,
+              Stream.merge(
+                executeAll(allTools, approved),
+                decisions.pipe(Stream.flatMap(eventsFromDecision)),
+              ),
+            )
           }),
         )
         return yield* Stream.runCollect(events)
@@ -266,58 +271,6 @@ describe("executeAllWithResolver + fromVerdictQueue", () => {
       kind: "denied",
       reason: "too risky",
     })
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Combinators
-// ---------------------------------------------------------------------------
-
-describe("withPermissions / withFallback", () => {
-  it("withPermissions short-circuits with permission_denied when canApprove returns false", async () => {
-    const canApprove = (call: Items.FunctionCall) =>
-      Effect.succeed(call.name !== "delete_database")
-    const inner = fromApprovalMap(
-      isSensitive,
-      new Map<string, ApprovalMapEntry>([
-        ["c2", { decision: "approve" }],
-        ["c3", { decision: "approve" }],
-      ]),
-    )
-    const collected = await Effect.runPromise(
-      Stream.runCollect(
-        executeAllWithResolver(allTools, calls, withPermissions(inner, canApprove)),
-      ),
-    )
-    const by = byCallId(resultsFrom(collected))
-    // c2 allowed → executed; c3 forbidden → permission_denied (no exec)
-    expect(by.get("c2")).toMatchObject({ _tag: "Value", value: { status: "sent" } })
-    expect(by.get("c3")).toMatchObject({
-      _tag: "Failure",
-      kind: "permission_denied",
-    })
-  })
-
-  it("withFallback recovers a Reject by running an alternate decision", async () => {
-    const inner = fromApprovalMap(
-      isSensitive,
-      new Map<string, ApprovalMapEntry>([
-        ["c2", { decision: "deny", reason: "no" }],
-        ["c3", { decision: "approve" }],
-      ]),
-    )
-    // Recover only `denied` rejections; turn them into Execute (re-run anyway).
-    const recoverable = (r: ToolResult) => isFailure(r) && r.kind === "denied"
-    const fallbackResolver = withFallback(inner, recoverable, () =>
-      Effect.succeed({ _tag: "Execute" } as const),
-    )
-    const collected = await Effect.runPromise(
-      Stream.runCollect(executeAllWithResolver(allTools, calls, fallbackResolver)),
-    )
-    const by = byCallId(resultsFrom(collected))
-    // c2 was denied but fallback re-ran the tool.
-    expect(by.get("c2")).toMatchObject({ _tag: "Value", value: { status: "sent" } })
-    expect(by.get("c3")).toMatchObject({ _tag: "Value", value: { status: "dropped" } })
   })
 })
 
@@ -412,11 +365,11 @@ describe("toFunctionCallOutput", () => {
 })
 
 // ---------------------------------------------------------------------------
-// executeAll (no-resolver shortcut)
+// executeAll
 // ---------------------------------------------------------------------------
 
 describe("executeAll", () => {
-  it("equivalent to executeAllWithResolver with allow-all resolver", async () => {
+  it("runs all calls passed to it", async () => {
     const collected = await Effect.runPromise(
       Stream.runCollect(executeAll(allTools, calls)),
     )

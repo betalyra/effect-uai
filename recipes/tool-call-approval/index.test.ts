@@ -4,7 +4,11 @@ import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
 import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
-import { type Verdict, fromVerdictQueue } from "@effect-uai/core/Resolvers"
+import {
+  type ToolCallDecision,
+  type Verdict,
+  fromVerdictQueue,
+} from "@effect-uai/core/Resolvers"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
 import {
@@ -54,6 +58,13 @@ describe("tool-call-approval", () => {
   const SENSITIVE: ReadonlySet<string> = new Set(["send_email", "delete_user"])
   const isSensitive = (call: Items.FunctionCall): boolean => SENSITIVE.has(call.name)
 
+  const decisionEvents = (
+    decision: ToolCallDecision,
+  ): Stream.Stream<ToolEvent> =>
+    decision._tag === "Approved"
+      ? Toolkit.executeAll(allTools, [decision.call])
+      : Stream.succeed(Toolkit.outputEvent(decision.result))
+
   // --- Loop builder (uses LanguageModel for testability) ------------------
   interface State {
     readonly history: ReadonlyArray<Items.Item>
@@ -84,13 +95,16 @@ describe("tool-call-approval", () => {
 
                   const events = Stream.unwrap(
                     Effect.gen(function* () {
-                      const { resolve, announce } = yield* fromVerdictQueue(
+                      const { approved, decisions, announce } = yield* fromVerdictQueue(
                         isSensitive,
                         verdicts,
                       )(calls)
                       return Stream.merge(
                         announce,
-                        Toolkit.executeAllWithResolver(allTools, calls, resolve),
+                        Stream.merge(
+                          Toolkit.executeAll(allTools, approved),
+                          decisions.pipe(Stream.flatMap(decisionEvents)),
+                        ),
                       )
                     }),
                   )
@@ -159,7 +173,7 @@ describe("tool-call-approval", () => {
       const verdicts = yield* Queue.unbounded<Verdict>()
 
       // Tap ApprovalRequested events and post verdicts onto the queue so
-      // the gated resolver can resume.
+      // the gated decisions can resume.
       const tapped = buildConversation(verdicts).pipe(
         Stream.tap((event) =>
           isToolEvent(event) && isApprovalRequested(event)
@@ -346,10 +360,10 @@ describe("tool-call-approval (HTTP variant)", () => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
 
-                  const events = Toolkit.executeAllWithResolver(
-                    allTools,
-                    calls,
-                    fromApprovalMap(isSensitive, approvals),
+                  const plan = fromApprovalMap(isSensitive, approvals)(calls)
+                  const events = Stream.merge(
+                    Toolkit.executeAll(allTools, plan.approved),
+                    Toolkit.outputEvents(plan.rejected),
                   )
 
                   return Toolkit.nextStateFrom(events, (results) => ({

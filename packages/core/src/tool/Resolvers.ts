@@ -1,28 +1,51 @@
 /**
- * Ready-made `Resolver`s for the two transport flavors plus combinators
- * for layering policy on top.
+ * Approval helpers for the two transport flavors.
  *
- *   - `fromVerdictQueue` : long-lived channel (WebSocket / SSE).
- *   - `fromApprovalMap`  : request-shaped (HTTP chat).
- *   - `withPermissions`  : authz wrapper.
- *   - `withFallback`     : recovery wrapper.
- *
- * None of these know about the executor's stream shape; they just produce
- * `Effect<ToolDecision>`s a `Resolver` can return.
+ * These helpers only decide which calls are approved and which synthetic
+ * results must be returned to the model. Tool execution stays explicit at
+ * the recipe boundary via `Toolkit.executeAll`.
  */
 import { Deferred, Effect, Queue, Scope, Stream } from "effect"
 import type { FunctionCall } from "../domain/Items.js"
-import {
-  type ToolDecision,
-  type ToolResult,
-  cancelled,
-  denied,
-  execute,
-  reject,
-  rejected,
-} from "./Outcome.js"
-import type { Resolver } from "./Toolkit.js"
+import { type ToolResult, cancelled, denied } from "./Outcome.js"
 import type { ToolEvent } from "./ToolEvent.js"
+
+export interface ToolCallPlan {
+  readonly approved: ReadonlyArray<FunctionCall>
+  readonly rejected: ReadonlyArray<ToolResult>
+}
+
+export type ToolCallDecision =
+  | { readonly _tag: "Approved"; readonly call: FunctionCall }
+  | { readonly _tag: "Rejected"; readonly result: ToolResult }
+
+export const approve = (call: FunctionCall): ToolCallDecision => ({
+  _tag: "Approved",
+  call,
+})
+
+export const reject = (result: ToolResult): ToolCallDecision => ({
+  _tag: "Rejected",
+  result,
+})
+
+export const splitToolCallDecisions = (
+  decisions: ReadonlyArray<ToolCallDecision>,
+): ToolCallPlan =>
+  decisions.reduce<ToolCallPlan>(
+    (acc, decision) =>
+      decision._tag === "Approved"
+        ? { ...acc, approved: [...acc.approved, decision.call] }
+        : { ...acc, rejected: [...acc.rejected, decision.result] },
+    { approved: [], rejected: [] },
+  )
+
+export const approvalRequested = (call: FunctionCall): ToolEvent => ({
+  _tag: "ApprovalRequested",
+  call_id: call.call_id,
+  tool: call.name,
+  arguments: call.arguments,
+})
 
 // ---------------------------------------------------------------------------
 // Verdict queue (WebSocket-style transport).
@@ -35,10 +58,9 @@ export interface Verdict {
 }
 
 /**
- * Queue-backed resolver. The router fiber drains verdicts and resolves
- * pre-registered Deferreds keyed by `call_id`. Returns the resolver and
- * a stream of `ApprovalRequested` events for the gated calls; the recipe
- * merges the announce stream into its consumer view.
+ * Queue-backed approval planner. Safe calls are returned immediately in
+ * `approved`; gated calls emit `ApprovalRequested` events and later produce
+ * one `ToolCallDecision` when their matching verdict arrives.
  */
 export const fromVerdictQueue =
   (
@@ -49,7 +71,8 @@ export const fromVerdictQueue =
     calls: ReadonlyArray<FunctionCall>,
   ): Effect.Effect<
     {
-      readonly resolve: Resolver
+      readonly approved: ReadonlyArray<FunctionCall>
+      readonly decisions: Stream.Stream<ToolCallDecision>
       readonly announce: Stream.Stream<ToolEvent>
     },
     never,
@@ -57,6 +80,7 @@ export const fromVerdictQueue =
   > =>
     Effect.gen(function* () {
       const gated = calls.filter(predicate)
+      const approved = calls.filter((call) => !predicate(call))
 
       const entries = yield* Effect.forEach(gated, (call) =>
         Deferred.make<Verdict>().pipe(Effect.map((d) => [call.call_id, d] as const)),
@@ -76,26 +100,25 @@ export const fromVerdictQueue =
         ),
       )
 
-      const resolve: Resolver = (call) => {
-        if (!predicate(call)) return Effect.succeed(execute)
-        const d = deferreds.get(call.call_id)!
-        return Deferred.await(d).pipe(
-          Effect.map((v) =>
-            v.decision === "approve" ? execute : reject(denied(call, v.reason)),
-          ),
-        )
-      }
-
-      const announce = Stream.fromIterable<ToolEvent>(
-        gated.map((call) => ({
-          _tag: "ApprovalRequested",
-          call_id: call.call_id,
-          tool: call.name,
-          arguments: call.arguments,
-        })),
+      const decisions = Stream.fromIterable(gated).pipe(
+        Stream.flatMap(
+          (call) => {
+            const d = deferreds.get(call.call_id)!
+            return Stream.fromEffect(
+              Deferred.await(d).pipe(
+                Effect.map((v) =>
+                  v.decision === "approve" ? approve(call) : reject(denied(call, v.reason)),
+                ),
+              ),
+            )
+          },
+          { concurrency: "unbounded" },
+        ),
       )
 
-      return { resolve, announce }
+      const announce = Stream.fromIterable<ToolEvent>(gated.map(approvalRequested))
+
+      return { approved, decisions, announce }
     })
 
 // ---------------------------------------------------------------------------
@@ -111,56 +134,14 @@ export const fromApprovalMap =
   (
     predicate: (call: FunctionCall) => boolean,
     approvals: ReadonlyMap<string, ApprovalMapEntry>,
-  ): Resolver =>
-  (call) => {
-    if (!predicate(call)) return Effect.succeed(execute)
-    const v = approvals.get(call.call_id)
-    if (v === undefined) return Effect.succeed(reject(cancelled(call)))
-    return Effect.succeed(
-      v.decision === "approve" ? execute : reject(denied(call, v.reason)),
-    )
-  }
-
-// ---------------------------------------------------------------------------
-// Combinators - compose policy onto an inner resolver.
-// ---------------------------------------------------------------------------
-
-/**
- * Authz gate. `canApprove` runs BEFORE the inner resolver; failures
- * short-circuit to a `permission_denied` rejection. Override `onForbidden`
- * if your audit format wants a different kind or reason.
- */
-export const withPermissions =
-  (
-    inner: Resolver,
-    canApprove: (call: FunctionCall) => Effect.Effect<boolean>,
-    onForbidden: (call: FunctionCall) => ToolResult = (call) =>
-      rejected(call, "permission_denied", "missing permissions"),
-  ): Resolver =>
-  (call) =>
-    canApprove(call).pipe(
-      Effect.flatMap((allowed) =>
-        allowed ? inner(call) : Effect.succeed(reject(onForbidden(call))),
-      ),
-    )
-
-/**
- * Fallback gate. If `inner` returns a Reject whose result matches the
- * `recoverable` predicate, run `fallback(call)` instead and use that
- * decision. Otherwise pass the original Reject through.
- */
-export const withFallback =
-  (
-    inner: Resolver,
-    recoverable: (result: ToolResult) => boolean,
-    fallback: (call: FunctionCall) => Effect.Effect<ToolDecision>,
-  ): Resolver =>
-  (call) =>
-    inner(call).pipe(
-      Effect.flatMap((decision) =>
-        decision._tag === "Reject" && recoverable(decision.result)
-          ? fallback(call)
-          : Effect.succeed(decision),
-      ),
+  ) =>
+  (calls: ReadonlyArray<FunctionCall>): ToolCallPlan =>
+    splitToolCallDecisions(
+      calls.map((call) => {
+        if (!predicate(call)) return approve(call)
+        const v = approvals.get(call.call_id)
+        if (v === undefined) return reject(cancelled(call))
+        return v.decision === "approve" ? approve(call) : reject(denied(call, v.reason))
+      }),
     )
 

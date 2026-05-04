@@ -1,7 +1,7 @@
 /**
- * The event type emitted by `Toolkit.executeAllWithResolver`.
+ * The event type emitted while handling tool calls.
  *
- *   - ApprovalRequested : gated calls before resolver returns
+ *   - ApprovalRequested : gated calls waiting for approval
  *   - Intermediate      : per-element passthrough from a streaming tool's run
  *   - Output            : terminal result (carries a structured ToolResult)
  *

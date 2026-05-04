@@ -111,8 +111,8 @@ What it does:
   the terminal `turn_complete`, so the consumer sees turn boundaries.
 - Once the terminal arrives, the callback runs with the assembled
   `Turn` and its returned event-stream is concatenated. Typically that
-  stream comes from `Toolkit.executeAll` (or `executeAllWithResolver`)
-  threaded through `nextStateFrom` to advance — or just `stop`.
+  stream comes from `Toolkit.executeAll` threaded through `nextStateFrom`
+  to advance — or just `stop`.
 - `ToolEvent`s emitted by the executor (`Intermediate`, `Output`,
   `ApprovalRequested`) flow through alongside the `TurnEvent`s.
 - Pre-pipe transforms work as you'd expect: `Stream.tap` for logging,

@@ -3,17 +3,19 @@
  * `delete_user`) require a verdict before they run; safe ones run
  * immediately.
  *
- * Two transport flavors. Same primitives, different resolver:
+ * Two transport flavors. Same primitives, different approval planner:
  *
  *   - HTTP (primary)         : approvals arrive synchronously bundled
  *                              with the next request. `fromApprovalMap`
- *                              looks up by `call_id`; missing entries
- *                              synthesize `cancelled` outputs.
+ *                              splits calls into `approved` and `rejected`;
+ *                              missing entries synthesize `cancelled`
+ *                              outputs.
  *
  *   - Queue (enhancement)    : long-lived channel (WebSocket / SSE).
- *                              `fromVerdictQueue` parks each gated call
- *                              until its verdict lands on a shared queue;
- *                              `ApprovalRequested` events drive the UI.
+ *                              `fromVerdictQueue` returns safe calls
+ *                              immediately and a stream of later decisions
+ *                              for gated calls; `ApprovalRequested` events
+ *                              drive the UI.
  *
  * `index.ts` exports the building blocks for both. The runner in
  * `run.ts` drives the queue variant (more visual demo).
@@ -24,6 +26,7 @@ import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import {
   type ApprovalMapEntry,
+  type ToolCallDecision,
   type Verdict,
   fromApprovalMap,
   fromVerdictQueue,
@@ -85,13 +88,20 @@ export const allTools: ReadonlyArray<Tool.AnyKindTool> = [
 ]
 const tools = Tool.toDescriptors(allTools)
 
+const decisionEvents = (
+  decision: ToolCallDecision,
+): Stream.Stream<ToolEvent> =>
+  decision._tag === "Approved"
+    ? Toolkit.executeAll(allTools, [decision.call])
+    : Stream.succeed(Toolkit.outputEvent(decision.result))
+
 // ---------------------------------------------------------------------------
 // Approval policy. Sensitivity is just a predicate - swap in anything:
 // per-tool, per-arg, role-based, etc.
 // ---------------------------------------------------------------------------
 
 const SENSITIVE_TOOLS: ReadonlySet<string> = new Set(["send_email", "delete_user"])
-export const isSensitive = (call: Items.FunctionCall): boolean =>
+export const isSensitive: (call: Items.FunctionCall) => boolean = (call) =>
   SENSITIVE_TOOLS.has(call.name)
 
 // ---------------------------------------------------------------------------
@@ -113,7 +123,7 @@ export const initial: State = {
 
 // ---------------------------------------------------------------------------
 // HTTP variant (primary). Approvals are a synchronous map keyed by
-// `call_id`; missing entries become `cancelled`. Pure resolver, no
+// `call_id`; missing entries become `cancelled`. Pure planner, no
 // announce stream, no router fiber - the request payload IS the answer.
 //
 // Typical usage in an HTTP handler:
@@ -151,10 +161,10 @@ export const httpConversation = (
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
 
-                const events = Toolkit.executeAllWithResolver(
-                  allTools,
-                  calls,
-                  fromApprovalMap(isSensitive, approvals),
+                const plan = fromApprovalMap(isSensitive, approvals)(calls)
+                const events = Stream.merge(
+                  Toolkit.executeAll(allTools, plan.approved),
+                  Toolkit.outputEvents(plan.rejected),
                 )
 
                 return Toolkit.nextStateFrom(events, (results) => ({
@@ -170,9 +180,10 @@ export const httpConversation = (
 
 // ---------------------------------------------------------------------------
 // Queue variant (enhancement). Long-lived channel; verdicts arrive over
-// time. `fromVerdictQueue` builds a resolver that parks per-call until
-// the matching verdict lands, plus an `announce` stream of
-// `ApprovalRequested` events the recipe merges into consumer view.
+// time. `fromVerdictQueue` returns safe calls up-front, plus an `announce`
+// stream of `ApprovalRequested` events and a decision stream for gated calls.
+// The recipe explicitly chooses what to execute and which rejected results
+// to return to the model.
 // ---------------------------------------------------------------------------
 
 export const queueConversation = (
@@ -203,13 +214,16 @@ export const queueConversation = (
                 // consumer is pulling from `events`.
                 const events = Stream.unwrap(
                   Effect.gen(function* () {
-                    const { resolve, announce } = yield* fromVerdictQueue(
+                    const { approved, decisions, announce } = yield* fromVerdictQueue(
                       isSensitive,
                       verdicts,
                     )(calls)
                     return Stream.merge(
                       announce,
-                      Toolkit.executeAllWithResolver(allTools, calls, resolve),
+                      Stream.merge(
+                        Toolkit.executeAll(allTools, approved),
+                        decisions.pipe(Stream.flatMap(decisionEvents)),
+                      ),
                     )
                   }),
                 )

@@ -1,9 +1,8 @@
 /**
- * Pre-execution decision (`ToolDecision`) and post-execution result
- * (`ToolResult`) for the resolver-based executor.
+ * Post-execution and synthetic tool results.
  *
- *   - Resolver returns ToolDecision (Execute | Reject(result)) per call.
- *   - Executor emits ToolResult (Value | Failure) per call.
+ *   - Executed tools emit ToolResult.Value.
+ *   - Approval/cancellation policy emits synthetic ToolResult.Failure.
  *
  * Wire conversion stays at the recipe boundary via `toFunctionCallOutput`
  * so recipes can inspect, redact, or audit values before serialization.
@@ -41,19 +40,6 @@ export const isValue = (r: ToolResult): r is Extract<ToolResult, { _tag: "Value"
 export const isFailure = (r: ToolResult): r is Extract<ToolResult, { _tag: "Failure" }> =>
   r._tag === "Failure"
 
-// ---------------------------------------------------------------------------
-// ToolDecision
-// ---------------------------------------------------------------------------
-
-export type ToolDecision =
-  | { readonly _tag: "Execute" }
-  | { readonly _tag: "Reject"; readonly result: ToolResult }
-
-export const execute: ToolDecision = { _tag: "Execute" }
-
-export const reject = (result: ToolResult): ToolDecision => ({ _tag: "Reject", result })
-
-// ---------------------------------------------------------------------------
 // Synthesizers. `denied` and `cancelled` are operationally distinct;
 // anything else is just a recipe-chosen `kind` via `rejected`.
 // ---------------------------------------------------------------------------

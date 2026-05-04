@@ -1,6 +1,6 @@
 ---
 title: Basic usage
-description: Build the core agent harness: state, stream, tools, and explicit continuation.
+description: "Build the core agent harness: state, stream, tools, and explicit continuation."
 ---
 
 This is the shape everything else in `effect-uai` grows from.

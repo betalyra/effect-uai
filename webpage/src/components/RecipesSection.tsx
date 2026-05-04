@@ -100,7 +100,7 @@ const markdownComponents: Components = {
 
 export default function RecipesSection() {
   return (
-    <section className="not-content mb-24 border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12">
+    <section className="not-content border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12">
       <div style={{ marginBottom: "2.5rem" }} className="flex items-baseline justify-between gap-4">
         <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
         <a

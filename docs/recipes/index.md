@@ -28,17 +28,17 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | Recipe                                                | One-line                                                                                |
 | ----------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | [Multi-model fallback](/recipes/multi-model-fallback/) | Recover from provider stream failures by advancing to the next tier.                     |
-| [Model retry](/recipes/model-retry/)                  | Retry rate-limited and transport failures with exponential backoff; let the rest propagate. |
+| [Model retry](/recipes/model-retry/)                  | Add retry policy around one model stream; only transient provider failures get another try. |
 | [Auto-compaction](/recipes/auto-compaction/)          | Rewrite oversized history as an ordinary state transition.                               |
 | [Pause and resume](/recipes/pause-resume/)            | Pause between loop iterations with a latch; no provider call remains open.               |
 | [Mid-stream abort](/recipes/mid-stream-abort/)        | Cancel an in-flight turn through stream interruption and scope cleanup.                  |
-| [Agentic loop](/recipes/agentic-loop/)                | Long-lived loop driven by a user-message queue with a debounce window for bursts.       |
+| [Agentic loop](/recipes/agentic-loop/)                | Drive a long-lived chat from a user-message queue while continuing model/tool work between clean turn boundaries. |
 
 ## Transport
 
 | Recipe                                                  | One-line                                                                                |
 | ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| [Modify output stream](/recipes/modify-output-stream/) | Format the loop's output for the wire (SSE / JSONL) by mapping a single function over the stream. |
+| [Modify output stream](/recipes/modify-output-stream/) | Keep the loop transport-agnostic; project typed turn events into SSE or JSONL at the edge. |
 
 ## Multi-model
 

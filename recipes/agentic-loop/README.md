@@ -3,49 +3,25 @@ title: Agentic loop with input queue
 description: A long-lived loop that pulls user messages from a queue, debounces bursts into a single batch, and only checks for new input between cleanly-finished turns.
 ---
 
-**Scenario.** Your agent runs as a chat — the user types, the model
-replies, sometimes calls a tool, sometimes just answers, and then you
-go back to waiting for the next message. Two real-world details:
+Most demos start with a single prompt. Real chat agents are long-lived: they
+wait for users, absorb bursts of typing, run tools, and only ask for new input
+when the previous model turn has actually finished.
 
-- Users send messages in **bursts** ("hi" → "actually" → "what time
-  is it in Lisbon"). Sending three separate turns is wasteful and
-  confuses the model. Coalesce them.
-- The model is mid-task when it calls a tool. Don't go ask the user
-  for input — they're waiting for an answer.
+This recipe keeps that lifecycle explicit. The user input queue is just another
+Effect value, and the agent loop decides at the top of each iteration whether
+to wait for the user or continue the model/tool exchange already in progress.
 
-This recipe wires both behaviors into one small loop body.
+**Scenario.** Run an interactive CLI agent. If the user types several messages
+quickly, collect them into one batch. If the model calls a tool, execute it and
+send the tool output back before checking the queue again.
 
-## The shape
+## The Design Move
 
-```ts
-loop((state) =>
-  Effect.gen(function* () {
-    // Drain the queue ONLY when the previous turn ended cleanly.
-    // Tool-output turns flow straight into the next iteration.
-    const incoming = needsUserInput(state) ? yield* drainBurst(queue, settle) : []
-    const history = [...state.history, ...incoming.map(Items.userText)]
+The whole recipe turns on one question:
 
-    const lm = yield* LanguageModel
-    return lm.streamTurn({ history, model, tools }).pipe(
-      streamUntilComplete<State, ToolEvent>((turn) =>
-        Effect.sync(() => {
-          const calls = Turn.functionCalls(turn)
-          if (calls.length === 0) {
-            return nextAfter(Stream.empty, { history: [...history, ...turn.items] })
-          }
-          const events = Toolkit.executeAll(tools, calls)
-          return Toolkit.nextStateFrom(events, (results) => ({
-            history: [...history, ...turn.items, ...results.map(toFunctionCallOutput)],
-          }))
-        }),
-      ),
-    )
-  }),
-)
-```
+> Does the model need fresh user input, or does it still owe us a response?
 
-The whole queue mechanic comes down to one decision at the top of
-each iteration: do we need user input *right now*?
+That decision is ordinary state inspection:
 
 ```ts
 const needsUserInput = (state: State): boolean => {
@@ -55,19 +31,55 @@ const needsUserInput = (state: State): boolean => {
 }
 ```
 
-- Empty history → first iteration, wait for the user.
-- Last item is an assistant message → previous turn finished clean,
-  wait for the user.
-- Last item is a `function_call_output` → mid-task, run the model
-  again immediately.
+- Empty history means this is the first iteration, so wait for the user.
+- An assistant message means the last turn finished cleanly, so wait again.
+- A `function_call_output` means the model is mid-task, so run the next turn
+  immediately without draining the input queue.
+
+## The Loop
+
+```ts
+loop((state) =>
+  Effect.gen(function* () {
+    // Only wait for the user at clean turn boundaries.
+    const incoming = needsUserInput(state) ? yield* drainBurst(queue, settle) : []
+    const history = [...state.history, ...incoming.map(Items.userText)]
+
+    const lm = yield* LanguageModel
+    return lm
+      .streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors })
+      .pipe(
+        streamUntilComplete<State, ToolEvent>((turn) =>
+          Effect.sync(() => {
+            const calls = Turn.functionCalls(turn)
+
+            // No tools means the assistant answered. The next iteration waits.
+            if (calls.length === 0) {
+              return nextAfter(Stream.empty, Turn.appendTurn({ history }, turn))
+            }
+
+            // Tools mean the model needs their outputs before the user speaks again.
+            const events = Toolkit.executeAll(tools, calls)
+            return Toolkit.nextStateFrom(events, (results) =>
+              Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
+            )
+          }),
+        ),
+      )
+  }),
+)
+```
+
+The important part is not the queue. The important part is that the chat
+lifetime stays in your program. You can swap the CLI queue for WebSocket
+messages, a job queue, a database-backed inbox, or a mobile push channel
+without changing the model/tool continuation shape.
 
 ## Debounced burst collection
 
-`drainBurst` is the input side. It blocks for the first message,
-then keeps collecting while new messages arrive within `settle` of
-each other. The window resets on every arrival, so a burst of typing
-flows together and a single message followed by silence ends the
-burst right away.
+`drainBurst` is the input side. It blocks for the first message, then keeps
+collecting while new messages arrive within `settle` of each other. The window
+resets on every arrival, so a burst of typing becomes one user batch.
 
 ```ts
 export const drainBurst = <A>(
@@ -84,21 +96,17 @@ export const drainBurst = <A>(
   ).pipe(Stream.runCollect)
 ```
 
-Modeled as `Stream.unfold` over a seed that flips after the first
-message: subsequent steps race the next take against the settle
-window. `runCollect` materializes the burst as an array.
-
-When sleep wins the race the in-flight `Queue.take` is interrupted,
-which is safe — `Queue.take` only removes items on successful resume,
-so an item that lands at the exact moment of interruption stays in
-the queue for the next `drainBurst` call.
+Modeled as `Stream.unfold`, the first step waits indefinitely and subsequent
+steps race the next queue item against the settle window. If sleep wins, the
+in-flight `Queue.take` is interrupted safely: an item is removed only when the
+take succeeds, so late arrivals remain for the next drain.
 
 ## Termination
 
-The loop never decides to stop. The runner forks the conversation
-fiber and interrupts it on `Ctrl-C` (or in tests, after the assertions
-land). That mirrors how a real chat agent behaves — the lifetime is a
-session concern, not a loop concern.
+This conversation never returns `stop` on its own. A real chat session is
+usually owned by a server request, WebSocket, tab, worker, or process. The
+runner mirrors that shape by forking the conversation fiber and interrupting it
+on `Ctrl-C`.
 
 ## Run it
 
@@ -106,16 +114,12 @@ session concern, not a loop concern.
 OPENAI_API_KEY=sk-... pnpm tsx recipes/agentic-loop/run.ts
 ```
 
-The runner is an interactive CLI: you type, the agent replies. Two
-toy tools (`get_current_time`, `flip_coin`) each take a few hundred
-milliseconds to simulate real work, so multi-turn responses are
-visible. Try sending a quick burst of messages — they'll land in one
-user batch — or type a new message while the agent is still working
-on the previous one to see it picked up at the next turn boundary.
+The runner is an interactive CLI. Try sending a quick burst of messages: they
+land in one user batch. Then type while the agent is still working: the message
+waits in the queue until the current model/tool turn reaches a clean boundary.
 
-The runner uses `get_current_time(timezone)` and `roll_dice(sides)`;
-both have a `delay` of a few hundred ms so multi-turn flow is
-observable on the terminal.
+The runner includes `get_current_time(timezone)` and `roll_dice(sides)` with a
+small artificial delay so the multi-turn flow is visible in the terminal.
 
 The full source lives next to this README at
 [`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/agentic-loop/index.ts).

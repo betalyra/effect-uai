@@ -3,29 +3,26 @@
  * against the real Responses provider and prints both wire formats so
  * you can copy a frame straight from the terminal.
  *
- * The recipe maps `Turn.toSSE` / `Turn.toJSONL` over the loop's output
- * with `Stream.filterMap`; that's the whole transport layer.
- * `Turn.asSSE` / `Turn.asJSONL` are the same call spelled as a curried
- * helper you can drop straight into `pipe`.
+ * The recipe maps local `toSSE` / `toJSONL` projections over the loop's
+ * output with `Stream.filterMap`; that's the whole transport layer.
  *
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/modify-output-stream/run.ts`
  */
 import { Config, Console, Effect, Layer, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as SSE from "@effect-uai/core/SSE"
-import * as Turn from "@effect-uai/core/Turn"
 import { layer as responsesLayer } from "@effect-uai/responses"
-import { conversation } from "./index.js"
+import { conversation, toJSONL, toSSE } from "./index.js"
 
 const decoder = new TextDecoder("utf-8")
 
 const program = Effect.gen(function* () {
   yield* Console.log("--- as SSE bytes -----------------------------------")
-  const sseBytes = conversation.pipe(Stream.filterMap(Turn.toSSE), SSE.toBytes)
+  const sseBytes = conversation.pipe(Stream.filterMap(toSSE), SSE.toBytes)
   yield* Stream.runForEach(sseBytes, (chunk) => Console.log(decoder.decode(chunk).trimEnd()))
 
   yield* Console.log("\n--- as JSONL lines ---------------------------------")
-  const jsonl = conversation.pipe(Stream.filterMap(Turn.toJSONL))
+  const jsonl = conversation.pipe(Stream.filterMap(toJSONL))
   yield* Stream.runForEach(jsonl, (line: string) => Console.log(line.trimEnd()))
 })
 

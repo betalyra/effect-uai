@@ -3,46 +3,56 @@ title: Modify the output stream
 description: Format the loop's output for the wire by mapping a single function over the stream.
 ---
 
-**Scenario.** Your agent loop emits a `Stream<TurnEvent>`. You want to
-serve it as `text/event-stream` for one transport and as JSONL for
-another. The whole transport layer is one `Stream.filterMap`.
+The model loop should not know whether the browser wants Server-Sent Events,
+your worker wants JSONL, or your test wants raw `TurnEvent`s.
 
-The two functions ship in `@effect-uai/core/Turn`:
+This recipe keeps transport formatting at the edge. Build the same conversation
+stream you would use anywhere else, then map the output into the wire format
+you need.
 
-- `Turn.toSSE` — one `TurnEvent` → one `SSE.Event`, or drop it.
-- `Turn.toJSONL` — one `TurnEvent` → one JSON line, or drop it.
+**Scenario.** Your agent loop emits `Stream<TurnEvent>`. Serve it as
+`text/event-stream` for a web UI and as newline-delimited JSON for another
+consumer. No special runner, no alternate conversation type.
 
-Both are plain `Result.Result` filters, so they compose with
-`Stream.filterMap` directly.
+## The Design Move
+
+Transport is a projection over the output stream:
+
+- `toSSE` — one `TurnEvent` → one `SSE.Event`, or drop it.
+- `toJSONL` — one `TurnEvent` → one JSON line, or drop it.
+
+Both are plain `Result.Result` filters, so they compose with `Stream.filterMap`
+directly. They live in the recipe, not core, because they encode product
+policy: this version forwards text and completion, and drops everything else.
 
 ## The whole thing
 
 ```ts
 import { Stream } from "effect"
 import * as SSE from "@effect-uai/core/SSE"
-import * as Turn from "@effect-uai/core/Turn"
-import { conversation } from "./index.js"
+import { conversation, toJSONL, toSSE } from "./index.js"
 
 // Server-Sent Events on the wire.
-const sseBytes = conversation.pipe(Stream.filterMap(Turn.toSSE), SSE.toBytes)
+const sseBytes = conversation.pipe(Stream.filterMap(toSSE), SSE.toBytes)
 //   ^? Stream<Uint8Array, AiError, LanguageModel>
 
 // Newline-delimited JSON lines.
-const jsonl = conversation.pipe(Stream.filterMap(Turn.toJSONL))
+const jsonl = conversation.pipe(Stream.filterMap(toJSONL))
 //   ^? Stream<string, AiError, LanguageModel>
 ```
 
-`Turn.asSSE` and `Turn.asJSONL` are the curried form of the same
-`filterMap` — drop them directly into a `pipe`:
+The recipe also exports `asSSE` and `asJSONL`, the curried form of the same
+mapping, which is handy when you want the formatter to read like a named stream
+transform:
 
 ```ts
-const sse = conversation.pipe(Turn.asSSE)
-const jsonl = conversation.pipe(Turn.asJSONL)
+const sse = conversation.pipe(asSSE)
+const jsonl = conversation.pipe(asJSONL)
 ```
 
-The recipe's `conversation` is the simplest possible loop — one
-streamed turn, no tools, no extra state — so the focus stays on the
-transport mapping.
+The recipe's `conversation` is deliberately small: one streamed turn, no tools,
+no extra state. In a real app, the same mapping sits after a tool-using loop,
+approval flow, retry policy, or long-lived queue-driven chat.
 
 ## What gets emitted
 
@@ -52,10 +62,13 @@ transport mapping.
 | `turn_complete`              | `event: done\ndata: {"stop_reason",...}`  | `{"type":"done","stop_reason":...,...}`    |
 | reasoning, tool-call deltas  | dropped                                   | dropped                                    |
 
-If you want reasoning or tool-call argument streams on the wire, write
-your own `Stream.filterMap` — `toSSE` / `toJSONL` are deliberately
-small. The same pattern composes for tool-using loops: pre-tag your
-`ToolEvent`s into a small union and `filterMap` that.
+These local `toSSE` and `toJSONL` helpers are intentionally conservative. They
+keep text deltas and turn completion events, and drop internals such as
+reasoning or tool-call argument deltas.
+
+If your product wants those events on the wire, write your own `filterMap`.
+That is the point of the design: the loop emits typed events; the edge decides
+which ones become protocol frames.
 
 ## Run it
 

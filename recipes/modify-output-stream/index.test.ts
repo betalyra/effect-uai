@@ -6,7 +6,7 @@ import { Effect, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Turn from "@effect-uai/core/Turn"
-import { conversation } from "./index.js"
+import { conversation, toJSONL, toSSE } from "./index.js"
 
 const finalTurn: Turn.Turn = {
   stop_reason: "stop",
@@ -22,7 +22,7 @@ const finalTurn: Turn.Turn = {
 
 describe("modify-output-stream", () => {
   it("formats the loop's output as Server-Sent Events", async () => {
-    const sse = conversation.pipe(Stream.filterMap(Turn.toSSE))
+    const sse = conversation.pipe(Stream.filterMap(toSSE))
 
     const events = await Effect.runPromise(
       Stream.runCollect(sse).pipe(Effect.provide(MockProvider.layer([finalTurn]))),
@@ -37,7 +37,7 @@ describe("modify-output-stream", () => {
   })
 
   it("formats the loop's output as JSONL lines", async () => {
-    const jsonl = conversation.pipe(Stream.filterMap(Turn.toJSONL))
+    const jsonl = conversation.pipe(Stream.filterMap(toJSONL))
 
     const lines = await Effect.runPromise(
       Stream.runCollect(jsonl).pipe(Effect.provide(MockProvider.layer([finalTurn]))),

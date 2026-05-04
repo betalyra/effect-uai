@@ -3,19 +3,36 @@ title: Model retry
 description: Retry rate-limited and transport failures with exponential backoff; let everything else propagate.
 ---
 
-**Scenario.** Your model call hits a `RateLimited` or `Unavailable`
-during a turn. You want to wait a bit and try again — up to a few times,
-with each delay longer than the last — but only for the failures that
-make sense to retry. `ContentFiltered`, `AuthFailed`, `InvalidRequest`
-should fail loudly and immediately.
+Retries are not an agent framework feature. They are error policy around one
+stream.
 
-This recipe is the retry shape inlined into a normal loop body. No
-wrapper service, no helper function: just `streamTurn` followed by a
-small `catchIf → retry → catchTag → flatMap` pipeline.
+This recipe shows the retry shape inline in a normal loop body: retry transient
+provider failures with exponential backoff, while letting semantic or permanent
+failures cross the boundary immediately.
+
+**Scenario.** A streamed model turn hits `RateLimited`, `Unavailable`, or
+`Timeout`. Wait a bit and try again. If the failure is `ContentFiltered`,
+`AuthFailed`, `InvalidRequest`, or another non-transient error, fail loudly
+instead of burning retries.
+
+## The Design Move
+
+`Stream.retry` retries any failure it sees. The trick is to make sure it only
+sees failures you actually want retried.
+
+The stream is temporarily lifted into a small local union:
+
+- model events become `{ _tag: "Event", event }`;
+- retryable errors fail as `Retryable`;
+- non-retryable errors become `{ _tag: "Terminal", cause }`, a value that
+  escapes the retry layer.
+
+After the retry schedule finishes, the recipe unwraps everything back into the
+plain `Stream<TurnEvent, AiError>` the rest of the loop expects.
 
 ## The retryable set
 
-Three `AiError` tags get retried. Everything else propagates as-is:
+Three `AiError` tags get retried. Everything else propagates as-is.
 
 | Tag                      | Retried? | Why                                       |
 | ------------------------ | -------- | ----------------------------------------- |
@@ -32,17 +49,12 @@ Three `AiError` tags get retried. Everything else propagates as-is:
 
 ## The pipeline
 
-`Stream.retry` retries on any failure, so we can't drop the `Schedule`
-straight on top of `streamTurn` and expect it to gate on the error
-tag. The trick: lift each event into a tagged `Item` and split the
-failure channel before the retry layer.
-
 ```ts
 streamTurn(req).pipe(
   Stream.map((event): Item => ({ _tag: "Event", event })),
   Stream.catchIf(
     isRetryable,
-    (cause) => Stream.fail(new Retryable({ cause })),     // retried
+    (cause) => Stream.fail(new Retryable({ cause })), // retried
     (cause) => Stream.succeed<Item>({ _tag: "Terminal", cause }), // escapes retry
   ),
   Stream.retry(backoff),
@@ -55,20 +67,14 @@ streamTurn(req).pipe(
 
 Reading the pipeline:
 
-1. `Stream.map` lifts every `TurnEvent` into `{ _tag: "Event", event }`.
-2. `Stream.catchIf` splits the failure channel:
-   - retryable errors fail with `Retryable` (the only thing the retry
-     layer should ever see),
-   - non-retryable errors *succeed* with `{ _tag: "Terminal", cause }`,
-     so they never trigger retry.
-3. `Stream.retry(backoff)` walks the schedule on `Retryable` failures.
-4. `Stream.catchTag("Retryable", ...)` unwraps the original `AiError`
-     after retries are exhausted.
-5. `Stream.flatMap` undoes step 1: events pass through, `Terminal`
-     items become a stream failure.
+1. Keep normal turn events as values.
+2. Convert only retryable provider errors into the failure type consumed by
+   `Stream.retry`.
+3. Smuggle non-retryable errors past the retry layer as terminal values.
+4. Restore the original `AiError` channel before handing the stream downstream.
 
-Downstream sees a plain `Stream<TurnEvent, AiError>`, indistinguishable
-from a non-retried call.
+Downstream still sees a plain model turn stream. Retry is a local policy, not a
+new abstraction that leaks through the rest of the program.
 
 ## The schedule
 
@@ -79,31 +85,24 @@ const backoff = Schedule.exponential("200 millis", 2).pipe(
 )
 ```
 
-- `Schedule.exponential("200 millis", 2)` — 200ms, 400ms, 800ms, ...
-- `Schedule.both(..., recurs(3))` — *and* at most three retries. `both`
-  only continues while every component schedule continues, so this
-  caps the loop at 4 total tries (1 + 3).
-- `Schedule.jittered` — randomize each delay to avoid thundering herd
-  when many clients all retry at once.
+This means 200ms, 400ms, 800ms, capped at three retries (four total tries),
+with jitter so many clients do not retry in lockstep.
 
-Tune by editing the constants. Per-tier policies (different schedule
-for `RateLimited` than `Unavailable`) are a small extension: replace
-the single `Retryable` tag with one per error category and run them
-through different `Stream.retry` layers.
+Tune the constants for your product. If `RateLimited` and `Unavailable` should
+use different policies, split `Retryable` into separate tagged errors and run
+them through different retry layers.
 
 ## Caveat: stream replay
 
-`Stream.retry` reruns the *entire* stream, so any deltas already
-emitted before the failure will be **replayed** on the next attempt.
-For typical retryable failures (rate-limit / transport errors that hit
-before the first delta) that's a non-issue — there are no deltas yet.
+`Stream.retry` reruns the entire stream. If the provider emitted deltas before
+the failure, those deltas can be replayed on the next attempt.
 
-For mid-stream failures where you want at-most-once delta forwarding,
-retry at the request boundary instead: use `LanguageModel.turn` (which
-returns `Effect<Turn>`) inside `Effect.retry({ schedule, while })`,
-then materialize the result as a synthetic `[turn_complete]` stream.
-You lose live streaming inside an attempt, but you don't replay
-partial output.
+For rate limits and transport failures that happen before the first delta, this
+is exactly what you want. For mid-stream failures where the UI must never see a
+delta twice, retry at the request boundary instead: use `LanguageModel.turn`
+inside `Effect.retry`, then materialize the completed turn as a synthetic
+stream. You lose live streaming inside an attempt, but you get at-most-once
+forwarding.
 
 ## Run it
 

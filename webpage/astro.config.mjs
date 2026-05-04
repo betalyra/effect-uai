@@ -85,6 +85,7 @@ export default defineConfig({
             { label: "Auto-compaction", slug: "recipes/auto-compaction" },
             { label: "Pause and resume", slug: "recipes/pause-resume" },
             { label: "Mid-stream abort", slug: "recipes/mid-stream-abort" },
+            { label: "Agentic loop", slug: "recipes/agentic-loop" },
             { label: "Modify output stream", slug: "recipes/modify-output-stream" },
             { label: "Model retry", slug: "recipes/model-retry" },
             {

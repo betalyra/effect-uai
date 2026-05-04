@@ -205,14 +205,17 @@ html[data-theme]:not([data-has-sidebar]) {
   background-color: var(--color-mark);
 }
 
-/* Body links: stay black, hover shows the red. Restrained. */
-.sl-markdown-content a {
+/* Body links: stay black, hover shows the red. Restrained.
+   Scoped with :not(.not-content *) — same as Starlight's own
+   markdown rules — so React sections that opt out via .not-content
+   keep their own link colors (shadcn button variants, etc.). */
+.sl-markdown-content a:not(:where(.not-content *)) {
   color: var(--sl-color-text);
   text-decoration-color: var(--sl-color-gray-3);
   text-underline-offset: 0.2em;
 }
 
-.sl-markdown-content a:hover {
+.sl-markdown-content a:hover:not(:where(.not-content *)) {
   color: var(--color-mark);
   text-decoration-color: var(--color-mark);
 }

@@ -17,6 +17,7 @@ export default defineConfig({
       components: {
         ThemeSelect: "./src/components/ThemeSelect.astro",
         Hero: "./src/components/Hero.astro",
+        Footer: "./src/components/Footer.astro",
       },
       social: [
         {

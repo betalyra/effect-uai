@@ -3,11 +3,12 @@ title: Streaming structured output
 description: Decode JSONL one object at a time as the model streams. Typed per-object Stream, errors in the failure channel.
 ---
 
-**Scenario.** You want the model to emit a list of structured objects
-and surface them to the user as they arrive — not all at once at the
-end. Each object is validated against an Effect Schema as soon as its
-JSON is complete; downstream consumers see a typed `Stream<Recipe>`,
-not raw text.
+Streaming structured output is local validation over a text stream.
+
+Server-enforced structured output is great when you can wait for the whole
+object. If you want objects to appear one-by-one as the model writes them,
+prompt for JSONL, turn text deltas into lines, and validate each line locally.
+Downstream consumers see a typed `Stream<Recipe>`, not raw text.
 
 This is *prompt-driven*, not server-enforced — JSONL has no native
 wire format. The combinators stay the same across all three providers
@@ -49,6 +50,7 @@ const program = streamTurn({
   history: [Items.userText(prompt)],
   model: "gpt-5.4-mini",
 }).pipe(
+  // Provider text deltas become newline-framed JSON, then typed objects.
   Turn.textDeltas,
   Lines.lines,
   StructuredFormat.decodeJsonLines(recipeFormat),

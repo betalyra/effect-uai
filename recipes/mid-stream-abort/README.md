@@ -3,11 +3,12 @@ title: Mid-stream abort
 description: Cancel an in-flight streamTurn cleanly via Stream.interruptWhen, tearing down the upstream HTTP request.
 ---
 
-**Scenario.** A turn is mid-generation - text deltas are arriving from the
-provider - and something external (user clicks "stop", a new prompt
-arrives, a deadline elapses) needs to cancel it. The upstream HTTP
-connection must close, the loop must end cleanly, and any partial deltas
-already emitted are kept.
+Cancellation follows the stream scope.
+
+A turn is mid-generation - text deltas are arriving from the provider - and
+something external (user clicks "stop", a new prompt arrives, a deadline
+elapses) needs to cancel it. The upstream HTTP connection must close, the loop
+must end cleanly, and any partial deltas already emitted are kept.
 
 This is a one-line addition to a normal loop: pipe the conversation
 stream through `Stream.interruptWhen(Deferred.await(abort))`. When the
@@ -52,6 +53,7 @@ const conversation = pipe(
 const abort = yield* Deferred.make<void>()
 
 yield* Stream.runForEach(
+  // Completing `abort` interrupts the stream and closes the provider scope.
   conversation.pipe(Stream.interruptWhen(Deferred.await(abort))),
   (event) => /* log delta, log completion, ... */,
 )

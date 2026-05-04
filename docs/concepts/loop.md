@@ -3,11 +3,17 @@ title: The loop primitive
 description: State, body, and a stream of events - the three things an agent loop needs.
 ---
 
-The core thesis of `effect-uai`: **the user owns the loop**. State is a
+An agent is a loop over your state.
+
+In `effect-uai`, that loop is not hidden inside an `Agent` class. State is a
 plain record, the body is a `Stream`, and a small tagged event type
-(`Value` / `Next` / `Stop`) controls iteration. There's no producer
-fiber, no queue buffering - the next iteration is only pulled when the
-downstream consumer pulls the outer stream.
+(`Value` / `Next` / `Stop`) controls iteration. Each turn, tool call,
+fallback, compaction, or pause is just ordinary Effect code in that body.
+
+The loop is pull-based: there is no producer fiber and no queue buffering. The
+next iteration only starts when the downstream consumer pulls the outer stream.
+That keeps backpressure, cancellation, and resource cleanup aligned with normal
+Effect `Stream` semantics.
 
 ## The shape
 
@@ -89,10 +95,12 @@ pipe(
             Effect.gen(function* () {
               const calls = Turn.functionCalls(turn)
 
+              // No tool calls means there is nothing to feed back.
               if (calls.length === 0) return stop
 
               const events = Toolkit.executeAll(allTools, calls)
               return Toolkit.nextStateFrom(events, (results) =>
+                // Build the next state only after every tool call has an output.
                 Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
               )
             }),

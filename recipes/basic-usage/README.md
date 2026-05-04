@@ -1,32 +1,31 @@
 ---
 title: Basic usage
-description: A streaming, tool-using conversation built from `loop` and the OpenAI Responses provider.
+description: Build the core agent harness: state, stream, tools, and explicit continuation.
 ---
 
-**Scenario.** Ask the model "What time is it in Lisbon and Tokyo right
-now?", let it call a `get_current_time` tool, run the tool, and feed the
-output back so the model can produce a final answer. Deltas stream as they
-arrive.
+This is the shape everything else in `effect-uai` grows from.
 
-This is the smallest end-to-end shape an agent built on `effect-uai` takes:
-state is a plain record, the body is a `Stream`, and the loop continues
-until the model stops asking for tools.
+A conversation is not a framework-owned agent. It is a loop over your own
+state. Each iteration streams one model turn. When the turn completes, you
+inspect the data, run any requested tools, append the tool outputs to history,
+and decide whether to continue or stop.
 
-## What it shows
+**Scenario.** Ask the model "What time is it in Lisbon and Tokyo right now?",
+let it call a `get_current_time` tool, run the tool, and feed the output back
+so the model can produce a final answer. Deltas stream the whole time.
 
-- Defining a tool with `Tool.make` and an Effect `Schema` for its input.
-- Projecting tools to provider-shaped descriptors with `Tool.toDescriptors`.
-- Driving a turn with `Responses.streamTurn` and piping the raw delta
-  stream through `Loop.streamUntilComplete` to forward deltas to the
-  consumer and decide what to do once the turn lands.
-- Running every requested tool with `Toolkit.executeAll`, which returns
-  a `Stream<ToolEvent>` of structured `ToolResult`s.
-- Threading those results into next-state via `Toolkit.nextStateFrom`,
-  applying `toFunctionCallOutput` at the wire boundary.
-- Ending the loop with `Loop.stop` when the model produced its final
-  message.
+## The Harness
 
-## The loop, in shape
+The core harness has four moving parts:
+
+- **State is a record.** Here it is just `{ history, index }`.
+- **One turn is a stream.** Provider deltas flow out immediately.
+- **Tools are Effects.** The model asks; you validate, execute, and append
+  structured results.
+- **Continuation is explicit.** No lifecycle hook decides the next step for
+  you.
+
+## The Loop In Shape
 
 ```ts
 pipe(
@@ -41,10 +40,12 @@ pipe(
           streamUntilComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
               const calls = Turn.functionCalls(turn)
+              // No tool calls means the model produced its final answer.
               if (calls.length === 0) return stop
 
               const events = Toolkit.executeAll(toolkit.tools, calls)
               return Toolkit.nextStateFrom(events, (results) =>
+                // Append the model's function_call items and the matching outputs.
                 Turn.appendTurn(
                   { ...state, index: state.index + 1 },
                   turn,
@@ -59,17 +60,35 @@ pipe(
 )
 ```
 
-`Toolkit.executeAll` runs every requested tool concurrently, streaming
-intermediates from streaming tools and a terminal `Output` per call.
-`Toolkit.nextStateFrom` collects every `ToolResult` and hands them to the
-builder for next-state construction. `Turn.appendTurn` appends the model
-turn plus tool outputs to history; `toFunctionCallOutput` is the one place
-structured `ToolResult`s become wire-shaped strings. `Loop.stop` ends the
-loop.
+Read it from top to bottom:
+
+- `streamTurn` starts one model turn from the current history.
+- `streamUntilComplete` forwards deltas while the turn is in flight, then
+  hands you the assembled `Turn`.
+- `Turn.functionCalls(turn)` extracts what the model asked tools to do.
+- `Toolkit.executeAll` runs those calls and streams `ToolEvent`s.
+- `nextStateFrom` collects terminal `ToolResult`s.
+- `Turn.appendTurn` appends both model items and tool outputs to history.
+- `stop` ends the loop when the model no longer asks for tools.
+
+The important part is not the helper names. The important part is that every
+transition is visible as ordinary Effect code. Want fallback? Catch provider
+errors around the turn stream. Want approval? Split tool calls before
+`executeAll`. Want compaction? Transform `state.history` before the next
+iteration.
 
 If the upstream ends without a `turn_complete`, the resulting stream
 fails with `AiError.IncompleteTurn` - catch it via `Stream.catchTag`
 if you want to recover.
+
+## What This Generalizes To
+
+This same harness is used by the rest of the recipes:
+
+- tool approval gates calls before `executeAll`;
+- streaming tools add `Intermediate` events without changing the loop;
+- model fallback catches provider errors and continues with a new layer;
+- compaction rewrites history before the next turn.
 
 ## Run it
 

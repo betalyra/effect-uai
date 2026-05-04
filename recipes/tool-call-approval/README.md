@@ -41,10 +41,12 @@ import * as Toolkit from "@effect-uai/core/Toolkit"
 streamUntilComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
     const calls = Turn.functionCalls(turn)
+    // No requested tools means there is nothing to approve or execute.
     if (calls.length === 0) return stop
 
     const plan = fromApprovalMap(isSensitive, approvals)(calls)
     const events = Stream.merge(
+      // Approved calls run; denied/missing approvals still become outputs.
       Toolkit.executeAll(allTools, plan.approved),
       Toolkit.outputEvents(plan.rejected),
     )
@@ -103,6 +105,7 @@ import { fromVerdictQueue } from "@effect-uai/core/Resolvers"
 streamUntilComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
     const calls = Turn.functionCalls(turn)
+    // No requested tools means there is nothing to approve or execute.
     if (calls.length === 0) return stop
 
     // `Stream.unwrap` supplies the Scope that fromVerdictQueue's router
@@ -117,6 +120,7 @@ streamUntilComplete<State, ToolEvent>((turn) =>
         return Stream.merge(
           announce,
           Stream.merge(
+            // Safe calls start immediately; gated calls resume as verdicts arrive.
             Toolkit.executeAll(allTools, approved),
             decisions.pipe(
               Stream.flatMap((decision) =>

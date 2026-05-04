@@ -1,25 +1,19 @@
 ---
 title: Structured output
-description: Constrain the model's output to a JSON Schema, then validate the assembled text against an Effect Schema.
+description: Use one schema as both the provider contract and the local validator.
 ---
 
-**Scenario.** You want the model to return data, not prose. Define a
-schema, hand it to the provider as a wire-level constraint, and
-validate the assembled output locally before using it.
+Structured output is the same turn primitive with a stronger boundary
+contract.
 
-## What it shows
+You still run one model turn. The difference is that the schema crosses the
+boundary twice: first as JSON Schema sent to the provider, then as an Effect
+Schema validator run locally after the turn lands. The provider is asked to
+produce the shape; your application still checks before trusting it.
 
-- `StructuredFormat.fromEffectSchema` adapts an Effect Schema for use
-  as both the wire-level JSON Schema (sent to the provider) and the
-  local validator (run after the turn lands).
-- The `structured` option on the request constrains the model's
-  output across all three providers via the generic `LanguageModel`
-  tag.
-- `Turn.toStructured` validates the assembled output, surfacing
-  `RefusalRejected`, `JsonParseError`, or `StructuredDecodeError` as
-  typed failures.
+**Scenario.** Ask for a recipe and receive typed data, not prose.
 
-## Single object
+## The Contract
 
 ```ts
 const Recipe = Schema.Struct({
@@ -27,23 +21,48 @@ const Recipe = Schema.Struct({
   ingredients: Schema.Array(Schema.String),
   prepMinutes: Schema.Number,
 })
+type Recipe = typeof Recipe.Type
 
 const recipeFormat = StructuredFormat.fromEffectSchema(Recipe)
+```
 
+`StructuredFormat.fromEffectSchema` adapts the Effect Schema into the two
+things this boundary needs:
+
+- a provider-facing JSON Schema constraint;
+- a local decoder for the assembled model output.
+
+## One Turn, Typed Result
+
+```ts
 const program = Effect.gen(function* () {
   const turn = yield* runTurn({
     history: [Items.userText("Give me a recipe for one-pan lemon chicken.")],
     model: "gpt-5.4-mini",
+    // The provider sees JSON Schema; your app keeps the Effect Schema decoder.
     structured: recipeFormat,
   })
+
   const recipe: Recipe = yield* Turn.toStructured(turn, recipeFormat)
   yield* Effect.logInfo("recipe", { recipe })
 })
 ```
 
-Server-enforced shape plus local validation. The model can't return
-anything that doesn't match the schema; if it tries (or refuses), the
-local validator surfaces a typed error.
+The request is still just a normal `LanguageModel` turn. The `structured`
+option constrains generation across OpenAI, Anthropic, and Gemini providers.
+`Turn.toStructured` then validates the final assembled text and returns typed
+data or a typed failure.
+
+## Failure Is Data Too
+
+Structured output can fail in distinct ways:
+
+- **`RefusalRejected`** — the assistant refused instead of producing output.
+- **`JsonParseError`** — the assembled text was not valid JSON.
+- **`StructuredDecodeError`** — the JSON did not match the schema.
+
+Those failures stay in the Effect error channel, so callers decide whether to
+retry, fall back, ask a repair model, or surface the problem.
 
 ## Multi-object output
 
@@ -60,6 +79,15 @@ For *streaming* multi-object output (one object decoded as soon as its
 JSON is complete), see the
 [Streaming structured output](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-structured-output)
 recipe.
+
+## What This Generalizes To
+
+Structured output composes with the same primitives as everything else:
+
+- use it inside a loop when every turn needs a typed decision;
+- catch typed decode failures and retry with a stricter prompt;
+- swap providers by changing the layer, not the program shape;
+- stream JSONL objects with the streaming structured-output recipe.
 
 ## Run it
 

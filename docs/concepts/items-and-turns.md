@@ -3,11 +3,13 @@ title: Items and turns
 description: The flat conversation history, the assembled turn, and the event stream that ties them together.
 ---
 
-Three data primitives carry every conversation: **`Item`** (the unit of
-history), **`Turn`** (the result of one model call), and **`TurnEvent`**
-(the streaming union you consume while a turn is in flight). The same
-shapes are used for every provider. Anything provider-specific lives in
-that provider's wire layer, not here.
+One turn is a stream, but a conversation still needs durable data.
+
+Three primitives carry that data: **`Item`** (one entry in history),
+**`Turn`** (the assembled result of one model call), and **`TurnEvent`**
+(the typed stream you consume while the turn is in flight). The same shapes
+are used for every provider. Anything provider-specific lives in that
+provider's wire layer, not in your agent harness.
 
 ## `Item` - the conversation as a flat list
 

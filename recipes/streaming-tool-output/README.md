@@ -3,12 +3,14 @@ title: Streaming tool output
 description: Two flavors of `Tool.streaming` - sub-agent text streaming and progress + terminal result.
 ---
 
+Streaming tools let the user see inner work without leaking the whole event
+log back to the model.
+
 A `Tool.streaming` returns a `Stream<Event>` from `run` and reduces the
-collected events into the model-facing `Output` via `finalize`. Each
-inner event flows through to the consumer as a
-`ToolEvent.Intermediate`; the outer model only ever sees `finalize(events)`
-as the structured `Output`. Rich UI for the user, clean data for the
-model.
+collected events into the model-facing `Output` via `finalize`. Each inner
+event flows through to the consumer as a `ToolEvent.Intermediate`; the outer
+model only ever sees `finalize(events)` as the structured `Output`. Rich UI
+for the user, clean data for the model.
 
 This recipe shows two patterns side-by-side:
 

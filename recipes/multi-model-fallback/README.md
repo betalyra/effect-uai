@@ -3,12 +3,13 @@ title: Multi-model fallback
 description: Try OpenAI; on RateLimited or Unavailable, fall back to Gemini; on ContentFiltered, give up.
 ---
 
-**Scenario.** Try OpenAI (`gpt-5.4-mini`). If it returns `RateLimited` or
-`Unavailable`, advance to the next tier (Gemini `gemini-3-flash-preview`)
-with the same `state.history` and try again. Other typed `AiError`
-variants - `ContentFiltered`, `AuthFailed`, `ContextLengthExceeded`,
-`InvalidRequest` - propagate to the caller. The first successful turn
-ends the loop.
+Provider failure is just stream failure recovery.
+
+Try OpenAI (`gpt-5.4-mini`). If it returns `RateLimited` or `Unavailable`,
+advance the loop state to the next tier (Gemini `gemini-3-flash-preview`)
+and try again with the same `state.history`. Other typed `AiError` variants -
+`ContentFiltered`, `AuthFailed`, `ContextLengthExceeded`, `InvalidRequest` -
+propagate to the caller. The first successful turn ends the loop.
 
 The same shape works for any number of tiers. Add more entries to the
 `tiers` array; the loop walks them in order until one succeeds or the
@@ -37,6 +38,7 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
         const tier = tiers[state.tier]
         if (tier === undefined) return stop // exhausted
 
+        // Fallback is a state transition: same history, next provider tier.
         const advanceTier = (reason: string) =>
           Effect.logWarning(`${tier.name}: ${reason} - falling back`).pipe(
             Effect.as(nextAfter(Stream.empty, { ...state, tier: state.tier + 1 })),
@@ -44,6 +46,7 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
 
         return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
           streamUntilComplete(() => Effect.sync(() => stop)),
+          // Only retry errors become continuation; everything else crosses the boundary.
           Stream.catchTag("RateLimited", () => Stream.unwrap(advanceTier("rate-limited"))),
           Stream.catchTag("Unavailable", () => Stream.unwrap(advanceTier("unavailable"))),
         )

@@ -35,7 +35,7 @@ ESM-only. Requires `effect@4.x` as a peer.
 
 Full docs: <https://effect-uai.betalyra.com>
 
-Start with the [Quickstart](https://effect-uai.betalyra.com/start/getting-started/)
+Start with [One turn is a stream](https://effect-uai.betalyra.com/start/getting-started/)
 and then [Basic usage](https://effect-uai.betalyra.com/recipes/basic-usage/).
 
 ## License

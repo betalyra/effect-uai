@@ -3,6 +3,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { docsData } from "@/lib/hero-data"
 import { cn } from "@/lib/utils"
 import { PiArrowRight, PiArrowSquareOut } from "react-icons/pi"
+import HeroCodePanel from "./HeroCodePanel.astro"
 
 const data = docsData(Astro.locals.starlightRoute)
 const { title = data.title, tagline, actions = [] } = data.hero ?? {}
@@ -14,7 +15,9 @@ const variantToButton = {
 } as const
 ---
 
-<div class="hero grid items-center gap-4 pb-4">
+<div
+  class="hero grid items-center gap-4 pb-4 min-[50rem]:min-h-[calc(100vh-var(--sl-nav-height))]! min-[50rem]:py-[clamp(1.5rem,calc(0.5rem+4vmin),4rem)]! lg:grid-cols-[minmax(0,1fr)_minmax(24rem,38rem)]! lg:gap-[clamp(2rem,5vw,5rem)]!"
+>
   <div
     class="flex flex-col gap-[clamp(1.25rem,calc(1rem+1vw),1.75rem)] text-center min-[50rem]:text-start"
   >
@@ -61,5 +64,6 @@ const variantToButton = {
       Most ai frameworks hide the LLM interaction loop. Great to get started, painful when you need to customize it. effect-uai keeps the LLM interaction explicit: small Effect-native <strong>building blocks</strong>, <strong>practical recipes</strong>, and <strong>full control</strong> over your agent loop.
     </p>
   </div>
+  <HeroCodePanel />
 </div>
 

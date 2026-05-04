@@ -1,0 +1,291 @@
+---
+import { codeToTokensWithThemes } from "shiki"
+
+const lines = [
+  {
+    code: "export const conversation = pipe(",
+    label: "Compose the harness",
+    description: "Build an agent loop from small parts instead of adopting a framework runtime.",
+  },
+  {
+    code: "  initial,",
+    label: "Own the state",
+    description: "Carry history, approvals, budgets, memory, tenants, or app-specific context.",
+  },
+  {
+    code: "  loop((state) =>",
+    label: "Control the turns",
+    description: "Pause, resume, compact, persist, branch, or stop the conversation on your terms.",
+  },
+  {
+    code: "    Effect.gen(function* () {",
+    label: "Use Effect directly",
+    description: "Add retries, timeouts, tracing, layers, typed errors, and concurrency where needed.",
+  },
+  {
+    code: "      const oai = yield* Responses",
+    label: "Choose providers",
+    description: "Use Responses, Anthropic, or Gemini today; more providers can plug in the same way.",
+  },
+  { code: "      return oai", label: "", description: "" },
+  {
+    code: "        .streamTurn({ history: state.history, model, tools })",
+    label: "Design the UX",
+    description: "Stream tokens, tool events, and partial progress into any UI or transport.",
+  },
+  { code: "        .pipe(", label: "", description: "" },
+  {
+    code: "          streamUntilComplete((turn) => Effect.sync(() => {",
+    label: "React at boundaries",
+    description: "Show live output while it streams, then decide what happens after the turn completes.",
+  },
+  {
+    code: "            const calls = Turn.functionCalls(turn)",
+    label: "Inspect model intent",
+    description: "Route, approve, reject, audit, or batch tool calls before anything executes.",
+  },
+  {
+    code: "            if (calls.length === 0) return stop",
+    label: "Define completion",
+    description: "Stop on a final answer, a budget limit, a policy decision, or your own condition.",
+  },
+  {
+    code: "            const events = Toolkit.executeAll(tools, calls)",
+    label: "Expose real tools",
+    description: "Run typed Effect tools with streaming output, errors, scopes, and dependencies.",
+  },
+  {
+    code: "            return Toolkit.nextStateFrom(events, (results) =>",
+    label: "Keep events visible",
+    description: "Forward intermediate work to users while collecting final outputs for the next turn.",
+  },
+  {
+    code: "              Turn.appendTurn(",
+    label: "Persist your way",
+    description: "Write the next state to memory, a database, a queue, or a resumable workflow.",
+  },
+  {
+    code: "                state,",
+    label: "Keep app context",
+    description: "The library does not own your session model; your application does.",
+  },
+  {
+    code: "                turn,",
+    label: "Store the turn",
+    description: "Preserve the model response as durable data for replay, debugging, and audit.",
+  },
+  {
+    code: "                results.map(toFunctionCallOutput),",
+    label: "Stay provider-correct",
+    description: "Return every tool result to the model without giving up control of the loop.",
+  },
+  { code: "              ),", label: "", description: "" },
+  { code: "            )", label: "", description: "" },
+  { code: "          })),", label: "", description: "" },
+  { code: "        )", label: "", description: "" },
+  { code: "    }),", label: "", description: "" },
+  { code: "  ),", label: "", description: "" },
+  { code: ")", label: "", description: "" },
+] as const
+
+const code = lines.map((line) => line.code).join("\n")
+const tokens = await codeToTokensWithThemes(code, {
+  lang: "ts",
+  themes: {
+    light: "min-light",
+    dark: "min-dark",
+  },
+})
+
+const lineNumberWidth = String(tokens.length).length
+const interactiveIndices = lines
+  .map((line, idx) => (line.label.length > 0 ? idx : -1))
+  .filter((idx) => idx >= 0)
+const firstActive = interactiveIndices[0] ?? 0
+const initialLine = lines[firstActive]
+
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;"
+    : c === "<" ? "&lt;"
+    : c === ">" ? "&gt;"
+    : c === '"' ? "&quot;"
+    : "&#39;",
+  )
+
+const interactiveLineClass = [
+  "cursor-pointer",
+  "hover:border-(--color-mark)",
+  "hover:bg-[color-mix(in_srgb,var(--color-mark)_10%,transparent)]",
+  "focus:border-(--color-mark)",
+  "focus:bg-[color-mix(in_srgb,var(--color-mark)_10%,transparent)]",
+  "data-[active=true]:border-(--color-mark)",
+  "data-[active=true]:bg-[color-mix(in_srgb,var(--color-mark)_10%,transparent)]",
+].join(" ")
+
+const codeHtml = tokens
+  .map((lineTokens, idx) => {
+    const meta = lines[idx]
+    const isInteractive = meta.label.length > 0
+    const tokensHtml =
+      lineTokens.length === 0
+        ? " "
+        : lineTokens
+            .map((token) => {
+              const lightColor = token.variants.light.color ?? "var(--sl-color-text)"
+              const darkColor = token.variants.dark.color ?? "var(--sl-color-text)"
+              return `<span class="hcl-tok" style="--shiki-light:${lightColor};--shiki-dark:${darkColor}">${escapeHtml(token.content)}</span>`
+            })
+            .join("")
+    const classes = [
+      "hero-code-line",
+      "relative",
+      "-mx-2",
+      "flex",
+      "min-h-[1.7em]",
+      "border-l-2",
+      "border-transparent",
+      "px-2",
+      "outline-none",
+      "transition-colors",
+      isInteractive ? interactiveLineClass : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+    const tabindex = isInteractive ? ` tabindex="0"` : ""
+    return (
+      `<span class="${classes}" data-line-index="${idx}"` +
+      ` data-label="${escapeHtml(meta.label)}"` +
+      ` data-desc="${escapeHtml(meta.description)}"${tabindex}>` +
+      `<span class="mr-4 shrink-0 select-none text-right text-muted-foreground/45 tabular-nums" style="width:${lineNumberWidth}ch">${idx + 1}</span>` +
+      `<span class="hcl-content min-w-0 whitespace-pre">${tokensHtml}</span>` +
+      `</span>`
+    )
+  })
+  .join("")
+---
+
+<aside class="hidden justify-self-end lg:block lg:w-full" aria-label="effect-uai loop">
+  <div
+    id="hero-code-panel"
+    class="overflow-hidden rounded-[14px] border border-border bg-card shadow-none transition-colors hover:border-(--color-mark)"
+    data-interactive={JSON.stringify(interactiveIndices)}
+  >
+    <div
+      class="flex items-center justify-between gap-3 border-b border-border px-5 py-3 font-mono text-[0.62rem] tracking-[0.08em] text-muted-foreground uppercase"
+    >
+      <div class="flex items-center gap-2.5">
+        <span class="inline-block h-1.5 w-1.5 bg-(--color-mark)" aria-hidden="true"></span>
+        <span class="text-foreground">basic-usage / agent loop</span>
+      </div>
+      <span class="flex items-center gap-2">
+        <span
+          class="inline-block h-1 w-1 animate-pulse rounded-full bg-(--color-mark)"
+          aria-hidden="true"></span>
+         hover any line
+      </span>
+    </div>
+
+    <pre
+      class="m-0 border-0 bg-transparent px-4 py-4 font-mono text-[0.82rem] leading-[1.7]"><code set:html={codeHtml} /></pre>
+
+    <div
+      class="flex h-25 flex-col justify-center gap-1.5 border-t border-border bg-[color-mix(in_srgb,var(--sl-color-bg)_92%,var(--sl-color-text)_8%)] px-5 py-3"
+    >
+      <div
+        class="font-mono text-[0.62rem] tracking-widest text-(--color-mark) uppercase"
+        data-current-label
+      >
+        {initialLine.label}
+      </div>
+      <p
+        class="line-clamp-2 text-[0.92rem] leading-snug text-muted-foreground"
+        data-current-desc
+      >
+        {initialLine.description}
+      </p>
+    </div>
+  </div>
+</aside>
+
+<style is:global>
+  /* These selectors must stay unscoped: the line/token spans are injected
+     via set:html, so they don't carry Astro's scope attribute. */
+  #hero-code-panel pre code .hcl-tok {
+    display: inline;
+    color: var(--shiki-light);
+  }
+  html[data-theme="dark"] #hero-code-panel pre code .hcl-tok {
+    color: var(--shiki-dark);
+  }
+  #hero-code-panel pre code .hero-code-line {
+    display: flex;
+  }
+  #hero-code-panel pre code .hcl-content {
+    display: inline;
+    white-space: pre;
+  }
+</style>
+
+<script is:inline>
+  ;(() => {
+    const panel = document.getElementById("hero-code-panel")
+    if (!panel) return
+    const interactive = JSON.parse(panel.dataset.interactive || "[]")
+    if (interactive.length === 0) return
+    const lines = panel.querySelectorAll(".hero-code-line")
+    const labelEl = panel.querySelector("[data-current-label]")
+    const descEl = panel.querySelector("[data-current-desc]")
+    if (!labelEl || !descEl) return
+
+    let pos = 0
+    let timer = null
+
+    const setActive = (idx) => {
+      lines.forEach((el) => el.removeAttribute("data-active"))
+      const el = lines[idx]
+      if (!el) return
+      el.setAttribute("data-active", "true")
+      labelEl.textContent = el.dataset.label || ""
+      descEl.textContent = el.dataset.desc || ""
+    }
+
+    const stopAuto = () => {
+      if (timer !== null) {
+        clearInterval(timer)
+        timer = null
+      }
+    }
+
+    const startAuto = () => {
+      stopAuto()
+      timer = setInterval(() => {
+        pos = (pos + 1) % interactive.length
+        setActive(interactive[pos])
+      }, 2600)
+    }
+
+    setActive(interactive[0])
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (!reduced) startAuto()
+
+    panel.addEventListener("mouseenter", stopAuto)
+    panel.addEventListener("mouseleave", () => {
+      if (!reduced) startAuto()
+    })
+
+    lines.forEach((el) => {
+      if (!el.dataset.label) return
+      const idx = Number(el.dataset.lineIndex)
+      const focusOnLine = () => {
+        stopAuto()
+        pos = interactive.indexOf(idx)
+        setActive(idx)
+      }
+      el.addEventListener("mouseenter", focusOnLine)
+      el.addEventListener("focus", focusOnLine)
+      el.addEventListener("click", focusOnLine)
+    })
+  })()
+</script>

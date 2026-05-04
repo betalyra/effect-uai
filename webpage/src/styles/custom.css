@@ -124,18 +124,6 @@
   margin-block-end: 0 !important;
 }
 
-/* Splash hero: Starlight's default padding (clamp up to 10rem each side at
-   ≥50rem) blows past 100vh combined with nav + H1 + tagline + actions, so
-   the user has to scroll just to see the first paragraph. Tighten it so
-   nav + hero stays under one viewport on typical laptops. */
-@media (min-width: 50rem) {
-  .hero {
-    padding-block: clamp(1.5rem, calc(0.5rem + 4vmin), 4rem) !important;
-    min-height: calc(100vh - var(--sl-nav-height));
-    grid-template-columns: 1fr;
-  }
-}
-
 .hero .tagline {
   margin-block-start: 0.15rem !important;
 }

@@ -40,16 +40,17 @@ pipe(
         .pipe(
           streamUntilComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
-              const next = Turn.cursor(state, turn)
               const calls = Turn.functionCalls(turn)
               if (calls.length === 0) return stop
 
               const events = Toolkit.executeAll(toolkit.tools, calls)
-              return Toolkit.nextStateFrom(events, (results) => ({
-                ...next,
-                history: [...next.history, ...results.map(toFunctionCallOutput)],
-                index: state.index + 1,
-              }))
+              return Toolkit.nextStateFrom(events, (results) =>
+                Turn.appendTurn(
+                  { ...state, index: state.index + 1 },
+                  turn,
+                  results.map(toFunctionCallOutput),
+                ),
+              )
             }),
           ),
         )
@@ -58,13 +59,13 @@ pipe(
 )
 ```
 
-`Turn.cursor(state, turn)` extends `state.history` with `turn.items` and
-stamps the turn. `Toolkit.executeAll` runs every requested tool
-concurrently, streaming intermediates from streaming tools and a
-terminal `Output` per call. `Toolkit.nextStateFrom` collects every
-`ToolResult` and hands them to the builder for next-state construction;
-`toFunctionCallOutput` is the one place structured `ToolResult`s become
-wire-shaped strings. `Loop.stop` ends the loop.
+`Toolkit.executeAll` runs every requested tool concurrently, streaming
+intermediates from streaming tools and a terminal `Output` per call.
+`Toolkit.nextStateFrom` collects every `ToolResult` and hands them to the
+builder for next-state construction. `Turn.appendTurn` appends the model
+turn plus tool outputs to history; `toFunctionCallOutput` is the one place
+structured `ToolResult`s become wire-shaped strings. `Loop.stop` ends the
+loop.
 
 If the upstream ends without a `turn_complete`, the resulting stream
 fails with `AiError.IncompleteTurn` - catch it via `Stream.catchTag`

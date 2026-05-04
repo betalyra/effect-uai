@@ -157,7 +157,6 @@ export const httpConversation = (
           .pipe(
             streamUntilComplete<State, ToolEvent>((turn) =>
               Effect.sync(() => {
-                const next = Turn.cursor(current, turn)
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
 
@@ -167,10 +166,9 @@ export const httpConversation = (
                   Toolkit.outputEvents(plan.rejected),
                 )
 
-                return Toolkit.nextStateFrom(events, (results) => ({
-                  ...next,
-                  history: [...next.history, ...results.map(toFunctionCallOutput)],
-                }))
+                return Toolkit.nextStateFrom(events, (results) =>
+                  Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                )
               }),
             ),
           )
@@ -205,7 +203,6 @@ export const queueConversation = (
           .pipe(
             streamUntilComplete<State, ToolEvent>((turn) =>
               Effect.sync(() => {
-                const next = Turn.cursor(current, turn)
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
 
@@ -228,10 +225,9 @@ export const queueConversation = (
                   }),
                 )
 
-                return Toolkit.nextStateFrom(events, (results) => ({
-                  ...next,
-                  history: [...next.history, ...results.map(toFunctionCallOutput)],
-                }))
+                return Toolkit.nextStateFrom(events, (results) =>
+                  Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                )
               }),
             ),
           )

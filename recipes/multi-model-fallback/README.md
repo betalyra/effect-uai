@@ -54,7 +54,7 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
 
 The same `state.history` is reused on the fallback because the body
 returned `nextAfter(..., { ...state, tier: state.tier + 1 })` rather than
-calling `Turn.cursor(state, turn)` - we never advanced past the failed
+calling `Turn.appendTurn(state, turn)` - we never advanced past the failed
 turn.
 
 ## Forcing the fallback in the live demo

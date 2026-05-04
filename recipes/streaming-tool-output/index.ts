@@ -153,16 +153,17 @@ export const buildConversation = (
           .pipe(
             streamUntilComplete<State, ToolEvent>((turn) =>
               Effect.sync(() => {
-                const next = Turn.cursor(state, turn)
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
 
                 const events = Toolkit.executeAll(allTools, calls)
-                return Toolkit.nextStateFrom(events, (results) => ({
-                  ...next,
-                  history: [...next.history, ...results.map(toFunctionCallOutput)],
-                  index: state.index + 1,
-                }))
+                return Toolkit.nextStateFrom(events, (results) =>
+                  Turn.appendTurn(
+                    { ...state, index: state.index + 1 },
+                    turn,
+                    results.map(toFunctionCallOutput),
+                  ),
+                )
               }),
             ),
           )

@@ -207,23 +207,20 @@ The full pattern is in [Basic usage](/recipes/basic-usage/). The body:
 ```ts
 streamUntilComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
-    const next = Turn.cursor(state, turn)
     const calls = Turn.functionCalls(turn)
     if (calls.length === 0) return stop
 
     const events = Toolkit.executeAll(allTools, calls)
-    return Toolkit.nextStateFrom(events, (results) => ({
-      ...next,
-      history: [...next.history, ...results.map(toFunctionCallOutput)],
-    }))
+    return Toolkit.nextStateFrom(events, (results) =>
+      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    )
   }),
 )
 ```
 
-`Turn.cursor` extends history with the turn's items (including the
-`FunctionCall`s themselves), then `nextStateFrom` appends the
-`FunctionCallOutput`s. Both must be present for the model to see what
-it asked for *and* what came back.
+`Turn.appendTurn` appends the turn's items (including the `FunctionCall`s
+themselves) and then the collected `FunctionCallOutput`s. Both must be
+present for the model to see what it asked for *and* what came back.
 
 ## Approval gating
 

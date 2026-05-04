@@ -73,29 +73,27 @@ Turn.reasonings(turn) // Reasoning[]
 against an Effect Schema and surfaces `RefusalRejected`,
 `JsonParseError`, or `StructuredDecodeError` in the failure channel.
 
-## `Turn.cursor` - turning a turn into the next state
+## `Turn.appendTurn` - append a completed turn
 
 After a turn, you need the new `history` for the next iteration.
-`Turn.cursor` is the canonical way:
+`Turn.appendTurn` appends the model's turn items plus any follow-up items:
 
 ```ts
-const next = Turn.cursor(state, turn)
-// { ...state, history: [...state.history, ...turn.items], turn }
+const next = Turn.appendTurn(state, turn, toolOutputs)
+// { ...state, history: [...state.history, ...turn.items, ...toolOutputs] }
 ```
 
-It extends the existing history with the turn's items and stamps the
-turn onto state. Append your own tool results on top — typically via
-`Toolkit.nextStateFrom`, which collects `ToolResult`s from the
-executor stream and applies `toFunctionCallOutput` at the wire boundary:
+The third argument is usually the tool outputs collected by
+`Toolkit.nextStateFrom`, after applying `toFunctionCallOutput` at the wire
+boundary:
 
 ```ts
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 
 const events = Toolkit.executeAll(allTools, calls)
-return Toolkit.nextStateFrom(events, (results) => ({
-  ...next,
-  history: [...next.history, ...results.map(toFunctionCallOutput)],
-}))
+return Toolkit.nextStateFrom(events, (results) =>
+  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+)
 ```
 
 ## `TurnEvent` - the stream

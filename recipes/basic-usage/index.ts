@@ -89,7 +89,6 @@ export const conversation = pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
           streamUntilComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
-              const next = Turn.cursor(state, turn)
               const calls = Turn.functionCalls(turn)
 
               // No tool calls - the assistant is done.
@@ -101,11 +100,13 @@ export const conversation = pipe(
               // build for next-state construction; `toFunctionCallOutput`
               // converts to wire form when appending to history.
               const events = Toolkit.executeAll(toolkit.tools, calls)
-              return Toolkit.nextStateFrom(events, (results) => ({
-                ...next,
-                history: [...next.history, ...results.map(toFunctionCallOutput)],
-                index: state.index + 1,
-              }))
+              return Toolkit.nextStateFrom(events, (results) =>
+                Turn.appendTurn(
+                  { ...state, index: state.index + 1 },
+                  turn,
+                  results.map(toFunctionCallOutput),
+                ),
+              )
             }),
           ),
         )

@@ -27,6 +27,11 @@ that double as living regression tests for the primitive surface.
   latch; no provider call remains open.
 - [`mid-stream-abort/`](./mid-stream-abort/) - cancel the loop and the
   upstream HTTP request via scope-based cleanup.
+- [`modify-output-stream/`](./modify-output-stream/) - format the loop's
+  output for the wire (SSE / JSONL) by mapping a single function over
+  the stream.
+- [`model-retry/`](./model-retry/) - retry rate-limited and transport
+  failures with exponential backoff; let everything else propagate.
 - [`multi-model-compare/`](./multi-model-compare/) - fan one prompt out to
   multiple providers and isolate per-member failures.
 - [`model-council/`](./model-council/) - stream candidate answers, judge them

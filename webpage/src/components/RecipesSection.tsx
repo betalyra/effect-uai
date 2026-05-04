@@ -3,6 +3,8 @@ import {
   PiArrowRight,
   PiArrowsClockwise,
   PiArrowsInLineHorizontal,
+  PiClockCounterClockwise,
+  PiFlowArrow,
   PiGavel,
   PiGitFork,
   PiHandPalm,
@@ -71,6 +73,20 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Stop on a dime.** Cancel a running turn, drop the HTTP connection, and keep the partial output.",
     href: "/recipes/mid-stream-abort/",
     Icon: PiHandPalm,
+  },
+  {
+    title: "Modify output stream",
+    description:
+      "**Format for the wire.** Map one function to ship the loop's output as SSE or JSONL.",
+    href: "/recipes/modify-output-stream/",
+    Icon: PiFlowArrow,
+  },
+  {
+    title: "Model retry",
+    description:
+      "**Retry transient failures.** Exponential backoff for rate limits and timeouts; fail fast on the rest.",
+    href: "/recipes/model-retry/",
+    Icon: PiClockCounterClockwise,
   },
   {
     title: "Multi-model compare",

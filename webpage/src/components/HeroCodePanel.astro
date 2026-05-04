@@ -257,6 +257,27 @@ const codeHtml = tokens
     let pos = 0
     let timer = null
 
+    const scroller = panel.querySelector(".hero-code-scroll")
+
+    // Keep the active line visible WITHOUT touching the page scroll. We
+    // adjust the inner scroller's scrollTop directly instead of using
+    // scrollIntoView, which walks up to the document if the panel
+    // itself is partially offscreen (e.g. user scrolled down to the
+    // recipes section while auto-walk is still running).
+    const ensureVisible = (el, smooth) => {
+      if (!scroller) return
+      const elTop = el.offsetTop - scroller.offsetTop
+      const elBottom = elTop + el.offsetHeight
+      const viewTop = scroller.scrollTop
+      const viewBottom = viewTop + scroller.clientHeight
+      const behavior = smooth ? "smooth" : "auto"
+      if (elTop < viewTop) {
+        scroller.scrollTo({ top: elTop, behavior })
+      } else if (elBottom > viewBottom) {
+        scroller.scrollTo({ top: elBottom - scroller.clientHeight, behavior })
+      }
+    }
+
     const setActive = (idx, smooth) => {
       lines.forEach((el) => el.removeAttribute("data-active"))
       const el = lines[idx]
@@ -264,10 +285,7 @@ const codeHtml = tokens
       el.setAttribute("data-active", "true")
       labelEl.textContent = el.dataset.label || ""
       descEl.textContent = el.dataset.desc || ""
-      el.scrollIntoView({
-        block: "nearest",
-        behavior: smooth ? "smooth" : "auto",
-      })
+      ensureVisible(el, smooth)
     }
 
     const stopAuto = () => {

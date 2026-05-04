@@ -28,9 +28,16 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | Recipe                                                | One-line                                                                                |
 | ----------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | [Multi-model fallback](/recipes/multi-model-fallback/) | Recover from provider stream failures by advancing to the next tier.                     |
+| [Model retry](/recipes/model-retry/)                  | Retry rate-limited and transport failures with exponential backoff; let the rest propagate. |
 | [Auto-compaction](/recipes/auto-compaction/)          | Rewrite oversized history as an ordinary state transition.                               |
 | [Pause and resume](/recipes/pause-resume/)            | Pause between loop iterations with a latch; no provider call remains open.               |
 | [Mid-stream abort](/recipes/mid-stream-abort/)        | Cancel an in-flight turn through stream interruption and scope cleanup.                  |
+
+## Transport
+
+| Recipe                                                  | One-line                                                                                |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [Modify output stream](/recipes/modify-output-stream/) | Format the loop's output for the wire (SSE / JSONL) by mapping a single function over the stream. |
 
 ## Multi-model
 

@@ -1,0 +1,53 @@
+name: Manual release
+
+# Manual fallback for the automated `Release` workflow when npm rejects
+# the publish with EOTP (2FA-on-writes). Type the current 6-digit OTP
+# from your authenticator into the workflow input; npm caches it across
+# the four package publishes within the same time window, so one code
+# is enough for the whole batch.
+#
+# Trigger: GitHub UI -> Actions -> "Manual release" -> Run workflow,
+# or: gh workflow run release-manual.yml -f otp=123456
+
+on:
+  workflow_dispatch:
+    inputs:
+      otp:
+        description: "npm OTP from authenticator (6 digits)"
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Publish to npm
+        run: |
+          pnpm -r --filter "@effect-uai/*" publish \
+            --access public \
+            --no-git-checks \
+            --otp=${{ inputs.otp }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

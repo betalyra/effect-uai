@@ -18,6 +18,7 @@ import { FetchHttpClient } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Embedding from "@effect-uai/core/Embedding"
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
+import * as Vector from "@effect-uai/core/Vector"
 import { layer as geminiEmbeddingLayer } from "@effect-uai/google/GeminiEmbedding"
 
 // ---------------------------------------------------------------------------
@@ -33,26 +34,6 @@ const documents = [
   "Effect is a TypeScript library for typed errors and resource management.",
   "Hydration ratios above 75% give sourdough an open, airy crumb.",
 ]
-
-// ---------------------------------------------------------------------------
-// Cosine similarity. At recipe-volume this is fine; vector DBs do this
-// server-side for millions of vectors.
-// ---------------------------------------------------------------------------
-
-const cosine = (a: Float32Array, b: Float32Array): number => {
-  let dot = 0
-  let na = 0
-  let nb = 0
-  const n = Math.min(a.length, b.length)
-  for (let i = 0; i < n; i++) {
-    const ai = a[i]!
-    const bi = b[i]!
-    dot += ai * bi
-    na += ai * ai
-    nb += bi * bi
-  }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb))
-}
 
 const asFloat32 = (e: Embedding.Embedding): Effect.Effect<Float32Array, AiError.AiError> =>
   Embedding.isFloat32(e)
@@ -85,7 +66,7 @@ const program = Effect.gen(function* () {
   const docVecs = yield* Effect.forEach(docsResult.embeddings, asFloat32)
 
   const ranked = documents
-    .map((doc, i) => ({ doc, score: cosine(qVec, docVecs[i]!) }))
+    .map((doc, i) => ({ doc, score: Vector.cosine(qVec, docVecs[i]!) }))
     .sort((a, b) => b.score - a.score)
 
   yield* Effect.logInfo("query", { query })

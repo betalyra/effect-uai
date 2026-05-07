@@ -27,6 +27,10 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./Responses": {
+      "types": "./dist/Responses.d.mts",
+      "import": "./dist/Responses.mjs"
     }
   },
   "files": [

@@ -8,7 +8,7 @@ import { Config, Effect, Layer, Logger, Match, Queue, References, Stream } from 
 import { FetchHttpClient } from "effect/unstable/http"
 import { matchType } from "@effect-uai/core/Match"
 import type { Verdict } from "@effect-uai/core/Resolvers"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { demoVerdict, queueConversation } from "./index.js"
 
 const program = Effect.gen(function* () {

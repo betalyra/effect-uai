@@ -28,7 +28,7 @@ import * as Items from "@effect-uai/core/Items"
 import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
 import { matchType } from "@effect-uai/core/Match"
 import * as Turn from "@effect-uai/core/Turn"
-import { Responses, layer as responsesLayer } from "@effect-uai/responses"
+import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Demo configuration

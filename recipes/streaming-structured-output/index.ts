@@ -30,9 +30,9 @@ import { streamTurn } from "@effect-uai/core/LanguageModel"
 import * as Lines from "@effect-uai/core/Lines"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import * as Turn from "@effect-uai/core/Turn"
-import { layer as anthropicLayer } from "@effect-uai/anthropic"
-import { layer as geminiLayer } from "@effect-uai/google"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as anthropicLayer } from "@effect-uai/anthropic/Anthropic"
+import { layer as geminiLayer } from "@effect-uai/google/Gemini"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Schema

@@ -16,3 +16,23 @@ export type GoogleModel =
   | "gemini-2.5-flash-lite"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
+
+/**
+ * Known Gemini embedding model identifiers.
+ *
+ * - `gemini-embedding-2` — natively multimodal (text, image, audio, video,
+ *   PDF). Does *not* honour the `taskType` field; instead prepend a task
+ *   instruction to the text yourself.
+ * - `gemini-embedding-001` — text-only, supports the full `taskType` enum
+ *   (`RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT` / classification / etc.).
+ *
+ * The `(string & {})` tail accepts any string so newly-released models
+ * work without an SDK update.
+ *
+ * Reference: https://ai.google.dev/gemini-api/docs/embeddings
+ */
+export type GoogleEmbeddingModel =
+  | "gemini-embedding-2"
+  | "gemini-embedding-001"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})

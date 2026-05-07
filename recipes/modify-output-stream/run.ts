@@ -11,7 +11,7 @@
 import { Config, Console, Effect, Layer, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as SSE from "@effect-uai/core/SSE"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { conversation, toJSONL, toSSE } from "./index.js"
 
 const decoder = new TextDecoder("utf-8")

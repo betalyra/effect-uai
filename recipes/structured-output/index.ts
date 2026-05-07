@@ -13,10 +13,22 @@
  * Requires the matching API key in the environment
  * (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`).
  */
-import { Config, Effect, Layer, Logger, Match, References, Schema } from "effect"
+import {
+  Config,
+  Effect,
+  Layer,
+  Logger,
+  Match,
+  Option,
+  References,
+  Result,
+  Schema,
+  Stream,
+} from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
+import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
-import { turn as runTurn } from "@effect-uai/core/LanguageModel"
+import { streamTurn } from "@effect-uai/core/LanguageModel"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import * as Turn from "@effect-uai/core/Turn"
 import { layer as anthropicLayer } from "@effect-uai/anthropic"
@@ -42,11 +54,22 @@ const recipeFormat = StructuredFormat.fromEffectSchema(Recipe)
 
 const program = (model: string) =>
   Effect.gen(function* () {
-    const turn = yield* runTurn({
+    // Fold the event stream into the terminal `Turn`. `streamTurn` is the
+    // primitive; collecting events into a `Turn` is recipe-level glue.
+    const turn = yield* streamTurn({
       history: [Items.userText("Give me a recipe for one-pan lemon chicken.")],
       model,
       structured: recipeFormat,
-    })
+    }).pipe(
+      Stream.filterMap((e) => (Turn.isTurnComplete(e) ? Result.succeed(e.turn) : Result.failVoid)),
+      Stream.runHead,
+      Effect.flatMap(
+        Option.match({
+          onSome: Effect.succeed,
+          onNone: () => Effect.fail(new AiError.IncompleteTurn({})),
+        }),
+      ),
+    )
     const recipe = yield* Turn.toStructured(turn, recipeFormat)
     yield* Effect.logInfo("recipe", { recipe })
   })

@@ -4,8 +4,12 @@ export default defineConfig({
   entry: [
     "src/index.ts",
     "src/domain/AiError.ts",
+    "src/domain/Image.ts",
     "src/domain/Items.ts",
+    "src/domain/Media.ts",
     "src/domain/Turn.ts",
+    "src/embedding-model/Embedding.ts",
+    "src/embedding-model/EmbeddingModel.ts",
     "src/language-model/LanguageModel.ts",
     "src/loop/Loop.ts",
     "src/match/Match.ts",

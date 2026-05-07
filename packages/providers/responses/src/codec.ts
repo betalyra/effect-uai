@@ -1,5 +1,5 @@
-import { Match, Option, Schema } from "effect"
-import type { ContentBlock, Item } from "@effect-uai/core/Items"
+import { Encoding, Match, Option, Schema } from "effect"
+import type { ContentBlock, InputImage, Item } from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
 import type { Turn } from "@effect-uai/core/Turn"
 
@@ -145,14 +145,23 @@ const passthrough = (item: Item): Record<string, unknown> | undefined =>
     ? (item.providerData as Record<string, unknown>)
     : undefined
 
+/**
+ * OpenAI's `input_image` content block carries a single `image_url` field;
+ * inline bytes get encoded as a `data:` URI. Either form (URL or data URI)
+ * is fine - the model just dereferences `image_url`.
+ */
+const imageSourceToUrl = Match.type<InputImage["source"]>().pipe(
+  Match.tag("url", (s) => s.url),
+  Match.tag("base64", (s) => `data:${s.mimeType};base64,${s.base64}`),
+  Match.tag("bytes", (s) => `data:${s.mimeType};base64,${Encoding.encodeBase64(s.bytes)}`),
+  Match.exhaustive,
+)
+
 const contentBlockToInput = Match.type<ContentBlock>().pipe(
   matchType("input_text", (b) => ({ type: "input_text", text: b.text })),
   matchType("input_image", (b) => ({
     type: "input_image",
-    image_url:
-      b.source._tag === "url"
-        ? b.source.url
-        : `data:${b.source.media_type};base64,${b.source.data}`,
+    image_url: imageSourceToUrl(b.source),
   })),
   matchType("output_text", (b) => ({ type: "output_text", text: b.text })),
   matchType("refusal", (b) => ({ type: "refusal", refusal: b.text })),

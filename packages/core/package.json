@@ -32,13 +32,29 @@
       "types": "./dist/domain/AiError.d.mts",
       "import": "./dist/domain/AiError.mjs"
     },
+    "./Image": {
+      "types": "./dist/domain/Image.d.mts",
+      "import": "./dist/domain/Image.mjs"
+    },
     "./Items": {
       "types": "./dist/domain/Items.d.mts",
       "import": "./dist/domain/Items.mjs"
     },
+    "./Media": {
+      "types": "./dist/domain/Media.d.mts",
+      "import": "./dist/domain/Media.mjs"
+    },
     "./Turn": {
       "types": "./dist/domain/Turn.d.mts",
       "import": "./dist/domain/Turn.mjs"
+    },
+    "./Embedding": {
+      "types": "./dist/embedding-model/Embedding.d.mts",
+      "import": "./dist/embedding-model/Embedding.mjs"
+    },
+    "./EmbeddingModel": {
+      "types": "./dist/embedding-model/EmbeddingModel.d.mts",
+      "import": "./dist/embedding-model/EmbeddingModel.mjs"
     },
     "./LanguageModel": {
       "types": "./dist/language-model/LanguageModel.d.mts",

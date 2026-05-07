@@ -5,15 +5,15 @@
  *
  * `index.ts` exports the building blocks; the runner lives in `run.ts`.
  */
-import { DateTime, Effect, Option, pipe, Schema, Stream } from "effect"
-import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
-import * as Tool from "@effect-uai/core/Tool"
-import type { ToolEvent } from "@effect-uai/core/ToolEvent"
-import * as Toolkit from "@effect-uai/core/Toolkit"
-import * as Turn from "@effect-uai/core/Turn"
-import { Responses } from "@effect-uai/responses"
+import { DateTime, Effect, Option, pipe, Schema, Stream } from "effect";
+import * as Items from "@effect-uai/core/Items";
+import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop";
+import { toFunctionCallOutput } from "@effect-uai/core/Outcome";
+import * as Tool from "@effect-uai/core/Tool";
+import type { ToolEvent } from "@effect-uai/core/ToolEvent";
+import * as Toolkit from "@effect-uai/core/Toolkit";
+import * as Turn from "@effect-uai/core/Turn";
+import { Responses } from "@effect-uai/responses";
 
 // ---------------------------------------------------------------------------
 // Tool - get_current_time (uses Effect's DateTime)
@@ -21,9 +21,10 @@ import { Responses } from "@effect-uai/responses"
 
 const GetCurrentTimeInput = Schema.Struct({
   timezone: Schema.String,
-})
+});
 
-const InvalidTimeZone = (timezone: string) => new Error(`Invalid IANA timezone: ${timezone}`)
+const InvalidTimeZone = (timezone: string) =>
+  new Error(`Invalid IANA timezone: ${timezone}`);
 
 const getCurrentTime = Tool.make({
   name: "get_current_time",
@@ -46,24 +47,24 @@ const getCurrentTime = Tool.make({
       ),
     ),
   strict: true,
-})
+});
 
-const toolkit = Toolkit.make([getCurrentTime])
-const tools = Toolkit.toDescriptors(toolkit)
+const toolkit = Toolkit.make([getCurrentTime]);
+const tools = Toolkit.toDescriptors(toolkit);
 
 // ---------------------------------------------------------------------------
 // State and types
 // ---------------------------------------------------------------------------
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
-  readonly index: number
+  readonly history: ReadonlyArray<Items.Item>;
+  readonly index: number;
 }
 
 const initial: State = {
   history: [Items.userText("What time is it in Lisbon and Tokyo right now?")],
   index: 0,
-}
+};
 
 // ---------------------------------------------------------------------------
 // The loop - explicit, streaming, and still fully visible
@@ -76,7 +77,7 @@ export const conversation = pipe(
   initial,
   loop((state) =>
     Effect.gen(function* () {
-      const oai = yield* Responses
+      const oai = yield* Responses;
 
       return oai
         .streamTurn({
@@ -89,28 +90,27 @@ export const conversation = pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
           streamUntilComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
-              const calls = Turn.functionCalls(turn)
+              const calls = Turn.functionCalls(turn);
 
               // No tool calls - the assistant is done.
-              if (calls.length === 0) return stop
+              if (calls.length === 0) return stop;
 
               // Streaming executor: tool intermediates flow through in
               // real time, terminal Outputs carry structured ToolResults.
               // `nextStateFrom` collects the results and hands them to
               // build for next-state construction; `toFunctionCallOutput`
               // converts to wire form when appending to history.
-              const events = Toolkit.executeAll(toolkit.tools, calls)
+              const events = Toolkit.executeAll(toolkit.tools, calls);
               return Toolkit.nextStateFrom(events, (results) =>
                 Turn.appendTurn(
                   { ...state, index: state.index + 1 },
                   turn,
                   results.map(toFunctionCallOutput),
                 ),
-              )
+              );
             }),
           ),
-        )
+        );
     }),
   ),
-)
-
+);

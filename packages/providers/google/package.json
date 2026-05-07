@@ -27,6 +27,14 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./Gemini": {
+      "types": "./dist/Gemini.d.mts",
+      "import": "./dist/Gemini.mjs"
+    },
+    "./GeminiEmbedding": {
+      "types": "./dist/GeminiEmbedding.d.mts",
+      "import": "./dist/GeminiEmbedding.mjs"
     }
   },
   "files": [

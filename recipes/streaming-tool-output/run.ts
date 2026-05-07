@@ -11,7 +11,7 @@ import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
 import * as Tool from "@effect-uai/core/Tool"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { type State, buildConversation, makeDownloadTool } from "./index.js"
 
 const downloadArtifact = makeDownloadTool()

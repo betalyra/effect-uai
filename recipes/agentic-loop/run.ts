@@ -19,7 +19,7 @@ import * as readline from "node:readline"
 import { Config, DateTime, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Tool from "@effect-uai/core/Tool"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { conversation } from "./index.js"
 
 // ---------------------------------------------------------------------------

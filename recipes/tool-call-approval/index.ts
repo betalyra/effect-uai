@@ -35,7 +35,7 @@ import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
-import { Responses } from "@effect-uai/responses"
+import { Responses } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Tools - one safe, two sensitive.

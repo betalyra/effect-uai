@@ -9,7 +9,7 @@ import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
 import * as Turn from "@effect-uai/core/Turn"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { conversation } from "./index.js"
 
 const program = Stream.runForEach(conversation, (event) =>

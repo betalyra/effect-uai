@@ -26,9 +26,9 @@ import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
 import * as Turn from "@effect-uai/core/Turn"
-import { make as makeAnthropic } from "@effect-uai/anthropic"
-import { make as makeGemini } from "@effect-uai/google"
-import { make as makeResponses } from "@effect-uai/responses"
+import { make as makeAnthropic } from "@effect-uai/anthropic/Anthropic"
+import { make as makeGemini } from "@effect-uai/google/Gemini"
+import { make as makeResponses } from "@effect-uai/responses/Responses"
 import { type Member, council } from "./council.js"
 
 // ---------------------------------------------------------------------------

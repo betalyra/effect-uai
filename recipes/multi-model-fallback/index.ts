@@ -16,8 +16,8 @@ import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
-import { make as makeGemini } from "@effect-uai/google"
-import { make as makeResponses } from "@effect-uai/responses"
+import { make as makeGemini } from "@effect-uai/google/Gemini"
+import { make as makeResponses } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // State and types

@@ -68,6 +68,10 @@
       "types": "./dist/match/Match.d.mts",
       "import": "./dist/match/Match.mjs"
     },
+    "./Vector": {
+      "types": "./dist/math/Vector.d.mts",
+      "import": "./dist/math/Vector.mjs"
+    },
     "./Tool": {
       "types": "./dist/tool/Tool.d.mts",
       "import": "./dist/tool/Tool.mjs"

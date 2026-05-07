@@ -1,5 +1,5 @@
-import { Array as Arr, Match, Option, Result, Schema, pipe } from "effect"
-import type { ContentBlock, Item, Message } from "@effect-uai/core/Items"
+import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
+import type { ContentBlock, InputImage, Item, Message } from "@effect-uai/core/Items"
 import { matchType } from "@effect-uai/core/Match"
 import type { Turn } from "@effect-uai/core/Turn"
 
@@ -93,21 +93,35 @@ const blockText = Match.type<ContentBlock>().pipe(
 
 const messageText = (message: Message): string => message.content.map(blockText).join("")
 
+/**
+ * Gemini's `inlineData` form expects a base64 payload. URL-form images
+ * would need to go through Gemini's Files API (upload then `fileData`
+ * with the returned URI); pre-uploading isn't free, so we skip those for
+ * now and document as a follow-up.
+ */
+const imageSourceToParts = Match.type<InputImage["source"]>().pipe(
+  Match.tag("url", (): ReadonlyArray<RequestPart> => []),
+  Match.tag(
+    "base64",
+    (s): ReadonlyArray<RequestPart> => [
+      { inlineData: { mimeType: s.mimeType, data: s.base64 } },
+    ],
+  ),
+  Match.tag(
+    "bytes",
+    (s): ReadonlyArray<RequestPart> => [
+      { inlineData: { mimeType: s.mimeType, data: Encoding.encodeBase64(s.bytes) } },
+    ],
+  ),
+  Match.exhaustive,
+)
+
 const blockToParts = Match.type<ContentBlock>().pipe(
   matchType(
     "input_text",
     (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
   ),
-  matchType(
-    "input_image",
-    (b): ReadonlyArray<RequestPart> =>
-      // Gemini's `fileData` form expects a pre-uploaded Files API URI, not an
-      // arbitrary HTTPS URL - we'd need to fetch + re-upload to support that.
-      // Skip URL-form images for now; document as a follow-up.
-      b.source._tag === "base64"
-        ? [{ inlineData: { mimeType: b.source.media_type, data: b.source.data } }]
-        : [],
-  ),
+  matchType("input_image", (b): ReadonlyArray<RequestPart> => imageSourceToParts(b.source)),
   matchType(
     "output_text",
     (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),

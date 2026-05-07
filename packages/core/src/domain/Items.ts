@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { ImageSource } from "./Image.js"
 
 // ---------------------------------------------------------------------------
 // Content blocks (inside Message.content)
@@ -11,38 +12,12 @@ export const InputText = Schema.Struct({
 export type InputText = typeof InputText.Type
 
 /**
- * Where an image lives. `url` covers HTTP(S) URLs (the model fetches
- * them); `base64` covers inline bytes embedded in the request. Provider
- * encoders dispatch on `_tag`. File-id / uploaded-asset references are
- * provider-specific and stay out of this union for now.
- */
-export const ImageUrlSource = Schema.Struct({
-  _tag: Schema.Literal("url"),
-  url: Schema.String,
-})
-export type ImageUrlSource = typeof ImageUrlSource.Type
-
-/**
- * Inline image bytes. `data` is **already base64-encoded** (matches what
- * the wire formats expect; no double-encoding needed downstream).
- * `media_type` is the MIME type, e.g. `"image/png"`.
- */
-export const ImageBase64Source = Schema.Struct({
-  _tag: Schema.Literal("base64"),
-  media_type: Schema.String,
-  data: Schema.String,
-})
-export type ImageBase64Source = typeof ImageBase64Source.Type
-
-export const ImageSource = Schema.Union([ImageUrlSource, ImageBase64Source])
-export type ImageSource = typeof ImageSource.Type
-
-export const isImageUrlSource = (s: ImageSource): s is ImageUrlSource => s._tag === "url"
-export const isImageBase64Source = (s: ImageSource): s is ImageBase64Source => s._tag === "base64"
-
-/**
  * User-provided image content block. Pair with `InputText` inside a
  * `Message.content` array to ask "what's in this image?" style questions.
+ *
+ * `source` is the cross-modality `ImageSource` from `domain/Image.ts` -
+ * url, base64, or raw bytes. Provider codecs encode bytes to whatever
+ * wire format the provider wants.
  */
 export const InputImage = Schema.Struct({
   type: Schema.Literal("input_image"),

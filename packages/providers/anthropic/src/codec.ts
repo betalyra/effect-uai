@@ -1,4 +1,4 @@
-import { Array as Arr, Match, Option, Order, Result, Schema, pipe } from "effect"
+import { Array as Arr, Encoding, Match, Option, Order, Result, Schema, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { JsonParseError } from "@effect-uai/core/JSONL"
 import { matchType } from "@effect-uai/core/Match"
@@ -118,6 +118,27 @@ const blockText = Match.type<Items.ContentBlock>().pipe(
 
 const messageText = (message: Items.Message): string => message.content.map(blockText).join("")
 
+const imageSourceToWire = Match.type<Items.InputImage["source"]>().pipe(
+  Match.tag("url", (s): RequestImageContent["source"] => ({ type: "url", url: s.url })),
+  Match.tag(
+    "base64",
+    (s): RequestImageContent["source"] => ({
+      type: "base64",
+      media_type: s.mimeType,
+      data: s.base64,
+    }),
+  ),
+  Match.tag(
+    "bytes",
+    (s): RequestImageContent["source"] => ({
+      type: "base64",
+      media_type: s.mimeType,
+      data: Encoding.encodeBase64(s.bytes),
+    }),
+  ),
+  Match.exhaustive,
+)
+
 const userContentBlock = (
   block: Items.ContentBlock,
 ): Result.Result<RequestUserContentBlock, void> =>
@@ -128,17 +149,7 @@ const userContentBlock = (
         : Result.succeed({ type: "text" as const, text: b.text }),
     ),
     matchType("input_image", (b) =>
-      Result.succeed({
-        type: "image" as const,
-        source:
-          b.source._tag === "url"
-            ? { type: "url" as const, url: b.source.url }
-            : {
-                type: "base64" as const,
-                media_type: b.source.media_type,
-                data: b.source.data,
-              },
-      }),
+      Result.succeed({ type: "image" as const, source: imageSourceToWire(b.source) }),
     ),
     // Assistant content; never appears on a user message in practice. Skip.
     matchType("output_text", () => Result.failVoid),

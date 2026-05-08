@@ -34,7 +34,7 @@ export type EmbedInput =
 // ---------------------------------------------------------------------------
 
 /** Dense float32 vector. The default representation across all providers. */
-export interface Float32Embedding {
+export type Float32Embedding = {
   readonly _tag: "float32"
   readonly vector: Float32Array
 }
@@ -43,7 +43,7 @@ export interface Float32Embedding {
  * Dense int8-quantized vector. ~4x smaller than float32 with minimal
  * recall loss on most benchmarks.
  */
-export interface Int8Embedding {
+export type Int8Embedding = {
   readonly _tag: "int8"
   readonly vector: Int8Array
 }
@@ -53,7 +53,7 @@ export interface Int8Embedding {
  * ~32x smaller than float32; meaningful recall loss but useful for hot
  * indexes paired with a float32 reranker pass.
  */
-export interface BinaryEmbedding {
+export type BinaryEmbedding = {
   readonly _tag: "binary"
   readonly vector: Uint8Array
 }
@@ -76,7 +76,7 @@ export interface BinaryEmbedding {
  * Score with `Vector.sparseCosine` — dot product over the intersection
  * of keys, normalized by the L2 norms of both maps.
  */
-export interface SparseEmbedding {
+export type SparseEmbedding = {
   readonly _tag: "sparse"
   readonly weights: Readonly<Record<string, number>>
 }
@@ -91,7 +91,7 @@ export interface SparseEmbedding {
  * Quantized multivector forms aren't modeled for the same reason as
  * sparse - nothing on hosted APIs ships them yet.
  */
-export interface MultivectorEmbedding {
+export type MultivectorEmbedding = {
   readonly _tag: "multivector"
   readonly vectors: ReadonlyArray<Float32Array>
 }
@@ -115,6 +115,6 @@ export const isMultivector = (e: Embedding): e is MultivectorEmbedding =>
  * not per input vector. Most providers populate `inputTokens`; the field
  * is optional for those that don't (or for mock layers in tests).
  */
-export interface Usage {
+export type Usage = {
   readonly inputTokens?: number
 }

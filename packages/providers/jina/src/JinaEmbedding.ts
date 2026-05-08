@@ -59,7 +59,7 @@ export type JinaTask =
  */
 export type JinaEncoding = "float32" | "binary" | "sparse" | "multivector"
 
-export interface JinaEmbedRequest extends Omit<CommonEmbedRequest, "model" | "task" | "encoding"> {
+export type JinaEmbedRequest = Omit<CommonEmbedRequest, "model" | "task" | "encoding"> & {
   /** Narrows `CommonEmbedRequest.model` to the typed Jina union. */
   readonly model: JinaEmbeddingModel
   /**
@@ -72,11 +72,11 @@ export interface JinaEmbedRequest extends Omit<CommonEmbedRequest, "model" | "ta
   readonly encoding?: JinaEncoding
 }
 
-export interface JinaEmbedManyRequest extends Omit<JinaEmbedRequest, "input"> {
+export type JinaEmbedManyRequest = Omit<JinaEmbedRequest, "input"> & {
   readonly inputs: ReadonlyArray<EmbedInput>
 }
 
-export interface JinaEmbeddingService {
+export type JinaEmbeddingService = {
   readonly embed: (request: JinaEmbedRequest) => Effect.Effect<EmbedResponse, AiError.AiError>
   readonly embedMany: (
     request: JinaEmbedManyRequest,
@@ -92,7 +92,7 @@ export class JinaEmbedding extends Context.Service<JinaEmbedding, JinaEmbeddingS
   "@betalyra/effect-uai/providers/jina/JinaEmbedding",
 ) {}
 
-export interface Config {
+export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
 }
@@ -101,10 +101,10 @@ export interface Config {
 // Codec - request body
 // ---------------------------------------------------------------------------
 
-interface WireTextItem {
+type WireTextItem = {
   readonly text: string
 }
-interface WireImageItem {
+type WireImageItem = {
   readonly image: string
 }
 type WireItem = WireTextItem | WireImageItem
@@ -163,7 +163,7 @@ const inputToItem: (input: EmbedInput) => Effect.Effect<WireItem, AiError.AiErro
     Match.exhaustive,
   )
 
-interface WireBody {
+type WireBody = {
   readonly model: string
   readonly input: ReadonlyArray<WireItem>
   readonly task?: string

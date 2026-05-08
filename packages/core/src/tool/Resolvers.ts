@@ -10,7 +10,7 @@ import type { FunctionCall } from "../domain/Items.js"
 import { type ToolResult, cancelled, denied } from "./Outcome.js"
 import type { ToolEvent } from "./ToolEvent.js"
 
-export interface ToolCallPlan {
+export type ToolCallPlan = {
   readonly approved: ReadonlyArray<FunctionCall>
   readonly rejected: ReadonlyArray<ToolResult>
 }
@@ -51,7 +51,7 @@ export const approvalRequested = (call: FunctionCall): ToolEvent => ({
 // Verdict queue (WebSocket-style transport).
 // ---------------------------------------------------------------------------
 
-export interface Verdict {
+export type Verdict = {
   readonly call_id: string
   readonly decision: "approve" | "deny"
   readonly reason?: string

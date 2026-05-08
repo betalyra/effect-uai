@@ -6,7 +6,7 @@ import { Stream } from "effect"
  * - `data`: payload, with multiple `data:` lines joined by `\n`
  * - `id`: optional last-event id
  */
-export interface Event {
+export type Event = {
   readonly event?: string
   readonly data: string
   readonly id?: string

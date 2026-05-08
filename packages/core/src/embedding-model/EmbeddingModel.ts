@@ -35,7 +35,7 @@ export type Encoding = "float32" | "int8" | "binary" | "sparse" | "multivector"
  * request interface, which extends this and narrows `model` / widens
  * `task`.
  */
-export interface CommonEmbedRequest {
+export type CommonEmbedRequest = {
   readonly input: EmbedInput
   /**
    * Model identifier. Each provider narrows this to its typed literal
@@ -69,21 +69,21 @@ export interface CommonEmbedRequest {
  * mixed-task batches aren't a real provider feature (rerankers exist for
  * that).
  */
-export interface CommonEmbedManyRequest extends Omit<CommonEmbedRequest, "input"> {
+export type CommonEmbedManyRequest = Omit<CommonEmbedRequest, "input"> & {
   readonly inputs: ReadonlyArray<EmbedInput>
 }
 
-export interface EmbedResponse {
+export type EmbedResponse = {
   readonly embedding: Embedding
   readonly usage: Usage
 }
 
-export interface EmbedManyResponse {
+export type EmbedManyResponse = {
   readonly embeddings: ReadonlyArray<Embedding>
   readonly usage: Usage
 }
 
-export interface EmbeddingModelService {
+export type EmbeddingModelService = {
   readonly embed: (request: CommonEmbedRequest) => Effect.Effect<EmbedResponse, AiError.AiError>
   readonly embedMany: (
     request: CommonEmbedManyRequest,

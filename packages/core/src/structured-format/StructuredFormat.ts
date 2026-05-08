@@ -19,7 +19,7 @@ export type StructuredSchema<Output = unknown> = StandardSchemaV1<unknown, Outpu
  * cross-validator schema with metadata providers need (name, description,
  * strict-mode flag).
  */
-export interface StructuredFormat<A> {
+export type StructuredFormat<A> = {
   readonly name: string
   readonly description?: string
   readonly schema: StructuredSchema<A>
@@ -31,7 +31,7 @@ export interface StructuredFormat<A> {
 }
 
 /** A single path-scoped validation problem. Library-agnostic shape. */
-export interface DecodeIssue {
+export type DecodeIssue = {
   readonly path: ReadonlyArray<string | number>
   readonly message: string
 }

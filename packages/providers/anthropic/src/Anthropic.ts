@@ -34,7 +34,7 @@ import { KnownProviderEvent, ProviderEvent, applyEvent } from "./streamEvents.js
 // Public types
 // ---------------------------------------------------------------------------
 
-export interface AnthropicRequest extends Omit<CommonRequest, "model"> {
+export type AnthropicRequest = Omit<CommonRequest, "model"> & {
   /**
    * Narrows `CommonRequest.model` (`string`) to the typed `AnthropicModel`
    * literal union for autocomplete.
@@ -59,7 +59,7 @@ export interface AnthropicRequest extends Omit<CommonRequest, "model"> {
   readonly user?: string
 }
 
-export interface AnthropicService {
+export type AnthropicService = {
   /**
    * Stream the provider's native event vocabulary (post-SSE-decode).
    * Use this when you need full vendor fidelity (e.g. `signature_delta` for
@@ -93,7 +93,7 @@ export class Anthropic extends Context.Service<Anthropic, AnthropicService>()(
   "@betalyra/effect-uai/providers/anthropic/Anthropic",
 ) {}
 
-export interface Config {
+export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
   /**

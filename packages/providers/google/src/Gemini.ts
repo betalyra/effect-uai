@@ -32,7 +32,7 @@ export type ProviderEvent = WireChunk
 // Public types
 // ---------------------------------------------------------------------------
 
-export interface GeminiRequest extends Omit<CommonRequest, "model"> {
+export type GeminiRequest = Omit<CommonRequest, "model"> & {
   /**
    * Narrows `CommonRequest.model` (`string`) to the typed `GoogleModel`
    * literal union for autocomplete.
@@ -46,7 +46,7 @@ export interface GeminiRequest extends Omit<CommonRequest, "model"> {
   readonly thinkingBudget?: number
 }
 
-export interface GeminiService {
+export type GeminiService = {
   /**
    * Stream the provider's native event vocabulary (post-SSE-decode). For
    * Gemini, each event is a full `GenerateContentResponse` chunk. Use this
@@ -79,7 +79,7 @@ export class Gemini extends Context.Service<Gemini, GeminiService>()(
   "@betalyra/effect-uai/providers/google/Gemini",
 ) {}
 
-export interface Config {
+export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
 }

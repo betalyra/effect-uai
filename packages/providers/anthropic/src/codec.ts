@@ -52,36 +52,36 @@ export type WireUsage = typeof WireUsage.Type
 // History → request body
 // ---------------------------------------------------------------------------
 
-interface RequestTextContent {
+type RequestTextContent = {
   readonly type: "text"
   readonly text: string
 }
 
-interface RequestToolResultContent {
+type RequestToolResultContent = {
   readonly type: "tool_result"
   readonly tool_use_id: string
   readonly content: string
 }
 
-interface RequestToolUseContent {
+type RequestToolUseContent = {
   readonly type: "tool_use"
   readonly id: string
   readonly name: string
   readonly input: unknown
 }
 
-interface RequestThinkingContent {
+type RequestThinkingContent = {
   readonly type: "thinking"
   readonly thinking: string
   readonly signature?: string
 }
 
-interface RequestRedactedThinkingContent {
+type RequestRedactedThinkingContent = {
   readonly type: "redacted_thinking"
   readonly data: string
 }
 
-interface RequestImageContent {
+type RequestImageContent = {
   readonly type: "image"
   readonly source:
     | { readonly type: "url"; readonly url: string }
@@ -96,12 +96,12 @@ type RequestAssistantContentBlock =
   | RequestThinkingContent
   | RequestRedactedThinkingContent
 
-interface RequestUserMessage {
+type RequestUserMessage = {
   readonly role: "user"
   readonly content: ReadonlyArray<RequestUserContentBlock>
 }
 
-interface RequestAssistantMessage {
+type RequestAssistantMessage = {
   readonly role: "assistant"
   readonly content: ReadonlyArray<RequestAssistantContentBlock>
 }
@@ -238,7 +238,7 @@ const itemToAssistantBlocks = (
     Match.exhaustive,
   )
 
-interface GroupAcc {
+type GroupAcc = {
   readonly messages: ReadonlyArray<RequestMessage>
   readonly currentRole: Option.Option<"user" | "assistant">
   readonly userBuf: ReadonlyArray<RequestUserContentBlock>
@@ -331,12 +331,12 @@ const systemFromHistory = (history: ReadonlyArray<Items.Item>): Option.Option<st
   return texts.length === 0 ? Option.none() : Option.some(texts.join("\n"))
 }
 
-export interface ThinkingConfig {
+export type ThinkingConfig = {
   readonly type: "enabled"
   readonly budget_tokens: number
 }
 
-export interface RequestBody {
+export type RequestBody = {
   readonly model: string
   readonly messages: ReadonlyArray<RequestMessage>
   readonly max_tokens: number
@@ -424,7 +424,7 @@ export const buildRequestBody = (params: {
 // our `Items.Item[]` when `message_stop` lands.
 // ---------------------------------------------------------------------------
 
-interface BlockBuffer {
+type BlockBuffer = {
   readonly type: WireContentBlock["type"]
   readonly text: string
   readonly inputJson: string
@@ -446,7 +446,7 @@ const emptyBlock = (type: WireContentBlock["type"]): BlockBuffer => ({
   redactedData: Option.none(),
 })
 
-export interface Accumulator {
+export type Accumulator = {
   readonly blocks: Readonly<Record<number, BlockBuffer>>
   readonly stopReason: Option.Option<string>
   readonly usage: Items.Usage
@@ -607,7 +607,7 @@ const blockToItems = (block: BlockBuffer): ReadonlyArray<Items.Item> =>
     Match.exhaustive,
   )
 
-interface MergeAcc {
+type MergeAcc = {
   readonly out: ReadonlyArray<Items.Item>
 }
 

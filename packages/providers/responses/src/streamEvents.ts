@@ -119,7 +119,7 @@ export type ProviderEvent = typeof ProviderEvent.Type
 // `call_id` lookup for `function_call_arguments.delta`. The SSE event
 // references the *item id*, not the call id; we keep a small map populated
 // from the `output_item.added` events.
-export interface CallIdLookup {
+export type CallIdLookup = {
   readonly resolve: (itemId: string) => string | undefined
   readonly remember: (itemId: string, callId: string) => void
 }

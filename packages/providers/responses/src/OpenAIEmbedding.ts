@@ -22,16 +22,16 @@ import type { OpenAIEmbeddingModel } from "./models.js"
  * error. The generic `EmbeddingModel` registration accepts and silently
  * ignores `task` from `CommonEmbedRequest`.
  */
-export interface OpenAIEmbedRequest extends Omit<CommonEmbedRequest, "model" | "task"> {
+export type OpenAIEmbedRequest = Omit<CommonEmbedRequest, "model" | "task"> & {
   /** Narrows `CommonEmbedRequest.model` to the typed OpenAI union. */
   readonly model: OpenAIEmbeddingModel
 }
 
-export interface OpenAIEmbedManyRequest extends Omit<OpenAIEmbedRequest, "input"> {
+export type OpenAIEmbedManyRequest = Omit<OpenAIEmbedRequest, "input"> & {
   readonly inputs: ReadonlyArray<EmbedInput>
 }
 
-export interface OpenAIEmbeddingService {
+export type OpenAIEmbeddingService = {
   readonly embed: (request: OpenAIEmbedRequest) => Effect.Effect<EmbedResponse, AiError.AiError>
   readonly embedMany: (
     request: OpenAIEmbedManyRequest,
@@ -47,7 +47,7 @@ export class OpenAIEmbedding extends Context.Service<OpenAIEmbedding, OpenAIEmbe
   "@betalyra/effect-uai/providers/responses/OpenAIEmbedding",
 ) {}
 
-export interface Config {
+export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
 }
@@ -87,7 +87,7 @@ const inputToString = (input: EmbedInput): Effect.Effect<string, AiError.AiError
 // Codec - request body
 // ---------------------------------------------------------------------------
 
-interface WireBody {
+type WireBody = {
   readonly model: string
   readonly input: string | ReadonlyArray<string>
   readonly dimensions?: number

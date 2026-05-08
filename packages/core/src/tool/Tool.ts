@@ -36,7 +36,7 @@ export const fromEffectSchema = <S extends Schema.Codec<any, any, never, any>>(
   Schema.toStandardJSONSchemaV1(Schema.toStandardSchemaV1(schema)) as unknown as S &
     ToolInputSchema<S["Type"]>
 
-export interface Tool<Name extends string, Input, Output, R = never> {
+export type Tool<Name extends string, Input, Output, R = never> = {
   readonly name: Name
   readonly description: string
   readonly inputSchema: ToolInputSchema<Input>
@@ -55,7 +55,7 @@ export interface Tool<Name extends string, Input, Output, R = never> {
  * to its own wire field (OpenAI → `parameters`, Anthropic →
  * `input_schema`). Built from a `Tool` by `Toolkit.toDescriptors`.
  */
-export interface ToolDescriptor {
+export type ToolDescriptor = {
   readonly name: string
   readonly description: string
   readonly inputSchema: Record<string, unknown>
@@ -75,7 +75,7 @@ export const make = <Name extends string, Input, Output, R = never>(
 // `Output`. Sub-agents, slow downloads with progress, recipe streamers.
 // ---------------------------------------------------------------------------
 
-export interface StreamingTool<Name extends string, Input, Event, Output, R = never> {
+export type StreamingTool<Name extends string, Input, Event, Output, R = never> = {
   readonly _kind: "streaming"
   readonly name: Name
   readonly description: string

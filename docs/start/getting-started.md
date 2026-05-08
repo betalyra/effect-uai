@@ -30,7 +30,6 @@ import { Config, Effect, Layer, Match, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
 import { streamTurn } from "@effect-uai/core/LanguageModel"
-import { matchType } from "@effect-uai/core/Match"
 import { layer as responsesLayer } from "@effect-uai/responses"
 
 const program = Stream.runForEach(
@@ -40,7 +39,9 @@ const program = Stream.runForEach(
   }),
   (event) =>
     Match.value(event).pipe(
-      matchType("text_delta", ({ text }) => Effect.sync(() => process.stdout.write(text))),
+      Match.discriminators("type")({
+        text_delta: ({ text }) => Effect.sync(() => process.stdout.write(text)),
+      }),
       Match.orElse(() => Effect.void),
     ),
 )
@@ -68,8 +69,9 @@ process exits.
 
 - **The provider does not own your control flow.** You receive a normal
   Effect stream and decide how to consume it.
-- **Events are typed data.** `matchType("text_delta", ...)` narrows the
-  union; add cases when you want reasoning, usage, or tool-call events.
+- **Events are typed data.** `Match.discriminators("type")({ text_delta, ... })`
+  narrows the union; add cases when you want reasoning, usage, or
+  tool-call events.
 - **Provider choice is runtime wiring.** `responsesLayer({ apiKey })`
   implements the generic `LanguageModel` service. The program shape stays
   the same when you provide Anthropic or Gemini instead.

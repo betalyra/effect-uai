@@ -7,23 +7,23 @@
 import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { matchType } from "@effect-uai/core/Match"
 import * as Turn from "@effect-uai/core/Turn"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { conversation } from "./index.js"
 
 const program = Stream.runForEach(conversation, (event) =>
   Match.value(event).pipe(
-    matchType("turn_complete", ({ turn }) =>
-      Effect.logInfo("turn complete", {
-        stop_reason: turn.stop_reason,
-        assistant: Turn.assistantMessages(turn)
-          .flatMap((m) => m.content)
-          .filter(Items.isOutputText)
-          .map((c) => c.text)
-          .join(" "),
-      }),
-    ),
+    Match.discriminators("type")({
+      turn_complete: ({ turn }) =>
+        Effect.logInfo("turn complete", {
+          stop_reason: turn.stop_reason,
+          assistant: Turn.assistantMessages(turn)
+            .flatMap((m) => m.content)
+            .filter(Items.isOutputText)
+            .map((c) => c.text)
+            .join(" "),
+        }),
+    }),
     Match.orElse(() => Effect.void),
   ),
 )

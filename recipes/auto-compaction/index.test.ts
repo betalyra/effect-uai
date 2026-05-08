@@ -2,7 +2,7 @@ import { Effect, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -110,7 +110,7 @@ describe("auto-compaction", () => {
                 tools: [],
               })
               .pipe(
-                streamUntilComplete((turn) =>
+                onTurnComplete((turn) =>
                   Effect.sync(() => {
                     const summary = Turn.assistantMessages(turn)
                       .flatMap((m) => m.content)
@@ -124,7 +124,7 @@ describe("auto-compaction", () => {
           }
 
           return lm.streamTurn({ history: state.history, model: "mock", tools: [] }).pipe(
-            streamUntilComplete((turn) =>
+            onTurnComplete((turn) =>
               Effect.sync(() => {
                 const next = advance(state, turn)
                 if (state.pendingPrompts.length === 0) return stop

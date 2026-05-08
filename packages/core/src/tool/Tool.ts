@@ -89,11 +89,11 @@ export const streaming = <Name extends string, Input, Event, Output, R = never>(
   spec: Omit<StreamingTool<Name, Input, Event, Output, R>, "_kind">,
 ): StreamingTool<Name, Input, Event, Output, R> => ({ _kind: "streaming", ...spec })
 
-export type AnyStreamingTool = StreamingTool<string, any, any, any, never>
-export type AnyPlainTool = Tool<string, any, any, never>
-export type AnyKindTool = AnyStreamingTool | AnyPlainTool
+export type AnyStreamingTool<R = any> = StreamingTool<string, any, any, any, R>
+export type AnyPlainTool<R = any> = Tool<string, any, any, R>
+export type AnyKindTool<R = any> = AnyStreamingTool<R> | AnyPlainTool<R>
 
-export const isStreamingTool = (t: AnyKindTool): t is AnyStreamingTool =>
+export const isStreamingTool = <R>(t: AnyKindTool<R>): t is AnyStreamingTool<R> =>
   "_kind" in t && t._kind === "streaming"
 
 /**
@@ -101,7 +101,9 @@ export const isStreamingTool = (t: AnyKindTool): t is AnyStreamingTool =>
  * descriptors. Mirrors `Toolkit.toDescriptors` but accepts the union type
  * so a single list can carry both kinds.
  */
-export const toDescriptors = (tools: ReadonlyArray<AnyKindTool>): ReadonlyArray<ToolDescriptor> =>
+export const toDescriptors = <R>(
+  tools: ReadonlyArray<AnyKindTool<R>>,
+): ReadonlyArray<ToolDescriptor> =>
   tools.map((tool) => {
     const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
       target: "draft-2020-12",

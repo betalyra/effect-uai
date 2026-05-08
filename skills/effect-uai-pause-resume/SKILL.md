@@ -25,7 +25,7 @@ One `Latch.await` at the top of the loop body is the entire pause.
 ```ts
 import { Effect, Latch, Ref, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 
 const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) =>
   pipe(
@@ -37,7 +37,7 @@ const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) 
 
         const oai = yield* Responses
         return oai.streamTurn({ history: state.history, model: "gpt-5.4-mini" }).pipe(
-          streamUntilComplete((turn) =>
+          onTurnComplete((turn) =>
             Effect.gen(function* () {
               yield* Ref.update(turnsCompleted, (n) => n + 1)
               const next = advance(state, turn)

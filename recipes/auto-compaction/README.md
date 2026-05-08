@@ -48,7 +48,7 @@ loop((state) =>
           reasoning: { effort: "low" },
         })
         .pipe(
-          streamUntilComplete((turn) =>
+          onTurnComplete((turn) =>
             Effect.sync(() =>
               nextAfter(Stream.empty, withSummary(state /* extract text from turn */)),
             ),
@@ -58,7 +58,7 @@ loop((state) =>
 
     // Normal turn: bigger model, stream a response, inject the next user prompt or stop.
     return oai.streamTurn({ history: state.history, model: "gpt-5.4", tools: [] }).pipe(
-      streamUntilComplete((turn) =>
+      onTurnComplete((turn) =>
         Effect.sync(() => {
           const next = advance(state, turn)
           if (state.pendingPrompts.length === 0) return stop

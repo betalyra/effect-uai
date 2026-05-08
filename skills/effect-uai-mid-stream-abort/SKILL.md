@@ -22,7 +22,7 @@ Reach for this when the user says any of:
 
 ```ts
 import { Deferred, Effect, Stream, pipe } from "effect"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 
 const conversation = pipe(
   initial,
@@ -31,7 +31,7 @@ const conversation = pipe(
       const oai = yield* Responses
       return oai
         .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
-        .pipe(streamUntilComplete(() => Effect.sync(() => stop)))
+        .pipe(onTurnComplete(() => Effect.sync(() => stop)))
     }),
   ),
 )
@@ -65,7 +65,7 @@ const program = Effect.gen(function* () {
 
 ## State and partial completions
 
-The body's `streamUntilComplete` callback never sees `turn_complete`
+The body's `onTurnComplete` callback never sees `turn_complete`
 when abort fires — `state` stays at its pre-turn value. If you need
 the partial assistant text to survive abort:
 

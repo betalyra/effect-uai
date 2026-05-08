@@ -2,7 +2,7 @@ import { Effect, Fiber, Queue, Schema, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import { type ToolCallDecision, type Verdict, fromVerdictQueue } from "@effect-uai/core/Resolvers"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
@@ -77,7 +77,7 @@ describe("tool-call-approval", () => {
               tools: Tool.toDescriptors(allTools),
             })
             .pipe(
-              streamUntilComplete<State, ToolEvent>((turn) =>
+              onTurnComplete<State, ToolEvent>((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
@@ -98,8 +98,10 @@ describe("tool-call-approval", () => {
                     }),
                   )
 
-                  return Toolkit.nextStateFrom(events, (results) =>
-                    Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                  return events.pipe(
+                    Toolkit.continueWith((results) =>
+                      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                    ),
                   )
                 }),
               ),
@@ -247,7 +249,7 @@ describe("tool-call-approval", () => {
       expect(before.calls).toHaveLength(1)
 
       // Post one verdict; per-call deferreds mean call `a` resumes but `b`
-      // still parks - the turn's nextStateFrom only completes when both
+      // still parks - the turn's continueWith only completes when both
       // gated calls have produced a result.
       yield* Queue.offer(verdicts, { call_id: "a", decision: "approve" })
       yield* Effect.sleep("20 millis")
@@ -333,19 +335,19 @@ describe("tool-call-approval (HTTP variant)", () => {
               tools: Tool.toDescriptors(allTools),
             })
             .pipe(
-              streamUntilComplete<State, ToolEvent>((turn) =>
+              onTurnComplete<State, ToolEvent>((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
 
                   const plan = fromApprovalMap(isSensitive, approvals)(calls)
-                  const events = Stream.merge(
+                  return Stream.merge(
                     Toolkit.executeAll(allTools, plan.approved),
                     Toolkit.outputEvents(plan.rejected),
-                  )
-
-                  return Toolkit.nextStateFrom(events, (results) =>
-                    Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                  ).pipe(
+                    Toolkit.continueWith((results) =>
+                      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                    ),
                   )
                 }),
               ),

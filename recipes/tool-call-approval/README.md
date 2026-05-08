@@ -38,21 +38,21 @@ import { fromApprovalMap, type ApprovalMapEntry } from "@effect-uai/core/Resolve
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 
-streamUntilComplete<State, ToolEvent>((turn) =>
+onTurnComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
     const calls = Turn.functionCalls(turn)
     // No requested tools means there is nothing to approve or execute.
     if (calls.length === 0) return stop
 
     const plan = fromApprovalMap(isSensitive, approvals)(calls)
-    const events = Stream.merge(
+    return Stream.merge(
       // Approved calls run; denied/missing approvals still become outputs.
       Toolkit.executeAll(allTools, plan.approved),
       Toolkit.outputEvents(plan.rejected),
-    )
-
-    return Toolkit.nextStateFrom(events, (results) =>
-      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    ).pipe(
+      Toolkit.continueWith((results) =>
+        Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+      ),
     )
   }),
 )
@@ -62,7 +62,7 @@ streamUntilComplete<State, ToolEvent>((turn) =>
 `call_id`. Entries are either `{ decision: "approve" }` or
 `{ decision: "deny", reason?: string }`. A gated call without an entry
 is placed in `plan.rejected` as a `cancelled` result. `Toolkit.outputEvents`
-turns those results into `Output` events, and `nextStateFrom` keeps them
+turns those results into `Output` events, and `continueWith` keeps them
 in history so the next provider request stays well-formed.
 
 ### Reconciling history before the next request
@@ -99,7 +99,7 @@ waits until its specific verdict lands on the queue.
 ```ts
 import { fromVerdictQueue } from "@effect-uai/core/Resolvers"
 
-streamUntilComplete<State, ToolEvent>((turn) =>
+onTurnComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
     const calls = Turn.functionCalls(turn)
     // No requested tools means there is nothing to approve or execute.
@@ -131,8 +131,10 @@ streamUntilComplete<State, ToolEvent>((turn) =>
       }),
     )
 
-    return Toolkit.nextStateFrom(events, (results) =>
-      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    return events.pipe(
+      Toolkit.continueWith((results) =>
+        Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+      ),
     )
   }),
 )

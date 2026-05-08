@@ -1,6 +1,15 @@
-import { Deferred, Effect, Fiber, Ref, Stream } from "effect"
+import { Deferred, Effect, Fiber, Latch, Ref, Stream, SubscriptionRef } from "effect"
 import { describe, expect, it } from "vitest"
-import { type Event, loop, next, nextAfter, stopEvent, stopAfter, value } from "./Loop.js"
+import {
+  type Event,
+  loop,
+  loopWithState,
+  next,
+  nextAfter,
+  stopEvent,
+  stopAfter,
+  value,
+} from "./Loop.js"
 
 describe("Loop.loop", () => {
   it("threads state across iterations and emits each iteration's substream in order", async () => {
@@ -408,5 +417,112 @@ describe("Loop.loop - pull-specific stream semantics", () => {
     )
 
     expect(result._tag).toBe("Failure")
+  })
+})
+
+describe("Loop.loopWithState", () => {
+  it("exposes the final state in the SubscriptionRef after the stream completes", async () => {
+    const program = Effect.gen(function* () {
+      const { stream, state } = yield* loopWithState(0, (n: number) =>
+        n >= 3
+          ? stopAfter(Stream.fromIterable([n]))
+          : nextAfter(Stream.fromIterable([n]), n + 1),
+      )
+      const values = yield* Stream.runCollect(stream)
+      const finalState = yield* SubscriptionRef.get(state)
+      return { values: Array.from(values), finalState }
+    })
+
+    const { values, finalState } = await Effect.runPromise(program)
+    expect(values).toEqual([0, 1, 2, 3])
+    // Last `next(state)` was `next(3)` before the iteration that emitted Stop.
+    expect(finalState).toBe(3)
+  })
+
+  it("the state ref starts at `initial` and stays there if the loop stops without advancing", async () => {
+    const program = Effect.gen(function* () {
+      const { stream, state } = yield* loopWithState({ count: 7 }, () =>
+        Stream.fromIterable([stopEvent]),
+      )
+      yield* Stream.runDrain(stream)
+      return yield* SubscriptionRef.get(state)
+    })
+
+    expect(await Effect.runPromise(program)).toEqual({ count: 7 })
+  })
+
+  it("a downstream consumer can read the live state between emitted values", async () => {
+    // Body emits one value per iteration, then advances. A `Stream.runForEach`
+    // consumer reads the ref each time a value arrives — proving the ref
+    // tracks loop state without the body needing to surface it.
+    const program = Effect.gen(function* () {
+      const { stream, state } = yield* loopWithState(0, (n: number) =>
+        n >= 3
+          ? stopAfter(Stream.fromIterable([n]))
+          : nextAfter(Stream.fromIterable([n]), n + 1),
+      )
+      const seen: Array<{ value: number; stateAfter: number }> = []
+      yield* Stream.runForEach(stream, (v) =>
+        Effect.gen(function* () {
+          seen.push({ value: v, stateAfter: yield* SubscriptionRef.get(state) })
+        }),
+      )
+      return seen
+    })
+
+    // For each iter `n`, the consumer reads the ref between values: it sees
+    // the iteration's input state. The terminal iter (n=3) stops without
+    // advancing, so its read still shows 3.
+    expect(await Effect.runPromise(program)).toEqual([
+      { value: 0, stateAfter: 0 },
+      { value: 1, stateAfter: 1 },
+      { value: 2, stateAfter: 2 },
+      { value: 3, stateAfter: 3 },
+    ])
+  })
+
+  it("SubscriptionRef.changes emits every state transition to a concurrent observer", async () => {
+    const program = Effect.gen(function* () {
+      const start = yield* Latch.make(false)
+
+      // Body waits on the latch in iter 0 so the observer can subscribe first.
+      const { stream, state } = yield* loopWithState(0, (n: number) =>
+        Effect.gen(function* () {
+          if (n === 0) yield* Latch.await(start)
+          return n >= 3 ? stopAfter(Stream.empty) : nextAfter(Stream.empty, n + 1)
+        }),
+      )
+
+      // Fork the observer; take 4 distinct states (initial + 3 transitions).
+      const observerFiber = yield* Effect.forkChild(
+        SubscriptionRef.changes(state).pipe(Stream.take(4), Stream.runCollect),
+      )
+
+      // Give the observer fiber a chance to actually subscribe before the
+      // loop starts advancing the ref. Without this, the loop could finish
+      // before the observer's pubsub subscription is in place.
+      yield* Effect.sleep("10 millis")
+
+      yield* Latch.open(start)
+      yield* Stream.runDrain(stream)
+
+      return Array.from(yield* Fiber.join(observerFiber))
+    })
+
+    // initial 0, then next(1), next(2), next(3) — four distinct states.
+    expect(await Effect.runPromise(program)).toEqual([0, 1, 2, 3])
+  })
+
+  it("does not interfere with the body's value stream", async () => {
+    const program = Effect.gen(function* () {
+      const { stream } = yield* loopWithState(0, (n: number) =>
+        n >= 3
+          ? stopAfter(Stream.fromIterable([n]))
+          : nextAfter(Stream.fromIterable([n, n + 0.5]), n + 1),
+      )
+      return Array.from(yield* Stream.runCollect(stream))
+    })
+
+    expect(await Effect.runPromise(program)).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3])
   })
 })

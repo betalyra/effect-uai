@@ -21,7 +21,7 @@ Reach for this when the user says any of:
 ```ts
 import { Effect, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
@@ -55,7 +55,7 @@ export const conversation = pipe(
           reasoning: { effort: "low" },
         })
         .pipe(
-          streamUntilComplete<State, ToolEvent>((turn) =>
+          onTurnComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
               const calls = Turn.functionCalls(turn)
 
@@ -63,9 +63,10 @@ export const conversation = pipe(
               if (calls.length === 0) return stop
 
               // Tool calls -> execute, append outputs, loop again.
-              const events = Toolkit.executeAll(tools, calls)
-              return Toolkit.nextStateFrom(events, (results) =>
-                Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+              return Toolkit.executeAll(tools, calls).pipe(
+                Toolkit.continueWith((results) =>
+                  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                ),
               )
             }),
           ),

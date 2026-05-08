@@ -65,9 +65,9 @@ own provider layers and `embed` / `embedMany` helpers.
 | `@effect-uai/core/Items`                | `Item` types (user/assistant messages, function calls, function call outputs, reasoning), helpers like `Items.userText`.                                                                                                                   |
 | `@effect-uai/core/Turn`                 | `Turn`, `TurnEvent`, `Turn.functionCalls(turn)`, `Turn.assistantMessages(turn)`, `Turn.appendTurn(state, turn, items?)`, `Turn.toStructured(turn, format)`, `Turn.textDeltas`, `Turn.toSSE`, `Turn.toJSONL`, `Turn.asSSE`, `Turn.asJSONL`. |
 | `@effect-uai/core/LanguageModel`        | `LanguageModel` service tag, `streamTurn(request)`, `turn(request)`, `CommonRequest` type.                                                                                                                                                 |
-| `@effect-uai/core/Loop`                 | `loop`, `nextAfter`, `nextAfterFold`, `stop`, `stopAfter`, `streamUntilComplete`.                                                                                                                                                          |
+| `@effect-uai/core/Loop`                 | `loop`, `nextAfter`, `nextAfterFold`, `stop`, `stopAfter`, `onTurnComplete`.                                                                                                                                                          |
 | `@effect-uai/core/Tool`                 | `Tool.make`, `Tool.streaming`, `Tool.fromEffectSchema`, `Tool.toDescriptors`, `Tool.AnyKindTool`.                                                                                                                                          |
-| `@effect-uai/core/Toolkit`              | `Toolkit.make`, `Toolkit.executeAll`, `Toolkit.outputEvents`, `Toolkit.outputEvent`, `Toolkit.nextStateFrom`.                                                                                                                              |
+| `@effect-uai/core/Toolkit`              | `Toolkit.make`, `Toolkit.executeAll`, `Toolkit.outputEvents`, `Toolkit.outputEvent`, `Toolkit.continueWith`.                                                                                                                              |
 | `@effect-uai/core/Outcome`              | `ToolResult` (`Value` / `Failure`), `toFunctionCallOutput`, `denied`, `cancelled`, `executionError`.                                                                                                                                       |
 | `@effect-uai/core/ToolEvent`            | `ToolEvent` union (`ApprovalRequested` / `Intermediate` / `Output`), `isOutput`, `isIntermediate`, `isApprovalRequested`.                                                                                                                  |
 | `@effect-uai/core/Resolvers`            | `fromApprovalMap`, `fromVerdictQueue` for human-in-the-loop tool approval.                                                                                                                                                                 |
@@ -144,7 +144,7 @@ Almost every recipe is a variation of this shape:
 ```ts
 import { Effect, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
@@ -173,7 +173,7 @@ export const conversation = pipe(
       return oai
         .streamTurn({ history: state.history, model: "gpt-5.4-mini", tools: descriptors })
         .pipe(
-          streamUntilComplete<State, ToolEvent>((turn) =>
+          onTurnComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
               const calls = Turn.functionCalls(turn)
 
@@ -181,9 +181,10 @@ export const conversation = pipe(
               if (calls.length === 0) return stop
 
               // Tool calls: execute and append outputs; loop again.
-              const events = Toolkit.executeAll(tools, calls)
-              return Toolkit.nextStateFrom(events, (results) =>
-                Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+              return Toolkit.executeAll(tools, calls).pipe(
+                Toolkit.continueWith((results) =>
+                  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                ),
               )
             }),
           ),

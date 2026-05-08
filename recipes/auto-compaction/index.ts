@@ -12,7 +12,7 @@
 import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 
@@ -106,7 +106,7 @@ const conversation = pipe(
             reasoning: { effort: "low" },
           })
           .pipe(
-            streamUntilComplete((turn) =>
+            onTurnComplete((turn) =>
               Effect.sync(() => {
                 const summary = Turn.assistantMessages(turn)
                   .flatMap((m) => m.content)
@@ -132,7 +132,7 @@ const conversation = pipe(
         })
         .pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-          streamUntilComplete((turn) =>
+          onTurnComplete((turn) =>
             Effect.sync(() => {
               const next = advance(state, turn)
               if (state.pendingPrompts.length === 0) return stop

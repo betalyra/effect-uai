@@ -42,7 +42,7 @@ compaction decision.
 ```ts
 import { Effect, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses } from "@effect-uai/responses"
 
@@ -67,7 +67,7 @@ const conversation = pipe(
             reasoning: { effort: "low" },
           })
           .pipe(
-            streamUntilComplete((turn) =>
+            onTurnComplete((turn) =>
               Effect.sync(() => {
                 const summary = Turn.assistantMessages(turn)
                   .flatMap((m) => m.content)
@@ -82,7 +82,7 @@ const conversation = pipe(
 
       // Normal turn (bigger model, etc.)
       return oai.streamTurn({ history: state.history, model: "gpt-5.4" }).pipe(
-        streamUntilComplete((turn) =>
+        onTurnComplete((turn) =>
           Effect.sync(() => {
             const next = advance(state, turn)
             if (next.pendingPrompts.length === 0) return stop

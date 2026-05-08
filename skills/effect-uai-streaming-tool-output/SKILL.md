@@ -103,14 +103,15 @@ Identical to the basic-usage shape; only the toolkit differs.
 `Toolkit.executeAll` dispatches streaming and plain tools uniformly:
 
 ```ts
-streamUntilComplete<State, ToolEvent>((turn) =>
+onTurnComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
     const calls = Turn.functionCalls(turn)
     if (calls.length === 0) return stop
 
-    const events = Toolkit.executeAll(allTools, calls)
-    return Toolkit.nextStateFrom(events, (results) =>
-      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    return Toolkit.executeAll(allTools, calls).pipe(
+      Toolkit.continueWith((results) =>
+        Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+      ),
     )
   }),
 )

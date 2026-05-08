@@ -14,7 +14,7 @@ import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 import { make as makeGemini } from "@effect-uai/google/Gemini"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
@@ -64,7 +64,7 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
 
         return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
           // Success path: first complete turn ends the whole loop.
-          streamUntilComplete(() => Effect.sync(() => stop)),
+          onTurnComplete(() => Effect.sync(() => stop)),
           Stream.catchTag("RateLimited", () => Stream.unwrap(advanceTier("rate-limited"))),
           Stream.catchTag("Unavailable", () => Stream.unwrap(advanceTier("unavailable"))),
         )

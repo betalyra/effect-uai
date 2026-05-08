@@ -44,13 +44,19 @@ answer is almost always "compose primitives in the loop body" — not
 ```sh
 pnpm add @effect-uai/core effect
 # pick one or more providers:
-pnpm add @effect-uai/responses   # OpenAI Responses API
+pnpm add @effect-uai/responses   # OpenAI Responses + embeddings
 pnpm add @effect-uai/anthropic   # Anthropic Claude
-pnpm add @effect-uai/google      # Google Gemini
+pnpm add @effect-uai/google      # Google Gemini language + embeddings
+pnpm add @effect-uai/jina        # Jina embeddings (text + image, sparse, multivector)
 ```
 
 The core package has no provider dependencies. Edge / browser builds
 only pull in what's actually used.
+
+For embedding (vectorize text or images, similarity ranking, RAG
+retrieval primitive), reach for the `effect-uai-embedding` sub-skill —
+`EmbeddingModel` is a parallel service to `LanguageModel`, with its
+own provider layers and `embed` / `embedMany` helpers.
 
 ## Core modules (cheat sheet)
 
@@ -238,6 +244,7 @@ matching skill when the user describes the scenario:
 | Send the same prompt to multiple providers; isolate per-member failures                 | `effect-uai-multi-model-compare`   |
 | Have models judge each other and emit a winner                                          | `effect-uai-model-council`         |
 | Project the loop's output as Server-Sent Events or JSONL on the wire                    | `effect-uai-modify-output-stream`  |
+| Embed text or images, semantic / cross-modal / multivector retrieval, RAG primitive       | `effect-uai-embedding`             |
 
 When more than one applies (e.g. "agentic chat that retries on rate
 limits and falls back to another provider"), compose them: the loop

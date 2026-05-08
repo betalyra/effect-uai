@@ -1,5 +1,12 @@
 # @effect-uai/anthropic
 
+## Unreleased
+
+### Patch Changes
+
+- Updated dependencies for `@effect-uai/core` (new embedding subsystem).
+  No source changes; Anthropic does not currently ship an embedding API.
+
 ## 0.2.0
 
 ### Patch Changes

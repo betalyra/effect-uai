@@ -1,5 +1,23 @@
 # @effect-uai/core
 
+## Unreleased
+
+### Minor Changes
+
+- New `EmbeddingModel` service — parallel of `LanguageModel` for vectorization.
+  Adds `@effect-uai/core/EmbeddingModel` (service tag, `embed` / `embedMany`,
+  `CommonEmbedRequest`, cross-provider `Encoding` union) and
+  `@effect-uai/core/Embedding` (tagged union of `Float32` / `Int8` / `Binary` /
+  `Sparse` / `Multivector` embeddings with predicates, plus `EmbedInput` and
+  `Usage`).
+- New `@effect-uai/core/Vector` math primitives: dense (`cosine`, `dot`,
+  `l2Norm`, `normalize`, `euclidean`), sparse (`sparseCosine`, `sparseDot`,
+  `sparseL2Norm`), and multivector (`maxSim`).
+- New media domain shared with language-model multimodal inputs:
+  `@effect-uai/core/Media` (generic `MediaSource<MimeType>`) and
+  `@effect-uai/core/Image` (typed `ImageMimeType` plus `imageUrl` /
+  `imageBase64` / `imageBytes` constructors and predicates).
+
 ## 0.2.0
 
 ### Minor Changes

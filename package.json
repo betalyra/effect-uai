@@ -31,6 +31,8 @@
     "typecheck:responses": "pnpm --filter @effect-uai/responses typecheck",
     "typecheck:recipes": "pnpm --filter @effect-uai/recipes typecheck",
     "typecheck:webpage": "pnpm --filter webpage typecheck",
+    "lint:effect": "effect-language-service diagnostics --project ./tsconfig.json --format pretty",
+    "lint:effect:strict": "effect-language-service diagnostics --project ./tsconfig.json --format text --strict",
     "build": "pnpm --filter \"@effect-uai/*\" -r build",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
@@ -44,6 +46,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
+    "@effect/language-service": "^0.85.1",
     "@types/node": "^25.6.0",
     "oxfmt": "^0.46.0",
     "tsdown": "^0.21.10",

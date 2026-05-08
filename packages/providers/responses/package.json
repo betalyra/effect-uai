@@ -31,6 +31,10 @@
     "./Responses": {
       "types": "./dist/Responses.d.mts",
       "import": "./dist/Responses.mjs"
+    },
+    "./OpenAIEmbedding": {
+      "types": "./dist/OpenAIEmbedding.d.mts",
+      "import": "./dist/OpenAIEmbedding.mjs"
     }
   },
   "files": [

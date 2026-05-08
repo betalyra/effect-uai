@@ -3,23 +3,29 @@
  * cosine similarity to the query. The whole RAG retrieval primitive in
  * one file - no vector DB, no chunker, no reranker.
  *
- *   pnpm tsx recipes/basic-embedding/index.ts
+ * Switch providers via `--provider`:
  *
- * Requires `GOOGLE_API_KEY` in the environment.
+ *   pnpm tsx recipes/basic-embedding/index.ts --provider=gemini
+ *   pnpm tsx recipes/basic-embedding/index.ts --provider=openai
  *
- * Uses `gemini-embedding-2` - Google's GA multimodal embedding model.
- * Note: `gemini-embedding-2` ignores `taskType`; instead, prepend task
- * instructions to the text yourself (we omit `task` here for simplicity).
- * For the older `gemini-embedding-001` you would pass `task: "query"` /
- * `task: "document"` and the layer would forward it as `taskType`.
+ * Requires the matching API key in the environment
+ * (`GOOGLE_API_KEY` / `OPENAI_API_KEY`).
+ *
+ * The program is provider-agnostic - it yields the generic `EmbeddingModel`
+ * tag, so swapping providers is a layer-level decision. Note that
+ * `gemini-embedding-2` ignores `task`; OpenAI also has no task semantics.
+ * For provider-portable retrieval-quality work, use a model with a task
+ * field (e.g. `gemini-embedding-001`) and pass `task: "query"` /
+ * `task: "document"`.
  */
-import { Config, Effect, Layer, Logger, References } from "effect"
+import { Config, Effect, Layer, Logger, Match, References } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Embedding from "@effect-uai/core/Embedding"
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
 import * as Vector from "@effect-uai/core/Vector"
 import { layer as geminiEmbeddingLayer } from "@effect-uai/google/GeminiEmbedding"
+import { layer as openaiEmbeddingLayer } from "@effect-uai/responses/OpenAIEmbedding"
 
 // ---------------------------------------------------------------------------
 // Corpus
@@ -35,64 +41,107 @@ const documents = [
   "Hydration ratios above 75% give sourdough an open, airy crumb.",
 ]
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 const asFloat32 = (e: Embedding.Embedding): Effect.Effect<Float32Array, AiError.AiError> =>
   Embedding.isFloat32(e)
     ? Effect.succeed(e.vector)
     : Effect.fail(
         new AiError.InvalidRequest({
-          provider: "gemini",
+          provider: "embedding",
           param: "encoding",
           raw: `expected float32 embedding, got "${e._tag}"`,
         }),
       )
 
 // ---------------------------------------------------------------------------
-// Program
+// Program - provider-agnostic. Picks the model name as a parameter; the
+// layer below decides which provider answers.
 // ---------------------------------------------------------------------------
 
-const model = "gemini-embedding-2"
+const program = (model: string) =>
+  Effect.gen(function* () {
+    // Query and documents are independent HTTP calls; run them in parallel.
+    const [queryResult, docsResult] = yield* Effect.all(
+      [embed({ model, input: query }), embedMany({ model, inputs: documents })],
+      { concurrency: "unbounded" },
+    )
 
-const program = Effect.gen(function* () {
-  // Query and documents are independent HTTP calls; run them in parallel.
-  const [queryResult, docsResult] = yield* Effect.all(
-    [
-      embed({ model, input: query }),
-      embedMany({ model, inputs: documents }),
-    ],
-    { concurrency: "unbounded" },
+    const qVec = yield* asFloat32(queryResult.embedding)
+    const docVecs = yield* Effect.forEach(docsResult.embeddings, asFloat32)
+
+    const ranked = documents
+      .map((doc, i) => ({ doc, score: Vector.cosine(qVec, docVecs[i]!) }))
+      .sort((a, b) => b.score - a.score)
+
+    yield* Effect.logInfo("query", { query })
+    yield* Effect.forEach(ranked, ({ doc, score }, i) =>
+      Effect.logInfo(`#${i + 1}  score=${score.toFixed(4)}`, { doc }),
+    )
+  })
+
+// ---------------------------------------------------------------------------
+// Provider selection
+// ---------------------------------------------------------------------------
+
+type Provider = "gemini" | "openai"
+
+const parseProvider = (argv: ReadonlyArray<string>): Provider => {
+  const flag =
+    argv.find((a) => a.startsWith("--provider="))?.slice("--provider=".length) ?? "gemini"
+  return Match.value(flag).pipe(
+    Match.when("gemini", () => "gemini" as const),
+    Match.when("openai", () => "openai" as const),
+    Match.orElse(() => {
+      throw new Error(`unknown provider: ${flag} (expected gemini|openai)`)
+    }),
+  )
+}
+
+const modelFor = (provider: Provider): string =>
+  Match.value(provider).pipe(
+    Match.when("gemini", () => "gemini-embedding-2"),
+    Match.when("openai", () => "text-embedding-3-small"),
+    Match.exhaustive,
   )
 
-  const qVec = yield* asFloat32(queryResult.embedding)
-  const docVecs = yield* Effect.forEach(docsResult.embeddings, asFloat32)
-
-  const ranked = documents
-    .map((doc, i) => ({ doc, score: Vector.cosine(qVec, docVecs[i]!) }))
-    .sort((a, b) => b.score - a.score)
-
-  yield* Effect.logInfo("query", { query })
-  yield* Effect.forEach(ranked, ({ doc, score }, i) =>
-    Effect.logInfo(`#${i + 1}  score=${score.toFixed(4)}`, { doc }),
+const layerFor = (provider: Provider) =>
+  Match.value(provider).pipe(
+    Match.when("gemini", () =>
+      Layer.unwrap(
+        Effect.gen(function* () {
+          const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
+          return geminiEmbeddingLayer({ apiKey })
+        }),
+      ),
+    ),
+    Match.when("openai", () =>
+      Layer.unwrap(
+        Effect.gen(function* () {
+          const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+          return openaiEmbeddingLayer({ apiKey })
+        }),
+      ),
+    ),
+    Match.exhaustive,
   )
-})
 
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
-const layer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
-    return geminiEmbeddingLayer({ apiKey })
-  }),
-)
+const provider = parseProvider(process.argv.slice(2))
 
 const runtime = Layer.mergeAll(
-  layer.pipe(Layer.provide(FetchHttpClient.layer)),
+  layerFor(provider).pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
 
 Effect.runPromise(
-  program.pipe(
+  program(modelFor(provider)).pipe(
+    Effect.tap(() => Effect.logInfo(`provider: ${provider}`)),
     Effect.provide(runtime),
     Effect.provideService(References.MinimumLogLevel, "Info"),
   ),

@@ -66,11 +66,10 @@ export type FilePath = typeof FilePath.Type
 export const Annotation = Schema.Union([UrlCitation, FileCitation, ContainerFileCitation, FilePath])
 export type Annotation = typeof Annotation.Type
 
-export const isUrlCitation = (a: Annotation): a is UrlCitation => a.type === "url_citation"
-export const isFileCitation = (a: Annotation): a is FileCitation => a.type === "file_citation"
-export const isContainerFileCitation = (a: Annotation): a is ContainerFileCitation =>
-  a.type === "container_file_citation"
-export const isFilePath = (a: Annotation): a is FilePath => a.type === "file_path"
+export const isUrlCitation = Schema.is(UrlCitation)
+export const isFileCitation = Schema.is(FileCitation)
+export const isContainerFileCitation = Schema.is(ContainerFileCitation)
+export const isFilePath = Schema.is(FilePath)
 
 export const OutputText = Schema.Struct({
   type: Schema.Literal("output_text"),
@@ -158,18 +157,15 @@ export type Item = typeof Item.Type
 // Type guards
 // ---------------------------------------------------------------------------
 
-export const isInputText = (block: ContentBlock): block is InputText => block.type === "input_text"
-export const isInputImage = (block: ContentBlock): block is InputImage =>
-  block.type === "input_image"
-export const isOutputText = (block: ContentBlock): block is OutputText =>
-  block.type === "output_text"
-export const isRefusal = (block: ContentBlock): block is Refusal => block.type === "refusal"
+export const isInputText = Schema.is(InputText)
+export const isInputImage = Schema.is(InputImage)
+export const isOutputText = Schema.is(OutputText)
+export const isRefusal = Schema.is(Refusal)
 
-export const isMessage = (item: Item): item is Message => item.type === "message"
-export const isFunctionCall = (item: Item): item is FunctionCall => item.type === "function_call"
-export const isFunctionCallOutput = (item: Item): item is FunctionCallOutput =>
-  item.type === "function_call_output"
-export const isReasoning = (item: Item): item is Reasoning => item.type === "reasoning"
+export const isMessage = Schema.is(Message)
+export const isFunctionCall = Schema.is(FunctionCall)
+export const isFunctionCallOutput = Schema.is(FunctionCallOutput)
+export const isReasoning = Schema.is(Reasoning)
 
 // ---------------------------------------------------------------------------
 // Usage and stop reason

@@ -96,9 +96,9 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
+const mainLayer = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
 
-Effect.runPromise(program.pipe(Effect.provide(runtime)))
+Effect.runPromise(program.pipe(Effect.provide(mainLayer)))
 ```
 
 For Anthropic: `import { layer as anthropicLayer } from "@effect-uai/anthropic"` + `ANTHROPIC_API_KEY`.

@@ -28,7 +28,7 @@ const provider = Layer.unwrap(
   }),
 )
 
-const runtime = provider.pipe(Layer.provide(FetchHttpClient.layer))
+const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
 ```
 
 `anthropicLayer` registers two service tags from one underlying

@@ -33,9 +33,9 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
+const mainLayer = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
 
-Effect.runPromise(program.pipe(Effect.provide(runtime))).catch((err) => {
+Effect.runPromise(program.pipe(Effect.provide(mainLayer))).catch((err) => {
   console.error("recipe failed:", err)
   process.exit(1)
 })

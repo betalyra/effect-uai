@@ -77,10 +77,10 @@ const program = Effect.gen(function* () {
   yield* Stream.runForEach(council(members, initialHistory), logEvent)
 })
 
-const runtime = Layer.mergeAll(FetchHttpClient.layer, Logger.layer([Logger.consolePretty()]))
+const mainLayer = Layer.mergeAll(FetchHttpClient.layer, Logger.layer([Logger.consolePretty()]))
 
 Effect.runPromise(
-  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Info")),
+  program.pipe(Effect.provide(mainLayer), Effect.provideService(References.MinimumLogLevel, "Info")),
 ).catch((err) => {
   Effect.runSync(Effect.logError("recipe failed", { err }))
   process.exit(1)

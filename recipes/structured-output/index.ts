@@ -136,7 +136,7 @@ const layerFor = (provider: Provider) =>
 
 const provider = parseProvider(process.argv.slice(2))
 
-const runtime = Layer.mergeAll(
+const mainLayer = Layer.mergeAll(
   layerFor(provider).pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
@@ -144,7 +144,7 @@ const runtime = Layer.mergeAll(
 Effect.runPromise(
   program(modelFor(provider)).pipe(
     Effect.tap(() => Effect.logInfo(`provider: ${provider}`)),
-    Effect.provide(runtime),
+    Effect.provide(mainLayer),
     Effect.provideService(References.MinimumLogLevel, "Info"),
   ),
 ).catch((err) => {

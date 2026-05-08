@@ -36,13 +36,15 @@ jobs:
 
       - run: pnpm test
 
-      # Publish is handled separately by `release-manual.yml` (which takes
-      # an OTP input) because the @effect-uai npm scope has 2FA-on-writes
-      # enabled and CI has no way to provide a one-time password.
-      - name: Create release PR
+      # Trusted publishing via OIDC (configured per package on npmjs.com).
+      # When changesets are present -> opens/updates the release PR.
+      # When merged (no changesets remain) -> runs `pnpm release`, which
+      # publishes via OIDC; no NPM_TOKEN, no OTP.
+      - name: Create release PR or publish
         uses: changesets/action@v1
         with:
           version: pnpm version-packages
+          publish: pnpm release
           commit: "chore: release"
           title: "chore: release"
         env:

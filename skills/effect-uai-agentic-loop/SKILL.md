@@ -43,7 +43,7 @@ const needsUserInput = (state: State): boolean => {
 import { Duration, Effect, Queue, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
@@ -70,7 +70,7 @@ export const conversation = (
 
         const lm = yield* LanguageModel
         return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
-          streamUntilComplete<State, ToolEvent>((turn) =>
+          onTurnComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
               const calls = Turn.functionCalls(turn)
 
@@ -78,9 +78,10 @@ export const conversation = (
                 return nextAfter(Stream.empty, Turn.appendTurn({ history }, turn))
               }
 
-              const events = Toolkit.executeAll(tools, calls)
-              return Toolkit.nextStateFrom(events, (results) =>
-                Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
+              return Toolkit.executeAll(tools, calls).pipe(
+                Toolkit.continueWith((results) =>
+                  Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
+                ),
               )
             }),
           ),

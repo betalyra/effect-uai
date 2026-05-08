@@ -45,7 +45,7 @@ const conversation = pipe(
           model: "gpt-5.4-mini",
           reasoning: { effort: "low" },
         })
-        .pipe(streamUntilComplete(() => Effect.sync(() => stop)))
+        .pipe(onTurnComplete(() => Effect.sync(() => stop)))
     }),
   ),
 )

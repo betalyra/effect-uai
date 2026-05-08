@@ -26,6 +26,25 @@
   shape and existing `is*` predicates are preserved.
 - New barrel re-exports from `@effect-uai/core`: `Outcome`, `ToolEvent`,
   `Resolvers`, `HistoryCheck`.
+- Tools can now declare an `R` requirement and receive Effect services in
+  `run`. `Tool.AnyPlainTool` / `Tool.AnyStreamingTool` / `Tool.AnyKindTool`
+  are generic over `R` (default `any`); `Toolkit.executeAll` propagates the
+  union via the new `Toolkit.ToolKindR<Tools>` helper. Provide services with
+  `Effect.provide` at the recipe level — same compile-time guarantee as
+  every other Effect service, no parallel `toolsContext` mechanism.
+- Renamed `Loop.streamUntilComplete` → `Loop.onTurnComplete`. Same
+  semantics — runs a continuation when the `turn_complete` sentinel
+  arrives. Old name is gone.
+- Renamed and curried `Toolkit.nextStateFrom` → `Toolkit.continueWith`.
+  Now dual via `Function.dual`: data-first
+  `Toolkit.continueWith(stream, build)` and pipe-friendly
+  `stream.pipe(Toolkit.continueWith(build))` both work.
+- New `Loop.loopWithState(initial, body)` — like `loop`, but returns
+  `Effect<{ stream, state: SubscriptionRef<S> }>`. The ref is seeded with
+  `initial` and updated on every `next(s)`. Use it for final-state
+  inspection after `Stream.runDrain`, live observation via
+  `SubscriptionRef.changes`, or mid-iteration peeks. Doesn't pollute the
+  value stream.
 
 ## 0.2.0
 

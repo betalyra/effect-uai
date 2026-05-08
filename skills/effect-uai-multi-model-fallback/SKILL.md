@@ -38,7 +38,7 @@ interface State {
 
 ```ts
 import { Effect, Stream, pipe } from "effect"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 
 const conversation = (tiers: ReadonlyArray<Tier>) =>
   pipe(
@@ -55,7 +55,7 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
 
         return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
           // Success path: first complete turn ends the loop.
-          streamUntilComplete(() => Effect.sync(() => stop)),
+          onTurnComplete(() => Effect.sync(() => stop)),
           // Only retryable errors become continuation; everything else propagates.
           Stream.catchTag("RateLimited", () => Stream.unwrap(advanceTier("rate-limited"))),
           Stream.catchTag("Unavailable", () => Stream.unwrap(advanceTier("unavailable"))),

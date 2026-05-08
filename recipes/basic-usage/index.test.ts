@@ -2,7 +2,7 @@ import { Effect, Schema, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
@@ -71,17 +71,18 @@ describe("basic-usage", () => {
               tools: Toolkit.toDescriptors(toolkit),
             })
             .pipe(
-              streamUntilComplete<State, ToolEvent>((turn) =>
+              onTurnComplete<State, ToolEvent>((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
 
-                  const events = Toolkit.executeAll(toolkit.tools, calls)
-                  return Toolkit.nextStateFrom(events, (results) =>
-                    Turn.appendTurn(
-                      { ...state, index: state.index + 1 },
-                      turn,
-                      results.map(toFunctionCallOutput),
+                  return Toolkit.executeAll(toolkit.tools, calls).pipe(
+                    Toolkit.continueWith((results) =>
+                      Turn.appendTurn(
+                        { ...state, index: state.index + 1 },
+                        turn,
+                        results.map(toFunctionCallOutput),
+                      ),
                     ),
                   )
                 }),

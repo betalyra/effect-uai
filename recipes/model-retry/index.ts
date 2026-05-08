@@ -37,7 +37,7 @@ import { Data, Effect, Schedule, Stream, pipe } from "effect"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ export const conversation = pipe(
         Stream.flatMap((item) =>
           item._tag === "Event" ? Stream.succeed(item.event) : Stream.fail(item.cause),
         ),
-        streamUntilComplete<State, never>(() => Effect.sync(() => stop)),
+        onTurnComplete<State, never>(() => Effect.sync(() => stop)),
       )
     }),
   ),

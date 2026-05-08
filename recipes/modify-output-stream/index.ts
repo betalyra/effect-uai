@@ -16,7 +16,7 @@
 import { Effect, Result, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import type * as SSE from "@effect-uai/core/SSE"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -97,7 +97,7 @@ export const conversation = pipe(
       const lm = yield* LanguageModel
       return lm
         .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
-        .pipe(streamUntilComplete<State, never>(() => Effect.sync(() => stop)))
+        .pipe(onTurnComplete<State, never>(() => Effect.sync(() => stop)))
     }),
   ),
 )

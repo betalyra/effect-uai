@@ -91,6 +91,6 @@ requested tools, append their outputs, and continue.
 ## See also
 
 - [The loop primitive](/concepts/loop/) - what `loop` is for, its shape,
-  and how `streamUntilComplete` decides when to continue.
+  and how `onTurnComplete` decides when to continue.
 - [Providers](/providers/responses/) - OpenAI Responses, Anthropic, and
   Google Gemini, their typed options, and how to swap between them.

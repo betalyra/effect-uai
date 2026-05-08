@@ -17,7 +17,19 @@
  * (their producing side effects may already have run). Prefer the
  * `Loop.nextAfter` / `Loop.stopAfter` helpers to terminate cleanly.
  */
-import { Cause, Channel, Data, Effect, Exit, Function, Option, Ref, Scope, Stream } from "effect"
+import {
+  Cause,
+  Channel,
+  Data,
+  Effect,
+  Exit,
+  Function,
+  Option,
+  Ref,
+  Scope,
+  Stream,
+  SubscriptionRef,
+} from "effect"
 import { IncompleteTurn } from "../domain/AiError.js"
 import { isTurnComplete, type Turn, type TurnEvent } from "../domain/Turn.js"
 
@@ -83,7 +95,7 @@ export const stopAfter = <A, E, R>(
  * into an accumulator, and at end-of-stream emit one `next(build(finalAcc))`.
  *
  * Subsumes `nextAfter` when state is constant (`reduce: (s, _) => s`,
- * `build: (s) => s`). Used by `Toolkit.nextStateFrom` to collect tool
+ * `build: (s) => s`). Used by `Toolkit.continueWith` to collect tool
  * results and build next state without exposing a Ref to recipes.
  */
 export const nextAfterFold = <A, B, S, E, R>(
@@ -107,7 +119,7 @@ export const nextAfterFold = <A, B, S, E, R>(
   )
 
 // ---------------------------------------------------------------------------
-// streamUntilComplete - turn-aware stream operator for loop bodies
+// onTurnComplete - turn-aware stream operator for loop bodies
 // ---------------------------------------------------------------------------
 
 /**
@@ -125,7 +137,7 @@ export const nextAfterFold = <A, B, S, E, R>(
  * fails with `AiError.IncompleteTurn`. Catch it via `Stream.catchTag` if
  * you want to recover.
  */
-export const streamUntilComplete =
+export const onTurnComplete =
   <S, A, E2 = never, R2 = never>(
     then: (turn: Turn) => Effect.Effect<Stream.Stream<Event<A, S>, E2, R2>, E2, R2>,
   ) =>
@@ -293,3 +305,57 @@ export const loop: {
       ),
     ),
 )
+
+// ---------------------------------------------------------------------------
+// loopWithState - same body protocol, plus a live state observable.
+// ---------------------------------------------------------------------------
+
+/**
+ * Like `loop`, but exposes the current loop state as a `SubscriptionRef`
+ * alongside the value stream.
+ *
+ * Allocates one `SubscriptionRef<S>` seeded with `initial`, then runs the
+ * loop with a wrapped body that taps every `Next(s)` event into the ref
+ * before forwarding it. The caller decides how to consume both channels:
+ *
+ *   - **Final state**: drain the stream, then `SubscriptionRef.get(state)`
+ *     - the ref holds the state from the last `Next` (or `initial` if the
+ *     loop ended without advancing).
+ *   - **Live transitions**: `SubscriptionRef.changes(state)` is a
+ *     `Stream<S>` of every state observed; subscribe alongside the value
+ *     stream.
+ *   - **Mid-iteration peek**: `SubscriptionRef.get(state)` at any time.
+ *
+ * The returned stream and ref are independent of each other - the ref
+ * lives outside the stream's scope, so reading it after the stream
+ * completes is safe.
+ */
+export const loopWithState = <S, A, E, R>(
+  initial: S,
+  body: LoopBody<S, A, E, R>,
+): Effect.Effect<{
+  readonly stream: Stream.Stream<A, E, R>
+  readonly state: SubscriptionRef.SubscriptionRef<S>
+}> =>
+  Effect.gen(function* () {
+    const stateRef = yield* SubscriptionRef.make(initial)
+
+    const tap = (
+      stream: Stream.Stream<Event<A, S>, E, R>,
+    ): Stream.Stream<Event<A, S>, E, R> =>
+      stream.pipe(
+        Stream.tap((event) =>
+          event._tag === "Next" ? SubscriptionRef.set(stateRef, event.state) : Effect.void,
+        ),
+      )
+
+    const wrappedBody: LoopBody<S, A, E, R> = (s) => {
+      const result = body(s)
+      return Effect.isEffect(result) ? Effect.map(result, tap) : tap(result)
+    }
+
+    return {
+      stream: loop(initial, wrappedBody),
+      state: stateRef,
+    }
+  })

@@ -193,13 +193,15 @@ point: `toFunctionCallOutput`, applied where results meet history.
 ```ts
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 
-return Toolkit.nextStateFrom(events, (results) =>
-  // Convert structured results only when they cross into provider history.
-  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+return events.pipe(
+  Toolkit.continueWith((results) =>
+    // Convert structured results only when they cross into provider history.
+    Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+  ),
 )
 ```
 
-`nextStateFrom` collects `ToolResult`s from the executor stream and
+`continueWith` collects `ToolResult`s from the executor stream and
 hands them to the builder; the recipe applies `toFunctionCallOutput`
 to wire-encode each one before appending to history.
 
@@ -208,16 +210,17 @@ to wire-encode each one before appending to history.
 The full pattern is in [Basic usage](/recipes/basic-usage/). The body:
 
 ```ts
-streamUntilComplete<State, ToolEvent>((turn) =>
+onTurnComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
     const calls = Turn.functionCalls(turn)
     // If the model did not ask for tools, this conversation is done.
     if (calls.length === 0) return stop
 
-    const events = Toolkit.executeAll(allTools, calls)
-    return Toolkit.nextStateFrom(events, (results) =>
-      // Provider history needs both the function_call items and their outputs.
-      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    return Toolkit.executeAll(allTools, calls).pipe(
+      Toolkit.continueWith((results) =>
+        // Provider history needs both the function_call items and their outputs.
+        Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+      ),
     )
   }),
 )

@@ -1,4 +1,4 @@
-import { Array as Arr, Effect, Ref, Stream } from "effect"
+import { Array as Arr, Effect, Function, Ref, Stream } from "effect"
 import * as Loop from "../loop/Loop.js"
 import type { FunctionCall } from "../domain/Items.js"
 import {
@@ -6,6 +6,7 @@ import {
   type AnyPlainTool,
   type AnyStreamingTool,
   isStreamingTool,
+  type StreamingTool,
   type Tool,
   type ToolDescriptor,
 } from "./Tool.js"
@@ -21,6 +22,18 @@ export type Toolkit<Tools extends ReadonlyArray<AnyTool>> = {
 
 export type ToolsR<Tools extends ReadonlyArray<AnyTool>> =
   Tools[number] extends Tool<any, any, any, infer R> ? R : never
+
+/**
+ * Union of every tool's `R` requirements in a mixed plain + streaming array.
+ * Used by `executeAll` to surface the services tools need at the recipe
+ * level, so the loop's stream type carries them through to `Effect.provide`.
+ */
+export type ToolKindR<Tools extends ReadonlyArray<AnyKindTool<any>>> =
+  Tools[number] extends StreamingTool<any, any, any, any, infer R>
+    ? R
+    : Tools[number] extends Tool<any, any, any, infer R>
+      ? R
+      : never
 
 export const make = <const Tools extends ReadonlyArray<AnyTool>>(tools: Tools): Toolkit<Tools> => ({
   tools,
@@ -54,11 +67,11 @@ export type ExecuteOptions = {
 }
 
 /** Execute every provided call. Approval/rejection policy belongs upstream. */
-export const executeAll = (
-  tools: ReadonlyArray<AnyKindTool>,
+export const executeAll = <Tools extends ReadonlyArray<AnyKindTool<any>>>(
+  tools: Tools,
   calls: ReadonlyArray<FunctionCall>,
   options?: ExecuteOptions,
-): Stream.Stream<ToolEvent> =>
+): Stream.Stream<ToolEvent, never, ToolKindR<Tools>> =>
   Stream.fromIterable(calls).pipe(
     Stream.flatMap((call) => runOne(tools, call), {
       concurrency: options?.concurrency ?? "unbounded",
@@ -77,10 +90,10 @@ const valueResult = (call: FunctionCall, tool: string, value: unknown): ToolResu
   value,
 })
 
-const runOne = (
-  tools: ReadonlyArray<AnyKindTool>,
+const runOne = <R>(
+  tools: ReadonlyArray<AnyKindTool<R>>,
   call: FunctionCall,
-): Stream.Stream<ToolEvent> => {
+): Stream.Stream<ToolEvent, never, R> => {
   const tool = tools.find((t) => t.name === call.name)
   if (tool === undefined) {
     // Graceful: emit a synthetic Failure so OTHER calls in this turn
@@ -94,7 +107,7 @@ const runOne = (
   return runPlain(tool, call)
 }
 
-const runPlain = (tool: AnyPlainTool, call: FunctionCall): Stream.Stream<ToolEvent> =>
+const runPlain = <R>(tool: AnyPlainTool<R>, call: FunctionCall): Stream.Stream<ToolEvent, never, R> =>
   Stream.fromEffect(
     Effect.gen(function* () {
       const parsed = yield* Effect.try({
@@ -116,7 +129,10 @@ const runPlain = (tool: AnyPlainTool, call: FunctionCall): Stream.Stream<ToolEve
     ),
   )
 
-const runStreaming = (tool: AnyStreamingTool, call: FunctionCall): Stream.Stream<ToolEvent> =>
+const runStreaming = <R>(
+  tool: AnyStreamingTool<R>,
+  call: FunctionCall,
+): Stream.Stream<ToolEvent, never, R> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const parsed = yield* Effect.try({
@@ -173,19 +189,35 @@ const runStreaming = (tool: AnyStreamingTool, call: FunctionCall): Stream.Stream
   )
 
 // ---------------------------------------------------------------------------
-// `nextStateFrom` - bridge from a `Stream<ToolEvent>` to the loop's emit
+// `continueWith` - bridge from a `Stream<ToolEvent>` to the loop's emit
 // shape. Drains the stream to the consumer in real-time, taps every
 // `Output` into an internal Ref, and at end-of-stream emits
 // `Loop.next(build(results))`. Recipe never sees the Ref.
+//
+// Dual: data-first `continueWith(stream, build)` and data-last
+// `stream.pipe(continueWith(build))` both work.
 // ---------------------------------------------------------------------------
 
-export const nextStateFrom = <S>(
-  stream: Stream.Stream<ToolEvent>,
-  build: (results: ReadonlyArray<ToolResult>) => S,
-): Stream.Stream<Loop.Event<ToolEvent, S>> =>
-  Loop.nextAfterFold(
-    stream,
-    [] as ReadonlyArray<ToolResult>,
-    (acc, e) => (isOutput(e) ? Arr.append(acc, e.result) : acc),
-    build,
-  )
+export const continueWith: {
+  <S>(
+    build: (results: ReadonlyArray<ToolResult>) => S,
+  ): <R>(
+    stream: Stream.Stream<ToolEvent, never, R>,
+  ) => Stream.Stream<Loop.Event<ToolEvent, S>, never, R>
+  <S, R>(
+    stream: Stream.Stream<ToolEvent, never, R>,
+    build: (results: ReadonlyArray<ToolResult>) => S,
+  ): Stream.Stream<Loop.Event<ToolEvent, S>, never, R>
+} = Function.dual(
+  2,
+  <S, R>(
+    stream: Stream.Stream<ToolEvent, never, R>,
+    build: (results: ReadonlyArray<ToolResult>) => S,
+  ): Stream.Stream<Loop.Event<ToolEvent, S>, never, R> =>
+    Loop.nextAfterFold(
+      stream,
+      [] as ReadonlyArray<ToolResult>,
+      (acc, e) => (isOutput(e) ? Arr.append(acc, e.result) : acc),
+      build,
+    ),
+)

@@ -47,7 +47,7 @@ loop((state) =>
 
     const lm = yield* LanguageModel
     return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
-      streamUntilComplete<State, ToolEvent>((turn) =>
+      onTurnComplete<State, ToolEvent>((turn) =>
         Effect.sync(() => {
           const calls = Turn.functionCalls(turn)
 
@@ -57,9 +57,10 @@ loop((state) =>
           }
 
           // Tools mean the model needs their outputs before the user speaks again.
-          const events = Toolkit.executeAll(tools, calls)
-          return Toolkit.nextStateFrom(events, (results) =>
-            Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
+          return Toolkit.executeAll(tools, calls).pipe(
+            Toolkit.continueWith((results) =>
+              Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
+            ),
           )
         }),
       ),

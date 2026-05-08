@@ -22,7 +22,7 @@
  */
 import { Effect, Queue, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import {
   type ApprovalMapEntry,
@@ -149,19 +149,19 @@ export const httpConversation = (
             reasoning: { effort: "low" },
           })
           .pipe(
-            streamUntilComplete<State, ToolEvent>((turn) =>
+            onTurnComplete<State, ToolEvent>((turn) =>
               Effect.sync(() => {
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
 
                 const plan = fromApprovalMap(isSensitive, approvals)(calls)
-                const events = Stream.merge(
+                return Stream.merge(
                   Toolkit.executeAll(allTools, plan.approved),
                   Toolkit.outputEvents(plan.rejected),
-                )
-
-                return Toolkit.nextStateFrom(events, (results) =>
-                  Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                ).pipe(
+                  Toolkit.continueWith((results) =>
+                    Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                  ),
                 )
               }),
             ),
@@ -192,7 +192,7 @@ export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State =
             reasoning: { effort: "low" },
           })
           .pipe(
-            streamUntilComplete<State, ToolEvent>((turn) =>
+            onTurnComplete<State, ToolEvent>((turn) =>
               Effect.sync(() => {
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
@@ -216,8 +216,10 @@ export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State =
                   }),
                 )
 
-                return Toolkit.nextStateFrom(events, (results) =>
-                  Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                return events.pipe(
+                  Toolkit.continueWith((results) =>
+                    Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                  ),
                 )
               }),
             ),

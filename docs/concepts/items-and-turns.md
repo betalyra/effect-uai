@@ -86,15 +86,16 @@ const next = Turn.appendTurn(state, turn, toolOutputs)
 ```
 
 The third argument is usually the tool outputs collected by
-`Toolkit.nextStateFrom`, after applying `toFunctionCallOutput` at the wire
+`Toolkit.continueWith`, after applying `toFunctionCallOutput` at the wire
 boundary:
 
 ```ts
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 
-const events = Toolkit.executeAll(allTools, calls)
-return Toolkit.nextStateFrom(events, (results) =>
-  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+return Toolkit.executeAll(allTools, calls).pipe(
+  Toolkit.continueWith((results) =>
+    Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+  ),
 )
 ```
 

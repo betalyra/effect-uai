@@ -45,7 +45,7 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
           )
 
         return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
-          streamUntilComplete(() => Effect.sync(() => stop)),
+          onTurnComplete(() => Effect.sync(() => stop)),
           // Only retry errors become continuation; everything else crosses the boundary.
           Stream.catchTag("RateLimited", () => Stream.unwrap(advanceTier("rate-limited"))),
           Stream.catchTag("Unavailable", () => Stream.unwrap(advanceTier("unavailable"))),

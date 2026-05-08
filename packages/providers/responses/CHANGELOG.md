@@ -13,7 +13,9 @@
 ### Patch Changes
 
 - Updated dependencies for `@effect-uai/core` (new embedding subsystem;
-  `Match` module / `matchType` helper removed — see core changelog).
+  `Match` module / `matchType` helper removed; `Loop.streamUntilComplete`
+  renamed to `Loop.onTurnComplete`; `Toolkit.nextStateFrom` renamed to
+  `Toolkit.continueWith` and now pipe-friendly — see core changelog).
 
 ## 0.2.0
 

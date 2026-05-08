@@ -7,7 +7,7 @@
  */
 import { DateTime, Effect, Option, pipe, Schema, Stream } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
@@ -87,7 +87,7 @@ export const conversation = pipe(
         })
         .pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-          streamUntilComplete<State, ToolEvent>((turn) =>
+          onTurnComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
               const calls = Turn.functionCalls(turn)
 
@@ -96,15 +96,16 @@ export const conversation = pipe(
 
               // Streaming executor: tool intermediates flow through in
               // real time, terminal Outputs carry structured ToolResults.
-              // `nextStateFrom` collects the results and hands them to
+              // `continueWith` collects the results and hands them to
               // build for next-state construction; `toFunctionCallOutput`
               // converts to wire form when appending to history.
-              const events = Toolkit.executeAll(toolkit.tools, calls)
-              return Toolkit.nextStateFrom(events, (results) =>
-                Turn.appendTurn(
-                  { ...state, index: state.index + 1 },
-                  turn,
-                  results.map(toFunctionCallOutput),
+              return Toolkit.executeAll(toolkit.tools, calls).pipe(
+                Toolkit.continueWith((results) =>
+                  Turn.appendTurn(
+                    { ...state, index: state.index + 1 },
+                    turn,
+                    results.map(toFunctionCallOutput),
+                  ),
                 ),
               )
             }),

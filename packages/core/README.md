@@ -10,7 +10,7 @@ This package exposes:
 
 - **Domain types** - `Items`, `Turn`, `AiError`
 - **Provider contract** - `LanguageModel`
-- **Loop primitive** - `Loop` (`loop`, `value`, `next`, `stop`, `nextAfter`, `nextAfterFold`, `streamUntilComplete`)
+- **Loop primitive** - `Loop` (`loop`, `loopWithState`, `value`, `next`, `stop`, `nextAfter`, `nextAfterFold`, `onTurnComplete`)
 - **Tools** - `Tool`, `Toolkit`, `Outcome`, `ToolEvent`, `Resolvers`, `HistoryCheck`
 - **Streaming codecs** - `SSE`, `JSONL`, `Lines`
 - **Structured output** - `StructuredFormat`

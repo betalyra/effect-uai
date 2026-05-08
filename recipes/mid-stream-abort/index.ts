@@ -14,7 +14,7 @@
 import { Config, Deferred, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 
@@ -48,7 +48,7 @@ const conversation = pipe(
       // a short abort window can land before any delta arrives.
       return oai
         .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
-        .pipe(streamUntilComplete(() => Effect.sync(() => stop)))
+        .pipe(onTurnComplete(() => Effect.sync(() => stop)))
     }),
   ),
 )

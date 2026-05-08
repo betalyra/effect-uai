@@ -5,7 +5,7 @@
  *   - Intermediate      : per-element passthrough from a streaming tool's run
  *   - Output            : terminal result (carries a structured ToolResult)
  *
- * Recipes thread `ToolEvent.Output.result` through `nextStateFrom` and apply
+ * Recipes thread `ToolEvent.Output.result` through `continueWith` and apply
  * `toFunctionCallOutput` when appending to history.
  */
 import { Data } from "effect"

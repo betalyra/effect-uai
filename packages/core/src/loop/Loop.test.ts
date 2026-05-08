@@ -424,9 +424,7 @@ describe("Loop.loopWithState", () => {
   it("exposes the final state in the SubscriptionRef after the stream completes", async () => {
     const program = Effect.gen(function* () {
       const { stream, state } = yield* loopWithState(0, (n: number) =>
-        n >= 3
-          ? stopAfter(Stream.fromIterable([n]))
-          : nextAfter(Stream.fromIterable([n]), n + 1),
+        n >= 3 ? stopAfter(Stream.fromIterable([n])) : nextAfter(Stream.fromIterable([n]), n + 1),
       )
       const values = yield* Stream.runCollect(stream)
       const finalState = yield* SubscriptionRef.get(state)
@@ -457,9 +455,7 @@ describe("Loop.loopWithState", () => {
     // tracks loop state without the body needing to surface it.
     const program = Effect.gen(function* () {
       const { stream, state } = yield* loopWithState(0, (n: number) =>
-        n >= 3
-          ? stopAfter(Stream.fromIterable([n]))
-          : nextAfter(Stream.fromIterable([n]), n + 1),
+        n >= 3 ? stopAfter(Stream.fromIterable([n])) : nextAfter(Stream.fromIterable([n]), n + 1),
       )
       const seen: Array<{ value: number; stateAfter: number }> = []
       yield* Stream.runForEach(stream, (v) =>

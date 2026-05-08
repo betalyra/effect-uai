@@ -107,7 +107,10 @@ const runOne = <R>(
   return runPlain(tool, call)
 }
 
-const runPlain = <R>(tool: AnyPlainTool<R>, call: FunctionCall): Stream.Stream<ToolEvent, never, R> =>
+const runPlain = <R>(
+  tool: AnyPlainTool<R>,
+  call: FunctionCall,
+): Stream.Stream<ToolEvent, never, R> =>
   Stream.fromEffect(
     Effect.gen(function* () {
       const parsed = yield* Effect.try({

@@ -340,9 +340,7 @@ export const loopWithState = <S, A, E, R>(
   Effect.gen(function* () {
     const stateRef = yield* SubscriptionRef.make(initial)
 
-    const tap = (
-      stream: Stream.Stream<Event<A, S>, E, R>,
-    ): Stream.Stream<Event<A, S>, E, R> =>
+    const tap = (stream: Stream.Stream<Event<A, S>, E, R>): Stream.Stream<Event<A, S>, E, R> =>
       stream.pipe(
         Stream.tap((event) =>
           event._tag === "Next" ? SubscriptionRef.set(stateRef, event.state) : Effect.void,

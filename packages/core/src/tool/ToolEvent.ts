@@ -8,30 +8,34 @@
  * Recipes thread `ToolEvent.Output.result` through `nextStateFrom` and apply
  * `toFunctionCallOutput` when appending to history.
  */
+import { Data } from "effect"
 import type { ToolResult } from "./Outcome.js"
 
-export type ToolEvent =
-  | {
-      readonly _tag: "ApprovalRequested"
-      readonly call_id: string
-      readonly tool: string
-      readonly arguments: string
-    }
-  | {
-      readonly _tag: "Intermediate"
-      readonly call_id: string
-      readonly tool: string
-      readonly data: unknown
-    }
-  | { readonly _tag: "Output"; readonly result: ToolResult }
+export type ToolEvent = Data.TaggedEnum<{
+  ApprovalRequested: {
+    readonly call_id: string
+    readonly tool: string
+    readonly arguments: string
+  }
+  Intermediate: {
+    readonly call_id: string
+    readonly tool: string
+    readonly data: unknown
+  }
+  Output: {
+    readonly result: ToolResult
+  }
+}>
 
-export const isApprovalRequested = (
-  e: ToolEvent,
-): e is Extract<ToolEvent, { _tag: "ApprovalRequested" }> => e._tag === "ApprovalRequested"
+/**
+ * Namespace of constructors, type guards, and matchers for `ToolEvent`,
+ * provided by `Data.taggedEnum`. Use `ToolEvent.Output({ result })` to build
+ * an event, `ToolEvent.$is("Output")` for type narrowing,
+ * `ToolEvent.$match({ ApprovalRequested, Intermediate, Output })` for
+ * exhaustive pattern matching.
+ */
+export const ToolEvent = Data.taggedEnum<ToolEvent>()
 
-export const isIntermediate = (
-  e: ToolEvent,
-): e is Extract<ToolEvent, { _tag: "Intermediate" }> => e._tag === "Intermediate"
-
-export const isOutput = (e: ToolEvent): e is Extract<ToolEvent, { _tag: "Output" }> =>
-  e._tag === "Output"
+export const isApprovalRequested = ToolEvent.$is("ApprovalRequested")
+export const isIntermediate = ToolEvent.$is("Intermediate")
+export const isOutput = ToolEvent.$is("Output")

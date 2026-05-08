@@ -34,20 +34,17 @@ export type ImageBytesSource = MediaBytes<ImageMimeType>
  */
 export type ImageSource = MediaSource<ImageMimeType>
 
-export const ImageUrlSource = Schema.Struct({
-  _tag: Schema.Literal("url"),
+export const ImageUrlSource = Schema.TaggedStruct("url", {
   url: Schema.String,
   mimeType: Schema.optional(ImageMimeTypeSchema),
 })
 
-export const ImageBase64Source = Schema.Struct({
-  _tag: Schema.Literal("base64"),
+export const ImageBase64Source = Schema.TaggedStruct("base64", {
   base64: Schema.String,
   mimeType: ImageMimeTypeSchema,
 })
 
-export const ImageBytesSource = Schema.Struct({
-  _tag: Schema.Literal("bytes"),
+export const ImageBytesSource = Schema.TaggedStruct("bytes", {
   bytes: Schema.Uint8Array,
   mimeType: ImageMimeTypeSchema,
 })
@@ -73,6 +70,6 @@ export const imageBytes = (bytes: Uint8Array, mimeType: ImageMimeType): ImageByt
   mimeType,
 })
 
-export const isImageUrl = (s: ImageSource): s is ImageUrlSource => s._tag === "url"
-export const isImageBase64 = (s: ImageSource): s is ImageBase64Source => s._tag === "base64"
-export const isImageBytes = (s: ImageSource): s is ImageBytesSource => s._tag === "bytes"
+export const isImageUrl = Schema.is(ImageUrlSource)
+export const isImageBase64 = Schema.is(ImageBase64Source)
+export const isImageBytes = Schema.is(ImageBytesSource)

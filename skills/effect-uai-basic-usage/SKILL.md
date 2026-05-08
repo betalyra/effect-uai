@@ -120,10 +120,10 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
+const mainLayer = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
 
 await Effect.runPromise(
-  Stream.runDrain(conversation).pipe(Effect.provide(runtime)),
+  Stream.runDrain(conversation).pipe(Effect.provide(mainLayer)),
 )
 ```
 

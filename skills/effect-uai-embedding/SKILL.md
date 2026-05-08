@@ -48,7 +48,7 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
+const mainLayer = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
 ```
 
 Each `layer` registers two tags: the provider-typed one

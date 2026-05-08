@@ -35,14 +35,14 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = Layer.mergeAll(
+const mainLayer = Layer.mergeAll(
   apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
 
 Effect.runPromise(
   program.pipe(
-    Effect.provide(runtime),
+    Effect.provide(mainLayer),
     Effect.provideService(References.MinimumLogLevel, "Debug"),
   ),
 ).catch((err) => {

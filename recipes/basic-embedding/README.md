@@ -17,13 +17,15 @@ documents by cosine similarity to the query.
 ```ts
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
 
-const [queryResult, docsResult] = yield* Effect.all(
-  [
-    embed({ model, input: query, task: "query" }),
-    embedMany({ model, inputs: documents, task: "document" }),
-  ],
-  { concurrency: "unbounded" },
-)
+const [queryResult, docsResult] =
+  yield *
+  Effect.all(
+    [
+      embed({ model, input: query, task: "query" }),
+      embedMany({ model, inputs: documents, task: "document" }),
+    ],
+    { concurrency: "unbounded" },
+  )
 ```
 
 Two helpers:
@@ -64,9 +66,7 @@ default float32 path you narrow with a predicate:
 import * as Embedding from "@effect-uai/core/Embedding"
 
 const asFloat32 = (e: Embedding.Embedding) =>
-  Embedding.isFloat32(e)
-    ? Effect.succeed(e.vector)
-    : Effect.fail(/* InvalidRequest */)
+  Embedding.isFloat32(e) ? Effect.succeed(e.vector) : Effect.fail(/* InvalidRequest */)
 ```
 
 The tag reflects the wire form the provider returned, not what you
@@ -99,11 +99,11 @@ JINA_API_KEY=...     pnpm tsx recipes/basic-embedding/index.ts --provider=jina
 
 The recipe parses `--provider` and selects:
 
-| Provider | Model |
-|---|---|
-| `gemini` | `gemini-embedding-2` |
+| Provider | Model                    |
+| -------- | ------------------------ |
+| `gemini` | `gemini-embedding-2`     |
 | `openai` | `text-embedding-3-small` |
-| `jina` | `jina-embeddings-v4` |
+| `jina`   | `jina-embeddings-v4`     |
 
 The model identifier is the only thing that changes between providers
 in the program body — the rest is layer-level wiring.

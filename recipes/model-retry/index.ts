@@ -56,9 +56,7 @@ class Retryable extends Data.TaggedError("Retryable")<{
 const isRetryable = (
   error: AiError.AiError,
 ): error is AiError.RateLimited | AiError.Unavailable | AiError.Timeout =>
-  error._tag === "RateLimited" ||
-  error._tag === "Unavailable" ||
-  error._tag === "Timeout"
+  error._tag === "RateLimited" || error._tag === "Unavailable" || error._tag === "Timeout"
 
 // ---------------------------------------------------------------------------
 // Backoff: 200ms → 400ms → 800ms, capped at three retries (4 total
@@ -91,22 +89,20 @@ export const conversation = pipe(
   loop((state) =>
     Effect.gen(function* () {
       const lm = yield* LanguageModel
-      return lm
-        .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
-        .pipe(
-          Stream.map((event): Item => ({ _tag: "Event", event })),
-          Stream.catchIf(
-            isRetryable,
-            (cause) => Stream.fail(new Retryable({ cause })),
-            (cause) => Stream.succeed<Item>({ _tag: "Terminal", cause }),
-          ),
-          Stream.retry(backoff),
-          Stream.catchTag("Retryable", (e) => Stream.fail(e.cause)),
-          Stream.flatMap((item) =>
-            item._tag === "Event" ? Stream.succeed(item.event) : Stream.fail(item.cause),
-          ),
-          streamUntilComplete<State, never>(() => Effect.sync(() => stop)),
-        )
+      return lm.streamTurn({ history: state.history, model: "gpt-5.4-mini" }).pipe(
+        Stream.map((event): Item => ({ _tag: "Event", event })),
+        Stream.catchIf(
+          isRetryable,
+          (cause) => Stream.fail(new Retryable({ cause })),
+          (cause) => Stream.succeed<Item>({ _tag: "Terminal", cause }),
+        ),
+        Stream.retry(backoff),
+        Stream.catchTag("Retryable", (e) => Stream.fail(e.cause)),
+        Stream.flatMap((item) =>
+          item._tag === "Event" ? Stream.succeed(item.event) : Stream.fail(item.cause),
+        ),
+        streamUntilComplete<State, never>(() => Effect.sync(() => stop)),
+      )
     }),
   ),
 )

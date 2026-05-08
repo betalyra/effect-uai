@@ -156,9 +156,7 @@ export const eventToDeltas = (
           },
         ]
       },
-      "response.output_text.delta": ({ delta }) => [
-        { type: "text_delta" as const, text: delta },
-      ],
+      "response.output_text.delta": ({ delta }) => [{ type: "text_delta" as const, text: delta }],
       "response.function_call_arguments.delta": ({ item_id, delta }) => {
         const call_id = lookup.resolve(item_id)
         return call_id === undefined
@@ -171,9 +169,7 @@ export const eventToDeltas = (
       "response.reasoning_summary_text.delta": ({ delta }) => [
         { type: "reasoning_delta" as const, text: delta, kind: "summary" as const },
       ],
-      "response.refusal.delta": ({ delta }) => [
-        { type: "refusal_delta" as const, text: delta },
-      ],
+      "response.refusal.delta": ({ delta }) => [{ type: "refusal_delta" as const, text: delta }],
       // Terminal marker for the refusal stream; the deltas already covered
       // the text, so no canonical event is emitted here.
       "response.refusal.done": () => [],

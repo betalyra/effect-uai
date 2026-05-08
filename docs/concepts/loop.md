@@ -47,11 +47,11 @@ over building events by hand.
 ## Helpers
 
 ```ts
-Loop.value(a)                              // wrap a value
-Loop.next(state)                           // signal continuation
-Loop.stop                                  // a single-element stream that ends the loop
-Loop.nextAfter(stream, s)                  // emit values from `stream`, then continue with state `s`
-Loop.stopAfter(stream)                     // emit values from `stream`, then end the loop
+Loop.value(a) // wrap a value
+Loop.next(state) // signal continuation
+Loop.stop // a single-element stream that ends the loop
+Loop.nextAfter(stream, s) // emit values from `stream`, then continue with state `s`
+Loop.stopAfter(stream) // emit values from `stream`, then end the loop
 Loop.nextAfterFold(stream, b, fold, build) // drain stream, fold to acc, then continue with build(acc)
 ```
 

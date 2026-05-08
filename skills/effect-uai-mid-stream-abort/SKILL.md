@@ -91,10 +91,10 @@ Neither is wired by default — the recipe lets the partial output go.
 
 ## Difference from pause-resume
 
-- **Mid-stream abort** = the *current turn* is killed; subsequent
+- **Mid-stream abort** = the _current turn_ is killed; subsequent
   iterations of the loop don't run because the stream itself is
   interrupted.
-- **Pause-resume** = the *next iteration* parks on a latch; the
+- **Pause-resume** = the _next iteration_ parks on a latch; the
   current turn finishes naturally first.
 
 Use abort for "stop now," pause for "wait between turns."

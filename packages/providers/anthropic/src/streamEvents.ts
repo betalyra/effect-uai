@@ -170,7 +170,9 @@ export const applyEvent = (acc: Accumulator, event: ProviderEvent): Accumulator 
       message_delta: (e) => {
         const withUsage = mergeOptionalUsage(acc, e.usage)
         const reason = e.delta.stop_reason
-        return reason === undefined || reason === null ? withUsage : setStopReason(withUsage, reason)
+        return reason === undefined || reason === null
+          ? withUsage
+          : setStopReason(withUsage, reason)
       },
       message_stop: () => acc,
       ping: () => acc,

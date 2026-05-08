@@ -14,12 +14,7 @@ import { Effect, Queue, Schema, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "../domain/Items.js"
 import { findUnansweredCalls, cancelAllPending, isReconciled } from "./HistoryCheck.js"
-import {
-  type ToolResult,
-  isFailure,
-  isValue,
-  toFunctionCallOutput,
-} from "./Outcome.js"
+import { type ToolResult, isFailure, isValue, toFunctionCallOutput } from "./Outcome.js"
 import {
   type ApprovalMapEntry,
   type ToolCallDecision,
@@ -28,12 +23,7 @@ import {
 } from "./Resolvers.js"
 import { fromEffectSchema, make as makeTool, streaming } from "./Tool.js"
 import { executeAll, outputEvent, outputEvents } from "./Toolkit.js"
-import {
-  type ToolEvent,
-  isApprovalRequested,
-  isIntermediate,
-  isOutput,
-} from "./ToolEvent.js"
+import { type ToolEvent, isApprovalRequested, isIntermediate, isOutput } from "./ToolEvent.js"
 
 // ---------------------------------------------------------------------------
 // Three demo tools covering the matrix:
@@ -96,12 +86,10 @@ const calls = [
   fc("c3", "delete_database", { name: "prod" }),
 ]
 
-const resultsFrom = (
-  collected: ReadonlyArray<ToolEvent>,
-): ReadonlyArray<ToolResult> => collected.filter(isOutput).map((e) => e.result)
+const resultsFrom = (collected: ReadonlyArray<ToolEvent>): ReadonlyArray<ToolResult> =>
+  collected.filter(isOutput).map((e) => e.result)
 
-const byCallId = (results: ReadonlyArray<ToolResult>) =>
-  new Map(results.map((r) => [r.call_id, r]))
+const byCallId = (results: ReadonlyArray<ToolResult>) => new Map(results.map((r) => [r.call_id, r]))
 
 const eventsFromApprovalMap = (approvals: ReadonlyMap<string, ApprovalMapEntry>) => {
   const plan = fromApprovalMap(isSensitive, approvals)(calls)
@@ -123,9 +111,7 @@ describe("fromApprovalMap + executeAll", () => {
       ["c2", { decision: "approve" }],
       ["c3", { decision: "approve" }],
     ])
-    const collected = await Effect.runPromise(
-      Stream.runCollect(eventsFromApprovalMap(approvals)),
-    )
+    const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(approvals)))
     const by = byCallId(resultsFrom(collected))
     expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
     expect(by.get("c2")).toMatchObject({
@@ -146,14 +132,10 @@ describe("fromApprovalMap + executeAll", () => {
       ["c2", { decision: "deny", reason: "spam concern" }],
       ["c3", { decision: "deny", reason: "prod is sacred" }],
     ])
-    const collected = await Effect.runPromise(
-      Stream.runCollect(eventsFromApprovalMap(approvals)),
-    )
+    const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(approvals)))
 
     // bulk_email never ran.
-    expect(
-      collected.filter(isIntermediate).filter((e) => e.tool === "bulk_email"),
-    ).toHaveLength(0)
+    expect(collected.filter(isIntermediate).filter((e) => e.tool === "bulk_email")).toHaveLength(0)
 
     const by = byCallId(resultsFrom(collected))
     expect(by.get("c2")).toMatchObject({
@@ -169,9 +151,7 @@ describe("fromApprovalMap + executeAll", () => {
   })
 
   it("cancellation: missing verdicts → Failure(cancelled)", async () => {
-    const collected = await Effect.runPromise(
-      Stream.runCollect(eventsFromApprovalMap(new Map())),
-    )
+    const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(new Map())))
     const by = byCallId(resultsFrom(collected))
     expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
     expect(by.get("c2")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
@@ -183,9 +163,7 @@ describe("fromApprovalMap + executeAll", () => {
       ["c2", { decision: "approve" }],
       // c3 omitted → cancelled
     ])
-    const collected = await Effect.runPromise(
-      Stream.runCollect(eventsFromApprovalMap(approvals)),
-    )
+    const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(approvals)))
     const by = byCallId(resultsFrom(collected))
     expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
     expect(by.get("c2")).toMatchObject({ _tag: "Value", value: { status: "sent" } })
@@ -370,9 +348,7 @@ describe("toFunctionCallOutput", () => {
 
 describe("executeAll", () => {
   it("runs all calls passed to it", async () => {
-    const collected = await Effect.runPromise(
-      Stream.runCollect(executeAll(allTools, calls)),
-    )
+    const collected = await Effect.runPromise(Stream.runCollect(executeAll(allTools, calls)))
     expect(collected.filter(isOutput)).toHaveLength(3)
     expect(collected.filter(isOutput).every((e) => isValue(e.result))).toBe(true)
   })

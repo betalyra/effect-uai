@@ -30,7 +30,7 @@ const score = Vector.maxSim(queryEmbedding, docEmbedding)
 
 Each query token "votes" for its best-matching document token. The
 final score is the sum of those votes, so a document that has good
-matches for *every* part of the query beats one that has a great match
+matches for _every_ part of the query beats one that has a great match
 for some parts and nothing for the rest.
 
 Cost is `O(|q| × |d| × dim)` per pair. Fine at recipe volume; for
@@ -46,19 +46,23 @@ produces dense single vectors — you choose per request:
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
 
 // Late-interaction: one vector per token
-const mv = yield* embed({
-  model: "jina-embeddings-v4",
-  input: query,
-  task: "query",
-  encoding: "multivector",
-})
+const mv =
+  yield *
+  embed({
+    model: "jina-embeddings-v4",
+    input: query,
+    task: "query",
+    encoding: "multivector",
+  })
 
 // Dense baseline: one vector per input
-const dense = yield* embed({
-  model: "jina-embeddings-v4",
-  input: query,
-  task: "query",
-})
+const dense =
+  yield *
+  embed({
+    model: "jina-embeddings-v4",
+    input: query,
+    task: "query",
+  })
 ```
 
 Both go through the generic `EmbeddingModel` tag. The wire-level flag

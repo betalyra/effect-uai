@@ -17,11 +17,7 @@ const downloadArtifact = makeDownloadTool()
 const allTools: ReadonlyArray<Tool.AnyKindTool> = [downloadArtifact]
 
 const initial: State = {
-  history: [
-    Items.userText(
-      "Download https://example.com/big-blob and tell me the byte count.",
-    ),
-  ],
+  history: [Items.userText("Download https://example.com/big-blob and tell me the byte count.")],
   index: 0,
 }
 
@@ -31,9 +27,7 @@ const program = Effect.gen(function* () {
       Match.when({ _tag: "Intermediate" }, (e) =>
         Effect.logInfo("download progress", { call_id: e.call_id, data: e.data }),
       ),
-      Match.when({ _tag: "Output" }, ({ result }) =>
-        Effect.logInfo("download result", { result }),
-      ),
+      Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("download result", { result })),
       Match.discriminators("type")({
         turn_complete: ({ turn }) =>
           Effect.logInfo("turn complete", {

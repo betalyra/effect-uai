@@ -126,7 +126,10 @@ const imageSourceToPart = (param: string) =>
           inlineData: { mimeType: s.mimeType, data: Encoding.encodeBase64(s.bytes) },
         }),
     ),
-    Match.tag("url", (): Effect.Effect<WirePart, AiError.AiError> => Effect.fail(urlRejected(param))),
+    Match.tag(
+      "url",
+      (): Effect.Effect<WirePart, AiError.AiError> => Effect.fail(urlRejected(param)),
+    ),
     Match.exhaustive,
   )
 
@@ -271,37 +274,41 @@ const baseUrl = (cfg: Config): string =>
 // Service implementation
 // ---------------------------------------------------------------------------
 
-const embedImpl = (cfg: Config) => (
-  request: GeminiEmbedRequest,
-): Effect.Effect<EmbedResponse, AiError.AiError, HttpClient.HttpClient> =>
-  buildSingleBody(request).pipe(
-    Effect.flatMap((body) =>
-      postJson(cfg, `${baseUrl(cfg)}/models/${request.model}:embedContent`, body),
-    ),
-    Effect.flatMap(decodeSingle),
-    Effect.map(
-      (decoded): EmbedResponse => ({
-        embedding: valuesToEmbedding(decoded.embedding.values),
-        usage: emptyUsage,
-      }),
-    ),
-  )
+const embedImpl =
+  (cfg: Config) =>
+  (
+    request: GeminiEmbedRequest,
+  ): Effect.Effect<EmbedResponse, AiError.AiError, HttpClient.HttpClient> =>
+    buildSingleBody(request).pipe(
+      Effect.flatMap((body) =>
+        postJson(cfg, `${baseUrl(cfg)}/models/${request.model}:embedContent`, body),
+      ),
+      Effect.flatMap(decodeSingle),
+      Effect.map(
+        (decoded): EmbedResponse => ({
+          embedding: valuesToEmbedding(decoded.embedding.values),
+          usage: emptyUsage,
+        }),
+      ),
+    )
 
-const embedManyImpl = (cfg: Config) => (
-  request: GeminiEmbedManyRequest,
-): Effect.Effect<EmbedManyResponse, AiError.AiError, HttpClient.HttpClient> =>
-  buildBatchBody(request).pipe(
-    Effect.flatMap((body) =>
-      postJson(cfg, `${baseUrl(cfg)}/models/${request.model}:batchEmbedContents`, body),
-    ),
-    Effect.flatMap(decodeBatch),
-    Effect.map(
-      (decoded): EmbedManyResponse => ({
-        embeddings: decoded.embeddings.map((e) => valuesToEmbedding(e.values)),
-        usage: emptyUsage,
-      }),
-    ),
-  )
+const embedManyImpl =
+  (cfg: Config) =>
+  (
+    request: GeminiEmbedManyRequest,
+  ): Effect.Effect<EmbedManyResponse, AiError.AiError, HttpClient.HttpClient> =>
+    buildBatchBody(request).pipe(
+      Effect.flatMap((body) =>
+        postJson(cfg, `${baseUrl(cfg)}/models/${request.model}:batchEmbedContents`, body),
+      ),
+      Effect.flatMap(decodeBatch),
+      Effect.map(
+        (decoded): EmbedManyResponse => ({
+          embeddings: decoded.embeddings.map((e) => valuesToEmbedding(e.values)),
+          usage: emptyUsage,
+        }),
+      ),
+    )
 
 // ---------------------------------------------------------------------------
 // Constructors

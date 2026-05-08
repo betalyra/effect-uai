@@ -83,8 +83,8 @@ export const makeSubAgent = (
     run: ({ question }) => runInner(question),
     finalize: (events) => ({
       answer: events
-        .filter((e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> =>
-          e.type === "text_delta",
+        .filter(
+          (e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> => e.type === "text_delta",
         )
         .map((e) => e.text)
         .join(""),

@@ -14,10 +14,7 @@
  * dedicated library - this module deliberately stays at the
  * recipe-volume tier.
  */
-import type {
-  MultivectorEmbedding,
-  SparseEmbedding,
-} from "../embedding-model/Embedding.js"
+import type { MultivectorEmbedding, SparseEmbedding } from "../embedding-model/Embedding.js"
 
 /** Inner / dot product. */
 export const dot = (a: Float32Array, b: Float32Array): number => {

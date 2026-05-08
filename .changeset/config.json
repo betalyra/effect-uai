@@ -3,12 +3,7 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "fixed": [
-    [
-      "@effect-uai/core",
-      "@effect-uai/responses",
-      "@effect-uai/anthropic",
-      "@effect-uai/google"
-    ]
+    ["@effect-uai/core", "@effect-uai/responses", "@effect-uai/anthropic", "@effect-uai/google"]
   ],
   "linked": [],
   "access": "public",

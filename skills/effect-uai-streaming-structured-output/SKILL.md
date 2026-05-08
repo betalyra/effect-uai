@@ -44,8 +44,8 @@ const program = streamTurn({
   history: [Items.userText(prompt)],
   model: "gpt-5.4-mini",
 }).pipe(
-  Turn.textDeltas,                              // TurnEvent stream -> text fragments
-  Lines.lines,                                  // text fragments -> newline-delimited lines
+  Turn.textDeltas, // TurnEvent stream -> text fragments
+  Lines.lines, // text fragments -> newline-delimited lines
   StructuredFormat.decodeJsonLines(recipeFormat), // lines -> typed, validated objects
   Stream.tap((recipe) => Effect.logInfo("recipe", { recipe })),
   Stream.runDrain,
@@ -80,7 +80,7 @@ Stream.catchTags({
 ## When to NOT use this
 
 - If you need server-enforced shape (single object, model must return
-  *exactly* this schema), use `effect-uai-structured-output` and
+  _exactly_ this schema), use `effect-uai-structured-output` and
   buffer the whole turn. JSONL is prompt-driven, not wire-enforced.
 - If you want the assistant's natural-language reply, not data, just
   consume `Turn.textDeltas` directly.

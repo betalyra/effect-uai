@@ -135,9 +135,9 @@ deltas) and `ToolEvent` (executor signals). The `ToolEvent` variants:
 
 ```ts
 type ToolEvent =
-  | { _tag: "ApprovalRequested"; call_id; tool; arguments }  // gated, before resolution
-  | { _tag: "Intermediate";      call_id; tool; data }        // streaming-tool element
-  | { _tag: "Output";            result: ToolResult }         // terminal per-call result
+  | { _tag: "ApprovalRequested"; call_id; tool; arguments } // gated, before resolution
+  | { _tag: "Intermediate"; call_id; tool; data } // streaming-tool element
+  | { _tag: "Output"; result: ToolResult } // terminal per-call result
 ```
 
 A consumer pattern-matches on `type` (TurnEvent) or `_tag` (ToolEvent)

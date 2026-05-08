@@ -56,10 +56,13 @@ interface JinaEmbedRequest extends Omit<CommonEmbedRequest, "model" | "task" | "
 }
 
 type JinaTask =
-  | "retrieval.query" | "retrieval.passage"   // asymmetric retrieval
-  | "text-matching"                           // symmetric
-  | "code.query" | "code.passage"             // v4 code retrieval
-  | "classification" | "separation"           // v3 / v5
+  | "retrieval.query"
+  | "retrieval.passage" // asymmetric retrieval
+  | "text-matching" // symmetric
+  | "code.query"
+  | "code.passage" // v4 code retrieval
+  | "classification"
+  | "separation" // v3 / v5
   | (string & {})
 
 type JinaEncoding = "float32" | "binary" | "sparse" | "multivector"
@@ -89,22 +92,26 @@ const program = Effect.gen(function* () {
 Binary-quantized dense retrieval:
 
 ```ts
-const result = yield* jina.embed({
-  model: "jina-embeddings-v4",
-  input: query,
-  task: "retrieval.query",
-  encoding: "binary", // ~32× smaller than float32
-})
+const result =
+  yield *
+  jina.embed({
+    model: "jina-embeddings-v4",
+    input: query,
+    task: "retrieval.query",
+    encoding: "binary", // ~32× smaller than float32
+  })
 ```
 
 Sparse hybrid retrieval (ELSER-style):
 
 ```ts
-const result = yield* jina.embed({
-  model: "elser-v2",
-  input: query,
-  encoding: "sparse",
-})
+const result =
+  yield *
+  jina.embed({
+    model: "elser-v2",
+    input: query,
+    encoding: "sparse",
+  })
 // result.embedding._tag === "sparse"
 // result.embedding.weights is Record<string, number>
 ```
@@ -116,13 +123,13 @@ Score sparse vectors with `Vector.sparseCosine`; multivector with
 
 `JinaEmbeddingModel` is a literal union with a `(string & {})` tail:
 
-| Model | Modalities | Encodings | Notes |
-|---|---|---|---|
-| `jina-embeddings-v4` | text, image | float32, binary, multivector | Flagship, 32k context, LoRA-bound tasks. |
-| `jina-embeddings-v5-text-small` | text | float32, binary | Multilingual, GGUF-quantizable. |
-| `jina-embeddings-v5-text-nano` | text | float32, binary | Edge-deployable. |
-| `jina-embeddings-v3` | text | float32, binary | Legacy text-only. |
-| `jina-clip-v2` | image, text | float32, binary | CLIP-style multimodal. |
+| Model                           | Modalities  | Encodings                    | Notes                                    |
+| ------------------------------- | ----------- | ---------------------------- | ---------------------------------------- |
+| `jina-embeddings-v4`            | text, image | float32, binary, multivector | Flagship, 32k context, LoRA-bound tasks. |
+| `jina-embeddings-v5-text-small` | text        | float32, binary              | Multilingual, GGUF-quantizable.          |
+| `jina-embeddings-v5-text-nano`  | text        | float32, binary              | Edge-deployable.                         |
+| `jina-embeddings-v3`            | text        | float32, binary              | Legacy text-only.                        |
+| `jina-clip-v2`                  | image, text | float32, binary              | CLIP-style multimodal.                   |
 
 `elser-v2` (learned sparse) is also accessible via the `(string & {})`
 tail; pass `encoding: "sparse"` to receive token-keyed weights.
@@ -131,12 +138,12 @@ Reference: [Jina embeddings](https://jina.ai/embeddings/).
 
 ## Encoding support
 
-| `encoding` | Wire behaviour |
-|---|---|
-| `float32` (default) | Default JSON `number[]`. |
-| `binary` | `embedding_type: "binary"` — bit-packed `Uint8Array`. |
-| `sparse` | No flag; the chosen model decides (e.g. `elser-v2`). |
-| `multivector` | `return_multivector: true` — one vector per token. |
+| `encoding`          | Wire behaviour                                        |
+| ------------------- | ----------------------------------------------------- |
+| `float32` (default) | Default JSON `number[]`.                              |
+| `binary`            | `embedding_type: "binary"` — bit-packed `Uint8Array`. |
+| `sparse`            | No flag; the chosen model decides (e.g. `elser-v2`).  |
+| `multivector`       | `return_multivector: true` — one vector per token.    |
 
 Compatibility is checked at the **response level**, not via a
 hardcoded model-encoding table. If you ask for an encoding the chosen

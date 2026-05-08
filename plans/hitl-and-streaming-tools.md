@@ -109,8 +109,7 @@ const events = Stream.merge(
 Long-lived queue flow:
 
 ```ts
-const { approved, decisions, announce } =
-  yield* fromVerdictQueue(isSensitive, verdicts)(calls)
+const { approved, decisions, announce } = yield * fromVerdictQueue(isSensitive, verdicts)(calls)
 
 const events = Stream.merge(
   announce,

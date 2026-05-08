@@ -81,16 +81,10 @@ const deleteUser = Tool.make({
   strict: true,
 })
 
-export const allTools: ReadonlyArray<Tool.AnyKindTool> = [
-  searchEmails,
-  sendEmail,
-  deleteUser,
-]
+export const allTools: ReadonlyArray<Tool.AnyKindTool> = [searchEmails, sendEmail, deleteUser]
 const tools = Tool.toDescriptors(allTools)
 
-const decisionEvents = (
-  decision: ToolCallDecision,
-): Stream.Stream<ToolEvent> =>
+const decisionEvents = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
   decision._tag === "Approved"
     ? Toolkit.executeAll(allTools, [decision.call])
     : Stream.succeed(Toolkit.outputEvent(decision.result))
@@ -184,10 +178,7 @@ export const httpConversation = (
 // to return to the model.
 // ---------------------------------------------------------------------------
 
-export const queueConversation = (
-  verdicts: Queue.Queue<Verdict>,
-  state: State = initial,
-) =>
+export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State = initial) =>
   pipe(
     state,
     loop((current) =>
@@ -240,9 +231,7 @@ export const queueConversation = (
 // UI / Slack / approval workflow; here we just decide based on the tool.
 // ---------------------------------------------------------------------------
 
-export const demoVerdict = (
-  event: Extract<ToolEvent, { _tag: "ApprovalRequested" }>,
-): Verdict =>
+export const demoVerdict = (event: Extract<ToolEvent, { _tag: "ApprovalRequested" }>): Verdict =>
   event.tool === "delete_user"
     ? {
         call_id: event.call_id,

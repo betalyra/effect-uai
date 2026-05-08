@@ -110,21 +110,21 @@ const judgeStream = (judge, subject, subjectAnswer, history) =>
       model: judge.model,
     })
     .pipe(
-    Stream.mapAccum(
-      () => "",
-      (acc, delta) => {
-        if (delta.type === "text_delta") return [acc + delta.text, []]
-        if (delta.type !== "turn_complete") return [acc, []]
-        return Result.match(decodeScore(acc.trim()), {
-          onSuccess: (s) => [acc, [{ type: "score", judge: judge.name, subject, ...s }]],
-          onFailure: (issue) => [
-            acc,
-            [{ type: "error", member: judge.name, phase: "judge", error: invalidRequest(issue) }],
-          ],
-        })
-      },
-    ),
-  )
+      Stream.mapAccum(
+        () => "",
+        (acc, delta) => {
+          if (delta.type === "text_delta") return [acc + delta.text, []]
+          if (delta.type !== "turn_complete") return [acc, []]
+          return Result.match(decodeScore(acc.trim()), {
+            onSuccess: (s) => [acc, [{ type: "score", judge: judge.name, subject, ...s }]],
+            onFailure: (issue) => [
+              acc,
+              [{ type: "error", member: judge.name, phase: "judge", error: invalidRequest(issue) }],
+            ],
+          })
+        },
+      ),
+    )
 ```
 
 **Top level** — merge all candidate pipelines, tally scores, emit

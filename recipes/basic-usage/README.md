@@ -34,27 +34,25 @@ pipe(
     Effect.gen(function* () {
       const oai = yield* Responses
 
-      return oai
-        .streamTurn({ history: state.history, model: "gpt-5.4-mini", tools })
-        .pipe(
-          streamUntilComplete<State, ToolEvent>((turn) =>
-            Effect.sync(() => {
-              const calls = Turn.functionCalls(turn)
-              // No tool calls means the model produced its final answer.
-              if (calls.length === 0) return stop
+      return oai.streamTurn({ history: state.history, model: "gpt-5.4-mini", tools }).pipe(
+        streamUntilComplete<State, ToolEvent>((turn) =>
+          Effect.sync(() => {
+            const calls = Turn.functionCalls(turn)
+            // No tool calls means the model produced its final answer.
+            if (calls.length === 0) return stop
 
-              const events = Toolkit.executeAll(toolkit.tools, calls)
-              return Toolkit.nextStateFrom(events, (results) =>
-                // Append the model's function_call items and the matching outputs.
-                Turn.appendTurn(
-                  { ...state, index: state.index + 1 },
-                  turn,
-                  results.map(toFunctionCallOutput),
-                ),
-              )
-            }),
-          ),
-        )
+            const events = Toolkit.executeAll(toolkit.tools, calls)
+            return Toolkit.nextStateFrom(events, (results) =>
+              // Append the model's function_call items and the matching outputs.
+              Turn.appendTurn(
+                { ...state, index: state.index + 1 },
+                turn,
+                results.map(toFunctionCallOutput),
+              ),
+            )
+          }),
+        ),
+      )
     }),
   ),
 )

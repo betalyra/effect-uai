@@ -44,12 +44,11 @@ decoder.
 ```ts
 const program = Effect.gen(function* () {
   const lm = yield* LanguageModel
-  const turn = yield* lm
-    .turn({
-      history: [Items.userText("Give me a recipe for one-pan lemon chicken.")],
-      model: "gpt-5.4-mini",
-      structured: recipeFormat,
-    })
+  const turn = yield* lm.turn({
+    history: [Items.userText("Give me a recipe for one-pan lemon chicken.")],
+    model: "gpt-5.4-mini",
+    structured: recipeFormat,
+  })
 
   const recipe: Recipe = yield* Turn.toStructured(turn, recipeFormat)
   return recipe
@@ -73,9 +72,7 @@ schema.
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 
 program.pipe(
-  Effect.catchTag("RefusalRejected", () =>
-    Effect.succeed({ kind: "refused" } as const),
-  ),
+  Effect.catchTag("RefusalRejected", () => Effect.succeed({ kind: "refused" } as const)),
   Effect.catchTags({
     JsonParseError: (e) => Effect.logError("bad JSON", e),
     StructuredDecodeError: (e) => Effect.logError("schema fail", e),
@@ -92,7 +89,7 @@ requires `type: object`). Wrap arrays:
 const RecipeList = Schema.Struct({ recipes: Schema.Array(Recipe) })
 ```
 
-For *streaming* multi-object output (one object decoded as soon as its
+For _streaming_ multi-object output (one object decoded as soon as its
 JSON is complete), reach for `effect-uai-streaming-structured-output`
 instead — that uses prompted JSONL with local-only validation.
 

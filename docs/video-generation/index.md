@@ -12,7 +12,7 @@ abandoned fibers. Every provider's API admits this: you submit a job,
 get an ID back, and either poll or subscribe to a webhook for the
 finished video.
 
-This is the *async job* archetype, and it's the first capability where
+This is the _async job_ archetype, and it's the first capability where
 "call the model and wait" stops being adequate. The abstraction needs
 a `submit → track → fetch` shape with cancellable polling, finalizers
 that release server-side resources on interrupt, and a stream of

@@ -105,8 +105,7 @@ const recipes: ReadonlyArray<Recipe> = [
   },
   {
     title: "Model council",
-    description:
-      "**Get the best answer.** Models judge each other, the winner streams back.",
+    description: "**Get the best answer.** Models judge each other, the winner streams back.",
     href: "/recipes/model-council/",
     Icon: PiGavel,
   },
@@ -114,12 +113,8 @@ const recipes: ReadonlyArray<Recipe> = [
 
 const markdownComponents: Components = {
   p: ({ children }) => <>{children}</>,
-  strong: ({ children }) => (
-    <strong className="font-semibold text-foreground">{children}</strong>
-  ),
-  code: ({ children }) => (
-    <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>
-  ),
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+  code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>,
 }
 
 export default function RecipesSection() {

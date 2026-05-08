@@ -9,11 +9,7 @@ import * as Items from "@effect-uai/core/Items"
 import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
-import {
-  type ToolEvent,
-  isIntermediate,
-  isOutput,
-} from "@effect-uai/core/ToolEvent"
+import { type ToolEvent, isIntermediate, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Turn from "@effect-uai/core/Turn"
 import {
   type DownloadEvent,
@@ -97,9 +93,7 @@ describe("streaming-tool-output: sub-agent pattern", () => {
       .filter(isIntermediate)
     expect(intermediates).toHaveLength(4)
 
-    const textDeltas = intermediates.filter(
-      (e) => (e.data as Turn.TurnEvent).type === "text_delta",
-    )
+    const textDeltas = intermediates.filter((e) => (e.data as Turn.TurnEvent).type === "text_delta")
     expect(textDeltas).toHaveLength(3)
 
     // One Output carrying the joined SubAgentOutput.

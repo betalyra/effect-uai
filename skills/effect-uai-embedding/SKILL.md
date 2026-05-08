@@ -60,13 +60,13 @@ options, and the generic `EmbeddingModel` for portable code.
 `Embedding` is a tagged union — narrow with predicates before doing
 math:
 
-| Tag | Shape | Score with |
-|---|---|---|
-| `float32` | `Float32Array` | `Vector.cosine` |
-| `int8` | `Int8Array` | quantize-aware code |
-| `binary` | `Uint8Array` (bit-packed) | hamming + reranker |
-| `sparse` | `Record<string, number>` | `Vector.sparseCosine` |
-| `multivector` | `ReadonlyArray<Float32Array>` | `Vector.maxSim` |
+| Tag           | Shape                         | Score with            |
+| ------------- | ----------------------------- | --------------------- |
+| `float32`     | `Float32Array`                | `Vector.cosine`       |
+| `int8`        | `Int8Array`                   | quantize-aware code   |
+| `binary`      | `Uint8Array` (bit-packed)     | hamming + reranker    |
+| `sparse`      | `Record<string, number>`      | `Vector.sparseCosine` |
+| `multivector` | `ReadonlyArray<Float32Array>` | `Vector.maxSim`       |
 
 ```ts
 import * as Embedding from "@effect-uai/core/Embedding"
@@ -135,7 +135,7 @@ const inputs: ReadonlyArray<EmbedInput> = [
   { text: "A photo of artisan sourdough bread" },
 ]
 
-const result = yield* embedMany({ model: "gemini-embedding-2", inputs })
+const result = yield * embedMany({ model: "gemini-embedding-2", inputs })
 // then cosine-rank as in pattern 1
 ```
 

@@ -49,10 +49,7 @@ export type MediaBytes<M extends string = string> = {
   readonly mimeType: M
 }
 
-export type MediaSource<M extends string = string> =
-  | MediaUrl<M>
-  | MediaBase64<M>
-  | MediaBytes<M>
+export type MediaSource<M extends string = string> = MediaUrl<M> | MediaBase64<M> | MediaBytes<M>
 
 export const isMediaUrl = <M extends string>(s: MediaSource<M>): s is MediaUrl<M> =>
   s._tag === "url"

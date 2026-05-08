@@ -60,24 +60,24 @@ own provider layers and `embed` / `embedMany` helpers.
 
 ## Core modules (cheat sheet)
 
-| Module                            | What it gives you                                                                 |
-| --------------------------------- | --------------------------------------------------------------------------------- |
-| `@effect-uai/core/Items`          | `Item` types (user/assistant messages, function calls, function call outputs, reasoning), helpers like `Items.userText`. |
-| `@effect-uai/core/Turn`           | `Turn`, `TurnEvent`, `Turn.functionCalls(turn)`, `Turn.assistantMessages(turn)`, `Turn.appendTurn(state, turn, items?)`, `Turn.toStructured(turn, format)`, `Turn.textDeltas`, `Turn.toSSE`, `Turn.toJSONL`, `Turn.asSSE`, `Turn.asJSONL`. |
-| `@effect-uai/core/LanguageModel`  | `LanguageModel` service tag, `streamTurn(request)`, `turn(request)`, `CommonRequest` type. |
-| `@effect-uai/core/Loop`           | `loop`, `nextAfter`, `nextAfterFold`, `stop`, `stopAfter`, `streamUntilComplete`. |
-| `@effect-uai/core/Tool`           | `Tool.make`, `Tool.streaming`, `Tool.fromEffectSchema`, `Tool.toDescriptors`, `Tool.AnyKindTool`. |
-| `@effect-uai/core/Toolkit`        | `Toolkit.make`, `Toolkit.executeAll`, `Toolkit.outputEvents`, `Toolkit.outputEvent`, `Toolkit.nextStateFrom`. |
-| `@effect-uai/core/Outcome`        | `ToolResult` (`Value` / `Failure`), `toFunctionCallOutput`, `denied`, `cancelled`, `executionError`. |
-| `@effect-uai/core/ToolEvent`      | `ToolEvent` union (`ApprovalRequested` / `Intermediate` / `Output`), `isOutput`, `isIntermediate`, `isApprovalRequested`. |
-| `@effect-uai/core/Resolvers`      | `fromApprovalMap`, `fromVerdictQueue` for human-in-the-loop tool approval. |
-| `@effect-uai/core/HistoryCheck`   | `findUnansweredCalls`, `cancelAllPending` for reconciling orphan tool calls between sessions. |
-| `@effect-uai/core/StructuredFormat` | `StructuredFormat.fromEffectSchema(schema)`, `StructuredFormat.parseJson`, `StructuredFormat.decodeJsonLines`. |
-| `@effect-uai/core/SSE`            | Server-Sent Events codec: `SSE.fromBytes`, `SSE.toBytes`, `SSE.Event`. |
-| `@effect-uai/core/JSONL`          | JSONL codec: `JSONL.fromBytes`, `JSONL.parse(schema)`, `JSONL.toBytes(schema)`. |
-| `@effect-uai/core/Lines`          | `Lines.lines` for re-framing a string stream as newline-terminated lines. |
-| `effect/Match`                    | Use `Match.discriminators("type")({ text_delta, ... })` (or `discriminatorsExhaustive`) to narrow `TurnEvent` and other `type`-tagged unions; standard Effect `Match` API. |
-| `@effect-uai/core/testing/MockProvider` | `MockProvider.layer(scriptedTurns)`, `MockProvider.layerWithRecorder`, `MockProvider.make` — for tests. |
+| Module                                  | What it gives you                                                                                                                                                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@effect-uai/core/Items`                | `Item` types (user/assistant messages, function calls, function call outputs, reasoning), helpers like `Items.userText`.                                                                                                                   |
+| `@effect-uai/core/Turn`                 | `Turn`, `TurnEvent`, `Turn.functionCalls(turn)`, `Turn.assistantMessages(turn)`, `Turn.appendTurn(state, turn, items?)`, `Turn.toStructured(turn, format)`, `Turn.textDeltas`, `Turn.toSSE`, `Turn.toJSONL`, `Turn.asSSE`, `Turn.asJSONL`. |
+| `@effect-uai/core/LanguageModel`        | `LanguageModel` service tag, `streamTurn(request)`, `turn(request)`, `CommonRequest` type.                                                                                                                                                 |
+| `@effect-uai/core/Loop`                 | `loop`, `nextAfter`, `nextAfterFold`, `stop`, `stopAfter`, `streamUntilComplete`.                                                                                                                                                          |
+| `@effect-uai/core/Tool`                 | `Tool.make`, `Tool.streaming`, `Tool.fromEffectSchema`, `Tool.toDescriptors`, `Tool.AnyKindTool`.                                                                                                                                          |
+| `@effect-uai/core/Toolkit`              | `Toolkit.make`, `Toolkit.executeAll`, `Toolkit.outputEvents`, `Toolkit.outputEvent`, `Toolkit.nextStateFrom`.                                                                                                                              |
+| `@effect-uai/core/Outcome`              | `ToolResult` (`Value` / `Failure`), `toFunctionCallOutput`, `denied`, `cancelled`, `executionError`.                                                                                                                                       |
+| `@effect-uai/core/ToolEvent`            | `ToolEvent` union (`ApprovalRequested` / `Intermediate` / `Output`), `isOutput`, `isIntermediate`, `isApprovalRequested`.                                                                                                                  |
+| `@effect-uai/core/Resolvers`            | `fromApprovalMap`, `fromVerdictQueue` for human-in-the-loop tool approval.                                                                                                                                                                 |
+| `@effect-uai/core/HistoryCheck`         | `findUnansweredCalls`, `cancelAllPending` for reconciling orphan tool calls between sessions.                                                                                                                                              |
+| `@effect-uai/core/StructuredFormat`     | `StructuredFormat.fromEffectSchema(schema)`, `StructuredFormat.parseJson`, `StructuredFormat.decodeJsonLines`.                                                                                                                             |
+| `@effect-uai/core/SSE`                  | Server-Sent Events codec: `SSE.fromBytes`, `SSE.toBytes`, `SSE.Event`.                                                                                                                                                                     |
+| `@effect-uai/core/JSONL`                | JSONL codec: `JSONL.fromBytes`, `JSONL.parse(schema)`, `JSONL.toBytes(schema)`.                                                                                                                                                            |
+| `@effect-uai/core/Lines`                | `Lines.lines` for re-framing a string stream as newline-terminated lines.                                                                                                                                                                  |
+| `effect/Match`                          | Use `Match.discriminators("type")({ text_delta, ... })` (or `discriminatorsExhaustive`) to narrow `TurnEvent` and other `type`-tagged unions; standard Effect `Match` API.                                                                 |
+| `@effect-uai/core/testing/MockProvider` | `MockProvider.layer(scriptedTurns)`, `MockProvider.layerWithRecorder`, `MockProvider.make` — for tests.                                                                                                                                    |
 
 ## Provider wiring
 
@@ -160,7 +160,9 @@ const initial: State = {
   history: [Items.userText("What time is it in Lisbon?")],
 }
 
-const tools: ReadonlyArray<Tool.AnyKindTool> = [/* getCurrentTime, ... */]
+const tools: ReadonlyArray<Tool.AnyKindTool> = [
+  /* getCurrentTime, ... */
+]
 const descriptors = Tool.toDescriptors(tools)
 
 export const conversation = pipe(
@@ -227,23 +229,23 @@ For each pattern there is a dedicated `effect-uai-<recipe>` skill with
 the loop body, the gotchas, and a runnable example. Reach for the
 matching skill when the user describes the scenario:
 
-| Scenario                                                                                | Skill                              |
-| --------------------------------------------------------------------------------------- | ---------------------------------- |
-| First-time agent: tools, streaming, multi-turn loop                                     | `effect-uai-basic-usage`           |
-| Validate a typed JSON object from the model (one-shot, server-enforced schema)          | `effect-uai-structured-output`     |
+| Scenario                                                                                | Skill                                    |
+| --------------------------------------------------------------------------------------- | ---------------------------------------- |
+| First-time agent: tools, streaming, multi-turn loop                                     | `effect-uai-basic-usage`                 |
+| Validate a typed JSON object from the model (one-shot, server-enforced schema)          | `effect-uai-structured-output`           |
 | Stream typed JSONL objects as the model writes them                                     | `effect-uai-streaming-structured-output` |
-| Pause sensitive tool calls for a human verdict before executing                         | `effect-uai-tool-call-approval`    |
-| Show inner tool work (sub-agent, progress bar) while returning one clean output         | `effect-uai-streaming-tool-output` |
-| Drive a long-lived chat from a queue; debounce typing bursts; check input between turns | `effect-uai-agentic-loop`          |
-| Retry rate-limited / transient provider failures with exponential backoff               | `effect-uai-model-retry`           |
-| Fall back to another provider when the primary is rate-limited or unavailable           | `effect-uai-multi-model-fallback`  |
-| Summarize history when it gets too long; keep going                                     | `effect-uai-auto-compaction`       |
-| Pause the loop between turns and resume later (no provider call held open)              | `effect-uai-pause-resume`          |
-| Cancel an in-flight turn through stream interruption + scope cleanup                    | `effect-uai-mid-stream-abort`      |
-| Send the same prompt to multiple providers; isolate per-member failures                 | `effect-uai-multi-model-compare`   |
-| Have models judge each other and emit a winner                                          | `effect-uai-model-council`         |
-| Project the loop's output as Server-Sent Events or JSONL on the wire                    | `effect-uai-modify-output-stream`  |
-| Embed text or images, semantic / cross-modal / multivector retrieval, RAG primitive       | `effect-uai-embedding`             |
+| Pause sensitive tool calls for a human verdict before executing                         | `effect-uai-tool-call-approval`          |
+| Show inner tool work (sub-agent, progress bar) while returning one clean output         | `effect-uai-streaming-tool-output`       |
+| Drive a long-lived chat from a queue; debounce typing bursts; check input between turns | `effect-uai-agentic-loop`                |
+| Retry rate-limited / transient provider failures with exponential backoff               | `effect-uai-model-retry`                 |
+| Fall back to another provider when the primary is rate-limited or unavailable           | `effect-uai-multi-model-fallback`        |
+| Summarize history when it gets too long; keep going                                     | `effect-uai-auto-compaction`             |
+| Pause the loop between turns and resume later (no provider call held open)              | `effect-uai-pause-resume`                |
+| Cancel an in-flight turn through stream interruption + scope cleanup                    | `effect-uai-mid-stream-abort`            |
+| Send the same prompt to multiple providers; isolate per-member failures                 | `effect-uai-multi-model-compare`         |
+| Have models judge each other and emit a winner                                          | `effect-uai-model-council`               |
+| Project the loop's output as Server-Sent Events or JSONL on the wire                    | `effect-uai-modify-output-stream`        |
+| Embed text or images, semantic / cross-modal / multivector retrieval, RAG primitive     | `effect-uai-embedding`                   |
 
 When more than one applies (e.g. "agentic chat that retries on rate
 limits and falls back to another provider"), compose them: the loop
@@ -302,9 +304,7 @@ const finalTurn: Turn.Turn = {
 }
 
 await Effect.runPromise(
-  Stream.runCollect(conversation).pipe(
-    Effect.provide(MockProvider.layer([finalTurn])),
-  ),
+  Stream.runCollect(conversation).pipe(Effect.provide(MockProvider.layer([finalTurn]))),
 )
 ```
 

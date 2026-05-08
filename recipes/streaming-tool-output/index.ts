@@ -50,8 +50,7 @@ export const makeSubAgent = (
     finalize: (events): SubAgentOutput => ({
       answer: events
         .filter(
-          (e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> =>
-            e.type === "text_delta",
+          (e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> => e.type === "text_delta",
         )
         .map((e) => e.text)
         .join(""),
@@ -135,10 +134,7 @@ export interface State {
 }
 
 /** Build a conversation against the given toolkit. */
-export const buildConversation = (
-  allTools: ReadonlyArray<Tool.AnyKindTool>,
-  initial: State,
-) =>
+export const buildConversation = (allTools: ReadonlyArray<Tool.AnyKindTool>, initial: State) =>
   pipe(
     initial,
     loop((state) =>
@@ -178,9 +174,7 @@ export const buildConversation = (
 // client.
 // ---------------------------------------------------------------------------
 
-export const realInnerAgent = (
-  question: string,
-): Stream.Stream<Turn.TurnEvent, unknown, never> =>
+export const realInnerAgent = (question: string): Stream.Stream<Turn.TurnEvent, unknown, never> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const lm = yield* LanguageModel

@@ -37,7 +37,9 @@ const initial: State = {
   history: [Items.userText("What time is it in Lisbon and Tokyo right now?")],
 }
 
-const tools: ReadonlyArray<Tool.AnyKindTool> = [/* getCurrentTime, ... */]
+const tools: ReadonlyArray<Tool.AnyKindTool> = [
+  /* getCurrentTime, ... */
+]
 const descriptors = Tool.toDescriptors(tools)
 
 export const conversation = pipe(
@@ -81,19 +83,15 @@ import * as Tool from "@effect-uai/core/Tool"
 
 const getCurrentTime = Tool.make({
   name: "get_current_time",
-  description:
-    "Look up the current local time for an IANA timezone, e.g. 'Europe/Lisbon'.",
-  inputSchema: Tool.fromEffectSchema(
-    Schema.Struct({ timezone: Schema.String }),
-  ),
+  description: "Look up the current local time for an IANA timezone, e.g. 'Europe/Lisbon'.",
+  inputSchema: Tool.fromEffectSchema(Schema.Struct({ timezone: Schema.String })),
   run: ({ timezone }) =>
     DateTime.now.pipe(
       Effect.flatMap((now) =>
         DateTime.setZoneNamed(now, timezone).pipe(
           Option.match({
             onNone: () => Effect.fail(new Error(`Invalid timezone: ${timezone}`)),
-            onSome: (zoned) =>
-              Effect.succeed({ timezone, iso: DateTime.formatIsoZoned(zoned) }),
+            onSome: (zoned) => Effect.succeed({ timezone, iso: DateTime.formatIsoZoned(zoned) }),
           }),
         ),
       ),
@@ -122,9 +120,7 @@ const apiKeyLayer = Layer.unwrap(
 
 const mainLayer = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
 
-await Effect.runPromise(
-  Stream.runDrain(conversation).pipe(Effect.provide(mainLayer)),
-)
+await Effect.runPromise(Stream.runDrain(conversation).pipe(Effect.provide(mainLayer)))
 ```
 
 ## Anti-patterns

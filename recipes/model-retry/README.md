@@ -34,18 +34,18 @@ plain `Stream<TurnEvent, AiError>` the rest of the loop expects.
 
 Three `AiError` tags get retried. Everything else propagates as-is.
 
-| Tag                      | Retried? | Why                                       |
-| ------------------------ | -------- | ----------------------------------------- |
-| `RateLimited`            | ✓        | transient — provider is asking us to wait |
-| `Unavailable`            | ✓        | transient — transport / 5xx / DNS         |
-| `Timeout`                | ✓        | transient — slow request                  |
-| `ContentFiltered`        | ✗        | the request itself was rejected           |
-| `AuthFailed`             | ✗        | wrong key / wrong scope — won't fix itself |
-| `InvalidRequest`         | ✗        | schema / arg error — won't fix itself     |
-| `ContextLengthExceeded`  | ✗        | needs compaction, not a retry             |
-| `Cancelled`              | ✗        | caller asked for it                       |
-| `IncompleteTurn`         | ✗        | provider broke contract                   |
-| `GenerationFailed`       | ✗        | mid-generation provider error             |
+| Tag                     | Retried? | Why                                        |
+| ----------------------- | -------- | ------------------------------------------ |
+| `RateLimited`           | ✓        | transient — provider is asking us to wait  |
+| `Unavailable`           | ✓        | transient — transport / 5xx / DNS          |
+| `Timeout`               | ✓        | transient — slow request                   |
+| `ContentFiltered`       | ✗        | the request itself was rejected            |
+| `AuthFailed`            | ✗        | wrong key / wrong scope — won't fix itself |
+| `InvalidRequest`        | ✗        | schema / arg error — won't fix itself      |
+| `ContextLengthExceeded` | ✗        | needs compaction, not a retry              |
+| `Cancelled`             | ✗        | caller asked for it                        |
+| `IncompleteTurn`        | ✗        | provider broke contract                    |
+| `GenerationFailed`      | ✗        | mid-generation provider error              |
 
 ## The pipeline
 

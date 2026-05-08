@@ -19,18 +19,18 @@ Reach for this when the user says any of:
 
 ## The retryable set
 
-| Tag                      | Retried? | Why                                       |
-| ------------------------ | -------- | ----------------------------------------- |
-| `RateLimited`            | ✓        | transient — provider asking us to wait    |
-| `Unavailable`            | ✓        | transient — transport / 5xx / DNS         |
-| `Timeout`                | ✓        | transient — slow request                  |
-| `ContentFiltered`        | ✗        | request itself was rejected                |
-| `AuthFailed`             | ✗        | wrong key / scope — won't fix itself       |
-| `InvalidRequest`         | ✗        | schema / arg error — won't fix itself      |
-| `ContextLengthExceeded`  | ✗        | needs compaction, not a retry              |
-| `Cancelled`              | ✗        | caller asked for it                        |
-| `IncompleteTurn`         | ✗        | provider broke contract                    |
-| `GenerationFailed`       | ✗        | mid-generation provider error              |
+| Tag                     | Retried? | Why                                    |
+| ----------------------- | -------- | -------------------------------------- |
+| `RateLimited`           | ✓        | transient — provider asking us to wait |
+| `Unavailable`           | ✓        | transient — transport / 5xx / DNS      |
+| `Timeout`               | ✓        | transient — slow request               |
+| `ContentFiltered`       | ✗        | request itself was rejected            |
+| `AuthFailed`            | ✗        | wrong key / scope — won't fix itself   |
+| `InvalidRequest`        | ✗        | schema / arg error — won't fix itself  |
+| `ContextLengthExceeded` | ✗        | needs compaction, not a retry          |
+| `Cancelled`             | ✗        | caller asked for it                    |
+| `IncompleteTurn`        | ✗        | provider broke contract                |
+| `GenerationFailed`      | ✗        | mid-generation provider error          |
 
 ## The pipeline
 
@@ -58,14 +58,14 @@ const isRetryable = (
 
 const backoff = Schedule.exponential("200 millis", 2).pipe(
   Schedule.both(Schedule.recurs(3)), // cap at 3 retries (4 total tries)
-  Schedule.jittered,                 // avoid thundering herd
+  Schedule.jittered, // avoid thundering herd
 )
 
 streamTurn(req).pipe(
   Stream.map((event): Item => ({ _tag: "Event", event })),
   Stream.catchIf(
     isRetryable,
-    (cause) => Stream.fail(new Retryable({ cause })),    // retried
+    (cause) => Stream.fail(new Retryable({ cause })), // retried
     (cause) => Stream.succeed<Item>({ _tag: "Terminal", cause }), // escapes retry
   ),
   Stream.retry(backoff),
@@ -92,7 +92,7 @@ Downstream sees a plain `Stream<TurnEvent, AiError>`.
 
 ## Caveat: stream replay
 
-`Stream.retry` reruns the *entire* stream, so any deltas already
+`Stream.retry` reruns the _entire_ stream, so any deltas already
 emitted before the failure will be **replayed** on the next attempt.
 For typical retryable failures (rate-limit / transport errors that hit
 before the first delta) that's a non-issue.

@@ -96,7 +96,10 @@ const program = Effect.gen(function* () {
 const mainLayer = Layer.mergeAll(FetchHttpClient.layer, Logger.layer([Logger.consolePretty()]))
 
 Effect.runPromise(
-  program.pipe(Effect.provide(mainLayer), Effect.provideService(References.MinimumLogLevel, "Info")),
+  program.pipe(
+    Effect.provide(mainLayer),
+    Effect.provideService(References.MinimumLogLevel, "Info"),
+  ),
 ).catch((err) => {
   console.error("recipe failed:", err)
   process.exit(1)

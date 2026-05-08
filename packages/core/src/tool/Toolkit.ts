@@ -9,11 +9,7 @@ import {
   type Tool,
   type ToolDescriptor,
 } from "./Tool.js"
-import {
-  type ToolResult,
-  executionError,
-  rejected,
-} from "./Outcome.js"
+import { type ToolResult, executionError, rejected } from "./Outcome.js"
 import type { ToolEvent } from "./ToolEvent.js"
 import { isOutput } from "./ToolEvent.js"
 
@@ -71,9 +67,8 @@ export const executeAll = (
 
 export const outputEvent = (result: ToolResult): ToolEvent => ({ _tag: "Output", result })
 
-export const outputEvents = (
-  results: ReadonlyArray<ToolResult>,
-): Stream.Stream<ToolEvent> => Stream.fromIterable(results.map(outputEvent))
+export const outputEvents = (results: ReadonlyArray<ToolResult>): Stream.Stream<ToolEvent> =>
+  Stream.fromIterable(results.map(outputEvent))
 
 const valueResult = (call: FunctionCall, tool: string, value: unknown): ToolResult => ({
   _tag: "Value",
@@ -99,10 +94,7 @@ const runOne = (
   return runPlain(tool, call)
 }
 
-const runPlain = (
-  tool: AnyPlainTool,
-  call: FunctionCall,
-): Stream.Stream<ToolEvent> =>
+const runPlain = (tool: AnyPlainTool, call: FunctionCall): Stream.Stream<ToolEvent> =>
   Stream.fromEffect(
     Effect.gen(function* () {
       const parsed = yield* Effect.try({
@@ -124,10 +116,7 @@ const runPlain = (
     ),
   )
 
-const runStreaming = (
-  tool: AnyStreamingTool,
-  call: FunctionCall,
-): Stream.Stream<ToolEvent> =>
+const runStreaming = (tool: AnyStreamingTool, call: FunctionCall): Stream.Stream<ToolEvent> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const parsed = yield* Effect.try({

@@ -35,16 +35,16 @@ Out of scope (for v1):
 
 ### Comparison table
 
-| Provider     | Text | Image | Task / Input Type                                               | Output Formats                                                          | Sparse | Matryoshka                                            | Max Batch | Max Tokens |
-| ------------ | ---- | ----- | --------------------------------------------------------------- | ----------------------------------------------------------------------- | ------ | ----------------------------------------------------- | --------- | ---------- |
-| OpenAI       | yes  | no    | none                                                            | `float`, `base64`                                                       | no     | yes (3-large 1..3072, 3-small 1..1536)                | 2048      | 8191       |
-| Cohere v4    | yes  | yes   | `input_type` required: `search_query` / `search_document` / `classification` / `clustering` / `image` | `float`, `int8`, `uint8`, `binary`, `ubinary`, `base64`                 | no     | yes (256/512/1024/1536, discrete)                     | 96        | 128k       |
-| Voyage       | yes  | yes   | `input_type`: `query` / `document` / null                       | `float`, `int8`, `uint8`, `binary`, `ubinary` (`output_dtype`); `base64` | no     | yes (256/512/1024/2048, model-specific)               | 1000      | 32k        |
-| Jina v3      | yes  | no    | `task`: `retrieval.query` / `retrieval.passage` / `text-matching` / `classification` / `separation` | `float`, `base64`, `binary`, `ubinary`                                  | no     | yes (down to 32)                                      | soft      | 8192       |
-| Jina v4      | yes  | yes   | `task` (LoRA-bound)                                             | dense / multivector / **sparse** (`return_sparse`)                      | yes    | yes (down to 128)                                     | soft      | 32768      |
-| Mixedbread   | yes  | (lim) | `prompt` (free-form prefix)                                     | `float`, `base64`, `int8`, `uint8`, `binary`, `ubinary`                 | no     | yes (MRL implicit)                                    | provider  | model-spec |
-| Gemini API   | yes  | v2 only | `taskType` enum (incl. `CODE_RETRIEVAL_QUERY`); v2 uses prefix | dense float                                                             | no     | yes (`outputDimensionality` 128–3072)                 | ~100      | 2048 / 8192|
-| Vertex AI    | yes  | yes   | matches Gemini API; `multimodalembedding@001` is task-free       | dense float                                                             | no     | yes (128/256/512/1408 or 128–3072)                    | ~5        | 8192       |
+| Provider   | Text | Image   | Task / Input Type                                                                                     | Output Formats                                                           | Sparse | Matryoshka                              | Max Batch | Max Tokens  |
+| ---------- | ---- | ------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------ | --------------------------------------- | --------- | ----------- |
+| OpenAI     | yes  | no      | none                                                                                                  | `float`, `base64`                                                        | no     | yes (3-large 1..3072, 3-small 1..1536)  | 2048      | 8191        |
+| Cohere v4  | yes  | yes     | `input_type` required: `search_query` / `search_document` / `classification` / `clustering` / `image` | `float`, `int8`, `uint8`, `binary`, `ubinary`, `base64`                  | no     | yes (256/512/1024/1536, discrete)       | 96        | 128k        |
+| Voyage     | yes  | yes     | `input_type`: `query` / `document` / null                                                             | `float`, `int8`, `uint8`, `binary`, `ubinary` (`output_dtype`); `base64` | no     | yes (256/512/1024/2048, model-specific) | 1000      | 32k         |
+| Jina v3    | yes  | no      | `task`: `retrieval.query` / `retrieval.passage` / `text-matching` / `classification` / `separation`   | `float`, `base64`, `binary`, `ubinary`                                   | no     | yes (down to 32)                        | soft      | 8192        |
+| Jina v4    | yes  | yes     | `task` (LoRA-bound)                                                                                   | dense / multivector / **sparse** (`return_sparse`)                       | yes    | yes (down to 128)                       | soft      | 32768       |
+| Mixedbread | yes  | (lim)   | `prompt` (free-form prefix)                                                                           | `float`, `base64`, `int8`, `uint8`, `binary`, `ubinary`                  | no     | yes (MRL implicit)                      | provider  | model-spec  |
+| Gemini API | yes  | v2 only | `taskType` enum (incl. `CODE_RETRIEVAL_QUERY`); v2 uses prefix                                        | dense float                                                              | no     | yes (`outputDimensionality` 128–3072)   | ~100      | 2048 / 8192 |
+| Vertex AI  | yes  | yes     | matches Gemini API; `multimodalembedding@001` is task-free                                            | dense float                                                              | no     | yes (128/256/512/1408 or 128–3072)      | ~5        | 8192        |
 
 ### Convergence points
 
@@ -72,9 +72,11 @@ Wire shape is unrelated to embeddings. Same auth/HTTP client as embed. → **Rer
 
 ```ts
 interface Service {
-  embed:     (input: string)                    => Effect<Array<number>, AiError>
-  embedMany: (inputs: ReadonlyArray<string>, opts?: { concurrency? })
-                                                => Effect<Array<Array<number>>, AiError>
+  embed: (input: string) => Effect<Array<number>, AiError>
+  embedMany: (
+    inputs: ReadonlyArray<string>,
+    opts?: { concurrency? },
+  ) => Effect<Array<Array<number>>, AiError>
 }
 ```
 
@@ -92,17 +94,26 @@ interface Service {
 ### effect-smol (Effect 4) — `packages/effect/src/unstable/ai/EmbeddingModel.ts`
 
 ```ts
-class EmbeddingModel extends Context.Service<EmbeddingModel, Service>()("effect/unstable/ai/EmbeddingModel") {}
-class Dimensions    extends Context.Service<Dimensions, number>()        ("effect/unstable/ai/EmbeddingModel/Dimensions") {}
+class EmbeddingModel extends Context.Service<EmbeddingModel, Service>()(
+  "effect/unstable/ai/EmbeddingModel",
+) {}
+class Dimensions extends Context.Service<Dimensions, number>()(
+  "effect/unstable/ai/EmbeddingModel/Dimensions",
+) {}
 
 interface Service {
-  resolver:  RequestResolver.RequestResolver<EmbeddingRequest>
-  embed:     (input: string)                    => Effect<EmbedResponse, AiError>
-  embedMany: (input: ReadonlyArray<string>)     => Effect<EmbedManyResponse, AiError>
+  resolver: RequestResolver.RequestResolver<EmbeddingRequest>
+  embed: (input: string) => Effect<EmbedResponse, AiError>
+  embedMany: (input: ReadonlyArray<string>) => Effect<EmbedManyResponse, AiError>
 }
 
-class EmbedResponse     { vector: ReadonlyArray<number> }
-class EmbedManyResponse { embeddings: ReadonlyArray<EmbedResponse>; usage: EmbeddingUsage }
+class EmbedResponse {
+  vector: ReadonlyArray<number>
+}
+class EmbedManyResponse {
+  embeddings: ReadonlyArray<EmbedResponse>
+  usage: EmbeddingUsage
+}
 ```
 
 Structurally identical to v3 — just relocated to core's `unstable/ai/*` namespace and ported to Effect 4's `Context.Service` / `RequestResolver`. **Same gaps.** Only OpenAI + OpenAI-compat providers exist; no Anthropic, no Google.
@@ -113,15 +124,15 @@ Structurally identical to v3 — just relocated to core's `unstable/ai/*` namesp
 
 Walking the actual workloads to anchor the design:
 
-| # | Scenario                                  | Volume       | Inputs    | Task                | Batch shape               |
-| - | ----------------------------------------- | ------------ | --------- | ------------------- | ------------------------- |
-| 1 | Offline RAG indexing                      | 1k–10M       | many      | `document`          | one task per batch        |
-| 2 | Online query embedding (RAG retrieval)    | high QPS     | 1         | `query`             | n/a                       |
-| 3 | Search tool called by an agent (this lib) | per LLM turn | 1         | `query`             | n/a                       |
-| 4 | Multi-query / HyDE expansion              | small        | K         | one task            | one task per batch        |
-| 5 | Classification / clustering / dedup       | 100s–10k     | many      | `classification` …  | one task per batch        |
-| 6 | Semantic similarity (A vs B)              | 2            | 2         | one task            | one task per batch        |
-| 7 | Embed-and-cosine "rerank"                 | rare         | 1 + N     | mixed               | **use `Reranker` instead**|
+| #   | Scenario                                  | Volume       | Inputs | Task               | Batch shape                |
+| --- | ----------------------------------------- | ------------ | ------ | ------------------ | -------------------------- |
+| 1   | Offline RAG indexing                      | 1k–10M       | many   | `document`         | one task per batch         |
+| 2   | Online query embedding (RAG retrieval)    | high QPS     | 1      | `query`            | n/a                        |
+| 3   | Search tool called by an agent (this lib) | per LLM turn | 1      | `query`            | n/a                        |
+| 4   | Multi-query / HyDE expansion              | small        | K      | one task           | one task per batch         |
+| 5   | Classification / clustering / dedup       | 100s–10k     | many   | `classification` … | one task per batch         |
+| 6   | Semantic similarity (A vs B)              | 2            | 2      | one task           | one task per batch         |
+| 7   | Embed-and-cosine "rerank"                 | rare         | 1 + N  | mixed              | **use `Reranker` instead** |
 
 **Key takeaway**: every workload that exists in practice is single-task per batch, or single-input. Mixed-task batches (scenario 7) are exactly what dedicated rerankers (Cohere/Jina/Voyage/Mixedbread `/rerank`) are for, and we're shipping `Reranker` next anyway. **No need to support per-input task variation.**
 
@@ -135,7 +146,7 @@ Walking the actual workloads to anchor the design:
 - OpenAI: ignores task entirely.
 - Google `batchEmbedContents`: technically per-input, but we set every per-input `taskType` to the request's `task` — flexibility is an implementation detail, not surface area.
 
-For the long tail (Cohere `classification`/`clustering`/`image`, Jina `text-matching`/`separation`, Google `CODE_RETRIEVAL_QUERY`, Mixedbread free-form `prompt`), provider-typed requests *widen* the `task` field to the full provider enum. Same trick `GeminiRequest` uses to add `thinkingBudget` to `CommonRequest`.
+For the long tail (Cohere `classification`/`clustering`/`image`, Jina `text-matching`/`separation`, Google `CODE_RETRIEVAL_QUERY`, Mixedbread free-form `prompt`), provider-typed requests _widen_ the `task` field to the full provider enum. Same trick `GeminiRequest` uses to add `thinkingBudget` to `CommonRequest`.
 
 **Rejected**: separate `embedQuery` / `embedDocument` methods + `embedWith` escape hatch. Three concerns conflated (single-vs-batch, query-vs-document, generic-vs-provider-task) into four method names. Single `task` field on the request handles all three.
 
@@ -144,7 +155,7 @@ For the long tail (Cohere `classification`/`clustering`/`image`, Jina `text-matc
 ### Two methods → `embed` (single) + `embedMany` (batch)
 
 ```ts
-embed:     (request: EmbedRequest)     => Effect<EmbedResponse,     AiError>
+embed: (request: EmbedRequest) => Effect<EmbedResponse, AiError>
 embedMany: (request: EmbedManyRequest) => Effect<EmbedManyResponse, AiError>
 ```
 
@@ -164,18 +175,16 @@ Reasons (in priority order):
 
 ```ts
 type EmbedInput =
-  | string                                    // shorthand for { text }
+  | string // shorthand for { text }
   | { readonly text: string }
   | { readonly image: ImageSource }
-  | { readonly content: ReadonlyArray<EmbedContentPart> }   // mixed text+image
+  | { readonly content: ReadonlyArray<EmbedContentPart> } // mixed text+image
 
-type EmbedContentPart =
-  | { readonly text: string }
-  | { readonly image: ImageSource }
+type EmbedContentPart = { readonly text: string } | { readonly image: ImageSource }
 
 type ImageSource =
   | { readonly url: string }
-  | { readonly base64: string;   readonly mimeType: string }
+  | { readonly base64: string; readonly mimeType: string }
   | { readonly bytes: Uint8Array; readonly mimeType: string }
 ```
 
@@ -186,8 +195,8 @@ Each provider layer normalizes (`bytes` → base64 data URI for Cohere, GCS uplo
 ```ts
 type Embedding =
   | { readonly kind: "float32"; readonly vector: Float32Array }
-  | { readonly kind: "int8";    readonly vector: Int8Array }
-  | { readonly kind: "binary";  readonly vector: Uint8Array }
+  | { readonly kind: "int8"; readonly vector: Int8Array }
+  | { readonly kind: "binary"; readonly vector: Uint8Array }
 ```
 
 - `Float32Array` over `number[]` — every consumer (cosine sim, dot product, vector DB upload) wants typed arrays; base64 → Float32Array decode is cheap.
@@ -234,24 +243,22 @@ import { Context, Effect } from "effect"
 import * as AiError from "../domain/AiError.js"
 
 export type ImageSource =
-  | { readonly url:    string }
-  | { readonly base64: string;     readonly mimeType: string }
-  | { readonly bytes:  Uint8Array; readonly mimeType: string }
+  | { readonly url: string }
+  | { readonly base64: string; readonly mimeType: string }
+  | { readonly bytes: Uint8Array; readonly mimeType: string }
 
-export type EmbedContentPart =
-  | { readonly text:  string }
-  | { readonly image: ImageSource }
+export type EmbedContentPart = { readonly text: string } | { readonly image: ImageSource }
 
 export type EmbedInput =
   | string
-  | { readonly text:    string }
-  | { readonly image:   ImageSource }
+  | { readonly text: string }
+  | { readonly image: ImageSource }
   | { readonly content: ReadonlyArray<EmbedContentPart> }
 
 export type Embedding =
   | { readonly kind: "float32"; readonly vector: Float32Array }
-  | { readonly kind: "int8";    readonly vector: Int8Array }
-  | { readonly kind: "binary";  readonly vector: Uint8Array }
+  | { readonly kind: "int8"; readonly vector: Int8Array }
+  | { readonly kind: "binary"; readonly vector: Uint8Array }
 
 export interface Usage {
   readonly inputTokens?: number
@@ -263,11 +270,11 @@ export interface Usage {
  * request interface, which extends this and narrows `model` / widens `task`.
  */
 export interface CommonEmbedRequest {
-  readonly input:       EmbedInput
-  readonly model:       string                          // narrowed per-provider
-  readonly task?:       "query" | "document"            // one value; OpenAI ignores
+  readonly input: EmbedInput
+  readonly model: string // narrowed per-provider
+  readonly task?: "query" | "document" // one value; OpenAI ignores
   readonly dimensions?: number
-  readonly encoding?:   "float32" | "int8" | "binary"
+  readonly encoding?: "float32" | "int8" | "binary"
 }
 
 export interface CommonEmbedManyRequest extends Omit<CommonEmbedRequest, "input"> {
@@ -276,17 +283,19 @@ export interface CommonEmbedManyRequest extends Omit<CommonEmbedRequest, "input"
 
 export interface EmbedResponse {
   readonly embedding: Embedding
-  readonly usage:     Usage
+  readonly usage: Usage
 }
 
 export interface EmbedManyResponse {
   readonly embeddings: ReadonlyArray<Embedding>
-  readonly usage:      Usage
+  readonly usage: Usage
 }
 
 export interface EmbeddingModelService {
-  readonly embed:     (request: CommonEmbedRequest)     => Effect.Effect<EmbedResponse,     AiError.AiError>
-  readonly embedMany: (request: CommonEmbedManyRequest) => Effect.Effect<EmbedManyResponse, AiError.AiError>
+  readonly embed: (request: CommonEmbedRequest) => Effect.Effect<EmbedResponse, AiError.AiError>
+  readonly embedMany: (
+    request: CommonEmbedManyRequest,
+  ) => Effect.Effect<EmbedManyResponse, AiError.AiError>
 }
 
 export class EmbeddingModel extends Context.Service<EmbeddingModel, EmbeddingModelService>()(
@@ -323,15 +332,15 @@ export type JinaEmbeddingModel =
 ```ts
 // packages/providers/jina/src/JinaEmbedding.ts
 export type JinaTask =
-  | "query"           // wire: retrieval.query
-  | "document"        // wire: retrieval.passage
+  | "query" // wire: retrieval.query
+  | "document" // wire: retrieval.passage
   | "text-matching"
   | "classification"
   | "separation"
 
 export interface JinaEmbedRequest extends Omit<CommonEmbedRequest, "model" | "task"> {
   readonly model: JinaEmbeddingModel
-  readonly task:  JinaTask                       // required for v3+; widened beyond query/document
+  readonly task: JinaTask // required for v3+; widened beyond query/document
 }
 
 export interface JinaEmbedManyRequest extends Omit<JinaEmbedRequest, "input"> {
@@ -339,8 +348,10 @@ export interface JinaEmbedManyRequest extends Omit<JinaEmbedRequest, "input"> {
 }
 
 export interface JinaEmbeddingService {
-  readonly embed:     (request: JinaEmbedRequest)     => Effect.Effect<EmbedResponse,     AiError.AiError>
-  readonly embedMany: (request: JinaEmbedManyRequest) => Effect.Effect<EmbedManyResponse, AiError.AiError>
+  readonly embed: (request: JinaEmbedRequest) => Effect.Effect<EmbedResponse, AiError.AiError>
+  readonly embedMany: (
+    request: JinaEmbedManyRequest,
+  ) => Effect.Effect<EmbedManyResponse, AiError.AiError>
 }
 
 export class JinaEmbedding extends Context.Service<JinaEmbedding, JinaEmbeddingService>()(
@@ -353,10 +364,13 @@ export const layer = (
   const typed = Layer.effect(JinaEmbedding, make(cfg))
   const generic = Layer.effect(
     EmbeddingModel,
-    Effect.map(make(cfg), (s): EmbeddingModelService => ({
-      embed:     (req) => s.embed(req as JinaEmbedRequest),
-      embedMany: (req) => s.embedMany(req as JinaEmbedManyRequest),
-    })),
+    Effect.map(
+      make(cfg),
+      (s): EmbeddingModelService => ({
+        embed: (req) => s.embed(req as JinaEmbedRequest),
+        embedMany: (req) => s.embedMany(req as JinaEmbedManyRequest),
+      }),
+    ),
   )
   return Layer.merge(typed, generic)
 }

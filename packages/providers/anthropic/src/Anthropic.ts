@@ -219,14 +219,10 @@ const deltasFromEvent = (next: Accumulator, event: ProviderEvent): ReadonlyArray
           }),
         ),
       message_start: (e) =>
-        e.message.usage === undefined
-          ? []
-          : [{ type: "usage_update" as const, usage: next.usage }],
+        e.message.usage === undefined ? [] : [{ type: "usage_update" as const, usage: next.usage }],
       message_delta: (e) =>
         e.usage === undefined ? [] : [{ type: "usage_update" as const, usage: next.usage }],
-      message_stop: () => [
-        { type: "turn_complete" as const, turn: accumulatorToTurn(next) },
-      ],
+      message_stop: () => [{ type: "turn_complete" as const, turn: accumulatorToTurn(next) }],
       content_block_stop: () => [],
       ping: () => [],
       error: () => [],

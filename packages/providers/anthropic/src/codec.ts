@@ -120,22 +120,16 @@ const messageText = (message: Items.Message): string => message.content.map(bloc
 
 const imageSourceToWire = Match.type<Items.InputImage["source"]>().pipe(
   Match.tag("url", (s): RequestImageContent["source"] => ({ type: "url", url: s.url })),
-  Match.tag(
-    "base64",
-    (s): RequestImageContent["source"] => ({
-      type: "base64",
-      media_type: s.mimeType,
-      data: s.base64,
-    }),
-  ),
-  Match.tag(
-    "bytes",
-    (s): RequestImageContent["source"] => ({
-      type: "base64",
-      media_type: s.mimeType,
-      data: Encoding.encodeBase64(s.bytes),
-    }),
-  ),
+  Match.tag("base64", (s): RequestImageContent["source"] => ({
+    type: "base64",
+    media_type: s.mimeType,
+    data: s.base64,
+  })),
+  Match.tag("bytes", (s): RequestImageContent["source"] => ({
+    type: "base64",
+    media_type: s.mimeType,
+    data: Encoding.encodeBase64(s.bytes),
+  })),
   Match.exhaustive,
 )
 
@@ -192,9 +186,7 @@ const itemToAssistantBlocks = (
 ): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> =>
   Match.value(item).pipe(
     Match.discriminatorsExhaustive("type")({
-      message: (
-        m,
-      ): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> => {
+      message: (m): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> => {
         const text = messageText(m)
         return Result.succeed(
           m.role === "assistant" && text.length > 0 ? [{ type: "text", text }] : [],
@@ -209,9 +201,10 @@ const itemToAssistantBlocks = (
             ],
           ),
         ),
-      function_call_output:
-        (): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> =>
-          Result.succeed([]),
+      function_call_output: (): Result.Result<
+        ReadonlyArray<RequestAssistantContentBlock>,
+        JsonParseError
+      > => Result.succeed([]),
       reasoning: (r) => {
         const blocks: ReadonlyArray<RequestAssistantContentBlock> =
           r.summary !== undefined

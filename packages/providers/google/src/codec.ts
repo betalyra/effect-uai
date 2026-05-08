@@ -103,9 +103,7 @@ const imageSourceToParts = Match.type<InputImage["source"]>().pipe(
   Match.tag("url", (): ReadonlyArray<RequestPart> => []),
   Match.tag(
     "base64",
-    (s): ReadonlyArray<RequestPart> => [
-      { inlineData: { mimeType: s.mimeType, data: s.base64 } },
-    ],
+    (s): ReadonlyArray<RequestPart> => [{ inlineData: { mimeType: s.mimeType, data: s.base64 } }],
   ),
   Match.tag(
     "bytes",
@@ -118,11 +116,9 @@ const imageSourceToParts = Match.type<InputImage["source"]>().pipe(
 
 const blockToParts = Match.type<ContentBlock>().pipe(
   Match.discriminatorsExhaustive("type")({
-    input_text: (b): ReadonlyArray<RequestPart> =>
-      b.text.length === 0 ? [] : [{ text: b.text }],
+    input_text: (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
     input_image: (b): ReadonlyArray<RequestPart> => imageSourceToParts(b.source),
-    output_text: (b): ReadonlyArray<RequestPart> =>
-      b.text.length === 0 ? [] : [{ text: b.text }],
+    output_text: (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
     // Refusals are assistant-side content; they don't round-trip into Gemini's
     // request body as parts. Skip.
     refusal: (): ReadonlyArray<RequestPart> => [],

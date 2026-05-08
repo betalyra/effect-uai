@@ -50,9 +50,14 @@ interface GeminiEmbedRequest extends Omit<CommonEmbedRequest, "model" | "task" |
 }
 
 type GoogleEmbeddingTask =
-  | "query" | "document"        // cross-provider denominator
-  | "similarity" | "classification" | "clustering"
-  | "qa" | "fact_verification" | "code_query"
+  | "query"
+  | "document" // cross-provider denominator
+  | "similarity"
+  | "classification"
+  | "clustering"
+  | "qa"
+  | "fact_verification"
+  | "code_query"
 ```
 
 - **`task`** — Gemini's full task enum. Mapped internally to wire
@@ -102,20 +107,20 @@ const program = Effect.gen(function* () {
 
 `GoogleEmbeddingModel` is a literal union with a `(string & {})` tail:
 
-| Model | Modalities | Task field | Native dims |
-|---|---|---|---|
-| `gemini-embedding-2` | text, image, audio, video, PDF | ignored (use prefix) | up to 3072 |
-| `gemini-embedding-001` | text only | full enum | 128/256/512/1408 |
+| Model                  | Modalities                     | Task field           | Native dims      |
+| ---------------------- | ------------------------------ | -------------------- | ---------------- |
+| `gemini-embedding-2`   | text, image, audio, video, PDF | ignored (use prefix) | up to 3072       |
+| `gemini-embedding-001` | text only                      | full enum            | 128/256/512/1408 |
 
 Reference: [Gemini embeddings docs](https://ai.google.dev/gemini-api/docs/embeddings).
 
 ## Encoding support
 
-| `encoding` | Behaviour |
-|---|---|
-| `float32` (default) | Native float32 from `embedding.values`. |
-| `int8` / `binary` | Rejected — Gemini doesn't ship quantized output. |
-| `sparse` / `multivector` | Rejected — same. |
+| `encoding`               | Behaviour                                        |
+| ------------------------ | ------------------------------------------------ |
+| `float32` (default)      | Native float32 from `embedding.values`.          |
+| `int8` / `binary`        | Rejected — Gemini doesn't ship quantized output. |
+| `sparse` / `multivector` | Rejected — same.                                 |
 
 If you need quantized vectors against a Gemini index,
 [Jina](/embeddings/providers/jina/) ships `binary` natively.

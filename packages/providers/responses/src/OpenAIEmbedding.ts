@@ -78,9 +78,9 @@ const inputToString = (input: EmbedInput): Effect.Effect<string, AiError.AiError
   if (typeof input === "string") return Effect.succeed(input)
   if ("text" in input) return Effect.succeed(input.text)
   if ("image" in input) return Effect.fail(imageRejected("input.image"))
-  return Effect.forEach(input.content, (p, i) =>
-    partToText(`input.content[${i}].image`, p),
-  ).pipe(Effect.map((texts) => texts.join("\n")))
+  return Effect.forEach(input.content, (p, i) => partToText(`input.content[${i}].image`, p)).pipe(
+    Effect.map((texts) => texts.join("\n")),
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -94,9 +94,7 @@ type WireBody = {
   readonly encoding_format?: "float" | "base64"
 }
 
-const buildSingleBody = (
-  request: OpenAIEmbedRequest,
-): Effect.Effect<WireBody, AiError.AiError> =>
+const buildSingleBody = (request: OpenAIEmbedRequest): Effect.Effect<WireBody, AiError.AiError> =>
   inputToString(request.input).pipe(
     Effect.map((input) => ({
       model: request.model,
@@ -146,9 +144,7 @@ const valuesToEmbedding = (values: ReadonlyArray<number>): Embedding => ({
 const orderedEmbeddings = (
   data: ReadonlyArray<{ readonly embedding: ReadonlyArray<number>; readonly index: number }>,
 ): ReadonlyArray<Embedding> =>
-  [...data]
-    .sort((a, b) => a.index - b.index)
-    .map((item) => valuesToEmbedding(item.embedding))
+  [...data].sort((a, b) => a.index - b.index).map((item) => valuesToEmbedding(item.embedding))
 
 // ---------------------------------------------------------------------------
 // HTTP errors
@@ -203,35 +199,39 @@ const postEmbed = (
 
 const usageOf = (u: typeof WireUsage.Type): Usage => ({ inputTokens: u.prompt_tokens })
 
-const embedImpl = (cfg: Config) => (
-  request: OpenAIEmbedRequest,
-): Effect.Effect<EmbedResponse, AiError.AiError, HttpClient.HttpClient> =>
-  buildSingleBody(request).pipe(
-    Effect.flatMap((body) => postEmbed(cfg, body)),
-    Effect.flatMap((decoded) => {
-      const first = decoded.data[0]
-      if (first === undefined) {
-        return Effect.fail(transportFailure("OpenAI returned empty `data` array"))
-      }
-      return Effect.succeed<EmbedResponse>({
-        embedding: valuesToEmbedding(first.embedding),
-        usage: usageOf(decoded.usage),
-      })
-    }),
-  )
-
-const embedManyImpl = (cfg: Config) => (
-  request: OpenAIEmbedManyRequest,
-): Effect.Effect<EmbedManyResponse, AiError.AiError, HttpClient.HttpClient> =>
-  buildBatchBody(request).pipe(
-    Effect.flatMap((body) => postEmbed(cfg, body)),
-    Effect.map(
-      (decoded): EmbedManyResponse => ({
-        embeddings: orderedEmbeddings(decoded.data),
-        usage: usageOf(decoded.usage),
+const embedImpl =
+  (cfg: Config) =>
+  (
+    request: OpenAIEmbedRequest,
+  ): Effect.Effect<EmbedResponse, AiError.AiError, HttpClient.HttpClient> =>
+    buildSingleBody(request).pipe(
+      Effect.flatMap((body) => postEmbed(cfg, body)),
+      Effect.flatMap((decoded) => {
+        const first = decoded.data[0]
+        if (first === undefined) {
+          return Effect.fail(transportFailure("OpenAI returned empty `data` array"))
+        }
+        return Effect.succeed<EmbedResponse>({
+          embedding: valuesToEmbedding(first.embedding),
+          usage: usageOf(decoded.usage),
+        })
       }),
-    ),
-  )
+    )
+
+const embedManyImpl =
+  (cfg: Config) =>
+  (
+    request: OpenAIEmbedManyRequest,
+  ): Effect.Effect<EmbedManyResponse, AiError.AiError, HttpClient.HttpClient> =>
+    buildBatchBody(request).pipe(
+      Effect.flatMap((body) => postEmbed(cfg, body)),
+      Effect.map(
+        (decoded): EmbedManyResponse => ({
+          embeddings: orderedEmbeddings(decoded.data),
+          usage: usageOf(decoded.usage),
+        }),
+      ),
+    )
 
 // ---------------------------------------------------------------------------
 // Constructors

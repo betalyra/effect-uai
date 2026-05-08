@@ -93,36 +93,32 @@ export const conversation = (
       Effect.gen(function* () {
         // Drain any pending user input before each new request, but
         // skip the wait when the model is mid-task (tool outputs hanging).
-        const incoming = needsUserInput(state)
-          ? yield* drainBurst(queue, settle)
-          : []
+        const incoming = needsUserInput(state) ? yield* drainBurst(queue, settle) : []
         const history = [...state.history, ...incoming.map(Items.userText)]
 
         const lm = yield* LanguageModel
-        return lm
-          .streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors })
-          .pipe(
-            streamUntilComplete<State, ToolEvent>((turn) =>
-              Effect.sync(() => {
-                const calls = Turn.functionCalls(turn)
+        return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
+          streamUntilComplete<State, ToolEvent>((turn) =>
+            Effect.sync(() => {
+              const calls = Turn.functionCalls(turn)
 
-                // No tool calls - the assistant is done. Continue with
-                // the appended turn; the next iteration will block on
-                // the queue for the next user message.
-                if (calls.length === 0) {
-                  return nextAfter(Stream.empty, Turn.appendTurn({ history }, turn))
-                }
+              // No tool calls - the assistant is done. Continue with
+              // the appended turn; the next iteration will block on
+              // the queue for the next user message.
+              if (calls.length === 0) {
+                return nextAfter(Stream.empty, Turn.appendTurn({ history }, turn))
+              }
 
-                // Tool calls: execute and append outputs. The next
-                // iteration runs the model again to incorporate them,
-                // skipping the queue check.
-                const events = Toolkit.executeAll(tools, calls)
-                return Toolkit.nextStateFrom(events, (results) =>
-                  Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
-                )
-              }),
-            ),
-          )
+              // Tool calls: execute and append outputs. The next
+              // iteration runs the model again to incorporate them,
+              // skipping the queue check.
+              const events = Toolkit.executeAll(tools, calls)
+              return Toolkit.nextStateFrom(events, (results) =>
+                Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
+              )
+            }),
+          ),
+        )
       }),
     ),
   )

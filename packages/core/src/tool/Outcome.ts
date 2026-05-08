@@ -50,11 +50,7 @@ export const isFailure = ToolResult.$is("Failure")
 // anything else is just a recipe-chosen `kind` via `rejected`.
 // ---------------------------------------------------------------------------
 
-export const rejected = (
-  call: FunctionCall,
-  kind: string,
-  reason?: string,
-): ToolResult =>
+export const rejected = (call: FunctionCall, kind: string, reason?: string): ToolResult =>
   ToolResult.Failure({
     call_id: call.call_id,
     tool: call.name,

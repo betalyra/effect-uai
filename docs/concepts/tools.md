@@ -62,7 +62,7 @@ const askSubagent = Tool.streaming({
   name: "ask_subagent",
   description: "Ask a specialist sub-agent for help.",
   inputSchema: Tool.fromEffectSchema(SubAgentInput),
-  run: ({ question }) => runInner(question),  // Stream<TurnEvent>
+  run: ({ question }) => runInner(question), // Stream<TurnEvent>
   finalize: (events): SubAgentOutput => ({
     answer: events
       .filter((e) => e.type === "text_delta")
@@ -117,8 +117,8 @@ For mixed plain + streaming tools, use a flat array typed
 
 ```ts
 const allTools: ReadonlyArray<Tool.AnyKindTool> = [
-  getCurrentTime,   // plain
-  askSubagent,      // streaming
+  getCurrentTime, // plain
+  askSubagent, // streaming
 ]
 const tools = Tool.toDescriptors(allTools)
 ```
@@ -160,11 +160,11 @@ bound it.
 
 The executor speaks in `ToolResult` (structured), not `FunctionCallOutput`
 (wire-shaped). This lets recipes inspect, redact, audit, or re-route
-tool values *before* serialization without parse-and-restringify.
+tool values _before_ serialization without parse-and-restringify.
 
 ```ts
 type ToolResult =
-  | { _tag: "Value";   call_id: string; tool: string; value: unknown }
+  | { _tag: "Value"; call_id: string; tool: string; value: unknown }
   | { _tag: "Failure"; call_id: string; tool: string; kind: string; reason?: string }
 ```
 
@@ -225,7 +225,7 @@ streamUntilComplete<State, ToolEvent>((turn) =>
 
 `Turn.appendTurn` appends the turn's items (including the `FunctionCall`s
 themselves) and then the collected `FunctionCallOutput`s. Both must be
-present for the model to see what it asked for *and* what came back.
+present for the model to see what it asked for _and_ what came back.
 
 ## Approval gating
 
@@ -259,8 +259,7 @@ tool call receives a matching tool result in history.
 Long-lived queue flows:
 
 ```ts
-const { approved, decisions, announce } =
-  yield* fromVerdictQueue(isSensitive, verdicts)(calls)
+const { approved, decisions, announce } = yield * fromVerdictQueue(isSensitive, verdicts)(calls)
 
 const events = Stream.merge(
   announce,
@@ -288,11 +287,7 @@ checkpoints, stateless HTTP servers) need to detect orphans and
 synthesize closure outputs before submitting:
 
 ```ts
-import {
-  cancelAllPending,
-  findUnansweredCalls,
-  isReconciled,
-} from "@effect-uai/core/HistoryCheck"
+import { cancelAllPending, findUnansweredCalls, isReconciled } from "@effect-uai/core/HistoryCheck"
 
 const closures = cancelAllPending(history, "user moved on")
 const reconciled = [...history, ...closures.map(toFunctionCallOutput)]

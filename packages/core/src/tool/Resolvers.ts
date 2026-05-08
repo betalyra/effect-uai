@@ -29,9 +29,7 @@ export const reject = (result: ToolResult): ToolCallDecision => ({
   result,
 })
 
-export const splitToolCallDecisions = (
-  decisions: ReadonlyArray<ToolCallDecision>,
-): ToolCallPlan =>
+export const splitToolCallDecisions = (decisions: ReadonlyArray<ToolCallDecision>): ToolCallPlan =>
   decisions.reduce<ToolCallPlan>(
     (acc, decision) =>
       decision._tag === "Approved"
@@ -63,10 +61,7 @@ export type Verdict = {
  * one `ToolCallDecision` when their matching verdict arrives.
  */
 export const fromVerdictQueue =
-  (
-    predicate: (call: FunctionCall) => boolean,
-    verdicts: Queue.Dequeue<Verdict>,
-  ) =>
+  (predicate: (call: FunctionCall) => boolean, verdicts: Queue.Dequeue<Verdict>) =>
   (
     calls: ReadonlyArray<FunctionCall>,
   ): Effect.Effect<
@@ -131,10 +126,7 @@ export type ApprovalMapEntry =
   | { readonly decision: "deny"; readonly reason?: string }
 
 export const fromApprovalMap =
-  (
-    predicate: (call: FunctionCall) => boolean,
-    approvals: ReadonlyMap<string, ApprovalMapEntry>,
-  ) =>
+  (predicate: (call: FunctionCall) => boolean, approvals: ReadonlyMap<string, ApprovalMapEntry>) =>
   (calls: ReadonlyArray<FunctionCall>): ToolCallPlan =>
     splitToolCallDecisions(
       calls.map((call) => {
@@ -144,4 +136,3 @@ export const fromApprovalMap =
         return v.decision === "approve" ? approve(call) : reject(denied(call, v.reason))
       }),
     )
-

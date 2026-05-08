@@ -6,7 +6,7 @@ license: MIT
 
 # effect-uai model-council
 
-Three models answer the same question, each scores the *others'*
+Three models answer the same question, each scores the _others'_
 answers, and the highest-rated answer is streamed as the winner.
 Everything flows through one `Stream<CouncilEvent>` — no `Queue`, no
 `Deferred`, no manual forks. The dependency graph is implicit in
@@ -119,8 +119,7 @@ export const council = (members, history) =>
       (tally, event) => {
         if (event.type === "candidate_complete")
           return [recordCandidate(tally, event.member, event.answer), [event]]
-        if (event.type === "score")
-          return [recordScore(tally, event.subject, event.score), [event]]
+        if (event.type === "score") return [recordScore(tally, event.subject, event.score), [event]]
         return [tally, [event]]
       },
       {
@@ -143,6 +142,7 @@ whatever scores landed.
 ## Per-phase error isolation
 
 If one model returns malformed JSON, don't:
+
 - silently score zero (would unfairly penalize the subject), or
 - take the whole council down.
 

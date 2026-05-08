@@ -172,8 +172,7 @@ const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
  */
 const eventToError = Match.type<ProviderEvent>().pipe(
   Match.discriminators("type")({
-    error: (e): AiError.AiError =>
-      new AiError.Unavailable({ provider: "responses", raw: e }),
+    error: (e): AiError.AiError => new AiError.Unavailable({ provider: "responses", raw: e }),
     "response.failed": (e): AiError.AiError => {
       const code = e.response.error?.code
       const message = e.response.error?.message

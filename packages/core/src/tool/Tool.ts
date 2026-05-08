@@ -101,9 +101,7 @@ export const isStreamingTool = (t: AnyKindTool): t is AnyStreamingTool =>
  * descriptors. Mirrors `Toolkit.toDescriptors` but accepts the union type
  * so a single list can carry both kinds.
  */
-export const toDescriptors = (
-  tools: ReadonlyArray<AnyKindTool>,
-): ReadonlyArray<ToolDescriptor> =>
+export const toDescriptors = (tools: ReadonlyArray<AnyKindTool>): ReadonlyArray<ToolDescriptor> =>
   tools.map((tool) => {
     const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
       target: "draft-2020-12",

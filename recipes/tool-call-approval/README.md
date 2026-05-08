@@ -73,10 +73,7 @@ synthesize closure outputs before submitting. That's an entry-point
 concern, not the recipe's:
 
 ```ts
-import {
-  cancelAllPending,
-  findUnansweredCalls,
-} from "@effect-uai/core/HistoryCheck"
+import { cancelAllPending, findUnansweredCalls } from "@effect-uai/core/HistoryCheck"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 
 // In your HTTP route handler, before invoking httpConversation:
@@ -149,12 +146,12 @@ verdicts onto the same queue, and renders `Output` results as they arrive.
 Whatever the path — Value, denied, cancelled — every gated call ends up
 with a `FunctionCallOutput` carrying a structured payload:
 
-| Verdict / outcome    | `output` JSON                                  |
-| -------------------- | ---------------------------------------------- |
-| Approved + executed  | The tool's own structured return value.        |
-| Denied               | `{ "kind": "denied", "reason": "..." }`        |
-| Cancelled (HTTP)     | `{ "kind": "cancelled" }`                      |
-| Tool execution error | `{ "kind": "execution_error", "reason": "..."}`|
+| Verdict / outcome    | `output` JSON                                   |
+| -------------------- | ----------------------------------------------- |
+| Approved + executed  | The tool's own structured return value.         |
+| Denied               | `{ "kind": "denied", "reason": "..." }`         |
+| Cancelled (HTTP)     | `{ "kind": "cancelled" }`                       |
+| Tool execution error | `{ "kind": "execution_error", "reason": "..."}` |
 
 History stays well-formed; the model reads the synthesized outputs on
 the next turn and self-corrects if needed.

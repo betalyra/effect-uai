@@ -81,31 +81,26 @@ const conversation = pipe(
       }
 
       // Normal turn (bigger model, etc.)
-      return oai
-        .streamTurn({ history: state.history, model: "gpt-5.4" })
-        .pipe(
-          streamUntilComplete((turn) =>
-            Effect.sync(() => {
-              const next = advance(state, turn)
-              if (next.pendingPrompts.length === 0) return stop
-              const [nextPrompt, ...rest] = next.pendingPrompts
-              return nextAfter(Stream.empty, {
-                ...next,
-                history: [...next.history, Items.userText(nextPrompt!)],
-                pendingPrompts: rest,
-              })
-            }),
-          ),
-        )
+      return oai.streamTurn({ history: state.history, model: "gpt-5.4" }).pipe(
+        streamUntilComplete((turn) =>
+          Effect.sync(() => {
+            const next = advance(state, turn)
+            if (next.pendingPrompts.length === 0) return stop
+            const [nextPrompt, ...rest] = next.pendingPrompts
+            return nextAfter(Stream.empty, {
+              ...next,
+              history: [...next.history, Items.userText(nextPrompt!)],
+              pendingPrompts: rest,
+            })
+          }),
+        ),
+      )
     }),
   ),
 )
 
 const withSummary = (state: State, summary: string): State => ({
-  history: [
-    Items.userText(`[Summary]: ${summary}`),
-    ...state.history.slice(-KEEP_RECENT_ITEMS),
-  ],
+  history: [Items.userText(`[Summary]: ${summary}`), ...state.history.slice(-KEEP_RECENT_ITEMS)],
   turnIndex: 0,
   cumulativeInputTokens: 0,
   pendingPrompts: state.pendingPrompts,
@@ -134,7 +129,7 @@ The recipe compacts within one loop invocation. Real chat
 applications usually persist `state.history` between requests:
 
 - **Lazy, at load time.** If the hydrated history exceeds your
-  budget, run a compaction `streamTurn` *before* starting the agent
+  budget, run a compaction `streamTurn` _before_ starting the agent
   loop, then continue with the compacted history.
 - **Eager, at save time.** When the loop finishes a request, check
   the budget; compact and persist the smaller history.

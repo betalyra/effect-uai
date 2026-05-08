@@ -50,7 +50,7 @@ interface OpenAIEmbedRequest extends Omit<CommonEmbedRequest, "model" | "task"> 
 }
 ```
 
-Note what's *not* there: **no `task`**. OpenAI's embedding API has no
+Note what's _not_ there: **no `task`**. OpenAI's embedding API has no
 task-type semantics, so the field is omitted from the typed request —
 passing it is a compile error. The generic `EmbeddingModel` tag accepts
 and silently ignores `task` so portable code keeps working.
@@ -79,31 +79,33 @@ Or via the generic tag:
 ```ts
 import { embedMany } from "@effect-uai/core/EmbeddingModel"
 
-const result = yield* embedMany({
-  model: "text-embedding-3-small",
-  inputs: documents,
-})
+const result =
+  yield *
+  embedMany({
+    model: "text-embedding-3-small",
+    inputs: documents,
+  })
 ```
 
 ## Models
 
 `OpenAIEmbeddingModel` is a literal union with a `(string & {})` tail:
 
-| Model | Native dims | Matryoshka |
-|---|---|---|
-| `text-embedding-3-small` | 1536 | 1..1536 |
-| `text-embedding-3-large` | 3072 | 1..3072 |
-| `text-embedding-ada-002` | 1536 | no |
+| Model                    | Native dims | Matryoshka |
+| ------------------------ | ----------- | ---------- |
+| `text-embedding-3-small` | 1536        | 1..1536    |
+| `text-embedding-3-large` | 3072        | 1..3072    |
+| `text-embedding-ada-002` | 1536        | no         |
 
 Reference: [OpenAI embeddings guide](https://developers.openai.com/api/docs/guides/embeddings).
 
 ## Encoding support
 
-| `encoding` | Behaviour |
-|---|---|
-| `float32` (default) | Native JSON `number[]` decoding. |
-| `int8` / `binary` | Rejected at the OpenAI API. |
-| `sparse` / `multivector` | Rejected at the OpenAI API. |
+| `encoding`               | Behaviour                        |
+| ------------------------ | -------------------------------- |
+| `float32` (default)      | Native JSON `number[]` decoding. |
+| `int8` / `binary`        | Rejected at the OpenAI API.      |
+| `sparse` / `multivector` | Rejected at the OpenAI API.      |
 
 For storage-cost reductions, do float32 → int8 / binary quantization
 on your side, or pick a provider that ships quantized output natively

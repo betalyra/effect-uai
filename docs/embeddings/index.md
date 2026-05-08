@@ -8,7 +8,7 @@ compare meanings. Embeddings turn that into vector arithmetic.
 
 `EmbeddingModel` is the generic provider tag for that work. Every
 provider's `layer` registers itself under both its own typed tag
-(`OpenAIEmbedding`, `GeminiEmbedding`, `JinaEmbedding`) *and*
+(`OpenAIEmbedding`, `GeminiEmbedding`, `JinaEmbedding`) _and_
 `EmbeddingModel`. Code that yields `EmbeddingModel` is portable across
 providers; code that yields the typed tag gets that provider's extended
 options (full task enum, sparse / multivector encoding, document title).
@@ -49,8 +49,8 @@ request shape, not here.
 ```ts
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
 
-embed({ model, input })       // Effect<EmbedResponse, AiError, EmbeddingModel>
-embedMany({ model, inputs })  // Effect<EmbedManyResponse, AiError, EmbeddingModel>
+embed({ model, input }) // Effect<EmbedResponse, AiError, EmbeddingModel>
+embedMany({ model, inputs }) // Effect<EmbedManyResponse, AiError, EmbeddingModel>
 ```
 
 Both yield `EmbeddingModel`, so they work under any provider's layer.
@@ -63,12 +63,12 @@ and faster than N parallel `embed`s, and the only way to get the same
 The `Embedding` returned to you is a tagged union — five arms, one for
 each wire shape a provider can produce:
 
-| Tag | Shape | When you'd ask for it |
-|---|---|---|
-| `float32` | `Float32Array` | Default. Universal. |
-| `int8` | `Int8Array` | ~4× smaller index, minimal recall loss. |
-| `binary` | `Uint8Array` (bit-packed) | ~32× smaller, paired with a float32 reranker pass. |
-| `sparse` | `Record<string, number>` | Hybrid (dense + lexical) search. Jina ELSER today. |
+| Tag           | Shape                         | When you'd ask for it                                      |
+| ------------- | ----------------------------- | ---------------------------------------------------------- |
+| `float32`     | `Float32Array`                | Default. Universal.                                        |
+| `int8`        | `Int8Array`                   | ~4× smaller index, minimal recall loss.                    |
+| `binary`      | `Uint8Array` (bit-packed)     | ~32× smaller, paired with a float32 reranker pass.         |
+| `sparse`      | `Record<string, number>`      | Hybrid (dense + lexical) search. Jina ELSER today.         |
 | `multivector` | `ReadonlyArray<Float32Array>` | Late-interaction retrieval (ColBERT-style). Jina v4 today. |
 
 The tag reflects the **wire form the provider returned**, not what
@@ -110,10 +110,10 @@ Provider-specific extensions live on the typed request:
 
 ```ts
 type EmbedInput =
-  | string                                      // text shorthand
-  | { readonly text: string }                   // text
-  | { readonly image: ImageSource }             // image
-  | { readonly content: ReadonlyArray<EmbedContentPart> }  // interleaved
+  | string // text shorthand
+  | { readonly text: string } // text
+  | { readonly image: ImageSource } // image
+  | { readonly content: ReadonlyArray<EmbedContentPart> } // interleaved
 ```
 
 `ImageSource` is `url` / `base64` / `bytes` — the same media
@@ -130,15 +130,15 @@ Once you have an `Embedding`, you compare or rank with `Vector`:
 ```ts
 import * as Vector from "@effect-uai/core/Vector"
 
-Vector.cosine(a, b)        // dense float32 similarity
+Vector.cosine(a, b) // dense float32 similarity
 Vector.dot(a, b)
 Vector.euclidean(a, b)
 Vector.normalize(v)
 
-Vector.sparseCosine(a, b)  // SparseEmbedding similarity
+Vector.sparseCosine(a, b) // SparseEmbedding similarity
 Vector.sparseDot(a, b)
 
-Vector.maxSim(q, d)        // multivector / late-interaction
+Vector.maxSim(q, d) // multivector / late-interaction
 ```
 
 These are recipe-volume primitives — allocation-free hot loops, but
@@ -152,11 +152,13 @@ Yield `EmbeddingModel` when your code should work under any provider:
 ```ts
 import { embedMany } from "@effect-uai/core/EmbeddingModel"
 
-const result = yield* embedMany({
-  model: "gemini-embedding-2",
-  inputs: documents,
-  task: "document",
-})
+const result =
+  yield *
+  embedMany({
+    model: "gemini-embedding-2",
+    inputs: documents,
+    task: "document",
+  })
 ```
 
 Yield the typed tag when you need provider-specific options:
@@ -169,7 +171,7 @@ const program = Effect.gen(function* () {
   return gemini.embed({
     model: "gemini-embedding-001",
     input: query,
-    task: "qa",        // Gemini-only task
+    task: "qa", // Gemini-only task
     title: "FAQ entry", // Gemini-only field
   })
 })

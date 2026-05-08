@@ -10,24 +10,24 @@ from open follow-ups in the gaps docs.
 
 ## Start here (concepts + foundational recipes)
 
-| Page                  | One-line                                                                                                                       | Icon                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
-| Basic usage           | Smallest end-to-end shape: streaming deltas, a tool call, a final answer.                                                      | `PiHandWaving`             |
-| Structured output     | Constrain the model to a JSON Schema; validate the assembled text against an Effect Schema. Single-object focused.             | `PiBracketsCurly`          |
+| Page              | One-line                                                                                                           | Icon              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------- |
+| Basic usage       | Smallest end-to-end shape: streaming deltas, a tool call, a final answer.                                          | `PiHandWaving`    |
+| Structured output | Constrain the model to a JSON Schema; validate the assembled text against an Effect Schema. Single-object focused. | `PiBracketsCurly` |
 
 ## Existing recipes (for reference)
 
-| Recipe                       | One-line                                                                                                                                  | Icon                       |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| Tool call approval           | Pause the loop on sensitive tool calls; resume with the user's verdict. HTTP and queue (WebSocket) variants on the same primitive.        | `PiShieldCheck`            |
-| Streaming tool output        | Two flavors of `Tool.streaming`: sub-agent text streaming and progress + terminal result. Inner events flow through real-time.            | `PiBrain`                  |
-| Streaming structured output  | JSONL one object at a time, decoded as the model streams. Typed per-object Stream, errors in the failure channel.                         | `PiBroadcast`              |
-| Multi-model fallback         | Fall back across providers on `RateLimited` / `Unavailable`.                                                                              | `PiArrowsClockwise`        |
-| Auto-compaction              | Summarize history when a token / turn budget is exceeded.                                                                                  | `PiArrowsInLineHorizontal` |
-| Pause and resume             | Checkpoint after each turn, resume later via `previousResponseId`.                                                                         | `PiPause`                  |
-| Mid-stream abort             | Cancel the loop and the upstream HTTP request via scope-based cleanup.                                                                     | `PiHandPalm`               |
-| Multi-model compare          | Fan one prompt out to OpenAI, Google, and Anthropic concurrently.                                                                          | `PiGitFork`                |
-| Model council                | Same fan-out, but the models cross-evaluate and the winner is streamed back.                                                               | `PiGavel`                  |
+| Recipe                      | One-line                                                                                                                           | Icon                       |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| Tool call approval          | Pause the loop on sensitive tool calls; resume with the user's verdict. HTTP and queue (WebSocket) variants on the same primitive. | `PiShieldCheck`            |
+| Streaming tool output       | Two flavors of `Tool.streaming`: sub-agent text streaming and progress + terminal result. Inner events flow through real-time.     | `PiBrain`                  |
+| Streaming structured output | JSONL one object at a time, decoded as the model streams. Typed per-object Stream, errors in the failure channel.                  | `PiBroadcast`              |
+| Multi-model fallback        | Fall back across providers on `RateLimited` / `Unavailable`.                                                                       | `PiArrowsClockwise`        |
+| Auto-compaction             | Summarize history when a token / turn budget is exceeded.                                                                          | `PiArrowsInLineHorizontal` |
+| Pause and resume            | Checkpoint after each turn, resume later via `previousResponseId`.                                                                 | `PiPause`                  |
+| Mid-stream abort            | Cancel the loop and the upstream HTTP request via scope-based cleanup.                                                             | `PiHandPalm`               |
+| Multi-model compare         | Fan one prompt out to OpenAI, Google, and Anthropic concurrently.                                                                  | `PiGitFork`                |
+| Model council               | Same fan-out, but the models cross-evaluate and the winner is streamed back.                                                       | `PiGavel`                  |
 
 ## Proposed recipes
 

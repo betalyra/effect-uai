@@ -46,26 +46,24 @@ loop((state) =>
     const history = [...state.history, ...incoming.map(Items.userText)]
 
     const lm = yield* LanguageModel
-    return lm
-      .streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors })
-      .pipe(
-        streamUntilComplete<State, ToolEvent>((turn) =>
-          Effect.sync(() => {
-            const calls = Turn.functionCalls(turn)
+    return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
+      streamUntilComplete<State, ToolEvent>((turn) =>
+        Effect.sync(() => {
+          const calls = Turn.functionCalls(turn)
 
-            // No tools means the assistant answered. The next iteration waits.
-            if (calls.length === 0) {
-              return nextAfter(Stream.empty, Turn.appendTurn({ history }, turn))
-            }
+          // No tools means the assistant answered. The next iteration waits.
+          if (calls.length === 0) {
+            return nextAfter(Stream.empty, Turn.appendTurn({ history }, turn))
+          }
 
-            // Tools mean the model needs their outputs before the user speaks again.
-            const events = Toolkit.executeAll(tools, calls)
-            return Toolkit.nextStateFrom(events, (results) =>
-              Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
-            )
-          }),
-        ),
-      )
+          // Tools mean the model needs their outputs before the user speaks again.
+          const events = Toolkit.executeAll(tools, calls)
+          return Toolkit.nextStateFrom(events, (results) =>
+            Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
+          )
+        }),
+      ),
+    )
   }),
 )
 ```

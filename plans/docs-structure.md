@@ -8,7 +8,7 @@ is the template for every capability that follows.
 
 ## Why this matters now
 
-Today the sidebar groups by *artifact* (Concepts / Providers / Recipes)
+Today the sidebar groups by _artifact_ (Concepts / Providers / Recipes)
 and every artifact silently assumes "language model". That works while
 there is one capability. It stops working the moment we add a second
 one — embeddings, rerank, speech, realtime audio, image / video /
@@ -65,13 +65,13 @@ Reasoning:
 The capability axis is what users navigate by. The archetype axis is
 what the abstractions are built around. There are roughly four:
 
-| Archetype | Service shape | Capabilities |
-|---|---|---|
-| **One-shot** | `Effect<Response, Err, Svc>` | embed, rerank, image gen, OCR, simple TTS, simple STT |
-| **Streaming output** | `Stream<Delta, Err, Svc>` | streaming TTS, streaming STT, simple chat |
-| **Turn-based** | `history → Stream<TurnEvent>` | language model with tools |
-| **Bidirectional duplex** | input stream + output stream | realtime audio (OpenAI Realtime, Gemini Live) |
-| **Async job** | `submit → poll/subscribe` | video gen, sometimes music gen |
+| Archetype                | Service shape                 | Capabilities                                          |
+| ------------------------ | ----------------------------- | ----------------------------------------------------- |
+| **One-shot**             | `Effect<Response, Err, Svc>`  | embed, rerank, image gen, OCR, simple TTS, simple STT |
+| **Streaming output**     | `Stream<Delta, Err, Svc>`     | streaming TTS, streaming STT, simple chat             |
+| **Turn-based**           | `history → Stream<TurnEvent>` | language model with tools                             |
+| **Bidirectional duplex** | input stream + output stream  | realtime audio (OpenAI Realtime, Gemini Live)         |
+| **Async job**            | `submit → poll/subscribe`     | video gen, sometimes music gen                        |
 
 The first three sit comfortably on Effect / Stream / the existing loop
 primitive. The last two need new primitives — duplex (a `Channel` or
@@ -251,7 +251,7 @@ What to avoid:
 - Leading with the type signature. The signature comes after the
   motivation.
 - Restating the API in prose. If a code block already shows the shape,
-  the surrounding prose explains *why*, not *what*.
+  the surrounding prose explains _why_, not _what_.
 - Marketing tone. The voice is editorial — declarative, opinionated,
   occasionally dry.
 

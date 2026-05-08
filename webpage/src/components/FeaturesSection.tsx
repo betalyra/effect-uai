@@ -1,4 +1,4 @@
-import type { IconType } from "react-icons";
+import type { IconType } from "react-icons"
 import {
   PiBackpack,
   PiClipboardText,
@@ -7,27 +7,21 @@ import {
   PiSquaresFour,
   PiTag,
   PiWaves,
-} from "react-icons/pi";
-import ReactMarkdown, { type Components } from "react-markdown";
+} from "react-icons/pi"
+import ReactMarkdown, { type Components } from "react-markdown"
 
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface Feature {
-  readonly title: string;
-  readonly description: string;
-  readonly Icon: IconType;
+  readonly title: string
+  readonly description: string
+  readonly Icon: IconType
 }
 
 const features: ReadonlyArray<Feature> = [
   {
     title: "Explicit control",
-    description:
-      "No black-box magic. You stay in **full control** of your agent loop.",
+    description: "No black-box magic. You stay in **full control** of your agent loop.",
     Icon: PiSlidersHorizontal,
   },
   {
@@ -38,8 +32,7 @@ const features: ReadonlyArray<Feature> = [
   },
   {
     title: "Powerful building blocks",
-    description:
-      "Small, composable primitives to assemble your own **agentic loops**.",
+    description: "Small, composable primitives to assemble your own **agentic loops**.",
     Icon: PiSquaresFour,
   },
   {
@@ -66,17 +59,13 @@ const features: ReadonlyArray<Feature> = [
       "**History**, **budget**, scratchpad — track whatever your agent needs. It's just a value.",
     Icon: PiBackpack,
   },
-];
+]
 
 const markdownComponents: Components = {
   p: ({ children }) => <>{children}</>,
-  strong: ({ children }) => (
-    <strong className="font-semibold text-foreground">{children}</strong>
-  ),
-  code: ({ children }) => (
-    <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>
-  ),
-};
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+  code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>,
+}
 
 export default function FeaturesSection() {
   return (
@@ -104,14 +93,12 @@ export default function FeaturesSection() {
                 </CardTitle>
               </div>
               <CardDescription className="text-sm leading-relaxed">
-                <ReactMarkdown components={markdownComponents}>
-                  {description}
-                </ReactMarkdown>
+                <ReactMarkdown components={markdownComponents}>{description}</ReactMarkdown>
               </CardDescription>
             </CardHeader>
           </Card>
         ))}
       </div>
     </section>
-  );
+  )
 }

@@ -180,12 +180,12 @@ type WireQuant = WireBody["embedding_type"]
  * the field (`float32`) or ignore it (`sparse` / `multivector` use
  * separate signalling — model choice and `return_multivector`).
  */
-const encodingToQuant: (encoding: JinaEncoding | undefined) => WireQuant = Match
-  .type<JinaEncoding | undefined>()
-  .pipe(
-    Match.when("binary", (): WireQuant => "binary"),
-    Match.orElse((): WireQuant => undefined),
-  )
+const encodingToQuant: (encoding: JinaEncoding | undefined) => WireQuant = Match.type<
+  JinaEncoding | undefined
+>().pipe(
+  Match.when("binary", (): WireQuant => "binary"),
+  Match.orElse((): WireQuant => undefined),
+)
 
 const buildBody = (request: {
   readonly model: JinaEmbeddingModel
@@ -281,10 +281,7 @@ const WireResponse = Schema.Struct({
 const transportFailure = (cause: unknown): AiError.AiError =>
   new AiError.Unavailable({ provider: "jina", raw: cause })
 
-const encodingMismatch = (
-  expected: JinaEncoding,
-  got: string,
-): AiError.AiError =>
+const encodingMismatch = (expected: JinaEncoding, got: string): AiError.AiError =>
   new AiError.InvalidRequest({
     provider: "jina",
     param: "encoding",
@@ -409,71 +406,73 @@ const orderedEmbeddings = (
     (item) => payloadToEmbedding(item, encoding),
   )
 
-const embedImpl = (cfg: Config) => (
-  request: JinaEmbedRequest,
-): Effect.Effect<EmbedResponse, AiError.AiError, HttpClient.HttpClient> =>
-  inputToItem(request.input).pipe(
-    Effect.flatMap((item) =>
-      postEmbed(
-        cfg,
-        buildBody({
-          model: request.model,
-          ...(request.task !== undefined && { task: request.task }),
-          ...(request.dimensions !== undefined && { dimensions: request.dimensions }),
-          ...(request.encoding !== undefined && { encoding: request.encoding }),
-          items: [item],
-        }),
-      ),
-    ),
-    Effect.flatMap((decoded) => {
-      const first = decoded.data[0]
-      if (first === undefined) {
-        return Effect.fail(transportFailure("Jina returned empty `data` array"))
-      }
-      return payloadToEmbedding(first, request.encoding).pipe(
-        Effect.map(
-          (embedding): EmbedResponse => ({ embedding, usage: usageOf(decoded.usage) }),
+const embedImpl =
+  (cfg: Config) =>
+  (
+    request: JinaEmbedRequest,
+  ): Effect.Effect<EmbedResponse, AiError.AiError, HttpClient.HttpClient> =>
+    inputToItem(request.input).pipe(
+      Effect.flatMap((item) =>
+        postEmbed(
+          cfg,
+          buildBody({
+            model: request.model,
+            ...(request.task !== undefined && { task: request.task }),
+            ...(request.dimensions !== undefined && { dimensions: request.dimensions }),
+            ...(request.encoding !== undefined && { encoding: request.encoding }),
+            items: [item],
+          }),
         ),
-      )
-    }),
-  )
+      ),
+      Effect.flatMap((decoded) => {
+        const first = decoded.data[0]
+        if (first === undefined) {
+          return Effect.fail(transportFailure("Jina returned empty `data` array"))
+        }
+        return payloadToEmbedding(first, request.encoding).pipe(
+          Effect.map((embedding): EmbedResponse => ({ embedding, usage: usageOf(decoded.usage) })),
+        )
+      }),
+    )
 
-const embedManyImpl = (cfg: Config) => (
-  request: JinaEmbedManyRequest,
-): Effect.Effect<EmbedManyResponse, AiError.AiError, HttpClient.HttpClient> =>
-  Effect.forEach(request.inputs, inputToItem).pipe(
-    Effect.flatMap((items) =>
-      postEmbed(
-        cfg,
-        buildBody({
-          model: request.model,
-          ...(request.task !== undefined && { task: request.task }),
-          ...(request.dimensions !== undefined && { dimensions: request.dimensions }),
-          ...(request.encoding !== undefined && { encoding: request.encoding }),
-          items,
-        }),
-      ),
-    ),
-    Effect.flatMap((decoded) =>
-      orderedEmbeddings(decoded.data, request.encoding).pipe(
-        Effect.map(
-          (embeddings): EmbedManyResponse => ({ embeddings, usage: usageOf(decoded.usage) }),
+const embedManyImpl =
+  (cfg: Config) =>
+  (
+    request: JinaEmbedManyRequest,
+  ): Effect.Effect<EmbedManyResponse, AiError.AiError, HttpClient.HttpClient> =>
+    Effect.forEach(request.inputs, inputToItem).pipe(
+      Effect.flatMap((items) =>
+        postEmbed(
+          cfg,
+          buildBody({
+            model: request.model,
+            ...(request.task !== undefined && { task: request.task }),
+            ...(request.dimensions !== undefined && { dimensions: request.dimensions }),
+            ...(request.encoding !== undefined && { encoding: request.encoding }),
+            items,
+          }),
         ),
       ),
-    ),
-  )
+      Effect.flatMap((decoded) =>
+        orderedEmbeddings(decoded.data, request.encoding).pipe(
+          Effect.map(
+            (embeddings): EmbedManyResponse => ({ embeddings, usage: usageOf(decoded.usage) }),
+          ),
+        ),
+      ),
+    )
 
 /**
  * Map cross-provider `query`/`document` to Jina's dotted-pair task
  * vocabulary. `undefined` stays `undefined`.
  */
-const mapGenericTask: (t: "query" | "document" | undefined) => JinaTask | undefined = Match
-  .type<"query" | "document" | undefined>()
-  .pipe(
-    Match.when("query", (): JinaTask => "retrieval.query"),
-    Match.when("document", (): JinaTask => "retrieval.passage"),
-    Match.orElse((): JinaTask | undefined => undefined),
-  )
+const mapGenericTask: (t: "query" | "document" | undefined) => JinaTask | undefined = Match.type<
+  "query" | "document" | undefined
+>().pipe(
+  Match.when("query", (): JinaTask => "retrieval.query"),
+  Match.when("document", (): JinaTask => "retrieval.passage"),
+  Match.orElse((): JinaTask | undefined => undefined),
+)
 
 // ---------------------------------------------------------------------------
 // Constructors

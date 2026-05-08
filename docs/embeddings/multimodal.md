@@ -30,7 +30,7 @@ const inputs: ReadonlyArray<EmbedInput> = [
   { text: "A delicious croissant on a plate" },
 ]
 
-const result = yield* embedMany({ model: "gemini-embedding-2", inputs })
+const result = yield * embedMany({ model: "gemini-embedding-2", inputs })
 ```
 
 One HTTP call covers the whole batch. The provider returns a
@@ -41,13 +41,15 @@ One HTTP call covers the whole batch. The provider returns a
 A multimodal embedding space lets you compare any pair:
 
 ```ts
-const [queryResult, docsResult] = yield* Effect.all(
-  [
-    embed({ model, input: { image: Image.imageBytes(queryBytes, "image/jpeg") } }),
-    embedMany({ model, inputs }),
-  ],
-  { concurrency: "unbounded" },
-)
+const [queryResult, docsResult] =
+  yield *
+  Effect.all(
+    [
+      embed({ model, input: { image: Image.imageBytes(queryBytes, "image/jpeg") } }),
+      embedMany({ model, inputs }),
+    ],
+    { concurrency: "unbounded" },
+  )
 
 const ranked = inputs
   .map((input, i) => ({
@@ -65,7 +67,7 @@ difference is what's in `input` and `inputs`.
 Cross-modal scores are noisier than same-modality scores. In practice
 you'll often see image-image cosines clustered higher than image-text
 cosines — even when the image-text pairs are semantically closer. This
-is the *modality gap*: joint embedding spaces tend to cluster by
+is the _modality gap_: joint embedding spaces tend to cluster by
 modality before clustering by content.
 
 Two practical takeaways:
@@ -97,10 +99,10 @@ are on the embedding plan but not yet implemented.
 `ImageSource` is `url` / `base64` / `bytes` — the same primitives
 language model image inputs use. Provider acceptance varies:
 
-| Provider | URL | Base64 | Bytes |
-|---|---|---|---|
-| Gemini | rejected (no Files-API upload) | yes | yes (auto base64) |
-| Jina v4 | yes | yes | yes (auto base64) |
+| Provider | URL                            | Base64 | Bytes             |
+| -------- | ------------------------------ | ------ | ----------------- |
+| Gemini   | rejected (no Files-API upload) | yes    | yes (auto base64) |
+| Jina v4  | yes                            | yes    | yes (auto base64) |
 
 If a layer can't encode the shape you passed, it fails the request
 with `AiError.InvalidRequest` — no silent fallback.

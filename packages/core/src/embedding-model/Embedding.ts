@@ -5,9 +5,7 @@ import type { ImageSource } from "../domain/Image.js"
  * for providers that accept interleaved modalities in a single embed call
  * (Cohere v4, Voyage multimodal, Jina v4, Google `gemini-embedding-2`).
  */
-export type EmbedContentPart =
-  | { readonly text: string }
-  | { readonly image: ImageSource }
+export type EmbedContentPart = { readonly text: string } | { readonly image: ImageSource }
 
 /**
  * What you embed. The `string` shorthand covers the common text-only case;
@@ -107,8 +105,7 @@ export const isFloat32 = (e: Embedding): e is Float32Embedding => e._tag === "fl
 export const isInt8 = (e: Embedding): e is Int8Embedding => e._tag === "int8"
 export const isBinary = (e: Embedding): e is BinaryEmbedding => e._tag === "binary"
 export const isSparse = (e: Embedding): e is SparseEmbedding => e._tag === "sparse"
-export const isMultivector = (e: Embedding): e is MultivectorEmbedding =>
-  e._tag === "multivector"
+export const isMultivector = (e: Embedding): e is MultivectorEmbedding => e._tag === "multivector"
 
 /**
  * Token usage for one embed / embedMany call. One value per HTTP request,

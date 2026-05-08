@@ -23,7 +23,7 @@ import {
 // Public types
 // ---------------------------------------------------------------------------
 
-export interface ResponsesRequest extends Omit<CommonRequest, "model"> {
+export type ResponsesRequest = Omit<CommonRequest, "model"> & {
   /**
    * Narrows `CommonRequest.model` (`string`) to the typed `OpenAIModel`
    * literal union for autocomplete.
@@ -52,7 +52,7 @@ export interface ResponsesRequest extends Omit<CommonRequest, "model"> {
   readonly verbosity?: "low" | "medium" | "high"
 }
 
-export interface ResponsesService {
+export type ResponsesService = {
   /**
    * Stream the provider's native event vocabulary (post-SSE-decode).
    * Use this when you need full vendor fidelity. For provider-portable
@@ -86,7 +86,7 @@ export class Responses extends Context.Service<Responses, ResponsesService>()(
   "@betalyra/effect-uai/providers/responses/Responses",
 ) {}
 
-export interface Config {
+export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
 }

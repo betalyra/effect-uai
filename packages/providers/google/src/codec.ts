@@ -53,20 +53,20 @@ type RequestPart =
   | { readonly text: string }
   | { readonly inlineData: { readonly mimeType: string; readonly data: string } }
 
-interface RequestContent {
+type RequestContent = {
   readonly role: "user" | "model"
   readonly parts: ReadonlyArray<RequestPart>
 }
 
-interface RequestSystemInstruction {
+type RequestSystemInstruction = {
   readonly parts: ReadonlyArray<{ readonly text: string }>
 }
 
-export interface ThinkingConfig {
+export type ThinkingConfig = {
   readonly thinkingBudget: number
 }
 
-export interface GenerationConfig {
+export type GenerationConfig = {
   readonly temperature?: number
   readonly maxOutputTokens?: number
   readonly topP?: number
@@ -77,7 +77,7 @@ export interface GenerationConfig {
   readonly responseJsonSchema?: Record<string, unknown>
 }
 
-export interface RequestBody {
+export type RequestBody = {
   readonly contents: ReadonlyArray<RequestContent>
   readonly systemInstruction?: RequestSystemInstruction
   readonly generationConfig?: GenerationConfig
@@ -187,7 +187,7 @@ const finishReasonToStop = (reason: Option.Option<string>): Turn["stop_reason"] 
     onSome: (r) => (r === "MAX_TOKENS" ? ("max_tokens" as const) : ("stop" as const)),
   })
 
-export interface Accumulator {
+export type Accumulator = {
   readonly text: string
   readonly reasoning: string
   readonly finishReason: Option.Option<string>
@@ -216,7 +216,7 @@ export type ChunkPart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "reasoning"; readonly text: string }
 
-export interface ChunkResult {
+export type ChunkResult = {
   readonly accumulator: Accumulator
   readonly parts: ReadonlyArray<ChunkPart>
   readonly finished: boolean

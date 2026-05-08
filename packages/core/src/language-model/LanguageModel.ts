@@ -11,7 +11,7 @@ import { isTurnComplete, type Turn, type TurnEvent } from "../domain/Turn.js";
  * to a single provider (reasoning effort, prompt caching, store flags,
  * ...) lives in that provider's own request interface, which extends this.
  */
-export interface CommonRequest {
+export type CommonRequest = {
   readonly history: ReadonlyArray<Item>;
   /**
    * Model identifier. Each provider narrows this to its typed literal union,
@@ -36,7 +36,7 @@ export interface CommonRequest {
   readonly structured?: StructuredFormat.StructuredFormat<unknown>;
 }
 
-export interface LanguageModelService {
+export type LanguageModelService = {
   readonly streamTurn: (
     request: CommonRequest,
   ) => Stream.Stream<TurnEvent, AiError.AiError>;

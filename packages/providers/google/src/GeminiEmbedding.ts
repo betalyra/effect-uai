@@ -33,8 +33,7 @@ export type GoogleEmbeddingTask =
   | "fact_verification"
   | "code_query"
 
-export interface GeminiEmbedRequest
-  extends Omit<CommonEmbedRequest, "model" | "task" | "encoding"> {
+export type GeminiEmbedRequest = Omit<CommonEmbedRequest, "model" | "task" | "encoding"> & {
   /** Narrows `CommonEmbedRequest.model` to the typed Google union. */
   readonly model: GoogleEmbeddingModel
   /**
@@ -50,11 +49,11 @@ export interface GeminiEmbedRequest
   readonly title?: string
 }
 
-export interface GeminiEmbedManyRequest extends Omit<GeminiEmbedRequest, "input"> {
+export type GeminiEmbedManyRequest = Omit<GeminiEmbedRequest, "input"> & {
   readonly inputs: ReadonlyArray<EmbedInput>
 }
 
-export interface GeminiEmbeddingService {
+export type GeminiEmbeddingService = {
   readonly embed: (request: GeminiEmbedRequest) => Effect.Effect<EmbedResponse, AiError.AiError>
   readonly embedMany: (
     request: GeminiEmbedManyRequest,
@@ -70,7 +69,7 @@ export class GeminiEmbedding extends Context.Service<GeminiEmbedding, GeminiEmbe
   "@betalyra/effect-uai/providers/google/GeminiEmbedding",
 ) {}
 
-export interface Config {
+export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
 }
@@ -90,14 +89,14 @@ const taskToWire: Record<GoogleEmbeddingTask, string> = {
   code_query: "CODE_RETRIEVAL_QUERY",
 }
 
-interface WireTextPart {
+type WireTextPart = {
   readonly text: string
 }
-interface WireInlineDataPart {
+type WireInlineDataPart = {
   readonly inlineData: { readonly mimeType: string; readonly data: string }
 }
 type WirePart = WireTextPart | WireInlineDataPart
-interface WireContent {
+type WireContent = {
   readonly parts: ReadonlyArray<WirePart>
 }
 
@@ -150,7 +149,7 @@ const inputToContent = (input: EmbedInput): Effect.Effect<WireContent, AiError.A
   )
 }
 
-interface WireSingleBody {
+type WireSingleBody = {
   readonly content: WireContent
   readonly taskType?: string
   readonly outputDimensionality?: number
@@ -172,10 +171,10 @@ const buildSingleBody = (
     Effect.map((content) => ({ content, ...wireOptions(request) })),
   )
 
-interface WireBatchEntry extends WireSingleBody {
+type WireBatchEntry = WireSingleBody & {
   readonly model: string
 }
-interface WireBatchBody {
+type WireBatchBody = {
   readonly requests: ReadonlyArray<WireBatchEntry>
 }
 

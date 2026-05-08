@@ -31,19 +31,19 @@
  * they're a separate union (`FileRef`) added when needed.
  */
 
-export interface MediaUrl<M extends string = string> {
+export type MediaUrl<M extends string = string> = {
   readonly _tag: "url"
   readonly url: string
   readonly mimeType?: M
 }
 
-export interface MediaBase64<M extends string = string> {
+export type MediaBase64<M extends string = string> = {
   readonly _tag: "base64"
   readonly base64: string
   readonly mimeType: M
 }
 
-export interface MediaBytes<M extends string = string> {
+export type MediaBytes<M extends string = string> = {
   readonly _tag: "bytes"
   readonly bytes: Uint8Array
   readonly mimeType: M

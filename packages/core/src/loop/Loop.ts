@@ -162,7 +162,7 @@ export const streamUntilComplete =
 const isNonEmpty = <A>(array: ReadonlyArray<A>): array is readonly [A, ...Array<A>] =>
   array.length > 0
 
-interface CurrentBody<S, A, E, R> {
+type CurrentBody<S, A, E, R> = {
   readonly scope: Scope.Closeable
   readonly pull: Effect.Effect<ReadonlyArray<Event<A, S>>, E | Cause.Done<void>, R>
 }

@@ -53,7 +53,7 @@ export const toDescriptors = <Tools extends ReadonlyArray<AnyTool>>(
 // only the calls they have already decided should run.
 // ---------------------------------------------------------------------------
 
-export interface ExecuteOptions {
+export type ExecuteOptions = {
   readonly concurrency?: number | "unbounded"
 }
 

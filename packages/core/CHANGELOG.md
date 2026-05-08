@@ -17,6 +17,15 @@
   `@effect-uai/core/Media` (generic `MediaSource<MimeType>`) and
   `@effect-uai/core/Image` (typed `ImageMimeType` plus `imageUrl` /
   `imageBase64` / `imageBytes` constructors and predicates).
+- Removed `@effect-uai/core/Match` and the `matchType` helper. Migrate to
+  `Match.discriminators("type")({...})` (or `discriminatorsExhaustive`)
+  from `effect`.
+- `ToolResult`, `ToolEvent`, and `Image*Source` migrated to
+  `Data.TaggedEnum` — you now get `.$is`, `.$match`, and constructors like
+  `ToolResult.Failure({...})` / `ToolEvent.Output({...})`. The `_tag` wire
+  shape and existing `is*` predicates are preserved.
+- New barrel re-exports from `@effect-uai/core`: `Outcome`, `ToolEvent`,
+  `Resolvers`, `HistoryCheck`.
 
 ## 0.2.0
 

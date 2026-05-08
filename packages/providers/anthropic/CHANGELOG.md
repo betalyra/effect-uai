@@ -4,7 +4,8 @@
 
 ### Patch Changes
 
-- Updated dependencies for `@effect-uai/core` (new embedding subsystem).
+- Updated dependencies for `@effect-uai/core` (new embedding subsystem;
+  `Match` module / `matchType` helper removed — see core changelog).
   No source changes; Anthropic does not currently ship an embedding API.
 
 ## 0.2.0

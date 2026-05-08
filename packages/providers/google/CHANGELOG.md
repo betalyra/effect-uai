@@ -13,7 +13,8 @@
 
 ### Patch Changes
 
-- Updated dependencies for `@effect-uai/core` (new embedding subsystem).
+- Updated dependencies for `@effect-uai/core` (new embedding subsystem;
+  `Match` module / `matchType` helper removed — see core changelog).
 
 ## 0.2.0
 

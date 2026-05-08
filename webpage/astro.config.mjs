@@ -118,6 +118,14 @@ export default defineConfig({
           ],
         },
         {
+          label: "Migrations",
+          collapsed: true,
+          items: [
+            { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.3", slug: "migrations/v0-3" },
+          ],
+        },
+        {
           label: "Coming soon",
           collapsed: true,
           items: [

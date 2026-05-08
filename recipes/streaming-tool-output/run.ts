@@ -9,7 +9,6 @@
 import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { matchType } from "@effect-uai/core/Match"
 import * as Tool from "@effect-uai/core/Tool"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { type State, buildConversation, makeDownloadTool } from "./index.js"
@@ -35,12 +34,13 @@ const program = Effect.gen(function* () {
       Match.when({ _tag: "Output" }, ({ result }) =>
         Effect.logInfo("download result", { result }),
       ),
-      matchType("turn_complete", ({ turn }) =>
-        Effect.logInfo("turn complete", {
-          stop_reason: turn.stop_reason,
-          usage: turn.usage,
-        }),
-      ),
+      Match.discriminators("type")({
+        turn_complete: ({ turn }) =>
+          Effect.logInfo("turn complete", {
+            stop_reason: turn.stop_reason,
+            usage: turn.usage,
+          }),
+      }),
       Match.orElse(() => Effect.void),
     ),
   )

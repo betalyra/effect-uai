@@ -1,7 +1,6 @@
 import { Array as Arr, Encoding, Match, Option, Order, Result, Schema, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { JsonParseError } from "@effect-uai/core/JSONL"
-import { matchType } from "@effect-uai/core/Match"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -109,11 +108,12 @@ type RequestAssistantMessage = {
 type RequestMessage = RequestUserMessage | RequestAssistantMessage
 
 const blockText = Match.type<Items.ContentBlock>().pipe(
-  matchType("input_text", (b) => b.text),
-  matchType("input_image", () => ""),
-  matchType("output_text", (b) => b.text),
-  matchType("refusal", (b) => b.text),
-  Match.exhaustive,
+  Match.discriminatorsExhaustive("type")({
+    input_text: (b) => b.text,
+    input_image: () => "",
+    output_text: (b) => b.text,
+    refusal: (b) => b.text,
+  }),
 )
 
 const messageText = (message: Items.Message): string => message.content.map(blockText).join("")
@@ -143,18 +143,17 @@ const userContentBlock = (
   block: Items.ContentBlock,
 ): Result.Result<RequestUserContentBlock, void> =>
   Match.value(block).pipe(
-    matchType("input_text", (b) =>
-      b.text.length === 0
-        ? Result.failVoid
-        : Result.succeed({ type: "text" as const, text: b.text }),
-    ),
-    matchType("input_image", (b) =>
-      Result.succeed({ type: "image" as const, source: imageSourceToWire(b.source) }),
-    ),
-    // Assistant content; never appears on a user message in practice. Skip.
-    matchType("output_text", () => Result.failVoid),
-    matchType("refusal", () => Result.failVoid),
-    Match.exhaustive,
+    Match.discriminatorsExhaustive("type")({
+      input_text: (b) =>
+        b.text.length === 0
+          ? Result.failVoid
+          : Result.succeed({ type: "text" as const, text: b.text }),
+      input_image: (b) =>
+        Result.succeed({ type: "image" as const, source: imageSourceToWire(b.source) }),
+      // Assistant content; never appears on a user message in practice. Skip.
+      output_text: () => Result.failVoid,
+      refusal: () => Result.failVoid,
+    }),
   )
 
 const parseJson = (s: string): Result.Result<unknown, JsonParseError> =>
@@ -167,75 +166,68 @@ type RoleBucket = "user" | "assistant" | "system"
 
 const roleBucket = (item: Items.Item): RoleBucket =>
   Match.value(item).pipe(
-    matchType("message", (m) => m.role),
-    matchType("function_call", () => "assistant" as const),
-    matchType("function_call_output", () => "user" as const),
-    matchType("reasoning", () => "assistant" as const),
-    Match.exhaustive,
+    Match.discriminatorsExhaustive("type")({
+      message: (m) => m.role,
+      function_call: () => "assistant" as const,
+      function_call_output: () => "user" as const,
+      reasoning: () => "assistant" as const,
+    }),
   )
 
 const itemToUserBlocks = (item: Items.Item): ReadonlyArray<RequestUserContentBlock> =>
   Match.value(item).pipe(
-    matchType(
-      "message",
-      (m): ReadonlyArray<RequestUserContentBlock> =>
+    Match.discriminatorsExhaustive("type")({
+      message: (m): ReadonlyArray<RequestUserContentBlock> =>
         m.role === "user" ? pipe(m.content, Arr.filterMap(userContentBlock)) : [],
-    ),
-    matchType("function_call", (): ReadonlyArray<RequestUserContentBlock> => []),
-    matchType(
-      "function_call_output",
-      (o): ReadonlyArray<RequestUserContentBlock> => [
+      function_call: (): ReadonlyArray<RequestUserContentBlock> => [],
+      function_call_output: (o): ReadonlyArray<RequestUserContentBlock> => [
         { type: "tool_result", tool_use_id: o.call_id, content: o.output },
       ],
-    ),
-    matchType("reasoning", (): ReadonlyArray<RequestUserContentBlock> => []),
-    Match.exhaustive,
+      reasoning: (): ReadonlyArray<RequestUserContentBlock> => [],
+    }),
   )
 
 const itemToAssistantBlocks = (
   item: Items.Item,
 ): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> =>
   Match.value(item).pipe(
-    matchType(
-      "message",
-      (m): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> => {
+    Match.discriminatorsExhaustive("type")({
+      message: (
+        m,
+      ): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> => {
         const text = messageText(m)
         return Result.succeed(
           m.role === "assistant" && text.length > 0 ? [{ type: "text", text }] : [],
         )
       },
-    ),
-    matchType("function_call", (f) =>
-      pipe(
-        parseJson(f.arguments),
-        Result.map(
-          (input): ReadonlyArray<RequestAssistantContentBlock> => [
-            { type: "tool_use", id: f.call_id, name: f.name, input },
-          ],
+      function_call: (f) =>
+        pipe(
+          parseJson(f.arguments),
+          Result.map(
+            (input): ReadonlyArray<RequestAssistantContentBlock> => [
+              { type: "tool_use", id: f.call_id, name: f.name, input },
+            ],
+          ),
         ),
-      ),
-    ),
-    matchType(
-      "function_call_output",
-      (): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> =>
-        Result.succeed([]),
-    ),
-    matchType("reasoning", (r) => {
-      const blocks: ReadonlyArray<RequestAssistantContentBlock> =
-        r.summary !== undefined
-          ? [
-              {
-                type: "thinking",
-                thinking: r.summary,
-                ...(r.signature !== undefined && { signature: r.signature }),
-              },
-            ]
-          : r.signature !== undefined
-            ? [{ type: "redacted_thinking", data: r.signature }]
-            : []
-      return Result.succeed(blocks)
+      function_call_output:
+        (): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> =>
+          Result.succeed([]),
+      reasoning: (r) => {
+        const blocks: ReadonlyArray<RequestAssistantContentBlock> =
+          r.summary !== undefined
+            ? [
+                {
+                  type: "thinking",
+                  thinking: r.summary,
+                  ...(r.signature !== undefined && { signature: r.signature }),
+                },
+              ]
+            : r.signature !== undefined
+              ? [{ type: "redacted_thinking", data: r.signature }]
+              : []
+        return Result.succeed(blocks)
+      },
     }),
-    Match.exhaustive,
   )
 
 type GroupAcc = {
@@ -471,23 +463,22 @@ const updateBlock = (
 
 export const startBlock = (acc: Accumulator, index: number, block: WireContentBlock): Accumulator =>
   Match.value(block).pipe(
-    matchType("text", () => replaceBlock(acc, index, emptyBlock("text"))),
-    matchType("tool_use", (b) =>
-      replaceBlock(acc, index, {
-        ...emptyBlock("tool_use"),
-        id: Option.some(b.id),
-        name: Option.some(b.name),
-        inputJson: typeof b.input === "string" ? b.input : "",
-      }),
-    ),
-    matchType("thinking", () => replaceBlock(acc, index, emptyBlock("thinking"))),
-    matchType("redacted_thinking", (b) =>
-      replaceBlock(acc, index, {
-        ...emptyBlock("redacted_thinking"),
-        redactedData: Option.some(b.data),
-      }),
-    ),
-    Match.exhaustive,
+    Match.discriminatorsExhaustive("type")({
+      text: () => replaceBlock(acc, index, emptyBlock("text")),
+      tool_use: (b) =>
+        replaceBlock(acc, index, {
+          ...emptyBlock("tool_use"),
+          id: Option.some(b.id),
+          name: Option.some(b.name),
+          inputJson: typeof b.input === "string" ? b.input : "",
+        }),
+      thinking: () => replaceBlock(acc, index, emptyBlock("thinking")),
+      redacted_thinking: (b) =>
+        replaceBlock(acc, index, {
+          ...emptyBlock("redacted_thinking"),
+          redactedData: Option.some(b.data),
+        }),
+    }),
   )
 
 export const appendTextDelta = (acc: Accumulator, index: number, text: string): Accumulator =>

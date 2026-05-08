@@ -17,7 +17,6 @@ import {
   LanguageModel,
   type LanguageModelService,
 } from "@effect-uai/core/LanguageModel"
-import { matchType } from "@effect-uai/core/Match"
 import * as SSE from "@effect-uai/core/SSE"
 import type { TurnEvent } from "@effect-uai/core/Turn"
 import {
@@ -182,57 +181,57 @@ const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
 
 const deltasFromEvent = (next: Accumulator, event: ProviderEvent): ReadonlyArray<TurnEvent> =>
   Match.value(event).pipe(
-    matchType("content_block_start", (e) =>
-      e.content_block.type === "tool_use"
-        ? [
-            {
-              type: "tool_call_start" as const,
-              call_id: e.content_block.id,
-              name: e.content_block.name,
+    Match.discriminatorsExhaustive("type")({
+      content_block_start: (e) =>
+        e.content_block.type === "tool_use"
+          ? [
+              {
+                type: "tool_call_start" as const,
+                call_id: e.content_block.id,
+                name: e.content_block.name,
+              },
+            ]
+          : [],
+      content_block_delta: (e) =>
+        Match.value(e.delta).pipe(
+          Match.discriminatorsExhaustive("type")({
+            text_delta: (d) => [{ type: "text_delta" as const, text: d.text }],
+            thinking_delta: (d) => [
+              { type: "reasoning_delta" as const, text: d.thinking, kind: "trace" as const },
+            ],
+            input_json_delta: (d) => {
+              const block = next.blocks[e.index]
+              if (block === undefined) return []
+              const callId = Option.getOrElse(block.id, () => "")
+              return callId.length === 0
+                ? []
+                : [
+                    {
+                      type: "tool_call_args_delta" as const,
+                      call_id: callId,
+                      delta: d.partial_json,
+                    },
+                  ]
             },
-          ]
-        : [],
-    ),
-    matchType("content_block_delta", (e) =>
-      Match.value(e.delta).pipe(
-        matchType("text_delta", (d) => [{ type: "text_delta" as const, text: d.text }]),
-        matchType("thinking_delta", (d) => [
-          { type: "reasoning_delta" as const, text: d.thinking, kind: "trace" as const },
-        ]),
-        matchType("input_json_delta", (d) => {
-          const block = next.blocks[e.index]
-          if (block === undefined) return []
-          const callId = Option.getOrElse(block.id, () => "")
-          return callId.length === 0
-            ? []
-            : [
-                {
-                  type: "tool_call_args_delta" as const,
-                  call_id: callId,
-                  delta: d.partial_json,
-                },
-              ]
-        }),
-        // Encrypted reasoning state - flows through `streamNative` but has
-        // no canonical representation.
-        matchType("signature_delta", () => []),
-        Match.exhaustive,
-      ),
-    ),
-    matchType("message_start", (e) =>
-      e.message.usage === undefined ? [] : [{ type: "usage_update" as const, usage: next.usage }],
-    ),
-    matchType("message_delta", (e) =>
-      e.usage === undefined ? [] : [{ type: "usage_update" as const, usage: next.usage }],
-    ),
-    matchType("message_stop", () => [
-      { type: "turn_complete" as const, turn: accumulatorToTurn(next) },
-    ]),
-    matchType("content_block_stop", () => []),
-    matchType("ping", () => []),
-    matchType("error", () => []),
-    matchType("_unknown", () => []),
-    Match.exhaustive,
+            // Encrypted reasoning state - flows through `streamNative` but has
+            // no canonical representation.
+            signature_delta: () => [],
+          }),
+        ),
+      message_start: (e) =>
+        e.message.usage === undefined
+          ? []
+          : [{ type: "usage_update" as const, usage: next.usage }],
+      message_delta: (e) =>
+        e.usage === undefined ? [] : [{ type: "usage_update" as const, usage: next.usage }],
+      message_stop: () => [
+        { type: "turn_complete" as const, turn: accumulatorToTurn(next) },
+      ],
+      content_block_stop: () => [],
+      ping: () => [],
+      error: () => [],
+      _unknown: () => [],
+    }),
   )
 
 // ---------------------------------------------------------------------------

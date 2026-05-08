@@ -1,6 +1,5 @@
 import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
 import type { ContentBlock, InputImage, Item, Message } from "@effect-uai/core/Items"
-import { matchType } from "@effect-uai/core/Match"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -84,11 +83,12 @@ export type RequestBody = {
 }
 
 const blockText = Match.type<ContentBlock>().pipe(
-  matchType("input_text", (b) => b.text),
-  matchType("input_image", () => ""),
-  matchType("output_text", (b) => b.text),
-  matchType("refusal", (b) => b.text),
-  Match.exhaustive,
+  Match.discriminatorsExhaustive("type")({
+    input_text: (b) => b.text,
+    input_image: () => "",
+    output_text: (b) => b.text,
+    refusal: (b) => b.text,
+  }),
 )
 
 const messageText = (message: Message): string => message.content.map(blockText).join("")
@@ -117,19 +117,16 @@ const imageSourceToParts = Match.type<InputImage["source"]>().pipe(
 )
 
 const blockToParts = Match.type<ContentBlock>().pipe(
-  matchType(
-    "input_text",
-    (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
-  ),
-  matchType("input_image", (b): ReadonlyArray<RequestPart> => imageSourceToParts(b.source)),
-  matchType(
-    "output_text",
-    (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
-  ),
-  // Refusals are assistant-side content; they don't round-trip into Gemini's
-  // request body as parts. Skip.
-  matchType("refusal", (): ReadonlyArray<RequestPart> => []),
-  Match.exhaustive,
+  Match.discriminatorsExhaustive("type")({
+    input_text: (b): ReadonlyArray<RequestPart> =>
+      b.text.length === 0 ? [] : [{ text: b.text }],
+    input_image: (b): ReadonlyArray<RequestPart> => imageSourceToParts(b.source),
+    output_text: (b): ReadonlyArray<RequestPart> =>
+      b.text.length === 0 ? [] : [{ text: b.text }],
+    // Refusals are assistant-side content; they don't round-trip into Gemini's
+    // request body as parts. Skip.
+    refusal: (): ReadonlyArray<RequestPart> => [],
+  }),
 )
 
 const messageToContent = (message: Message): Result.Result<RequestContent, void> => {

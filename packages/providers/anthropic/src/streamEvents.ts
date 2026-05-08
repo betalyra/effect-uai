@@ -1,5 +1,4 @@
 import { Match, Schema } from "effect"
-import { matchType } from "@effect-uai/core/Match"
 import {
   type Accumulator,
   WireContentBlock,
@@ -155,31 +154,32 @@ const mergeOptionalUsage = (acc: Accumulator, wire: WireUsage | undefined): Accu
 
 export const applyEvent = (acc: Accumulator, event: ProviderEvent): Accumulator =>
   Match.value(event).pipe(
-    matchType("message_start", (e) => mergeOptionalUsage(acc, e.message.usage)),
-    matchType("content_block_start", (e) => startBlock(acc, e.index, e.content_block)),
-    matchType("content_block_delta", (e) =>
-      Match.value(e.delta).pipe(
-        matchType("text_delta", (d) => appendTextDelta(acc, e.index, d.text)),
-        matchType("input_json_delta", (d) => appendInputJsonDelta(acc, e.index, d.partial_json)),
-        matchType("thinking_delta", (d) => appendThinkingDelta(acc, e.index, d.thinking)),
-        matchType("signature_delta", (d) => appendSignatureDelta(acc, e.index, d.signature)),
-        Match.exhaustive,
-      ),
-    ),
-    matchType("content_block_stop", () => acc),
-    matchType("message_delta", (e) => {
-      const withUsage = mergeOptionalUsage(acc, e.usage)
-      const reason = e.delta.stop_reason
-      return reason === undefined || reason === null ? withUsage : setStopReason(withUsage, reason)
+    Match.discriminatorsExhaustive("type")({
+      message_start: (e) => mergeOptionalUsage(acc, e.message.usage),
+      content_block_start: (e) => startBlock(acc, e.index, e.content_block),
+      content_block_delta: (e) =>
+        Match.value(e.delta).pipe(
+          Match.discriminatorsExhaustive("type")({
+            text_delta: (d) => appendTextDelta(acc, e.index, d.text),
+            input_json_delta: (d) => appendInputJsonDelta(acc, e.index, d.partial_json),
+            thinking_delta: (d) => appendThinkingDelta(acc, e.index, d.thinking),
+            signature_delta: (d) => appendSignatureDelta(acc, e.index, d.signature),
+          }),
+        ),
+      content_block_stop: () => acc,
+      message_delta: (e) => {
+        const withUsage = mergeOptionalUsage(acc, e.usage)
+        const reason = e.delta.stop_reason
+        return reason === undefined || reason === null ? withUsage : setStopReason(withUsage, reason)
+      },
+      message_stop: () => acc,
+      ping: () => acc,
+      error: () => acc,
+      // No silent drops: unknown wire events flow through `streamNative` but
+      // produce no accumulator change. Step 3 (canonical `other` event) will
+      // also forward them to `TurnEvent`.
+      _unknown: () => acc,
     }),
-    matchType("message_stop", () => acc),
-    matchType("ping", () => acc),
-    matchType("error", () => acc),
-    // No silent drops: unknown wire events flow through `streamNative` but
-    // produce no accumulator change. Step 3 (canonical `other` event) will
-    // also forward them to `TurnEvent`.
-    matchType("_unknown", () => acc),
-    Match.exhaustive,
   )
 
 // ---------------------------------------------------------------------------

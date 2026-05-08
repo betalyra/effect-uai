@@ -1,7 +1,6 @@
 import { Context, Effect, Layer, Match, Option, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
-import { matchType } from "@effect-uai/core/Match"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import {
   type CommonRequest,
@@ -172,19 +171,19 @@ const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
  * and produce `Option.none`.
  */
 const eventToError = Match.type<ProviderEvent>().pipe(
-  matchType(
-    "error",
-    (e): AiError.AiError => new AiError.Unavailable({ provider: "responses", raw: e }),
-  ),
-  matchType("response.failed", (e): AiError.AiError => {
-    const code = e.response.error?.code
-    const message = e.response.error?.message
-    return new AiError.GenerationFailed({
-      provider: "responses",
-      ...(code !== undefined && code !== null && { code }),
-      ...(message !== undefined && message !== null && { message }),
-      raw: e,
-    })
+  Match.discriminators("type")({
+    error: (e): AiError.AiError =>
+      new AiError.Unavailable({ provider: "responses", raw: e }),
+    "response.failed": (e): AiError.AiError => {
+      const code = e.response.error?.code
+      const message = e.response.error?.message
+      return new AiError.GenerationFailed({
+        provider: "responses",
+        ...(code !== undefined && code !== null && { code }),
+        ...(message !== undefined && message !== null && { message }),
+        raw: e,
+      })
+    },
   }),
   Match.option,
 )

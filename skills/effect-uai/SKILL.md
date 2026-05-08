@@ -76,7 +76,7 @@ own provider layers and `embed` / `embedMany` helpers.
 | `@effect-uai/core/SSE`            | Server-Sent Events codec: `SSE.fromBytes`, `SSE.toBytes`, `SSE.Event`. |
 | `@effect-uai/core/JSONL`          | JSONL codec: `JSONL.fromBytes`, `JSONL.parse(schema)`, `JSONL.toBytes(schema)`. |
 | `@effect-uai/core/Lines`          | `Lines.lines` for re-framing a string stream as newline-terminated lines. |
-| `@effect-uai/core/Match`          | `matchType("text_delta", ...)` narrows the `TurnEvent` union by `type`. |
+| `effect/Match`                    | Use `Match.discriminators("type")({ text_delta, ... })` (or `discriminatorsExhaustive`) to narrow `TurnEvent` and other `type`-tagged unions; standard Effect `Match` API. |
 | `@effect-uai/core/testing/MockProvider` | `MockProvider.layer(scriptedTurns)`, `MockProvider.layerWithRecorder`, `MockProvider.make` — for tests. |
 
 ## Provider wiring
@@ -117,7 +117,6 @@ The smallest example: stream one model response and print text deltas.
 import { Effect, Match, Stream } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { streamTurn } from "@effect-uai/core/LanguageModel"
-import { matchType } from "@effect-uai/core/Match"
 
 const program = Stream.runForEach(
   streamTurn({
@@ -126,9 +125,9 @@ const program = Stream.runForEach(
   }),
   (event) =>
     Match.value(event).pipe(
-      matchType("text_delta", ({ text }) =>
-        Effect.sync(() => process.stdout.write(text)),
-      ),
+      Match.discriminators("type")({
+        text_delta: ({ text }) => Effect.sync(() => process.stdout.write(text)),
+      }),
       Match.orElse(() => Effect.void),
     ),
 )

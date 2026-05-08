@@ -1,6 +1,5 @@
 import { Encoding, Match, Option, Schema } from "effect"
 import type { ContentBlock, InputImage, Item } from "@effect-uai/core/Items"
-import { matchType } from "@effect-uai/core/Match"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -158,44 +157,46 @@ const imageSourceToUrl = Match.type<InputImage["source"]>().pipe(
 )
 
 const contentBlockToInput = Match.type<ContentBlock>().pipe(
-  matchType("input_text", (b) => ({ type: "input_text", text: b.text })),
-  matchType("input_image", (b) => ({
-    type: "input_image",
-    image_url: imageSourceToUrl(b.source),
-  })),
-  matchType("output_text", (b) => ({ type: "output_text", text: b.text })),
-  matchType("refusal", (b) => ({ type: "refusal", refusal: b.text })),
-  Match.exhaustive,
+  Match.discriminatorsExhaustive("type")({
+    input_text: (b) => ({ type: "input_text", text: b.text }),
+    input_image: (b) => ({
+      type: "input_image",
+      image_url: imageSourceToUrl(b.source),
+    }),
+    output_text: (b) => ({ type: "output_text", text: b.text }),
+    refusal: (b) => ({ type: "refusal", refusal: b.text }),
+  }),
 )
 
 const itemToInput = (item: Item): Record<string, unknown> =>
   passthrough(item) ??
   Match.value(item).pipe(
-    matchType("message", (m) => ({
-      type: "message",
-      role: m.role,
-      content: m.content.map(contentBlockToInput),
-    })),
-    matchType("function_call", (f) => ({
-      type: "function_call",
-      call_id: f.call_id,
-      name: f.name,
-      arguments: f.arguments,
-    })),
-    matchType("function_call_output", (o) => ({
-      type: "function_call_output",
-      call_id: o.call_id,
-      output: o.output,
-    })),
-    matchType("reasoning", (r) => ({
-      type: "reasoning",
-      ...(r.id !== undefined && { id: r.id }),
-      ...(r.summary !== undefined && {
-        summary: [{ type: "summary_text", text: r.summary }],
+    Match.discriminatorsExhaustive("type")({
+      message: (m) => ({
+        type: "message",
+        role: m.role,
+        content: m.content.map(contentBlockToInput),
       }),
-      ...(r.signature !== undefined && { encrypted_content: r.signature }),
-    })),
-    Match.exhaustive,
+      function_call: (f) => ({
+        type: "function_call",
+        call_id: f.call_id,
+        name: f.name,
+        arguments: f.arguments,
+      }),
+      function_call_output: (o) => ({
+        type: "function_call_output",
+        call_id: o.call_id,
+        output: o.output,
+      }),
+      reasoning: (r) => ({
+        type: "reasoning",
+        ...(r.id !== undefined && { id: r.id }),
+        ...(r.summary !== undefined && {
+          summary: [{ type: "summary_text", text: r.summary }],
+        }),
+        ...(r.signature !== undefined && { encrypted_content: r.signature }),
+      }),
+    }),
   )
 
 /** Convert our `Item[]` history into the Responses API `input` array. */
@@ -207,43 +208,42 @@ export const itemsToInput = (items: ReadonlyArray<Item>): ReadonlyArray<Record<s
 // ---------------------------------------------------------------------------
 
 const wireMessageContentToBlock = Match.type<typeof WireMessageContent.Type>().pipe(
-  matchType(
-    "output_text",
-    (c): ContentBlock => ({
+  Match.discriminatorsExhaustive("type")({
+    output_text: (c): ContentBlock => ({
       type: "output_text",
       text: c.text,
       ...(c.annotations !== undefined && c.annotations !== null && { annotations: c.annotations }),
     }),
-  ),
-  matchType("refusal", (c): ContentBlock => ({ type: "refusal", text: c.refusal })),
-  Match.exhaustive,
+    refusal: (c): ContentBlock => ({ type: "refusal", text: c.refusal }),
+  }),
 )
 
 export const wireItemToItem = (wire: WireOutputItem): Item =>
   Match.value(wire).pipe(
-    matchType("message", (m) => ({
-      type: "message" as const,
-      role: m.role,
-      content: m.content.map(wireMessageContentToBlock),
-      providerData: m,
-    })),
-    matchType("function_call", (f) => ({
-      type: "function_call" as const,
-      call_id: f.call_id,
-      name: f.name,
-      arguments: f.arguments,
-      providerData: f,
-    })),
-    matchType("reasoning", (r) => ({
-      type: "reasoning" as const,
-      ...(r.id !== undefined && { id: r.id }),
-      ...(r.summary !== undefined && {
-        summary: r.summary.map((s) => s.text).join("\n"),
+    Match.discriminatorsExhaustive("type")({
+      message: (m) => ({
+        type: "message" as const,
+        role: m.role,
+        content: m.content.map(wireMessageContentToBlock),
+        providerData: m,
       }),
-      ...(r.encrypted_content !== undefined && { signature: r.encrypted_content }),
-      providerData: r,
-    })),
-    Match.exhaustive,
+      function_call: (f) => ({
+        type: "function_call" as const,
+        call_id: f.call_id,
+        name: f.name,
+        arguments: f.arguments,
+        providerData: f,
+      }),
+      reasoning: (r) => ({
+        type: "reasoning" as const,
+        ...(r.id !== undefined && { id: r.id }),
+        ...(r.summary !== undefined && {
+          summary: r.summary.map((s) => s.text).join("\n"),
+        }),
+        ...(r.encrypted_content !== undefined && { signature: r.encrypted_content }),
+        providerData: r,
+      }),
+    }),
   )
 
 // ---------------------------------------------------------------------------

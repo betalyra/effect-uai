@@ -14,7 +14,6 @@
 import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { matchType } from "@effect-uai/core/Match"
 import { make as makeAnthropic } from "@effect-uai/anthropic/Anthropic"
 import { make as makeGemini } from "@effect-uai/google/Gemini"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
@@ -27,26 +26,22 @@ const initialHistory: ReadonlyArray<Items.Item> = [Items.userText(QUESTION)]
 
 const logEvent = (event: CouncilEvent): Effect.Effect<void> =>
   Match.value(event).pipe(
-    matchType("candidate_delta", ({ member, delta }) =>
-      delta.type === "text_delta" ? Effect.logDebug(`${member} | ${delta.text}`) : Effect.void,
-    ),
-    matchType("candidate_complete", ({ member, answer }) =>
-      Effect.logInfo(`candidate complete: ${member}`, { answer }),
-    ),
-    matchType("score", ({ judge, subject, score, rationale }) =>
-      Effect.logInfo(`score ${judge} -> ${subject}: ${score}`, { rationale }),
-    ),
-    matchType("winner", ({ member, answer, averageScore }) =>
-      Effect.logInfo(`WINNER: ${member} (avg ${averageScore.toFixed(2)})`, {
-        winner: member,
-        averageScore,
-        answer,
-      }),
-    ),
-    matchType("error", ({ member, phase, error }) =>
-      Effect.logWarning(`${member} failed in ${phase}`, { error }),
-    ),
-    Match.exhaustive,
+    Match.discriminatorsExhaustive("type")({
+      candidate_delta: ({ member, delta }) =>
+        delta.type === "text_delta" ? Effect.logDebug(`${member} | ${delta.text}`) : Effect.void,
+      candidate_complete: ({ member, answer }) =>
+        Effect.logInfo(`candidate complete: ${member}`, { answer }),
+      score: ({ judge, subject, score, rationale }) =>
+        Effect.logInfo(`score ${judge} -> ${subject}: ${score}`, { rationale }),
+      winner: ({ member, answer, averageScore }) =>
+        Effect.logInfo(`WINNER: ${member} (avg ${averageScore.toFixed(2)})`, {
+          winner: member,
+          averageScore,
+          answer,
+        }),
+      error: ({ member, phase, error }) =>
+        Effect.logWarning(`${member} failed in ${phase}`, { error }),
+    }),
   )
 
 const program = Effect.gen(function* () {

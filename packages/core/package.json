@@ -64,10 +64,6 @@
       "types": "./dist/loop/Loop.d.mts",
       "import": "./dist/loop/Loop.mjs"
     },
-    "./Match": {
-      "types": "./dist/match/Match.d.mts",
-      "import": "./dist/match/Match.mjs"
-    },
     "./Vector": {
       "types": "./dist/math/Vector.d.mts",
       "import": "./dist/math/Vector.mjs"

@@ -6,19 +6,19 @@
  */
 import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import { matchType } from "@effect-uai/core/Match"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { conversation } from "./index.js"
 
 const program = Effect.gen(function* () {
   yield* Stream.runForEach(conversation, (event) =>
     Match.value(event).pipe(
-      matchType("turn_complete", ({ turn }) =>
-        Effect.logInfo("turn complete", {
-          stop_reason: turn.stop_reason,
-          usage: turn.usage,
-        }),
-      ),
+      Match.discriminators("type")({
+        turn_complete: ({ turn }) =>
+          Effect.logInfo("turn complete", {
+            stop_reason: turn.stop_reason,
+            usage: turn.usage,
+          }),
+      }),
       Match.when({ _tag: "Output" }, ({ result }) =>
         Effect.logInfo("tool result", { result }),
       ),

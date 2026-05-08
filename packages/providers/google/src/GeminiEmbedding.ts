@@ -1,4 +1,4 @@
-import { Context, Effect, Encoding, Layer, Match, Redacted, Schema, pipe } from "effect"
+import { Context, Effect, Encoding, Layer, Match, Redacted, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { Embedding, EmbedContentPart, EmbedInput, Usage } from "@effect-uai/core/Embedding"
@@ -304,22 +304,6 @@ const embedManyImpl = (cfg: Config) => (
     ),
   )
 
-// Used by the generic `EmbeddingModel` registration. Gemini only returns
-// float32 vectors; reject `int8` / `binary` requests up front so callers
-// get an actionable error instead of silently-wrong data.
-const guardEncoding = <R extends { readonly encoding?: "float32" | "int8" | "binary" }>(
-  req: R,
-): Effect.Effect<R, AiError.AiError> =>
-  req.encoding === undefined || req.encoding === "float32"
-    ? Effect.succeed(req)
-    : Effect.fail(
-        new AiError.InvalidRequest({
-          provider: "gemini",
-          param: "encoding",
-          raw: `Gemini only returns float32 vectors; got encoding="${req.encoding}"`,
-        }),
-      )
-
 // ---------------------------------------------------------------------------
 // Constructors
 // ---------------------------------------------------------------------------
@@ -352,16 +336,8 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): EmbeddingModelService => ({
-        embed: (req: CommonEmbedRequest) =>
-          pipe(
-            guardEncoding(req),
-            Effect.flatMap(() => s.embed(req as GeminiEmbedRequest)),
-          ),
-        embedMany: (req: CommonEmbedManyRequest) =>
-          pipe(
-            guardEncoding(req),
-            Effect.flatMap(() => s.embedMany(req as GeminiEmbedManyRequest)),
-          ),
+        embed: (req: CommonEmbedRequest) => s.embed(req as GeminiEmbedRequest),
+        embedMany: (req: CommonEmbedManyRequest) => s.embedMany(req as GeminiEmbedManyRequest),
       }),
     ),
   )

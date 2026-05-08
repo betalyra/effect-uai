@@ -397,15 +397,17 @@ LM-side cleanup is **out of scope** for this plan but worth a follow-up: `domain
 
 This milestone:
 
-1. **Core** in `@effect-uai/core/embedding-model/` — `Input.ts` (`EmbedInput`, `EmbedContentPart`, `ImageSource`), `Embedding.ts` (vector union, `Usage`), `EmbeddingModel.ts` (service tag, `Common*Request`, `Embed*Response`, top-level `embed` / `embedMany` helpers). No providers, no auto-batching.
+1. **Core** in `@effect-uai/core/embedding-model/` — `Embedding.ts` (named interfaces `Float32Embedding` / `Int8Embedding` / `BinaryEmbedding` / `SparseEmbedding` / `MultivectorEmbedding`, `Usage`), `EmbeddingModel.ts` (service tag, `Common*Request`, `Embed*Response`, top-level `embed` / `embedMany` helpers, `Encoding` union, `validateEncoding` provider helper). No auto-batching.
 2. **Google** in `@effect-uai/google` — `content.parts[]` request shape, multimodal from day one (`gemini-embedding-2`). Stress-tests `EmbedInput` early; Gemini API only (no Vertex).
 3. **OpenAI** in `@effect-uai/responses` — simplest provider (no task, no multimodal). Validates the cross-provider shape on a minimal surface and the LM-style `Responses | EmbeddingModel` layer co-registration.
 4. **Jina** (new package `@effect-uai/jina`) — task-as-LoRA, multimodal in v4. Exercises the typed-tag pattern with widened `task` and the multimodal input union end-to-end.
-5. **Mixedbread** (new package `@effect-uai/mixedbread`) — `prompt` as free-form task (replaces `task` field). Exercises the most provider-divergent shape; validates that the `Omit<…, "task">` trick scales.
-6. **Recipe — basic embedding usage**: one runnable that embeds a query (`task: "query"`) and a small set of documents (`task: "document"`) using `Effect.all` with `concurrency: "unbounded"`, computes cosine similarity in plain TS, prints the ranked list. No vector DB, no chunker, no reranker — just `embed` / `embedMany` end-to-end against a real provider.
+5. **Sparse + multivector wire support** in `@effect-uai/jina` — `JinaEncoding` extended to `"float32" | "binary" | "sparse" | "multivector"`. Multivector via `jina-embeddings-v4` + `return_multivector: true` flag; sparse via the dedicated `elser-v2` model. Adds `Vector.sparseCosine`, `Vector.sparseDot`, `Vector.maxSim` math primitives. Demonstrates Jina's actual differentiation vs other dense-only providers.
+6. **Recipe — basic embedding usage**: one runnable that embeds a query (`task: "query"`) and a small set of documents (`task: "document"`) using `Effect.all` with `concurrency: "unbounded"`, computes cosine similarity, prints the ranked list. No vector DB, no chunker, no reranker — just `embed` / `embedMany` end-to-end. Provider-agnostic (`--provider=gemini|openai|jina`).
+7. **Recipe — multivector embedding**: late-interaction RAG demo. Embeds query + docs with `encoding: "multivector"` on `jina-embeddings-v4`, ranks by `Vector.maxSim` (per-query-token max dot product, summed). Demonstrates token-level matching that single-vector embeddings can't express.
 
 Deferred to a later milestone:
 
+- **Mixedbread** provider — `prompt` as free-form task. Skipped after deciding Jina + the rerank story (next milestone) cover the embedding spectrum we care about.
 - **Voyage** (`@effect-uai/voyage`) provider.
 - **Cohere** (`@effect-uai/cohere`) provider.
 - **RAG retrieval recipe** (with chunker + vector store + reranker).

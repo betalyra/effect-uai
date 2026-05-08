@@ -24,28 +24,91 @@ export type EmbedInput =
   | { readonly image: ImageSource }
   | { readonly content: ReadonlyArray<EmbedContentPart> }
 
+// ---------------------------------------------------------------------------
+// Embedding representations
+//
+// The `_tag` reflects the wire form the provider returned, *not* what the
+// consumer asked for - request `encoding: "int8"` and you get back an
+// `Int8Embedding`. Math primitives are typed against the named interfaces
+// (see `Vector.ts`) so e.g. `sparseCosine` only accepts `SparseEmbedding`.
+// ---------------------------------------------------------------------------
+
+/** Dense float32 vector. The default representation across all providers. */
+export interface Float32Embedding {
+  readonly _tag: "float32"
+  readonly vector: Float32Array
+}
+
 /**
- * One embedding vector. The `_tag` reflects the wire encoding the provider
- * returned, *not* what the consumer wants - request `encoding: "int8"` and
- * you get back `{ _tag: "int8", vector: Int8Array }`.
- *
- * Sparse / multivector outputs (Jina v4 only on hosted APIs) are not
- * modeled here. They can be added later as additional `_tag` arms without
- * breaking existing consumers.
+ * Dense int8-quantized vector. ~4x smaller than float32 with minimal
+ * recall loss on most benchmarks.
  */
+export interface Int8Embedding {
+  readonly _tag: "int8"
+  readonly vector: Int8Array
+}
+
+/**
+ * Dense binary-quantized vector. One bit per dimension, packed into bytes.
+ * ~32x smaller than float32; meaningful recall loss but useful for hot
+ * indexes paired with a float32 reranker pass.
+ */
+export interface BinaryEmbedding {
+  readonly _tag: "binary"
+  readonly vector: Uint8Array
+}
+
+/**
+ * Sparse vector. Token-keyed weights for hybrid search (dense + lexical-
+ * style sparse). The single hosted producer today is Jina's `elser-v2`
+ * model, which returns subword tokens (e.g. `"bread"`, `"##ing"`) with
+ * their relevance weights.
+ *
+ * The shape is `Record<string, number>` rather than `(indices, values)`
+ * because real hosted learned-sparse encoders (ELSER, SPLADE) emit token
+ * strings with no shared vocabulary index. Converting to integer indices
+ * would either need a vocabulary table the model doesn't expose, or
+ * lose the cross-vector matching semantics. If a provider ever exposes
+ * index-valued sparse vectors (Pinecone-style, where you bring your own
+ * vocab), add an `IndexSparseEmbedding` sibling arm with `_tag:
+ * "sparse-indexed"`.
+ *
+ * Score with `Vector.sparseCosine` — dot product over the intersection
+ * of keys, normalized by the L2 norms of both maps.
+ */
+export interface SparseEmbedding {
+  readonly _tag: "sparse"
+  readonly weights: Readonly<Record<string, number>>
+}
+
+/**
+ * Multivector / late-interaction output: one float32 vector per token.
+ * Score documents with `Vector.maxSim` (ColBERT-style: per query vector,
+ * max dot product across doc vectors, summed). Typically ~50-500 vectors
+ * per document, each shorter than a single-vector embedding (~128 dim
+ * vs ~1024).
+ *
+ * Quantized multivector forms aren't modeled for the same reason as
+ * sparse - nothing on hosted APIs ships them yet.
+ */
+export interface MultivectorEmbedding {
+  readonly _tag: "multivector"
+  readonly vectors: ReadonlyArray<Float32Array>
+}
+
 export type Embedding =
-  | { readonly _tag: "float32"; readonly vector: Float32Array }
-  | { readonly _tag: "int8"; readonly vector: Int8Array }
-  | { readonly _tag: "binary"; readonly vector: Uint8Array }
+  | Float32Embedding
+  | Int8Embedding
+  | BinaryEmbedding
+  | SparseEmbedding
+  | MultivectorEmbedding
 
-export const isFloat32 = (e: Embedding): e is Extract<Embedding, { _tag: "float32" }> =>
-  e._tag === "float32"
-
-export const isInt8 = (e: Embedding): e is Extract<Embedding, { _tag: "int8" }> =>
-  e._tag === "int8"
-
-export const isBinary = (e: Embedding): e is Extract<Embedding, { _tag: "binary" }> =>
-  e._tag === "binary"
+export const isFloat32 = (e: Embedding): e is Float32Embedding => e._tag === "float32"
+export const isInt8 = (e: Embedding): e is Int8Embedding => e._tag === "int8"
+export const isBinary = (e: Embedding): e is BinaryEmbedding => e._tag === "binary"
+export const isSparse = (e: Embedding): e is SparseEmbedding => e._tag === "sparse"
+export const isMultivector = (e: Embedding): e is MultivectorEmbedding =>
+  e._tag === "multivector"
 
 /**
  * Token usage for one embed / embedMany call. One value per HTTP request,

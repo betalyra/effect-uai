@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Redacted, Schema, pipe } from "effect"
+import { Context, Effect, Layer, Redacted, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { Embedding, EmbedContentPart, EmbedInput, Usage } from "@effect-uai/core/Embedding"
@@ -233,20 +233,6 @@ const embedManyImpl = (cfg: Config) => (
     ),
   )
 
-// OpenAI doesn't quantize - reject `int8` / `binary` up front.
-const guardEncoding = <R extends { readonly encoding?: "float32" | "int8" | "binary" }>(
-  req: R,
-): Effect.Effect<R, AiError.AiError> =>
-  req.encoding === undefined || req.encoding === "float32"
-    ? Effect.succeed(req)
-    : Effect.fail(
-        new AiError.InvalidRequest({
-          provider: "openai",
-          param: "encoding",
-          raw: `OpenAI only returns float32 vectors; got encoding="${req.encoding}"`,
-        }),
-      )
-
 // ---------------------------------------------------------------------------
 // Constructors
 // ---------------------------------------------------------------------------
@@ -268,9 +254,8 @@ export const make = (
 /**
  * Layer that registers both the provider-specific `OpenAIEmbedding` tag
  * and the generic `EmbeddingModel` tag, sharing one underlying
- * implementation. The generic registration tolerates `task` from
- * `CommonEmbedRequest` (no-op for OpenAI) but rejects non-float32
- * encoding requests.
+ * implementation. The generic registration trusts the caller; invalid
+ * encodings produce an `InvalidRequest` from OpenAI's API.
  */
 export const layer = (
   cfg: Config,
@@ -281,16 +266,8 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): EmbeddingModelService => ({
-        embed: (req: CommonEmbedRequest) =>
-          pipe(
-            guardEncoding(req),
-            Effect.flatMap(() => s.embed(req as OpenAIEmbedRequest)),
-          ),
-        embedMany: (req: CommonEmbedManyRequest) =>
-          pipe(
-            guardEncoding(req),
-            Effect.flatMap(() => s.embedMany(req as OpenAIEmbedManyRequest)),
-          ),
+        embed: (req: CommonEmbedRequest) => s.embed(req as OpenAIEmbedRequest),
+        embedMany: (req: CommonEmbedManyRequest) => s.embedMany(req as OpenAIEmbedManyRequest),
       }),
     ),
   )

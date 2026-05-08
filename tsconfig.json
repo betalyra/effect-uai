@@ -5,6 +5,7 @@
     { "path": "./packages/providers/responses" },
     { "path": "./packages/providers/google" },
     { "path": "./packages/providers/anthropic" },
+    { "path": "./packages/providers/jina" },
     { "path": "./recipes" }
   ]
 }

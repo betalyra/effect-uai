@@ -7,15 +7,17 @@
  *
  *   pnpm tsx recipes/basic-embedding/index.ts --provider=gemini
  *   pnpm tsx recipes/basic-embedding/index.ts --provider=openai
+ *   pnpm tsx recipes/basic-embedding/index.ts --provider=jina
  *
  * Requires the matching API key in the environment
- * (`GOOGLE_API_KEY` / `OPENAI_API_KEY`).
+ * (`GOOGLE_API_KEY` / `OPENAI_API_KEY` / `JINA_API_KEY`).
  *
  * The program is provider-agnostic - it yields the generic `EmbeddingModel`
- * tag, so swapping providers is a layer-level decision. Note that
- * `gemini-embedding-2` ignores `task`; OpenAI also has no task semantics.
- * For provider-portable retrieval-quality work, use a model with a task
- * field (e.g. `gemini-embedding-001`) and pass `task: "query"` /
+ * tag, so swapping providers is a layer-level decision. Task semantics
+ * vary: Jina v4 unifies query and document under `retrieval`; OpenAI
+ * has no task field; `gemini-embedding-2` ignores it. For provider-
+ * portable retrieval-quality work, use a model with a task field
+ * (e.g. `gemini-embedding-001` or Jina v3/v5) and pass `task: "query"` /
  * `task: "document"`.
  */
 import { Config, Effect, Layer, Logger, Match, References } from "effect"
@@ -25,6 +27,7 @@ import * as Embedding from "@effect-uai/core/Embedding"
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
 import * as Vector from "@effect-uai/core/Vector"
 import { layer as geminiEmbeddingLayer } from "@effect-uai/google/GeminiEmbedding"
+import { layer as jinaEmbeddingLayer } from "@effect-uai/jina/JinaEmbedding"
 import { layer as openaiEmbeddingLayer } from "@effect-uai/responses/OpenAIEmbedding"
 
 // ---------------------------------------------------------------------------
@@ -86,7 +89,7 @@ const program = (model: string) =>
 // Provider selection
 // ---------------------------------------------------------------------------
 
-type Provider = "gemini" | "openai"
+type Provider = "gemini" | "openai" | "jina"
 
 const parseProvider = (argv: ReadonlyArray<string>): Provider => {
   const flag =
@@ -94,8 +97,9 @@ const parseProvider = (argv: ReadonlyArray<string>): Provider => {
   return Match.value(flag).pipe(
     Match.when("gemini", () => "gemini" as const),
     Match.when("openai", () => "openai" as const),
+    Match.when("jina", () => "jina" as const),
     Match.orElse(() => {
-      throw new Error(`unknown provider: ${flag} (expected gemini|openai)`)
+      throw new Error(`unknown provider: ${flag} (expected gemini|openai|jina)`)
     }),
   )
 }
@@ -104,6 +108,7 @@ const modelFor = (provider: Provider): string =>
   Match.value(provider).pipe(
     Match.when("gemini", () => "gemini-embedding-2"),
     Match.when("openai", () => "text-embedding-3-small"),
+    Match.when("jina", () => "jina-embeddings-v4"),
     Match.exhaustive,
   )
 
@@ -122,6 +127,14 @@ const layerFor = (provider: Provider) =>
         Effect.gen(function* () {
           const apiKey = yield* Config.redacted("OPENAI_API_KEY")
           return openaiEmbeddingLayer({ apiKey })
+        }),
+      ),
+    ),
+    Match.when("jina", () =>
+      Layer.unwrap(
+        Effect.gen(function* () {
+          const apiKey = yield* Config.redacted("JINA_API_KEY")
+          return jinaEmbeddingLayer({ apiKey })
         }),
       ),
     ),

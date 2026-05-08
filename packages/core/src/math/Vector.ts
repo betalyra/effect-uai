@@ -1,8 +1,12 @@
 /**
- * Linear-algebra primitives for `Float32Array` vectors. Used by the
- * embedding-model recipes (cosine similarity for retrieval, normalize
- * for unit-vector indexing) and re-usable for any modality whose feature
- * representation is a dense float32 vector (audio, video, ...).
+ * Linear-algebra primitives for embedding vectors:
+ *
+ * - **Dense float32**: `dot`, `l2Norm`, `normalize`, `cosine`,
+ *   `euclidean`. Used for retrieval over single-vector embeddings.
+ * - **Sparse**: `sparseDot`, `sparseL2Norm`, `sparseCosine`. Used with
+ *   `SparseEmbedding`, e.g. Jina ELSER outputs.
+ * - **Multivector** (late-interaction): `maxSim`. Used with
+ *   `MultivectorEmbedding`, e.g. Jina v4 multivector / ColBERT.
  *
  * Hot loops are allocation-free; consumers can call these inside
  * `.map()` over thousands of vectors without GC pressure. For
@@ -10,6 +14,10 @@
  * dedicated library - this module deliberately stays at the
  * recipe-volume tier.
  */
+import type {
+  MultivectorEmbedding,
+  SparseEmbedding,
+} from "../embedding-model/Embedding.js"
 
 /** Inner / dot product. */
 export const dot = (a: Float32Array, b: Float32Array): number => {
@@ -66,4 +74,68 @@ export const euclidean = (a: Float32Array, b: Float32Array): number => {
     s += d * d
   }
   return Math.sqrt(s)
+}
+
+// ---------------------------------------------------------------------------
+// Sparse vectors (Record<string, number>)
+// ---------------------------------------------------------------------------
+
+/** Inner product over the intersection of token keys. */
+export const sparseDot = (a: SparseEmbedding, b: SparseEmbedding): number => {
+  // Iterate the smaller map; lookup against the larger one. O(min(|a|, |b|)).
+  const aSize = Object.keys(a.weights).length
+  const bSize = Object.keys(b.weights).length
+  const [smaller, larger] = aSize <= bSize ? [a.weights, b.weights] : [b.weights, a.weights]
+  let s = 0
+  for (const token in smaller) {
+    const other = larger[token]
+    if (other !== undefined) s += smaller[token]! * other
+  }
+  return s
+}
+
+/** L2 norm of a sparse vector. */
+export const sparseL2Norm = (v: SparseEmbedding): number => {
+  let s = 0
+  for (const token in v.weights) {
+    const w = v.weights[token]!
+    s += w * w
+  }
+  return Math.sqrt(s)
+}
+
+/**
+ * Sparse cosine similarity. Range `[-1, 1]` (typically `[0, 1]` for
+ * learned-sparse encoders since weights are non-negative). Returns
+ * `NaN` if either vector has zero magnitude.
+ */
+export const sparseCosine = (a: SparseEmbedding, b: SparseEmbedding): number =>
+  sparseDot(a, b) / (sparseL2Norm(a) * sparseL2Norm(b))
+
+// ---------------------------------------------------------------------------
+// Multivector / late-interaction (ColBERT-style)
+// ---------------------------------------------------------------------------
+
+/**
+ * MaxSim score for late-interaction retrieval. For each *query* vector,
+ * find the maximum dot product with any *document* vector, then sum.
+ *
+ * Captures fine-grained relevance that single-vector cosine smears out:
+ * each query token finds its own best-matching document token.
+ *
+ * Cost: O(|q| × |d| × dim). Fine at recipe volume; for production-scale
+ * retrieval use a vector store with native multivector indexing
+ * (Vespa, Qdrant, PLAID).
+ */
+export const maxSim = (q: MultivectorEmbedding, d: MultivectorEmbedding): number => {
+  let total = 0
+  for (const qv of q.vectors) {
+    let best = -Infinity
+    for (const dv of d.vectors) {
+      const s = dot(qv, dv)
+      if (s > best) best = s
+    }
+    total += best
+  }
+  return total
 }

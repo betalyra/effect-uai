@@ -3,6 +3,29 @@ import * as AiError from "../domain/AiError.js"
 import type { Embedding, EmbedInput, Usage } from "./Embedding.js"
 
 /**
+ * Output representation requested from the provider.
+ *
+ * Dense quantizations - same vector at different storage cost:
+ * - `float32` — universal default.
+ * - `int8` — ~4x smaller; minimal recall loss on most benchmarks.
+ * - `binary` — ~32x smaller; meaningful recall loss but pairs well with
+ *   a float32 reranker pass over a small candidate set.
+ *
+ * Non-dense representations:
+ * - `sparse` — learned sparse vector for hybrid (dense + lexical) search.
+ *   Currently Jina ELSER only on hosted APIs.
+ * - `multivector` — one vector per token for late-interaction (ColBERT-
+ *   style) scoring via `Vector.maxSim`. Currently Jina v4 only.
+ *
+ * Each provider's typed request narrows this to its supported set at
+ * compile time (e.g. `JinaEncoding = "float32" | "binary" | "sparse" |
+ * "multivector"`). On the generic `EmbeddingModel` path, callers can
+ * pass any `Encoding` and the provider's API will reject mismatches at
+ * runtime.
+ */
+export type Encoding = "float32" | "int8" | "binary" | "sparse" | "multivector"
+
+/**
  * Cross-provider single-embed request. Mirrors the shape of
  * `LanguageModel.CommonRequest`: cross-cutting fields here, vendor
  * specifics in the provider's typed request.
@@ -34,12 +57,11 @@ export interface CommonEmbedRequest {
    */
   readonly dimensions?: number
   /**
-   * Vector quantization. `float32` is the default; `int8` and `binary`
-   * trade precision for storage. Not every provider supports every
-   * variant - Google ignores this entirely; OpenAI only honours
-   * `float32` and a base64-encoded float32 transport.
+   * Output representation - see {@link Encoding}. Dense float32 is the
+   * default; provider layers reject unsupported values up front with
+   * `InvalidRequest`.
    */
-  readonly encoding?: "float32" | "int8" | "binary"
+  readonly encoding?: Encoding
 }
 
 /**

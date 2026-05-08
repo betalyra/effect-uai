@@ -1,5 +1,15 @@
 # @effect-uai/responses
 
+## 0.3.0
+
+### Minor Changes
+
+- 1d33c63: Embeddings and simplifications
+  - Adds embeddings
+  - Rename core primitives to simplify DX
+  - Add loopWithState
+  - General improvements
+
 ## Unreleased
 
 ### Minor Changes

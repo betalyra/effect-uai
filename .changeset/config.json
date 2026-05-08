@@ -3,11 +3,20 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "fixed": [
-    ["@effect-uai/core", "@effect-uai/responses", "@effect-uai/anthropic", "@effect-uai/google"]
+    [
+      "@effect-uai/core",
+      "@effect-uai/responses",
+      "@effect-uai/anthropic",
+      "@effect-uai/google",
+      "@effect-uai/jina"
+    ]
   ],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["effect-uai"]
+  "ignore": ["effect-uai", "@effect-uai/recipes"],
+  "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
+    "onlyUpdatePeerDependentsWhenOutOfRange": true
+  }
 }

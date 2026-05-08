@@ -11,7 +11,7 @@ import { isTurnComplete, type Turn, type TurnEvent } from "../domain/Turn.js"
  * to a single provider (reasoning effort, prompt caching, store flags,
  * ...) lives in that provider's own request interface, which extends this.
  */
-export interface CommonRequest {
+export type CommonRequest = {
   readonly history: ReadonlyArray<Item>
   /**
    * Model identifier. Each provider narrows this to its typed literal union,
@@ -36,7 +36,7 @@ export interface CommonRequest {
   readonly structured?: StructuredFormat.StructuredFormat<unknown>
 }
 
-export interface LanguageModelService {
+export type LanguageModelService = {
   readonly streamTurn: (request: CommonRequest) => Stream.Stream<TurnEvent, AiError.AiError>
 }
 
@@ -51,23 +51,3 @@ export const streamTurn = (
   request: CommonRequest,
 ): Stream.Stream<TurnEvent, AiError.AiError, LanguageModel> =>
   Stream.unwrap(Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(request)))
-
-/**
- * Run a single turn to completion and return the assembled `Turn`.
- *
- * Implementation: drain the delta stream and pluck the terminal
- * `turn_complete` event. The provider is contractually required to emit
- * exactly one such event as the last delta.
- */
-export const turn = (request: CommonRequest): Effect.Effect<Turn, AiError.AiError, LanguageModel> =>
-  Effect.flatMap(Stream.runCollect(streamTurn(request)), (deltas) => {
-    const last = deltas[deltas.length - 1]
-    return last !== undefined && isTurnComplete(last)
-      ? Effect.succeed(last.turn)
-      : Effect.fail(
-          new AiError.Unavailable({
-            provider: "unknown",
-            raw: "Provider stream ended without a turn_complete event",
-          }),
-        )
-  })

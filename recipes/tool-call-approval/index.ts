@@ -22,7 +22,7 @@
  */
 import { Effect, Queue, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import {
   type ApprovalMapEntry,
@@ -35,7 +35,7 @@ import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
-import { Responses } from "@effect-uai/responses"
+import { Responses } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Tools - one safe, two sensitive.
@@ -81,16 +81,10 @@ const deleteUser = Tool.make({
   strict: true,
 })
 
-export const allTools: ReadonlyArray<Tool.AnyKindTool> = [
-  searchEmails,
-  sendEmail,
-  deleteUser,
-]
+export const allTools: ReadonlyArray<Tool.AnyKindTool> = [searchEmails, sendEmail, deleteUser]
 const tools = Tool.toDescriptors(allTools)
 
-const decisionEvents = (
-  decision: ToolCallDecision,
-): Stream.Stream<ToolEvent> =>
+const decisionEvents = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
   decision._tag === "Approved"
     ? Toolkit.executeAll(allTools, [decision.call])
     : Stream.succeed(Toolkit.outputEvent(decision.result))
@@ -155,19 +149,19 @@ export const httpConversation = (
             reasoning: { effort: "low" },
           })
           .pipe(
-            streamUntilComplete<State, ToolEvent>((turn) =>
+            onTurnComplete<State, ToolEvent>((turn) =>
               Effect.sync(() => {
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
 
                 const plan = fromApprovalMap(isSensitive, approvals)(calls)
-                const events = Stream.merge(
+                return Stream.merge(
                   Toolkit.executeAll(allTools, plan.approved),
                   Toolkit.outputEvents(plan.rejected),
-                )
-
-                return Toolkit.nextStateFrom(events, (results) =>
-                  Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                ).pipe(
+                  Toolkit.continueWith((results) =>
+                    Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                  ),
                 )
               }),
             ),
@@ -184,10 +178,7 @@ export const httpConversation = (
 // to return to the model.
 // ---------------------------------------------------------------------------
 
-export const queueConversation = (
-  verdicts: Queue.Queue<Verdict>,
-  state: State = initial,
-) =>
+export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State = initial) =>
   pipe(
     state,
     loop((current) =>
@@ -201,7 +192,7 @@ export const queueConversation = (
             reasoning: { effort: "low" },
           })
           .pipe(
-            streamUntilComplete<State, ToolEvent>((turn) =>
+            onTurnComplete<State, ToolEvent>((turn) =>
               Effect.sync(() => {
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
@@ -225,8 +216,10 @@ export const queueConversation = (
                   }),
                 )
 
-                return Toolkit.nextStateFrom(events, (results) =>
-                  Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                return events.pipe(
+                  Toolkit.continueWith((results) =>
+                    Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
+                  ),
                 )
               }),
             ),
@@ -240,9 +233,7 @@ export const queueConversation = (
 // UI / Slack / approval workflow; here we just decide based on the tool.
 // ---------------------------------------------------------------------------
 
-export const demoVerdict = (
-  event: Extract<ToolEvent, { _tag: "ApprovalRequested" }>,
-): Verdict =>
+export const demoVerdict = (event: Extract<ToolEvent, { _tag: "ApprovalRequested" }>): Verdict =>
   event.tool === "delete_user"
     ? {
         call_id: event.call_id,

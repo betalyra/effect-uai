@@ -34,17 +34,17 @@ const jsonl = conversation.pipe(Stream.filterMap(Turn.toJSONL))
 ## Curried helpers (drop-in `pipe`)
 
 ```ts
-const sse = conversation.pipe(Turn.asSSE)     // == Stream.filterMap(toSSE)
+const sse = conversation.pipe(Turn.asSSE) // == Stream.filterMap(toSSE)
 const jsonl = conversation.pipe(Turn.asJSONL) // == Stream.filterMap(toJSONL)
 ```
 
 ## What gets emitted
 
-| `TurnEvent`                  | SSE                                       | JSONL                                      |
-| ---------------------------- | ----------------------------------------- | ------------------------------------------ |
-| `text_delta`                 | `event: text\ndata: {"text":"..."}`       | `{"type":"text","text":"..."}`             |
-| `turn_complete`              | `event: done\ndata: {"stop_reason",...}`  | `{"type":"done","stop_reason":...,...}`    |
-| reasoning, tool-call deltas  | dropped                                   | dropped                                    |
+| `TurnEvent`                 | SSE                                      | JSONL                                   |
+| --------------------------- | ---------------------------------------- | --------------------------------------- |
+| `text_delta`                | `event: text\ndata: {"text":"..."}`      | `{"type":"text","text":"..."}`          |
+| `turn_complete`             | `event: done\ndata: {"stop_reason",...}` | `{"type":"done","stop_reason":...,...}` |
+| reasoning, tool-call deltas | dropped                                  | dropped                                 |
 
 If you want reasoning or tool-call argument streams on the wire, write
 your own `Stream.filterMap` — `toSSE` / `toJSONL` are deliberately
@@ -74,5 +74,5 @@ dispatch by event name.
 ## See also
 
 - Recipe source: `recipes/modify-output-stream/`
-- For prompted JSONL where the *model* writes typed objects: `effect-uai-streaming-structured-output`
+- For prompted JSONL where the _model_ writes typed objects: `effect-uai-streaming-structured-output`
 - The basic loop the transport sits on top of: `effect-uai-basic-usage`

@@ -25,10 +25,9 @@ import {
 } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
-import { matchType } from "@effect-uai/core/Match"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
-import { Responses, layer as responsesLayer } from "@effect-uai/responses"
+import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Demo configuration
@@ -86,7 +85,7 @@ const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) 
             reasoning: { effort: "low" },
           })
           .pipe(
-            streamUntilComplete((turn) =>
+            onTurnComplete((turn) =>
               Effect.gen(function* () {
                 yield* Ref.update(turnsCompleted, (n) => n + 1)
                 const next = advance(state, turn)
@@ -144,15 +143,16 @@ const program = Effect.gen(function* () {
 
   yield* Stream.runForEach(conversation(pauseLatch, turnsCompleted), (event) =>
     Match.value(event).pipe(
-      matchType("turn_complete", ({ turn }) =>
-        Effect.logInfo("turn complete", {
-          assistant: Turn.assistantMessages(turn)
-            .flatMap((m) => m.content)
-            .filter(Items.isOutputText)
-            .map((c) => c.text)
-            .join(" "),
-        }),
-      ),
+      Match.discriminators("type")({
+        turn_complete: ({ turn }) =>
+          Effect.logInfo("turn complete", {
+            assistant: Turn.assistantMessages(turn)
+              .flatMap((m) => m.content)
+              .filter(Items.isOutputText)
+              .map((c) => c.text)
+              .join(" "),
+          }),
+      }),
       Match.orElse(() => Effect.void),
     ),
   )
@@ -167,13 +167,16 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = Layer.mergeAll(
+const mainLayer = Layer.mergeAll(
   apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
 
 Effect.runPromise(
-  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Info")),
+  program.pipe(
+    Effect.provide(mainLayer),
+    Effect.provideService(References.MinimumLogLevel, "Info"),
+  ),
 ).catch((err) => {
   console.error("recipe failed:", err)
   process.exit(1)

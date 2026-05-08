@@ -12,10 +12,9 @@
 import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
-import { matchType } from "@effect-uai/core/Match"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
-import { Responses, layer as responsesLayer } from "@effect-uai/responses"
+import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Compaction policy - dial these down to make the demo fire after few turns.
@@ -107,7 +106,7 @@ const conversation = pipe(
             reasoning: { effort: "low" },
           })
           .pipe(
-            streamUntilComplete((turn) =>
+            onTurnComplete((turn) =>
               Effect.sync(() => {
                 const summary = Turn.assistantMessages(turn)
                   .flatMap((m) => m.content)
@@ -133,7 +132,7 @@ const conversation = pipe(
         })
         .pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-          streamUntilComplete((turn) =>
+          onTurnComplete((turn) =>
             Effect.sync(() => {
               const next = advance(state, turn)
               if (state.pendingPrompts.length === 0) return stop
@@ -157,18 +156,19 @@ const conversation = pipe(
 const program = Effect.gen(function* () {
   yield* Stream.runForEach(conversation, (event) =>
     Match.value(event).pipe(
-      matchType("turn_complete", ({ turn }) =>
-        Effect.logInfo("turn complete", {
-          stop_reason: turn.stop_reason,
-          input_tokens: turn.usage.input_tokens,
-          output_tokens: turn.usage.output_tokens,
-          assistant: Turn.assistantMessages(turn)
-            .flatMap((m) => m.content)
-            .filter(Items.isOutputText)
-            .map((c) => c.text)
-            .join(" "),
-        }),
-      ),
+      Match.discriminators("type")({
+        turn_complete: ({ turn }) =>
+          Effect.logInfo("turn complete", {
+            stop_reason: turn.stop_reason,
+            input_tokens: turn.usage.input_tokens,
+            output_tokens: turn.usage.output_tokens,
+            assistant: Turn.assistantMessages(turn)
+              .flatMap((m) => m.content)
+              .filter(Items.isOutputText)
+              .map((c) => c.text)
+              .join(" "),
+          }),
+      }),
       Match.orElse(() => Effect.void),
     ),
   )
@@ -181,13 +181,16 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = Layer.mergeAll(
+const mainLayer = Layer.mergeAll(
   apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
 
 Effect.runPromise(
-  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Info")),
+  program.pipe(
+    Effect.provide(mainLayer),
+    Effect.provideService(References.MinimumLogLevel, "Info"),
+  ),
 ).catch((err) => {
   console.error("recipe failed:", err)
   process.exit(1)

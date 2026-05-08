@@ -6,9 +6,8 @@
  */
 import { Config, Effect, Layer, Logger, Match, Queue, References, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import { matchType } from "@effect-uai/core/Match"
 import type { Verdict } from "@effect-uai/core/Resolvers"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { demoVerdict, queueConversation } from "./index.js"
 
 const program = Effect.gen(function* () {
@@ -36,9 +35,10 @@ const program = Effect.gen(function* () {
         }),
       ),
       Match.when({ _tag: "Intermediate" }, () => Effect.void),
-      matchType("turn_complete", ({ turn }) =>
-        Effect.logInfo("turn complete", { stop_reason: turn.stop_reason }),
-      ),
+      Match.discriminators("type")({
+        turn_complete: ({ turn }) =>
+          Effect.logInfo("turn complete", { stop_reason: turn.stop_reason }),
+      }),
       Match.orElse(() => Effect.void),
     ),
   )
@@ -51,14 +51,14 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = Layer.mergeAll(
+const mainLayer = Layer.mergeAll(
   apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
 
 Effect.runPromise(
   program.pipe(
-    Effect.provide(runtime),
+    Effect.provide(mainLayer),
     Effect.provideService(References.MinimumLogLevel, "Info"),
   ),
 ).catch((err) => {

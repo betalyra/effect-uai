@@ -14,10 +14,9 @@
 import { Config, Deferred, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
-import { matchType } from "@effect-uai/core/Match"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
-import { Responses, layer as responsesLayer } from "@effect-uai/responses"
+import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // State
@@ -49,7 +48,7 @@ const conversation = pipe(
       // a short abort window can land before any delta arrives.
       return oai
         .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
-        .pipe(streamUntilComplete(() => Effect.sync(() => stop)))
+        .pipe(onTurnComplete(() => Effect.sync(() => stop)))
     }),
   ),
 )
@@ -76,17 +75,18 @@ const program = Effect.gen(function* () {
     conversation.pipe(Stream.interruptWhen(Deferred.await(abort))),
     (event) =>
       Match.value(event).pipe(
-        matchType("text_delta", ({ text }) => Effect.logInfo("delta", { text })),
-        matchType("turn_complete", ({ turn }) =>
-          Effect.logInfo("turn complete (not expected if abort fires first)", {
-            stop_reason: turn.stop_reason,
-            assistant: Turn.assistantMessages(turn)
-              .flatMap((m) => m.content)
-              .filter(Items.isOutputText)
-              .map((c) => c.text)
-              .join(" "),
-          }),
-        ),
+        Match.discriminators("type")({
+          text_delta: ({ text }) => Effect.logInfo("delta", { text }),
+          turn_complete: ({ turn }) =>
+            Effect.logInfo("turn complete (not expected if abort fires first)", {
+              stop_reason: turn.stop_reason,
+              assistant: Turn.assistantMessages(turn)
+                .flatMap((m) => m.content)
+                .filter(Items.isOutputText)
+                .map((c) => c.text)
+                .join(" "),
+            }),
+        }),
         Match.orElse(() => Effect.void),
       ),
   )
@@ -101,13 +101,16 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = Layer.mergeAll(
+const mainLayer = Layer.mergeAll(
   apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
 
 Effect.runPromise(
-  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Info")),
+  program.pipe(
+    Effect.provide(mainLayer),
+    Effect.provideService(References.MinimumLogLevel, "Info"),
+  ),
 ).catch((err) => {
   console.error("recipe failed:", err)
   process.exit(1)

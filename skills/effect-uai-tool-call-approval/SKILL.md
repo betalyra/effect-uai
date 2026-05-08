@@ -20,10 +20,10 @@ Reach for this when the user says any of:
 
 ## Two transport flavors
 
-| Flavor                  | When to use                                                | Planner                                                |
-| ----------------------- | ---------------------------------------------------------- | ------------------------------------------------------ |
-| HTTP (synchronous)      | Stateless request-shaped server; approvals arrive in body  | `fromApprovalMap(predicate, approvals)(calls)`         |
-| Queue (asynchronous)    | Long-lived WebSocket / SSE; verdicts arrive later          | `fromVerdictQueue(predicate, queue)(calls)`            |
+| Flavor               | When to use                                               | Planner                                        |
+| -------------------- | --------------------------------------------------------- | ---------------------------------------------- |
+| HTTP (synchronous)   | Stateless request-shaped server; approvals arrive in body | `fromApprovalMap(predicate, approvals)(calls)` |
+| Queue (asynchronous) | Long-lived WebSocket / SSE; verdicts arrive later         | `fromVerdictQueue(predicate, queue)(calls)`    |
 
 Pick HTTP if your transport is request-shaped. Pick Queue if you've
 got a persistent connection and want a streaming UI.
@@ -33,12 +33,9 @@ got a persistent connection and want a streaming UI.
 ```ts
 import { Effect, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
-import {
-  fromApprovalMap,
-  type ApprovalMapEntry,
-} from "@effect-uai/core/Resolvers"
+import { fromApprovalMap, type ApprovalMapEntry } from "@effect-uai/core/Resolvers"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -54,26 +51,24 @@ export const httpConversation = (
     loop((current) =>
       Effect.gen(function* () {
         const oai = yield* Responses
-        return oai
-          .streamTurn({ history: current.history, model: "gpt-5.4-mini", tools })
-          .pipe(
-            streamUntilComplete<typeof state, ToolEvent>((turn) =>
-              Effect.sync(() => {
-                const calls = Turn.functionCalls(turn)
-                if (calls.length === 0) return stop
+        return oai.streamTurn({ history: current.history, model: "gpt-5.4-mini", tools }).pipe(
+          onTurnComplete<typeof state, ToolEvent>((turn) =>
+            Effect.sync(() => {
+              const calls = Turn.functionCalls(turn)
+              if (calls.length === 0) return stop
 
-                const plan = fromApprovalMap(isSensitive, approvals)(calls)
-                const events = Stream.merge(
-                  Toolkit.executeAll(allTools, plan.approved),
-                  Toolkit.outputEvents(plan.rejected),
-                )
-
-                return Toolkit.nextStateFrom(events, (results) =>
+              const plan = fromApprovalMap(isSensitive, approvals)(calls)
+              return Stream.merge(
+                Toolkit.executeAll(allTools, plan.approved),
+                Toolkit.outputEvents(plan.rejected),
+              ).pipe(
+                Toolkit.continueWith((results) =>
                   Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
-                )
-              }),
-            ),
-          )
+                ),
+              )
+            }),
+          ),
+        )
       }),
     ),
   )
@@ -91,10 +86,7 @@ import { fromVerdictQueue, type Verdict } from "@effect-uai/core/Resolvers"
 
 const events = Stream.unwrap(
   Effect.gen(function* () {
-    const { approved, decisions, announce } = yield* fromVerdictQueue(
-      isSensitive,
-      verdicts,
-    )(calls)
+    const { approved, decisions, announce } = yield* fromVerdictQueue(isSensitive, verdicts)(calls)
     return Stream.merge(
       announce, // ApprovalRequested events drive the UI
       Stream.merge(
@@ -117,12 +109,12 @@ the same queue, and renders `Output` results as they arrive.
 
 ## What ends up in `state.history`
 
-| Verdict / outcome    | `output` JSON                                      |
-| -------------------- | -------------------------------------------------- |
-| Approved + executed  | The tool's own structured return value.            |
-| Denied               | `{ "kind": "denied", "reason": "..." }`            |
-| Cancelled (HTTP)     | `{ "kind": "cancelled" }`                          |
-| Tool execution error | `{ "kind": "execution_error", "reason": "..." }`   |
+| Verdict / outcome    | `output` JSON                                    |
+| -------------------- | ------------------------------------------------ |
+| Approved + executed  | The tool's own structured return value.          |
+| Denied               | `{ "kind": "denied", "reason": "..." }`          |
+| Cancelled (HTTP)     | `{ "kind": "cancelled" }`                        |
+| Tool execution error | `{ "kind": "execution_error", "reason": "..." }` |
 
 History stays well-formed; the model reads the synthesized outputs on
 the next turn and self-corrects.

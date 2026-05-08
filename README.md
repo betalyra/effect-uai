@@ -58,9 +58,7 @@ const haiku = Stream.runForEach(
     model: "gpt-5.4-mini",
   }),
   (event) =>
-    event.type === "text_delta"
-      ? Effect.sync(() => process.stdout.write(event.text))
-      : Effect.void,
+    event.type === "text_delta" ? Effect.sync(() => process.stdout.write(event.text)) : Effect.void,
 )
 ```
 
@@ -69,12 +67,12 @@ cross-provider fallback, see the [docs](#docs--learn).
 
 ## Packages
 
-| Package                                                    | What it is                                                                         |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`@effect-uai/core`](./packages/core)                      | The primitives: `Loop`, `LanguageModel`, `Tool`, `Toolkit`, `Items`, `Turn`, JSONL/SSE codecs, `MockProvider`. No provider deps. |
-| [`@effect-uai/responses`](./packages/providers/responses)  | OpenAI Responses provider. Implements `LanguageModel` over OpenAI's `/v1/responses` endpoint. |
-| [`@effect-uai/anthropic`](./packages/providers/anthropic)  | Anthropic Messages provider, including extended thinking.                          |
-| [`@effect-uai/google`](./packages/providers/google)        | Google Gemini provider.                                                            |
+| Package                                                   | What it is                                                                                                                       |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| [`@effect-uai/core`](./packages/core)                     | The primitives: `Loop`, `LanguageModel`, `Tool`, `Toolkit`, `Items`, `Turn`, JSONL/SSE codecs, `MockProvider`. No provider deps. |
+| [`@effect-uai/responses`](./packages/providers/responses) | OpenAI Responses provider. Implements `LanguageModel` over OpenAI's `/v1/responses` endpoint.                                    |
+| [`@effect-uai/anthropic`](./packages/providers/anthropic) | Anthropic Messages provider, including extended thinking.                                                                        |
+| [`@effect-uai/google`](./packages/providers/google)       | Google Gemini provider.                                                                                                          |
 
 Each provider is its own package - edge / browser builds only pull in
 what you actually use.

@@ -19,7 +19,7 @@ import * as readline from "node:readline"
 import { Config, DateTime, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Tool from "@effect-uai/core/Tool"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { conversation } from "./index.js"
 
 // ---------------------------------------------------------------------------
@@ -41,8 +41,7 @@ const getCurrentTime = Tool.make({
         DateTime.setZoneNamed(now, timezone).pipe(
           Option.match({
             onNone: () => Effect.fail(InvalidTimeZone(timezone)),
-            onSome: (zoned) =>
-              Effect.succeed({ timezone, iso: DateTime.formatIsoZoned(zoned) }),
+            onSome: (zoned) => Effect.succeed({ timezone, iso: DateTime.formatIsoZoned(zoned) }),
           }),
         ),
       ),
@@ -105,28 +104,21 @@ const readStdinInto = (
 
 const write = (s: string) => Effect.sync(() => process.stdout.write(s))
 
-const renderConversation = (
-  queue: Queue.Queue<string>,
-  streaming: Ref.Ref<boolean>,
-) =>
+const renderConversation = (queue: Queue.Queue<string>, streaming: Ref.Ref<boolean>) =>
   // The renderer flips `streaming` true on the first event of each
   // turn and back to false on `turn_complete`, so the stdin handler
   // knows whether incoming lines are landing mid-turn.
   Stream.runForEach(conversation(queue, tools, "1500 millis"), (event) => {
     if ("_tag" in event) {
       if (event._tag === "Output" && event.result._tag === "Value") {
-        return write(
-          `\n  [${event.result.tool} → ${JSON.stringify(event.result.value)}]\n`,
-        )
+        return write(`\n  [${event.result.tool} → ${JSON.stringify(event.result.value)}]\n`)
       }
       return Effect.void
     }
     if (event.type === "text_delta")
       return Ref.set(streaming, true).pipe(Effect.andThen(write(event.text)))
     if (event.type === "tool_call_start")
-      return Ref.set(streaming, true).pipe(
-        Effect.andThen(write(`\n  [calling ${event.name}…]`)),
-      )
+      return Ref.set(streaming, true).pipe(Effect.andThen(write(`\n  [calling ${event.name}…]`)))
     if (event.type === "turn_complete")
       return Ref.set(streaming, false).pipe(Effect.andThen(write("\n\nyou> ")))
     return Effect.void
@@ -162,9 +154,9 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
+const mainLayer = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
 
-Effect.runPromise(program.pipe(Effect.provide(runtime))).catch((err) => {
+Effect.runPromise(program.pipe(Effect.provide(mainLayer))).catch((err) => {
   console.error("\nrecipe failed:", err)
   process.exit(1)
 })

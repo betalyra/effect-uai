@@ -23,13 +23,14 @@ skills/
 ├── effect-uai-mid-stream-abort/             # cancel an in-flight turn cleanly
 ├── effect-uai-multi-model-compare/          # fan one prompt to N providers; tag each delta
 ├── effect-uai-model-council/                # cross-evaluation; emit a winner
-└── effect-uai-modify-output-stream/         # project the loop output as SSE / JSONL
+├── effect-uai-modify-output-stream/         # project the loop output as SSE / JSONL
+└── effect-uai-embedding/                    # text + image embeddings, cross-modal & multivector
 ```
 
 Each folder has one `SKILL.md` with frontmatter (`name`,
 `description`) and a body. Skills load lazily — the agent reads only
 the descriptions until one matches the user's intent — so installing
-all 15 has no token cost until something triggers.
+all 16 has no token cost until something triggers.
 
 ## Installation
 
@@ -67,7 +68,7 @@ The frontmatter follows the
 
 ## How to use these
 
-1. **Install all 15** if you're a regular `effect-uai` user. Skills
+1. **Install all 16** if you're a regular `effect-uai` user. Skills
    only load when their description matches; the surface stays clean.
 2. **Install only the main skill** if you want a generic primer for
    when you build agents in Effect — Claude will know the philosophy
@@ -85,29 +86,30 @@ building an AI agent in Effect" or "wire up the LanguageModel
 service." Each recipe skill loads on a specific scenario described
 by the user; the skill's description is the trigger.
 
-| User says (paraphrased)                                          | Skill                                         |
-| ---------------------------------------------------------------- | --------------------------------------------- |
-| "Build an agent that can call tools"                             | `effect-uai-basic-usage`                      |
-| "Have the model return typed JSON / fill a form"                 | `effect-uai-structured-output`                |
-| "Stream typed objects as the model writes them"                  | `effect-uai-streaming-structured-output`      |
-| "Approve sensitive tool calls before execution"                  | `effect-uai-tool-call-approval`               |
-| "Show progress while a tool runs"                                | `effect-uai-streaming-tool-output`            |
-| "Long-lived chat agent with a queue"                             | `effect-uai-agentic-loop`                     |
-| "Retry on rate limits / 5xx with exponential backoff"            | `effect-uai-model-retry`                      |
-| "Fall back from one provider to another"                         | `effect-uai-multi-model-fallback`             |
-| "Summarize history when it gets too long"                        | `effect-uai-auto-compaction`                  |
-| "Pause the loop between turns and resume later"                  | `effect-uai-pause-resume`                     |
-| "Stop button / abort the current model response"                 | `effect-uai-mid-stream-abort`                 |
-| "Compare answers from multiple models side-by-side"              | `effect-uai-multi-model-compare`              |
-| "Have models judge each other and pick a winner"                 | `effect-uai-model-council`                    |
-| "Stream the output as SSE / JSONL"                               | `effect-uai-modify-output-stream`             |
+| User says (paraphrased)                                                | Skill                                    |
+| ---------------------------------------------------------------------- | ---------------------------------------- |
+| "Build an agent that can call tools"                                   | `effect-uai-basic-usage`                 |
+| "Have the model return typed JSON / fill a form"                       | `effect-uai-structured-output`           |
+| "Stream typed objects as the model writes them"                        | `effect-uai-streaming-structured-output` |
+| "Approve sensitive tool calls before execution"                        | `effect-uai-tool-call-approval`          |
+| "Show progress while a tool runs"                                      | `effect-uai-streaming-tool-output`       |
+| "Long-lived chat agent with a queue"                                   | `effect-uai-agentic-loop`                |
+| "Retry on rate limits / 5xx with exponential backoff"                  | `effect-uai-model-retry`                 |
+| "Fall back from one provider to another"                               | `effect-uai-multi-model-fallback`        |
+| "Summarize history when it gets too long"                              | `effect-uai-auto-compaction`             |
+| "Pause the loop between turns and resume later"                        | `effect-uai-pause-resume`                |
+| "Stop button / abort the current model response"                       | `effect-uai-mid-stream-abort`            |
+| "Compare answers from multiple models side-by-side"                    | `effect-uai-multi-model-compare`         |
+| "Have models judge each other and pick a winner"                       | `effect-uai-model-council`               |
+| "Stream the output as SSE / JSONL"                                     | `effect-uai-modify-output-stream`        |
+| "Embed text or images / semantic search / RAG retrieval / multivector" | `effect-uai-embedding`                   |
 
 ## Authoring conventions
 
 If you fork or extend these, keep the conventions:
 
 - **Frontmatter is the trigger.** The `description` is what the
-  agent sees by default; make it specific about *when* to use the
+  agent sees by default; make it specific about _when_ to use the
   skill, not what the skill is.
 - **Skill body is short and practical.** Open with one paragraph on
   when to reach for it, then the loop body or pipeline shape, then a

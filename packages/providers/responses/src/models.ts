@@ -22,3 +22,21 @@ export type OpenAIModel =
   | "gpt-4o-mini"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
+
+/**
+ * Known OpenAI embedding model identifiers. The `-3-` line is still the
+ * current general-purpose lineup; `dimensions` parameter supports
+ * Matryoshka truncation up to the model's native dimensionality.
+ *
+ * - `text-embedding-3-small`: 1..1536 dimensions, default 1536
+ * - `text-embedding-3-large`: 1..3072 dimensions, default 3072
+ * - `text-embedding-ada-002`: legacy, 1536 dim, no Matryoshka
+ *
+ * Reference: https://developers.openai.com/api/docs/guides/embeddings
+ */
+export type OpenAIEmbeddingModel =
+  | "text-embedding-3-small"
+  | "text-embedding-3-large"
+  | "text-embedding-ada-002"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})

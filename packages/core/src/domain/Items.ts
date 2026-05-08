@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { ImageSource } from "./Image.js"
 
 // ---------------------------------------------------------------------------
 // Content blocks (inside Message.content)
@@ -11,38 +12,12 @@ export const InputText = Schema.Struct({
 export type InputText = typeof InputText.Type
 
 /**
- * Where an image lives. `url` covers HTTP(S) URLs (the model fetches
- * them); `base64` covers inline bytes embedded in the request. Provider
- * encoders dispatch on `_tag`. File-id / uploaded-asset references are
- * provider-specific and stay out of this union for now.
- */
-export const ImageUrlSource = Schema.Struct({
-  _tag: Schema.Literal("url"),
-  url: Schema.String,
-})
-export type ImageUrlSource = typeof ImageUrlSource.Type
-
-/**
- * Inline image bytes. `data` is **already base64-encoded** (matches what
- * the wire formats expect; no double-encoding needed downstream).
- * `media_type` is the MIME type, e.g. `"image/png"`.
- */
-export const ImageBase64Source = Schema.Struct({
-  _tag: Schema.Literal("base64"),
-  media_type: Schema.String,
-  data: Schema.String,
-})
-export type ImageBase64Source = typeof ImageBase64Source.Type
-
-export const ImageSource = Schema.Union([ImageUrlSource, ImageBase64Source])
-export type ImageSource = typeof ImageSource.Type
-
-export const isImageUrlSource = (s: ImageSource): s is ImageUrlSource => s._tag === "url"
-export const isImageBase64Source = (s: ImageSource): s is ImageBase64Source => s._tag === "base64"
-
-/**
  * User-provided image content block. Pair with `InputText` inside a
  * `Message.content` array to ask "what's in this image?" style questions.
+ *
+ * `source` is the cross-modality `ImageSource` from `domain/Image.ts` -
+ * url, base64, or raw bytes. Provider codecs encode bytes to whatever
+ * wire format the provider wants.
  */
 export const InputImage = Schema.Struct({
   type: Schema.Literal("input_image"),
@@ -91,11 +66,10 @@ export type FilePath = typeof FilePath.Type
 export const Annotation = Schema.Union([UrlCitation, FileCitation, ContainerFileCitation, FilePath])
 export type Annotation = typeof Annotation.Type
 
-export const isUrlCitation = (a: Annotation): a is UrlCitation => a.type === "url_citation"
-export const isFileCitation = (a: Annotation): a is FileCitation => a.type === "file_citation"
-export const isContainerFileCitation = (a: Annotation): a is ContainerFileCitation =>
-  a.type === "container_file_citation"
-export const isFilePath = (a: Annotation): a is FilePath => a.type === "file_path"
+export const isUrlCitation = Schema.is(UrlCitation)
+export const isFileCitation = Schema.is(FileCitation)
+export const isContainerFileCitation = Schema.is(ContainerFileCitation)
+export const isFilePath = Schema.is(FilePath)
 
 export const OutputText = Schema.Struct({
   type: Schema.Literal("output_text"),
@@ -183,18 +157,15 @@ export type Item = typeof Item.Type
 // Type guards
 // ---------------------------------------------------------------------------
 
-export const isInputText = (block: ContentBlock): block is InputText => block.type === "input_text"
-export const isInputImage = (block: ContentBlock): block is InputImage =>
-  block.type === "input_image"
-export const isOutputText = (block: ContentBlock): block is OutputText =>
-  block.type === "output_text"
-export const isRefusal = (block: ContentBlock): block is Refusal => block.type === "refusal"
+export const isInputText = Schema.is(InputText)
+export const isInputImage = Schema.is(InputImage)
+export const isOutputText = Schema.is(OutputText)
+export const isRefusal = Schema.is(Refusal)
 
-export const isMessage = (item: Item): item is Message => item.type === "message"
-export const isFunctionCall = (item: Item): item is FunctionCall => item.type === "function_call"
-export const isFunctionCallOutput = (item: Item): item is FunctionCallOutput =>
-  item.type === "function_call_output"
-export const isReasoning = (item: Item): item is Reasoning => item.type === "reasoning"
+export const isMessage = Schema.is(Message)
+export const isFunctionCall = Schema.is(FunctionCall)
+export const isFunctionCallOutput = Schema.is(FunctionCallOutput)
+export const isReasoning = Schema.is(Reasoning)
 
 // ---------------------------------------------------------------------------
 // Usage and stop reason

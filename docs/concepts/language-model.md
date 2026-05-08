@@ -99,9 +99,9 @@ mid-program is just a different field. This is the seam recipes like
 [multi-model-fallback](/recipes/multi-model-fallback/) ride on:
 
 ```ts
-const oai = yield* Responses
-const draft = yield* runTurn({ history, model: "gpt-5.4-mini" }) // cheap
-const final = yield* runTurn({ history, model: "gpt-5.4" }) // big
+const oai = yield * Responses
+const draft = yield * runTurn({ history, model: "gpt-5.4-mini" }) // cheap
+const final = yield * runTurn({ history, model: "gpt-5.4" }) // big
 ```
 
 One layer, two models. The provider's HTTP API takes `model` in the

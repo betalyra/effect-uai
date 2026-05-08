@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -57,7 +57,7 @@ describe("multi-model-fallback", () => {
           const advance = nextAfter(Stream.empty, { ...state, tier: state.tier + 1 })
 
           return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
-            streamUntilComplete(() => Effect.sync(() => stop)),
+            onTurnComplete(() => Effect.sync(() => stop)),
             Stream.catchTag("RateLimited", () => advance),
             Stream.catchTag("Unavailable", () => advance),
           )

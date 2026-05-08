@@ -2,20 +2,12 @@ import { Effect, Fiber, Queue, Schema, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
-import {
-  type ToolCallDecision,
-  type Verdict,
-  fromVerdictQueue,
-} from "@effect-uai/core/Resolvers"
+import { type ToolCallDecision, type Verdict, fromVerdictQueue } from "@effect-uai/core/Resolvers"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
-import {
-  type ToolEvent,
-  isApprovalRequested,
-  isOutput,
-} from "@effect-uai/core/ToolEvent"
+import { type ToolEvent, isApprovalRequested, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -58,9 +50,7 @@ describe("tool-call-approval", () => {
   const SENSITIVE: ReadonlySet<string> = new Set(["send_email", "delete_user"])
   const isSensitive = (call: Items.FunctionCall): boolean => SENSITIVE.has(call.name)
 
-  const decisionEvents = (
-    decision: ToolCallDecision,
-  ): Stream.Stream<ToolEvent> =>
+  const decisionEvents = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
     decision._tag === "Approved"
       ? Toolkit.executeAll(allTools, [decision.call])
       : Stream.succeed(Toolkit.outputEvent(decision.result))
@@ -87,7 +77,7 @@ describe("tool-call-approval", () => {
               tools: Tool.toDescriptors(allTools),
             })
             .pipe(
-              streamUntilComplete<State, ToolEvent>((turn) =>
+              onTurnComplete<State, ToolEvent>((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
@@ -108,8 +98,10 @@ describe("tool-call-approval", () => {
                     }),
                   )
 
-                  return Toolkit.nextStateFrom(events, (results) =>
-                    Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                  return events.pipe(
+                    Toolkit.continueWith((results) =>
+                      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                    ),
                   )
                 }),
               ),
@@ -160,9 +152,7 @@ describe("tool-call-approval", () => {
     }
 
     // Demo policy: approve send_email, deny delete_user.
-    const verdictFor = (
-      e: Extract<ToolEvent, { _tag: "ApprovalRequested" }>,
-    ): Verdict =>
+    const verdictFor = (e: Extract<ToolEvent, { _tag: "ApprovalRequested" }>): Verdict =>
       e.tool === "delete_user"
         ? { call_id: e.call_id, decision: "deny", reason: "Out of scope." }
         : { call_id: e.call_id, decision: "approve" }
@@ -188,9 +178,7 @@ describe("tool-call-approval", () => {
     )
 
     // Two ApprovalRequested events (one per sensitive turn).
-    const approvals = events
-      .filter(isToolEvent)
-      .filter(isApprovalRequested)
+    const approvals = events.filter(isToolEvent).filter(isApprovalRequested)
     expect(approvals).toHaveLength(2)
     expect(approvals.map((e) => e.call_id)).toEqual(["c-send", "c-del"])
 
@@ -253,9 +241,7 @@ describe("tool-call-approval", () => {
     const program = Effect.gen(function* () {
       const verdicts = yield* Queue.unbounded<Verdict>()
 
-      const fiber = yield* Effect.forkChild(
-        Stream.runDrain(buildConversation(verdicts)),
-      )
+      const fiber = yield* Effect.forkChild(Stream.runDrain(buildConversation(verdicts)))
 
       // Give the fiber room to issue turn 1 and park on the verdicts queue.
       yield* Effect.sleep("20 millis")
@@ -263,7 +249,7 @@ describe("tool-call-approval", () => {
       expect(before.calls).toHaveLength(1)
 
       // Post one verdict; per-call deferreds mean call `a` resumes but `b`
-      // still parks - the turn's nextStateFrom only completes when both
+      // still parks - the turn's continueWith only completes when both
       // gated calls have produced a result.
       yield* Queue.offer(verdicts, { call_id: "a", decision: "approve" })
       yield* Effect.sleep("20 millis")
@@ -289,10 +275,7 @@ describe("tool-call-approval", () => {
 // need to redefine the loop body inline.
 // ---------------------------------------------------------------------------
 
-import {
-  type ApprovalMapEntry,
-  fromApprovalMap,
-} from "@effect-uai/core/Resolvers"
+import { type ApprovalMapEntry, fromApprovalMap } from "@effect-uai/core/Resolvers"
 
 describe("tool-call-approval (HTTP variant)", () => {
   const SearchEmailsInput = Schema.Struct({ query: Schema.String })
@@ -352,19 +335,19 @@ describe("tool-call-approval (HTTP variant)", () => {
               tools: Tool.toDescriptors(allTools),
             })
             .pipe(
-              streamUntilComplete<State, ToolEvent>((turn) =>
+              onTurnComplete<State, ToolEvent>((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
 
                   const plan = fromApprovalMap(isSensitive, approvals)(calls)
-                  const events = Stream.merge(
+                  return Stream.merge(
                     Toolkit.executeAll(allTools, plan.approved),
                     Toolkit.outputEvents(plan.rejected),
-                  )
-
-                  return Toolkit.nextStateFrom(events, (results) =>
-                    Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                  ).pipe(
+                    Toolkit.continueWith((results) =>
+                      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                    ),
                   )
                 }),
               ),
@@ -444,9 +427,7 @@ describe("tool-call-approval (HTTP variant)", () => {
 
     // Pure HTTP: no ApprovalRequested events.
     expect(
-      events
-        .filter((e): e is ToolEvent => "_tag" in e)
-        .filter(isApprovalRequested),
+      events.filter((e): e is ToolEvent => "_tag" in e).filter(isApprovalRequested),
     ).toHaveLength(0)
   })
 

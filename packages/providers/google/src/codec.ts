@@ -1,6 +1,5 @@
-import { Array as Arr, Match, Option, Result, Schema, pipe } from "effect"
-import type { ContentBlock, Item, Message } from "@effect-uai/core/Items"
-import { matchType } from "@effect-uai/core/Match"
+import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
+import type { ContentBlock, InputImage, Item, Message } from "@effect-uai/core/Items"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -53,20 +52,20 @@ type RequestPart =
   | { readonly text: string }
   | { readonly inlineData: { readonly mimeType: string; readonly data: string } }
 
-interface RequestContent {
+type RequestContent = {
   readonly role: "user" | "model"
   readonly parts: ReadonlyArray<RequestPart>
 }
 
-interface RequestSystemInstruction {
+type RequestSystemInstruction = {
   readonly parts: ReadonlyArray<{ readonly text: string }>
 }
 
-export interface ThinkingConfig {
+export type ThinkingConfig = {
   readonly thinkingBudget: number
 }
 
-export interface GenerationConfig {
+export type GenerationConfig = {
   readonly temperature?: number
   readonly maxOutputTokens?: number
   readonly topP?: number
@@ -77,45 +76,53 @@ export interface GenerationConfig {
   readonly responseJsonSchema?: Record<string, unknown>
 }
 
-export interface RequestBody {
+export type RequestBody = {
   readonly contents: ReadonlyArray<RequestContent>
   readonly systemInstruction?: RequestSystemInstruction
   readonly generationConfig?: GenerationConfig
 }
 
 const blockText = Match.type<ContentBlock>().pipe(
-  matchType("input_text", (b) => b.text),
-  matchType("input_image", () => ""),
-  matchType("output_text", (b) => b.text),
-  matchType("refusal", (b) => b.text),
-  Match.exhaustive,
+  Match.discriminatorsExhaustive("type")({
+    input_text: (b) => b.text,
+    input_image: () => "",
+    output_text: (b) => b.text,
+    refusal: (b) => b.text,
+  }),
 )
 
 const messageText = (message: Message): string => message.content.map(blockText).join("")
 
-const blockToParts = Match.type<ContentBlock>().pipe(
-  matchType(
-    "input_text",
-    (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
+/**
+ * Gemini's `inlineData` form expects a base64 payload. URL-form images
+ * would need to go through Gemini's Files API (upload then `fileData`
+ * with the returned URI); pre-uploading isn't free, so we skip those for
+ * now and document as a follow-up.
+ */
+const imageSourceToParts = Match.type<InputImage["source"]>().pipe(
+  Match.tag("url", (): ReadonlyArray<RequestPart> => []),
+  Match.tag(
+    "base64",
+    (s): ReadonlyArray<RequestPart> => [{ inlineData: { mimeType: s.mimeType, data: s.base64 } }],
   ),
-  matchType(
-    "input_image",
-    (b): ReadonlyArray<RequestPart> =>
-      // Gemini's `fileData` form expects a pre-uploaded Files API URI, not an
-      // arbitrary HTTPS URL - we'd need to fetch + re-upload to support that.
-      // Skip URL-form images for now; document as a follow-up.
-      b.source._tag === "base64"
-        ? [{ inlineData: { mimeType: b.source.media_type, data: b.source.data } }]
-        : [],
+  Match.tag(
+    "bytes",
+    (s): ReadonlyArray<RequestPart> => [
+      { inlineData: { mimeType: s.mimeType, data: Encoding.encodeBase64(s.bytes) } },
+    ],
   ),
-  matchType(
-    "output_text",
-    (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
-  ),
-  // Refusals are assistant-side content; they don't round-trip into Gemini's
-  // request body as parts. Skip.
-  matchType("refusal", (): ReadonlyArray<RequestPart> => []),
   Match.exhaustive,
+)
+
+const blockToParts = Match.type<ContentBlock>().pipe(
+  Match.discriminatorsExhaustive("type")({
+    input_text: (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
+    input_image: (b): ReadonlyArray<RequestPart> => imageSourceToParts(b.source),
+    output_text: (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
+    // Refusals are assistant-side content; they don't round-trip into Gemini's
+    // request body as parts. Skip.
+    refusal: (): ReadonlyArray<RequestPart> => [],
+  }),
 )
 
 const messageToContent = (message: Message): Result.Result<RequestContent, void> => {
@@ -173,7 +180,7 @@ const finishReasonToStop = (reason: Option.Option<string>): Turn["stop_reason"] 
     onSome: (r) => (r === "MAX_TOKENS" ? ("max_tokens" as const) : ("stop" as const)),
   })
 
-export interface Accumulator {
+export type Accumulator = {
   readonly text: string
   readonly reasoning: string
   readonly finishReason: Option.Option<string>
@@ -202,7 +209,7 @@ export type ChunkPart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "reasoning"; readonly text: string }
 
-export interface ChunkResult {
+export type ChunkResult = {
   readonly accumulator: Accumulator
   readonly parts: ReadonlyArray<ChunkPart>
   readonly finished: boolean

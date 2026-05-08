@@ -34,27 +34,26 @@ pipe(
     Effect.gen(function* () {
       const oai = yield* Responses
 
-      return oai
-        .streamTurn({ history: state.history, model: "gpt-5.4-mini", tools })
-        .pipe(
-          streamUntilComplete<State, ToolEvent>((turn) =>
-            Effect.sync(() => {
-              const calls = Turn.functionCalls(turn)
-              // No tool calls means the model produced its final answer.
-              if (calls.length === 0) return stop
+      return oai.streamTurn({ history: state.history, model: "gpt-5.4-mini", tools }).pipe(
+        onTurnComplete<State, ToolEvent>((turn) =>
+          Effect.sync(() => {
+            const calls = Turn.functionCalls(turn)
+            // No tool calls means the model produced its final answer.
+            if (calls.length === 0) return stop
 
-              const events = Toolkit.executeAll(toolkit.tools, calls)
-              return Toolkit.nextStateFrom(events, (results) =>
+            return Toolkit.executeAll(toolkit.tools, calls).pipe(
+              Toolkit.continueWith((results) =>
                 // Append the model's function_call items and the matching outputs.
                 Turn.appendTurn(
                   { ...state, index: state.index + 1 },
                   turn,
                   results.map(toFunctionCallOutput),
                 ),
-              )
-            }),
-          ),
-        )
+              ),
+            )
+          }),
+        ),
+      )
     }),
   ),
 )
@@ -63,11 +62,11 @@ pipe(
 Read it from top to bottom:
 
 - `streamTurn` starts one model turn from the current history.
-- `streamUntilComplete` forwards deltas while the turn is in flight, then
+- `onTurnComplete` forwards deltas while the turn is in flight, then
   hands you the assembled `Turn`.
 - `Turn.functionCalls(turn)` extracts what the model asked tools to do.
 - `Toolkit.executeAll` runs those calls and streams `ToolEvent`s.
-- `nextStateFrom` collects terminal `ToolResult`s.
+- `continueWith` collects terminal `ToolResult`s.
 - `Turn.appendTurn` appends both model items and tool outputs to history.
 - `stop` ends the loop when the model no longer asks for tools.
 

@@ -11,6 +11,9 @@ importers:
       '@changesets/cli':
         specifier: ^2.31.0
         version: 2.31.0(@types/node@25.6.0)
+      '@effect/language-service':
+        specifier: ^0.85.1
+        version: 0.85.1
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -69,6 +72,18 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/providers/jina:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/providers/responses:
     devDependencies:
       '@effect-uai/core':
@@ -92,6 +107,9 @@ importers:
       '@effect-uai/google':
         specifier: workspace:*
         version: link:../packages/providers/google
+      '@effect-uai/jina':
+        specifier: workspace:*
+        version: link:../packages/providers/jina
       '@effect-uai/responses':
         specifier: workspace:*
         version: link:../packages/providers/responses
@@ -432,6 +450,10 @@ packages:
   '@ctrl/tinycolor@4.2.0':
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
+
+  '@effect/language-service@0.85.1':
+    resolution: {integrity: sha512-EXnJjIy6zQ3nUO/MZ+ynWUb8B895KZPotd1++oTs9JjDkplwM7cb6zo8Zq2zU6piwq+KflO7amXbEfj1UMpHkw==}
+    hasBin: true
 
   '@emmetio/abbreviation@2.3.3':
     resolution: {integrity: sha512-mgv58UrU3rh4YgbE/TzgLQwJ3pFsHHhCLqY20aJq+9comytTXUDNGG/SMtSeMJdkpxgXSXunBGLD8Boka3JyVA==}
@@ -4808,6 +4830,8 @@ snapshots:
       sisteransi: 1.0.5
 
   '@ctrl/tinycolor@4.2.0': {}
+
+  '@effect/language-service@0.85.1': {}
 
   '@emmetio/abbreviation@2.3.3':
     dependencies:

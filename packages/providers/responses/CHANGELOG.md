@@ -1,5 +1,22 @@
 # @effect-uai/responses
 
+## Unreleased
+
+### Minor Changes
+
+- New `@effect-uai/responses/OpenAIEmbedding` sub-path: `OpenAIEmbedding`
+  service tag, `layer`, `OpenAIEmbedRequest`, and `OpenAIEmbeddingModel`
+  literal union. Text-only; Matryoshka via `dimensions`; `task` is omitted
+  from the typed request (compile error) and ignored on the generic
+  `EmbeddingModel` registration.
+
+### Patch Changes
+
+- Updated dependencies for `@effect-uai/core` (new embedding subsystem;
+  `Match` module / `matchType` helper removed; `Loop.streamUntilComplete`
+  renamed to `Loop.onTurnComplete`; `Toolkit.nextStateFrom` renamed to
+  `Toolkit.continueWith` and now pipe-friendly — see core changelog).
+
 ## 0.2.0
 
 ### Patch Changes

@@ -28,7 +28,7 @@ const provider = Layer.unwrap(
   }),
 )
 
-const runtime = provider.pipe(Layer.provide(FetchHttpClient.layer))
+const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
 ```
 
 `anthropicLayer` registers two service tags from one underlying
@@ -110,7 +110,7 @@ const turn = Effect.gen(function* () {
 ```
 
 `streamTurn` returns `Stream<TurnDelta, AiError>`. Pipe it through
-`Loop.streamUntilComplete` inside a `loop` body, or consume the deltas
+`Loop.onTurnComplete` inside a `loop` body, or consume the deltas
 directly for one-shot calls.
 
 ## How history maps onto Anthropic's wire shape

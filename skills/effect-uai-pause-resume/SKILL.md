@@ -25,12 +25,9 @@ One `Latch.await` at the top of the loop body is the entire pause.
 ```ts
 import { Effect, Latch, Ref, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 
-const conversation = (
-  pauseLatch: Latch.Latch,
-  turnsCompleted: Ref.Ref<number>,
-) =>
+const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) =>
   pipe(
     initial,
     loop((state) =>
@@ -39,23 +36,21 @@ const conversation = (
         yield* Latch.await(pauseLatch)
 
         const oai = yield* Responses
-        return oai
-          .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
-          .pipe(
-            streamUntilComplete((turn) =>
-              Effect.gen(function* () {
-                yield* Ref.update(turnsCompleted, (n) => n + 1)
-                const next = advance(state, turn)
-                if (next.pendingPrompts.length === 0) return stop
-                const [nextPrompt, ...rest] = next.pendingPrompts
-                return nextAfter(Stream.empty, {
-                  ...next,
-                  history: [...next.history, Items.userText(nextPrompt!)],
-                  pendingPrompts: rest,
-                })
-              }),
-            ),
-          )
+        return oai.streamTurn({ history: state.history, model: "gpt-5.4-mini" }).pipe(
+          onTurnComplete((turn) =>
+            Effect.gen(function* () {
+              yield* Ref.update(turnsCompleted, (n) => n + 1)
+              const next = advance(state, turn)
+              if (next.pendingPrompts.length === 0) return stop
+              const [nextPrompt, ...rest] = next.pendingPrompts
+              return nextAfter(Stream.empty, {
+                ...next,
+                history: [...next.history, Items.userText(nextPrompt!)],
+                pendingPrompts: rest,
+              })
+            }),
+          ),
+        )
       }),
     ),
   )
@@ -64,10 +59,7 @@ const conversation = (
 ## Controller (UI button, signal handler, scheduler)
 
 ```ts
-const pauseController = (
-  pauseLatch: Latch.Latch,
-  turnsCompleted: Ref.Ref<number>,
-) =>
+const pauseController = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) =>
   Effect.gen(function* () {
     // Wait for the trigger condition (e.g. a button press, N turns done, ...)
     yield* Effect.repeat(
@@ -98,7 +90,7 @@ the fiber is just parked. State threads through `loop` naturally
 (`nextAfter(state)`), so resume picks up exactly where it left off
 without writing or reading a checkpoint.
 
-For *hard* pause (process exits, agent resumes hours later), persist
+For _hard_ pause (process exits, agent resumes hours later), persist
 `state.history` and rebuild the loop's `initial` from it — the same
 hydration pattern as `effect-uai-auto-compaction`.
 

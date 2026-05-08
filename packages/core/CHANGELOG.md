@@ -1,5 +1,51 @@
 # @effect-uai/core
 
+## Unreleased
+
+### Minor Changes
+
+- New `EmbeddingModel` service — parallel of `LanguageModel` for vectorization.
+  Adds `@effect-uai/core/EmbeddingModel` (service tag, `embed` / `embedMany`,
+  `CommonEmbedRequest`, cross-provider `Encoding` union) and
+  `@effect-uai/core/Embedding` (tagged union of `Float32` / `Int8` / `Binary` /
+  `Sparse` / `Multivector` embeddings with predicates, plus `EmbedInput` and
+  `Usage`).
+- New `@effect-uai/core/Vector` math primitives: dense (`cosine`, `dot`,
+  `l2Norm`, `normalize`, `euclidean`), sparse (`sparseCosine`, `sparseDot`,
+  `sparseL2Norm`), and multivector (`maxSim`).
+- New media domain shared with language-model multimodal inputs:
+  `@effect-uai/core/Media` (generic `MediaSource<MimeType>`) and
+  `@effect-uai/core/Image` (typed `ImageMimeType` plus `imageUrl` /
+  `imageBase64` / `imageBytes` constructors and predicates).
+- Removed `@effect-uai/core/Match` and the `matchType` helper. Migrate to
+  `Match.discriminators("type")({...})` (or `discriminatorsExhaustive`)
+  from `effect`.
+- `ToolResult`, `ToolEvent`, and `Image*Source` migrated to
+  `Data.TaggedEnum` — you now get `.$is`, `.$match`, and constructors like
+  `ToolResult.Failure({...})` / `ToolEvent.Output({...})`. The `_tag` wire
+  shape and existing `is*` predicates are preserved.
+- New barrel re-exports from `@effect-uai/core`: `Outcome`, `ToolEvent`,
+  `Resolvers`, `HistoryCheck`.
+- Tools can now declare an `R` requirement and receive Effect services in
+  `run`. `Tool.AnyPlainTool` / `Tool.AnyStreamingTool` / `Tool.AnyKindTool`
+  are generic over `R` (default `any`); `Toolkit.executeAll` propagates the
+  union via the new `Toolkit.ToolKindR<Tools>` helper. Provide services with
+  `Effect.provide` at the recipe level — same compile-time guarantee as
+  every other Effect service, no parallel `toolsContext` mechanism.
+- Renamed `Loop.streamUntilComplete` → `Loop.onTurnComplete`. Same
+  semantics — runs a continuation when the `turn_complete` sentinel
+  arrives. Old name is gone.
+- Renamed and curried `Toolkit.nextStateFrom` → `Toolkit.continueWith`.
+  Now dual via `Function.dual`: data-first
+  `Toolkit.continueWith(stream, build)` and pipe-friendly
+  `stream.pipe(Toolkit.continueWith(build))` both work.
+- New `Loop.loopWithState(initial, body)` — like `loop`, but returns
+  `Effect<{ stream, state: SubscriptionRef<S> }>`. The ref is seeded with
+  `initial` and updated on every `next(s)`. Use it for final-state
+  inspection after `Stream.runDrain`, live observation via
+  `SubscriptionRef.changes`, or mid-iteration peeks. Doesn't pollute the
+  value stream.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -4,7 +4,7 @@ import type { Item } from "../domain/Items.js"
 import { LanguageModel, type LanguageModelService } from "../language-model/LanguageModel.js"
 import type { Turn, TurnEvent } from "../domain/Turn.js"
 
-export interface MockOptions {
+export type MockOptions = {
   /**
    * If set, deltas of each scripted turn are spaced by this duration via
    * `Schedule.spaced`. Combine with `TestClock.adjust` for deterministic
@@ -19,7 +19,7 @@ export interface MockOptions {
  * deltas (text → tool_call_start → tool_call_args_delta → ... → turn_complete)
  * so streaming consumers can see realistic delta shapes.
  */
-export interface MockRecorder {
+export type MockRecorder = {
   readonly calls: ReadonlyArray<{
     readonly history: ReadonlyArray<Item>
     readonly turn: Turn

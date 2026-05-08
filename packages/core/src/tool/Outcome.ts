@@ -11,7 +11,7 @@
  * and `unknown` would invite non-serializable values (Date, Map, BigInt,
  * fn). Recipes that want structured detail JSON.stringify themselves.
  */
-import { Match } from "effect"
+import { Data } from "effect"
 import type { FunctionCall, FunctionCallOutput } from "../domain/Items.js"
 import { functionCallOutput } from "../domain/Items.js"
 
@@ -19,42 +19,44 @@ import { functionCallOutput } from "../domain/Items.js"
 // ToolResult
 // ---------------------------------------------------------------------------
 
-export type ToolResult =
-  | {
-      readonly _tag: "Value"
-      readonly call_id: string
-      readonly tool: string
-      readonly value: unknown
-    }
-  | {
-      readonly _tag: "Failure"
-      readonly call_id: string
-      readonly tool: string
-      readonly kind: string
-      readonly reason?: string
-    }
+export type ToolResult = Data.TaggedEnum<{
+  Value: {
+    readonly call_id: string
+    readonly tool: string
+    readonly value: unknown
+  }
+  Failure: {
+    readonly call_id: string
+    readonly tool: string
+    readonly kind: string
+    readonly reason?: string
+  }
+}>
 
-export const isValue = (r: ToolResult): r is Extract<ToolResult, { _tag: "Value" }> =>
-  r._tag === "Value"
+/**
+ * Namespace of constructors, type guards, and matchers for `ToolResult`,
+ * provided by `Data.taggedEnum`. Use `ToolResult.$is("Value")` for type
+ * narrowing and `ToolResult.$match({ Value, Failure })` for exhaustive
+ * pattern matching. Synthetic-result helpers (`denied`, `cancelled`,
+ * `executionError`, `rejected`) below are kinder constructors than the
+ * raw `ToolResult.Failure(...)`.
+ */
+export const ToolResult = Data.taggedEnum<ToolResult>()
 
-export const isFailure = (r: ToolResult): r is Extract<ToolResult, { _tag: "Failure" }> =>
-  r._tag === "Failure"
+export const isValue = ToolResult.$is("Value")
+export const isFailure = ToolResult.$is("Failure")
 
 // Synthesizers. `denied` and `cancelled` are operationally distinct;
 // anything else is just a recipe-chosen `kind` via `rejected`.
 // ---------------------------------------------------------------------------
 
-export const rejected = (
-  call: FunctionCall,
-  kind: string,
-  reason?: string,
-): ToolResult => ({
-  _tag: "Failure",
-  call_id: call.call_id,
-  tool: call.name,
-  kind,
-  ...(reason !== undefined ? { reason } : {}),
-})
+export const rejected = (call: FunctionCall, kind: string, reason?: string): ToolResult =>
+  ToolResult.Failure({
+    call_id: call.call_id,
+    tool: call.name,
+    kind,
+    ...(reason !== undefined ? { reason } : {}),
+  })
 
 /** Explicit user/policy rejection. */
 export const denied = (call: FunctionCall, reason?: string): ToolResult =>
@@ -73,15 +75,13 @@ export const executionError = (call: FunctionCall, reason: string): ToolResult =
 // ---------------------------------------------------------------------------
 
 export const toFunctionCallOutput = (r: ToolResult): FunctionCallOutput =>
-  Match.value(r).pipe(
-    Match.tag("Value", (v) => functionCallOutput(v.call_id, JSON.stringify(v.value))),
-    Match.tag("Failure", (f) =>
+  ToolResult.$match(r, {
+    Value: (v) => functionCallOutput(v.call_id, JSON.stringify(v.value)),
+    Failure: (f) =>
       functionCallOutput(
         f.call_id,
         JSON.stringify(
           f.reason !== undefined ? { kind: f.kind, reason: f.reason } : { kind: f.kind },
         ),
       ),
-    ),
-    Match.exhaustive,
-  )
+  })

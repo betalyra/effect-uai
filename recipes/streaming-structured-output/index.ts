@@ -30,9 +30,9 @@ import { streamTurn } from "@effect-uai/core/LanguageModel"
 import * as Lines from "@effect-uai/core/Lines"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import * as Turn from "@effect-uai/core/Turn"
-import { layer as anthropicLayer } from "@effect-uai/anthropic"
-import { layer as geminiLayer } from "@effect-uai/google"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as anthropicLayer } from "@effect-uai/anthropic/Anthropic"
+import { layer as geminiLayer } from "@effect-uai/google/Gemini"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -131,7 +131,7 @@ const languageModelLayer = (provider: Provider) =>
 
 const provider = parseProvider(process.argv.slice(2))
 
-const runtime = Layer.mergeAll(
+const mainLayer = Layer.mergeAll(
   languageModelLayer(provider).pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
@@ -139,7 +139,7 @@ const runtime = Layer.mergeAll(
 Effect.runPromise(
   program(modelFor(provider)).pipe(
     Effect.tap(() => Effect.logInfo(`provider: ${provider}`)),
-    Effect.provide(runtime),
+    Effect.provide(mainLayer),
     Effect.provideService(References.MinimumLogLevel, "Info"),
   ),
 ).catch((err) => {

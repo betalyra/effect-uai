@@ -21,7 +21,7 @@ Reach for this when the user says any of:
 ```ts
 import { Effect, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
@@ -37,7 +37,9 @@ const initial: State = {
   history: [Items.userText("What time is it in Lisbon and Tokyo right now?")],
 }
 
-const tools: ReadonlyArray<Tool.AnyKindTool> = [/* getCurrentTime, ... */]
+const tools: ReadonlyArray<Tool.AnyKindTool> = [
+  /* getCurrentTime, ... */
+]
 const descriptors = Tool.toDescriptors(tools)
 
 export const conversation = pipe(
@@ -53,7 +55,7 @@ export const conversation = pipe(
           reasoning: { effort: "low" },
         })
         .pipe(
-          streamUntilComplete<State, ToolEvent>((turn) =>
+          onTurnComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
               const calls = Turn.functionCalls(turn)
 
@@ -61,9 +63,10 @@ export const conversation = pipe(
               if (calls.length === 0) return stop
 
               // Tool calls -> execute, append outputs, loop again.
-              const events = Toolkit.executeAll(tools, calls)
-              return Toolkit.nextStateFrom(events, (results) =>
-                Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+              return Toolkit.executeAll(tools, calls).pipe(
+                Toolkit.continueWith((results) =>
+                  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                ),
               )
             }),
           ),
@@ -81,19 +84,15 @@ import * as Tool from "@effect-uai/core/Tool"
 
 const getCurrentTime = Tool.make({
   name: "get_current_time",
-  description:
-    "Look up the current local time for an IANA timezone, e.g. 'Europe/Lisbon'.",
-  inputSchema: Tool.fromEffectSchema(
-    Schema.Struct({ timezone: Schema.String }),
-  ),
+  description: "Look up the current local time for an IANA timezone, e.g. 'Europe/Lisbon'.",
+  inputSchema: Tool.fromEffectSchema(Schema.Struct({ timezone: Schema.String })),
   run: ({ timezone }) =>
     DateTime.now.pipe(
       Effect.flatMap((now) =>
         DateTime.setZoneNamed(now, timezone).pipe(
           Option.match({
             onNone: () => Effect.fail(new Error(`Invalid timezone: ${timezone}`)),
-            onSome: (zoned) =>
-              Effect.succeed({ timezone, iso: DateTime.formatIsoZoned(zoned) }),
+            onSome: (zoned) => Effect.succeed({ timezone, iso: DateTime.formatIsoZoned(zoned) }),
           }),
         ),
       ),
@@ -120,11 +119,9 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
+const mainLayer = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
 
-await Effect.runPromise(
-  Stream.runDrain(conversation).pipe(Effect.provide(runtime)),
-)
+await Effect.runPromise(Stream.runDrain(conversation).pipe(Effect.provide(mainLayer)))
 ```
 
 ## Anti-patterns

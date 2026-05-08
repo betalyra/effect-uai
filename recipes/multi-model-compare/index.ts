@@ -24,11 +24,10 @@ import {
 } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { matchType } from "@effect-uai/core/Match"
 import * as Turn from "@effect-uai/core/Turn"
-import { make as makeAnthropic } from "@effect-uai/anthropic"
-import { make as makeGemini } from "@effect-uai/google"
-import { make as makeResponses } from "@effect-uai/responses"
+import { make as makeAnthropic } from "@effect-uai/anthropic/Anthropic"
+import { make as makeGemini } from "@effect-uai/google/Gemini"
+import { make as makeResponses } from "@effect-uai/responses/Responses"
 import { type Member, council } from "./council.js"
 
 // ---------------------------------------------------------------------------
@@ -74,29 +73,33 @@ const program = Effect.gen(function* () {
 
   yield* Stream.runForEach(council(members, initialHistory), (event) =>
     Match.value(event).pipe(
-      matchType("delta", ({ member, delta }) =>
-        Match.value(delta).pipe(
-          matchType("text_delta", ({ text }) => Effect.logDebug(`${member} | ${text}`)),
-          matchType("turn_complete", ({ turn }) =>
-            Effect.logInfo(`${member} verdict`, {
-              stop_reason: turn.stop_reason,
-              usage: turn.usage,
-              answer: finalText(turn),
+      Match.discriminatorsExhaustive("type")({
+        delta: ({ member, delta }) =>
+          Match.value(delta).pipe(
+            Match.discriminators("type")({
+              text_delta: ({ text }) => Effect.logDebug(`${member} | ${text}`),
+              turn_complete: ({ turn }) =>
+                Effect.logInfo(`${member} verdict`, {
+                  stop_reason: turn.stop_reason,
+                  usage: turn.usage,
+                  answer: finalText(turn),
+                }),
             }),
+            Match.orElse(() => Effect.void),
           ),
-          Match.orElse(() => Effect.void),
-        ),
-      ),
-      matchType("error", ({ member, error }) => Effect.logWarning(`${member} failed`, { error })),
-      Match.exhaustive,
+        error: ({ member, error }) => Effect.logWarning(`${member} failed`, { error }),
+      }),
     ),
   )
 })
 
-const runtime = Layer.mergeAll(FetchHttpClient.layer, Logger.layer([Logger.consolePretty()]))
+const mainLayer = Layer.mergeAll(FetchHttpClient.layer, Logger.layer([Logger.consolePretty()]))
 
 Effect.runPromise(
-  program.pipe(Effect.provide(runtime), Effect.provideService(References.MinimumLogLevel, "Info")),
+  program.pipe(
+    Effect.provide(mainLayer),
+    Effect.provideService(References.MinimumLogLevel, "Info"),
+  ),
 ).catch((err) => {
   console.error("recipe failed:", err)
   process.exit(1)

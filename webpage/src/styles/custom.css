@@ -18,7 +18,6 @@
   --sl-content-pad-x: clamp(1rem, 2.5vw, 2.5rem);
 }
 
-
 /* Light, the modernist default. Clean white, full black ink. */
 :root[data-theme="light"] {
   --sl-color-bg: #fafafa;

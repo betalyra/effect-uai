@@ -9,20 +9,15 @@
 import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { matchType } from "@effect-uai/core/Match"
 import * as Tool from "@effect-uai/core/Tool"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { type State, buildConversation, makeDownloadTool } from "./index.js"
 
 const downloadArtifact = makeDownloadTool()
 const allTools: ReadonlyArray<Tool.AnyKindTool> = [downloadArtifact]
 
 const initial: State = {
-  history: [
-    Items.userText(
-      "Download https://example.com/big-blob and tell me the byte count.",
-    ),
-  ],
+  history: [Items.userText("Download https://example.com/big-blob and tell me the byte count.")],
   index: 0,
 }
 
@@ -32,15 +27,14 @@ const program = Effect.gen(function* () {
       Match.when({ _tag: "Intermediate" }, (e) =>
         Effect.logInfo("download progress", { call_id: e.call_id, data: e.data }),
       ),
-      Match.when({ _tag: "Output" }, ({ result }) =>
-        Effect.logInfo("download result", { result }),
-      ),
-      matchType("turn_complete", ({ turn }) =>
-        Effect.logInfo("turn complete", {
-          stop_reason: turn.stop_reason,
-          usage: turn.usage,
-        }),
-      ),
+      Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("download result", { result })),
+      Match.discriminators("type")({
+        turn_complete: ({ turn }) =>
+          Effect.logInfo("turn complete", {
+            stop_reason: turn.stop_reason,
+            usage: turn.usage,
+          }),
+      }),
       Match.orElse(() => Effect.void),
     ),
   )
@@ -53,14 +47,14 @@ const apiKeyLayer = Layer.unwrap(
   }),
 )
 
-const runtime = Layer.mergeAll(
+const mainLayer = Layer.mergeAll(
   apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
 
 Effect.runPromise(
   program.pipe(
-    Effect.provide(runtime),
+    Effect.provide(mainLayer),
     Effect.provideService(References.MinimumLogLevel, "Info"),
   ),
 ).catch((err) => {

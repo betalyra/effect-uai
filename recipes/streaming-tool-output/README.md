@@ -14,10 +14,10 @@ for the user, clean data for the model.
 
 This recipe shows two patterns side-by-side:
 
-| Pattern             | Inner stream                      | What `finalize` does                        |
-| ------------------- | --------------------------------- | ------------------------------------------- |
-| Sub-agent           | `Stream<Turn.TurnEvent>`          | Joins text deltas into the answer string    |
-| Progress + result   | `Stream<{progress \| result}>`    | Ignores progress; picks the result event    |
+| Pattern           | Inner stream                   | What `finalize` does                     |
+| ----------------- | ------------------------------ | ---------------------------------------- |
+| Sub-agent         | `Stream<Turn.TurnEvent>`       | Joins text deltas into the answer string |
+| Progress + result | `Stream<{progress \| result}>` | Ignores progress; picks the result event |
 
 A third pattern (each event IS a result item — recipe streamer, search
 hits, transcoded chunks) follows the same shape; just have `finalize`
@@ -31,9 +31,7 @@ conversation), streaming `text_delta`s back through the executor as
 live; the outer model receives the joined answer.
 
 ```ts
-export const makeSubAgent = (
-  runInner: (question: string) => Stream.Stream<Turn.TurnEvent>,
-) =>
+export const makeSubAgent = (runInner: (question: string) => Stream.Stream<Turn.TurnEvent>) =>
   Tool.streaming({
     name: "ask_subagent",
     description: "Ask a specialist sub-agent for help with a hard question.",
@@ -41,8 +39,8 @@ export const makeSubAgent = (
     run: ({ question }) => runInner(question),
     finalize: (events): SubAgentOutput => ({
       answer: events
-        .filter((e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> =>
-          e.type === "text_delta",
+        .filter(
+          (e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> => e.type === "text_delta",
         )
         .map((e) => e.text)
         .join(""),
@@ -90,14 +88,15 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
 Identical to basic-usage; the only difference is the toolkit:
 
 ```ts
-streamUntilComplete<State, ToolEvent>((turn) =>
+onTurnComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
     const calls = Turn.functionCalls(turn)
     if (calls.length === 0) return stop
 
-    const events = Toolkit.executeAll(allTools, calls)
-    return Toolkit.nextStateFrom(events, (results) =>
-      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    return Toolkit.executeAll(allTools, calls).pipe(
+      Toolkit.continueWith((results) =>
+        Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+      ),
     )
   }),
 )

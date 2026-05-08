@@ -75,7 +75,7 @@ const RecipeList = Schema.Struct({ recipes: Schema.Array(Recipe) })
 All three providers require the top-level schema to be `type: object`,
 so a bare `Schema.Array(Recipe)` is rejected at the wire.
 
-For *streaming* multi-object output (one object decoded as soon as its
+For _streaming_ multi-object output (one object decoded as soon as its
 JSON is complete), see the
 [Streaming structured output](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-structured-output)
 recipe.

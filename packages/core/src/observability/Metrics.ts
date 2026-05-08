@@ -38,7 +38,7 @@ export const timeToFirst =
       Effect.map(Option.map(({ elapsed }) => elapsed)),
     )
 
-export interface RatePoint<A> {
+export type RatePoint<A> = {
   readonly value: A
   readonly total: number
   readonly ratePerSecond: number

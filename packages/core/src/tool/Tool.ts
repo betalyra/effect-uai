@@ -36,7 +36,7 @@ export const fromEffectSchema = <S extends Schema.Codec<any, any, never, any>>(
   Schema.toStandardJSONSchemaV1(Schema.toStandardSchemaV1(schema)) as unknown as S &
     ToolInputSchema<S["Type"]>
 
-export interface Tool<Name extends string, Input, Output, R = never> {
+export type Tool<Name extends string, Input, Output, R = never> = {
   readonly name: Name
   readonly description: string
   readonly inputSchema: ToolInputSchema<Input>
@@ -55,7 +55,7 @@ export interface Tool<Name extends string, Input, Output, R = never> {
  * to its own wire field (OpenAI → `parameters`, Anthropic →
  * `input_schema`). Built from a `Tool` by `Toolkit.toDescriptors`.
  */
-export interface ToolDescriptor {
+export type ToolDescriptor = {
   readonly name: string
   readonly description: string
   readonly inputSchema: Record<string, unknown>
@@ -75,7 +75,7 @@ export const make = <Name extends string, Input, Output, R = never>(
 // `Output`. Sub-agents, slow downloads with progress, recipe streamers.
 // ---------------------------------------------------------------------------
 
-export interface StreamingTool<Name extends string, Input, Event, Output, R = never> {
+export type StreamingTool<Name extends string, Input, Event, Output, R = never> = {
   readonly _kind: "streaming"
   readonly name: Name
   readonly description: string
@@ -89,11 +89,11 @@ export const streaming = <Name extends string, Input, Event, Output, R = never>(
   spec: Omit<StreamingTool<Name, Input, Event, Output, R>, "_kind">,
 ): StreamingTool<Name, Input, Event, Output, R> => ({ _kind: "streaming", ...spec })
 
-export type AnyStreamingTool = StreamingTool<string, any, any, any, never>
-export type AnyPlainTool = Tool<string, any, any, never>
-export type AnyKindTool = AnyStreamingTool | AnyPlainTool
+export type AnyStreamingTool<R = any> = StreamingTool<string, any, any, any, R>
+export type AnyPlainTool<R = any> = Tool<string, any, any, R>
+export type AnyKindTool<R = any> = AnyStreamingTool<R> | AnyPlainTool<R>
 
-export const isStreamingTool = (t: AnyKindTool): t is AnyStreamingTool =>
+export const isStreamingTool = <R>(t: AnyKindTool<R>): t is AnyStreamingTool<R> =>
   "_kind" in t && t._kind === "streaming"
 
 /**
@@ -101,8 +101,8 @@ export const isStreamingTool = (t: AnyKindTool): t is AnyStreamingTool =>
  * descriptors. Mirrors `Toolkit.toDescriptors` but accepts the union type
  * so a single list can carry both kinds.
  */
-export const toDescriptors = (
-  tools: ReadonlyArray<AnyKindTool>,
+export const toDescriptors = <R>(
+  tools: ReadonlyArray<AnyKindTool<R>>,
 ): ReadonlyArray<ToolDescriptor> =>
   tools.map((tool) => {
     const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({

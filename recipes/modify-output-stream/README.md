@@ -56,11 +56,11 @@ approval flow, retry policy, or long-lived queue-driven chat.
 
 ## What gets emitted
 
-| `TurnEvent`                  | SSE                                       | JSONL                                      |
-| ---------------------------- | ----------------------------------------- | ------------------------------------------ |
-| `text_delta`                 | `event: text\ndata: {"text":"..."}`       | `{"type":"text","text":"..."}`             |
-| `turn_complete`              | `event: done\ndata: {"stop_reason",...}`  | `{"type":"done","stop_reason":...,...}`    |
-| reasoning, tool-call deltas  | dropped                                   | dropped                                    |
+| `TurnEvent`                 | SSE                                      | JSONL                                   |
+| --------------------------- | ---------------------------------------- | --------------------------------------- |
+| `text_delta`                | `event: text\ndata: {"text":"..."}`      | `{"type":"text","text":"..."}`          |
+| `turn_complete`             | `event: done\ndata: {"stop_reason",...}` | `{"type":"done","stop_reason":...,...}` |
+| reasoning, tool-call deltas | dropped                                  | dropped                                 |
 
 These local `toSSE` and `toJSONL` helpers are intentionally conservative. They
 keep text deltas and turn completion events, and drop internals such as

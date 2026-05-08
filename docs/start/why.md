@@ -33,7 +33,7 @@ application. Think of it as shadcn, but for your AI application.
   terminal `turn_complete` event. Pattern-match the events you care
   about, ignore the rest.
 - **The loop is a function you call.** `loop` runs a turn, hands you
-  the events, and lets *you* decide whether to continue, stop, swap
+  the events, and lets _you_ decide whether to continue, stop, swap
   models, compact, or branch. There is no `onStepFinish` callback
   fighting you for control.
 - **Providers are interchangeable layers.** OpenAI, Anthropic, and

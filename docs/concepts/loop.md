@@ -47,30 +47,30 @@ over building events by hand.
 ## Helpers
 
 ```ts
-Loop.value(a)                              // wrap a value
-Loop.next(state)                           // signal continuation
-Loop.stop                                  // a single-element stream that ends the loop
-Loop.nextAfter(stream, s)                  // emit values from `stream`, then continue with state `s`
-Loop.stopAfter(stream)                     // emit values from `stream`, then end the loop
+Loop.value(a) // wrap a value
+Loop.next(state) // signal continuation
+Loop.stop // a single-element stream that ends the loop
+Loop.nextAfter(stream, s) // emit values from `stream`, then continue with state `s`
+Loop.stopAfter(stream) // emit values from `stream`, then end the loop
 Loop.nextAfterFold(stream, b, fold, build) // drain stream, fold to acc, then continue with build(acc)
 ```
 
 `nextAfter` / `stopAfter` are the everyday workhorses. `nextAfterFold`
 is the general primitive — drain a stream, fold its elements into an
 accumulator, then advance with state derived from the fold. The
-streaming-tool helper [`Toolkit.nextStateFrom`](/concepts/tools/) is
+streaming-tool helper [`Toolkit.continueWith`](/concepts/tools/) is
 built on top.
 
-## `streamUntilComplete`
+## `onTurnComplete`
 
 Most loop bodies wrap a provider's `Stream<TurnEvent>`. The pattern is
 always the same: forward events to the consumer, wait for the terminal
 `turn_complete`, then decide what to do with the assembled `Turn`.
-`Loop.streamUntilComplete` packages exactly that:
+`Loop.onTurnComplete` packages exactly that:
 
 ```ts
 import { Effect } from "effect"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
@@ -91,17 +91,18 @@ pipe(
           tools: Tool.toDescriptors(allTools),
         })
         .pipe(
-          streamUntilComplete<State, ToolEvent>((turn) =>
+          onTurnComplete<State, ToolEvent>((turn) =>
             Effect.gen(function* () {
               const calls = Turn.functionCalls(turn)
 
               // No tool calls means there is nothing to feed back.
               if (calls.length === 0) return stop
 
-              const events = Toolkit.executeAll(allTools, calls)
-              return Toolkit.nextStateFrom(events, (results) =>
-                // Build the next state only after every tool call has an output.
-                Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+              return Toolkit.executeAll(allTools, calls).pipe(
+                Toolkit.continueWith((results) =>
+                  // Build the next state only after every tool call has an output.
+                  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                ),
               )
             }),
           ),
@@ -117,7 +118,7 @@ What it does:
   the terminal `turn_complete`, so the consumer sees turn boundaries.
 - Once the terminal arrives, the callback runs with the assembled
   `Turn` and its returned event-stream is concatenated. Typically that
-  stream comes from `Toolkit.executeAll` threaded through `nextStateFrom`
+  stream comes from `Toolkit.executeAll` threaded through `continueWith`
   to advance — or just `stop`.
 - `ToolEvent`s emitted by the executor (`Intermediate`, `Output`,
   `ApprovalRequested`) flow through alongside the `TurnEvent`s.

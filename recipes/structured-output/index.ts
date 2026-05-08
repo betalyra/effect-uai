@@ -13,15 +13,27 @@
  * Requires the matching API key in the environment
  * (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`).
  */
-import { Config, Effect, Layer, Logger, Match, References, Schema } from "effect"
+import {
+  Config,
+  Effect,
+  Layer,
+  Logger,
+  Match,
+  Option,
+  References,
+  Result,
+  Schema,
+  Stream,
+} from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
+import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
-import { turn as runTurn } from "@effect-uai/core/LanguageModel"
+import { streamTurn } from "@effect-uai/core/LanguageModel"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import * as Turn from "@effect-uai/core/Turn"
-import { layer as anthropicLayer } from "@effect-uai/anthropic"
-import { layer as geminiLayer } from "@effect-uai/google"
-import { layer as responsesLayer } from "@effect-uai/responses"
+import { layer as anthropicLayer } from "@effect-uai/anthropic/Anthropic"
+import { layer as geminiLayer } from "@effect-uai/google/Gemini"
+import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -42,11 +54,22 @@ const recipeFormat = StructuredFormat.fromEffectSchema(Recipe)
 
 const program = (model: string) =>
   Effect.gen(function* () {
-    const turn = yield* runTurn({
+    // Fold the event stream into the terminal `Turn`. `streamTurn` is the
+    // primitive; collecting events into a `Turn` is recipe-level glue.
+    const turn = yield* streamTurn({
       history: [Items.userText("Give me a recipe for one-pan lemon chicken.")],
       model,
       structured: recipeFormat,
-    })
+    }).pipe(
+      Stream.filterMap((e) => (Turn.isTurnComplete(e) ? Result.succeed(e.turn) : Result.failVoid)),
+      Stream.runHead,
+      Effect.flatMap(
+        Option.match({
+          onSome: Effect.succeed,
+          onNone: () => Effect.fail(new AiError.IncompleteTurn({})),
+        }),
+      ),
+    )
     const recipe = yield* Turn.toStructured(turn, recipeFormat)
     yield* Effect.logInfo("recipe", { recipe })
   })
@@ -113,7 +136,7 @@ const layerFor = (provider: Provider) =>
 
 const provider = parseProvider(process.argv.slice(2))
 
-const runtime = Layer.mergeAll(
+const mainLayer = Layer.mergeAll(
   layerFor(provider).pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
 )
@@ -121,7 +144,7 @@ const runtime = Layer.mergeAll(
 Effect.runPromise(
   program(modelFor(provider)).pipe(
     Effect.tap(() => Effect.logInfo(`provider: ${provider}`)),
-    Effect.provide(runtime),
+    Effect.provide(mainLayer),
     Effect.provideService(References.MinimumLogLevel, "Info"),
   ),
 ).catch((err) => {

@@ -20,6 +20,12 @@
     "url": "https://github.com/betalyra/effect-uai",
     "directory": "packages/core"
   },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
@@ -32,13 +38,29 @@
       "types": "./dist/domain/AiError.d.mts",
       "import": "./dist/domain/AiError.mjs"
     },
+    "./Image": {
+      "types": "./dist/domain/Image.d.mts",
+      "import": "./dist/domain/Image.mjs"
+    },
     "./Items": {
       "types": "./dist/domain/Items.d.mts",
       "import": "./dist/domain/Items.mjs"
     },
+    "./Media": {
+      "types": "./dist/domain/Media.d.mts",
+      "import": "./dist/domain/Media.mjs"
+    },
     "./Turn": {
       "types": "./dist/domain/Turn.d.mts",
       "import": "./dist/domain/Turn.mjs"
+    },
+    "./Embedding": {
+      "types": "./dist/embedding-model/Embedding.d.mts",
+      "import": "./dist/embedding-model/Embedding.mjs"
+    },
+    "./EmbeddingModel": {
+      "types": "./dist/embedding-model/EmbeddingModel.d.mts",
+      "import": "./dist/embedding-model/EmbeddingModel.mjs"
     },
     "./LanguageModel": {
       "types": "./dist/language-model/LanguageModel.d.mts",
@@ -48,9 +70,9 @@
       "types": "./dist/loop/Loop.d.mts",
       "import": "./dist/loop/Loop.mjs"
     },
-    "./Match": {
-      "types": "./dist/match/Match.d.mts",
-      "import": "./dist/match/Match.mjs"
+    "./Vector": {
+      "types": "./dist/math/Vector.d.mts",
+      "import": "./dist/math/Vector.mjs"
     },
     "./Tool": {
       "types": "./dist/tool/Tool.d.mts",
@@ -101,12 +123,6 @@
       "import": "./dist/testing/MockProvider.mjs"
     }
   },
-  "files": [
-    "dist",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "publishConfig": {
     "access": "public"
   },
@@ -118,11 +134,11 @@
   "dependencies": {
     "@standard-schema/spec": "^1.1.0"
   },
-  "peerDependencies": {
-    "effect": "4.0.0-beta.57"
-  },
   "devDependencies": {
     "effect": "4.0.0-beta.57",
     "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-beta.57"
   }
 }

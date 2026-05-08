@@ -23,9 +23,7 @@ import { type ToolResult, cancelled } from "./Outcome.js"
  * `function_call_output` later in `history` (correlated by `call_id`).
  * Empty result = history is provider-submittable from this invariant.
  */
-export const findUnansweredCalls = (
-  history: ReadonlyArray<Item>,
-): ReadonlyArray<FunctionCall> => {
+export const findUnansweredCalls = (history: ReadonlyArray<Item>): ReadonlyArray<FunctionCall> => {
   const answered = new Set(history.filter(isFunctionCallOutput).map((o) => o.call_id))
   return history.filter(isFunctionCall).filter((c) => !answered.has(c.call_id))
 }
@@ -45,5 +43,4 @@ export const isReconciled = (history: ReadonlyArray<Item>): boolean =>
 export const cancelAllPending = (
   history: ReadonlyArray<Item>,
   reason?: string,
-): ReadonlyArray<ToolResult> =>
-  findUnansweredCalls(history).map((call) => cancelled(call, reason))
+): ReadonlyArray<ToolResult> => findUnansweredCalls(history).map((call) => cancelled(call, reason))

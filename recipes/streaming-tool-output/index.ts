@@ -20,7 +20,7 @@
 import { Duration, Effect, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, stop, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
@@ -50,8 +50,7 @@ export const makeSubAgent = (
     finalize: (events): SubAgentOutput => ({
       answer: events
         .filter(
-          (e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> =>
-            e.type === "text_delta",
+          (e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> => e.type === "text_delta",
         )
         .map((e) => e.text)
         .join(""),
@@ -135,10 +134,7 @@ export interface State {
 }
 
 /** Build a conversation against the given toolkit. */
-export const buildConversation = (
-  allTools: ReadonlyArray<Tool.AnyKindTool>,
-  initial: State,
-) =>
+export const buildConversation = (allTools: ReadonlyArray<Tool.AnyKindTool>, initial: State) =>
   pipe(
     initial,
     loop((state) =>
@@ -151,17 +147,18 @@ export const buildConversation = (
             tools: Tool.toDescriptors(allTools),
           })
           .pipe(
-            streamUntilComplete<State, ToolEvent>((turn) =>
+            onTurnComplete<State, ToolEvent>((turn) =>
               Effect.sync(() => {
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
 
-                const events = Toolkit.executeAll(allTools, calls)
-                return Toolkit.nextStateFrom(events, (results) =>
-                  Turn.appendTurn(
-                    { ...state, index: state.index + 1 },
-                    turn,
-                    results.map(toFunctionCallOutput),
+                return Toolkit.executeAll(allTools, calls).pipe(
+                  Toolkit.continueWith((results) =>
+                    Turn.appendTurn(
+                      { ...state, index: state.index + 1 },
+                      turn,
+                      results.map(toFunctionCallOutput),
+                    ),
                   ),
                 )
               }),
@@ -178,9 +175,7 @@ export const buildConversation = (
 // client.
 // ---------------------------------------------------------------------------
 
-export const realInnerAgent = (
-  question: string,
-): Stream.Stream<Turn.TurnEvent, unknown, never> =>
+export const realInnerAgent = (question: string): Stream.Stream<Turn.TurnEvent, unknown, never> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const lm = yield* LanguageModel

@@ -10,7 +10,7 @@ object. If you want objects to appear one-by-one as the model writes them,
 prompt for JSONL, turn text deltas into lines, and validate each line locally.
 Downstream consumers see a typed `Stream<Recipe>`, not raw text.
 
-This is *prompt-driven*, not server-enforced — JSONL has no native
+This is _prompt-driven_, not server-enforced — JSONL has no native
 wire format. The combinators stay the same across all three providers
 because validation happens locally on the assembled text. Server-side
 constraints are still possible by wrapping the list in an object (see

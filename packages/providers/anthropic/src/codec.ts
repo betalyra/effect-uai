@@ -1,7 +1,6 @@
-import { Array as Arr, Match, Option, Order, Result, Schema, pipe } from "effect"
+import { Array as Arr, Encoding, Match, Option, Order, Result, Schema, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { JsonParseError } from "@effect-uai/core/JSONL"
-import { matchType } from "@effect-uai/core/Match"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -52,36 +51,36 @@ export type WireUsage = typeof WireUsage.Type
 // History → request body
 // ---------------------------------------------------------------------------
 
-interface RequestTextContent {
+type RequestTextContent = {
   readonly type: "text"
   readonly text: string
 }
 
-interface RequestToolResultContent {
+type RequestToolResultContent = {
   readonly type: "tool_result"
   readonly tool_use_id: string
   readonly content: string
 }
 
-interface RequestToolUseContent {
+type RequestToolUseContent = {
   readonly type: "tool_use"
   readonly id: string
   readonly name: string
   readonly input: unknown
 }
 
-interface RequestThinkingContent {
+type RequestThinkingContent = {
   readonly type: "thinking"
   readonly thinking: string
   readonly signature?: string
 }
 
-interface RequestRedactedThinkingContent {
+type RequestRedactedThinkingContent = {
   readonly type: "redacted_thinking"
   readonly data: string
 }
 
-interface RequestImageContent {
+type RequestImageContent = {
   readonly type: "image"
   readonly source:
     | { readonly type: "url"; readonly url: string }
@@ -96,12 +95,12 @@ type RequestAssistantContentBlock =
   | RequestThinkingContent
   | RequestRedactedThinkingContent
 
-interface RequestUserMessage {
+type RequestUserMessage = {
   readonly role: "user"
   readonly content: ReadonlyArray<RequestUserContentBlock>
 }
 
-interface RequestAssistantMessage {
+type RequestAssistantMessage = {
   readonly role: "assistant"
   readonly content: ReadonlyArray<RequestAssistantContentBlock>
 }
@@ -109,41 +108,46 @@ interface RequestAssistantMessage {
 type RequestMessage = RequestUserMessage | RequestAssistantMessage
 
 const blockText = Match.type<Items.ContentBlock>().pipe(
-  matchType("input_text", (b) => b.text),
-  matchType("input_image", () => ""),
-  matchType("output_text", (b) => b.text),
-  matchType("refusal", (b) => b.text),
-  Match.exhaustive,
+  Match.discriminatorsExhaustive("type")({
+    input_text: (b) => b.text,
+    input_image: () => "",
+    output_text: (b) => b.text,
+    refusal: (b) => b.text,
+  }),
 )
 
 const messageText = (message: Items.Message): string => message.content.map(blockText).join("")
+
+const imageSourceToWire = Match.type<Items.InputImage["source"]>().pipe(
+  Match.tag("url", (s): RequestImageContent["source"] => ({ type: "url", url: s.url })),
+  Match.tag("base64", (s): RequestImageContent["source"] => ({
+    type: "base64",
+    media_type: s.mimeType,
+    data: s.base64,
+  })),
+  Match.tag("bytes", (s): RequestImageContent["source"] => ({
+    type: "base64",
+    media_type: s.mimeType,
+    data: Encoding.encodeBase64(s.bytes),
+  })),
+  Match.exhaustive,
+)
 
 const userContentBlock = (
   block: Items.ContentBlock,
 ): Result.Result<RequestUserContentBlock, void> =>
   Match.value(block).pipe(
-    matchType("input_text", (b) =>
-      b.text.length === 0
-        ? Result.failVoid
-        : Result.succeed({ type: "text" as const, text: b.text }),
-    ),
-    matchType("input_image", (b) =>
-      Result.succeed({
-        type: "image" as const,
-        source:
-          b.source._tag === "url"
-            ? { type: "url" as const, url: b.source.url }
-            : {
-                type: "base64" as const,
-                media_type: b.source.media_type,
-                data: b.source.data,
-              },
-      }),
-    ),
-    // Assistant content; never appears on a user message in practice. Skip.
-    matchType("output_text", () => Result.failVoid),
-    matchType("refusal", () => Result.failVoid),
-    Match.exhaustive,
+    Match.discriminatorsExhaustive("type")({
+      input_text: (b) =>
+        b.text.length === 0
+          ? Result.failVoid
+          : Result.succeed({ type: "text" as const, text: b.text }),
+      input_image: (b) =>
+        Result.succeed({ type: "image" as const, source: imageSourceToWire(b.source) }),
+      // Assistant content; never appears on a user message in practice. Skip.
+      output_text: () => Result.failVoid,
+      refusal: () => Result.failVoid,
+    }),
   )
 
 const parseJson = (s: string): Result.Result<unknown, JsonParseError> =>
@@ -156,78 +160,70 @@ type RoleBucket = "user" | "assistant" | "system"
 
 const roleBucket = (item: Items.Item): RoleBucket =>
   Match.value(item).pipe(
-    matchType("message", (m) => m.role),
-    matchType("function_call", () => "assistant" as const),
-    matchType("function_call_output", () => "user" as const),
-    matchType("reasoning", () => "assistant" as const),
-    Match.exhaustive,
+    Match.discriminatorsExhaustive("type")({
+      message: (m) => m.role,
+      function_call: () => "assistant" as const,
+      function_call_output: () => "user" as const,
+      reasoning: () => "assistant" as const,
+    }),
   )
 
 const itemToUserBlocks = (item: Items.Item): ReadonlyArray<RequestUserContentBlock> =>
   Match.value(item).pipe(
-    matchType(
-      "message",
-      (m): ReadonlyArray<RequestUserContentBlock> =>
+    Match.discriminatorsExhaustive("type")({
+      message: (m): ReadonlyArray<RequestUserContentBlock> =>
         m.role === "user" ? pipe(m.content, Arr.filterMap(userContentBlock)) : [],
-    ),
-    matchType("function_call", (): ReadonlyArray<RequestUserContentBlock> => []),
-    matchType(
-      "function_call_output",
-      (o): ReadonlyArray<RequestUserContentBlock> => [
+      function_call: (): ReadonlyArray<RequestUserContentBlock> => [],
+      function_call_output: (o): ReadonlyArray<RequestUserContentBlock> => [
         { type: "tool_result", tool_use_id: o.call_id, content: o.output },
       ],
-    ),
-    matchType("reasoning", (): ReadonlyArray<RequestUserContentBlock> => []),
-    Match.exhaustive,
+      reasoning: (): ReadonlyArray<RequestUserContentBlock> => [],
+    }),
   )
 
 const itemToAssistantBlocks = (
   item: Items.Item,
 ): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> =>
   Match.value(item).pipe(
-    matchType(
-      "message",
-      (m): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> => {
+    Match.discriminatorsExhaustive("type")({
+      message: (m): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> => {
         const text = messageText(m)
         return Result.succeed(
           m.role === "assistant" && text.length > 0 ? [{ type: "text", text }] : [],
         )
       },
-    ),
-    matchType("function_call", (f) =>
-      pipe(
-        parseJson(f.arguments),
-        Result.map(
-          (input): ReadonlyArray<RequestAssistantContentBlock> => [
-            { type: "tool_use", id: f.call_id, name: f.name, input },
-          ],
+      function_call: (f) =>
+        pipe(
+          parseJson(f.arguments),
+          Result.map(
+            (input): ReadonlyArray<RequestAssistantContentBlock> => [
+              { type: "tool_use", id: f.call_id, name: f.name, input },
+            ],
+          ),
         ),
-      ),
-    ),
-    matchType(
-      "function_call_output",
-      (): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> =>
-        Result.succeed([]),
-    ),
-    matchType("reasoning", (r) => {
-      const blocks: ReadonlyArray<RequestAssistantContentBlock> =
-        r.summary !== undefined
-          ? [
-              {
-                type: "thinking",
-                thinking: r.summary,
-                ...(r.signature !== undefined && { signature: r.signature }),
-              },
-            ]
-          : r.signature !== undefined
-            ? [{ type: "redacted_thinking", data: r.signature }]
-            : []
-      return Result.succeed(blocks)
+      function_call_output: (): Result.Result<
+        ReadonlyArray<RequestAssistantContentBlock>,
+        JsonParseError
+      > => Result.succeed([]),
+      reasoning: (r) => {
+        const blocks: ReadonlyArray<RequestAssistantContentBlock> =
+          r.summary !== undefined
+            ? [
+                {
+                  type: "thinking",
+                  thinking: r.summary,
+                  ...(r.signature !== undefined && { signature: r.signature }),
+                },
+              ]
+            : r.signature !== undefined
+              ? [{ type: "redacted_thinking", data: r.signature }]
+              : []
+        return Result.succeed(blocks)
+      },
     }),
-    Match.exhaustive,
   )
 
-interface GroupAcc {
+type GroupAcc = {
   readonly messages: ReadonlyArray<RequestMessage>
   readonly currentRole: Option.Option<"user" | "assistant">
   readonly userBuf: ReadonlyArray<RequestUserContentBlock>
@@ -320,12 +316,12 @@ const systemFromHistory = (history: ReadonlyArray<Items.Item>): Option.Option<st
   return texts.length === 0 ? Option.none() : Option.some(texts.join("\n"))
 }
 
-export interface ThinkingConfig {
+export type ThinkingConfig = {
   readonly type: "enabled"
   readonly budget_tokens: number
 }
 
-export interface RequestBody {
+export type RequestBody = {
   readonly model: string
   readonly messages: ReadonlyArray<RequestMessage>
   readonly max_tokens: number
@@ -413,7 +409,7 @@ export const buildRequestBody = (params: {
 // our `Items.Item[]` when `message_stop` lands.
 // ---------------------------------------------------------------------------
 
-interface BlockBuffer {
+type BlockBuffer = {
   readonly type: WireContentBlock["type"]
   readonly text: string
   readonly inputJson: string
@@ -435,7 +431,7 @@ const emptyBlock = (type: WireContentBlock["type"]): BlockBuffer => ({
   redactedData: Option.none(),
 })
 
-export interface Accumulator {
+export type Accumulator = {
   readonly blocks: Readonly<Record<number, BlockBuffer>>
   readonly stopReason: Option.Option<string>
   readonly usage: Items.Usage
@@ -460,23 +456,22 @@ const updateBlock = (
 
 export const startBlock = (acc: Accumulator, index: number, block: WireContentBlock): Accumulator =>
   Match.value(block).pipe(
-    matchType("text", () => replaceBlock(acc, index, emptyBlock("text"))),
-    matchType("tool_use", (b) =>
-      replaceBlock(acc, index, {
-        ...emptyBlock("tool_use"),
-        id: Option.some(b.id),
-        name: Option.some(b.name),
-        inputJson: typeof b.input === "string" ? b.input : "",
-      }),
-    ),
-    matchType("thinking", () => replaceBlock(acc, index, emptyBlock("thinking"))),
-    matchType("redacted_thinking", (b) =>
-      replaceBlock(acc, index, {
-        ...emptyBlock("redacted_thinking"),
-        redactedData: Option.some(b.data),
-      }),
-    ),
-    Match.exhaustive,
+    Match.discriminatorsExhaustive("type")({
+      text: () => replaceBlock(acc, index, emptyBlock("text")),
+      tool_use: (b) =>
+        replaceBlock(acc, index, {
+          ...emptyBlock("tool_use"),
+          id: Option.some(b.id),
+          name: Option.some(b.name),
+          inputJson: typeof b.input === "string" ? b.input : "",
+        }),
+      thinking: () => replaceBlock(acc, index, emptyBlock("thinking")),
+      redacted_thinking: (b) =>
+        replaceBlock(acc, index, {
+          ...emptyBlock("redacted_thinking"),
+          redactedData: Option.some(b.data),
+        }),
+    }),
   )
 
 export const appendTextDelta = (acc: Accumulator, index: number, text: string): Accumulator =>
@@ -596,7 +591,7 @@ const blockToItems = (block: BlockBuffer): ReadonlyArray<Items.Item> =>
     Match.exhaustive,
   )
 
-interface MergeAcc {
+type MergeAcc = {
   readonly out: ReadonlyArray<Items.Item>
 }
 

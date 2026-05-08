@@ -28,7 +28,7 @@ That decision is ordinary state inspection:
 ```ts
 const needsUserInput = (state: State): boolean => {
   const last = state.history[state.history.length - 1]
-  if (last === undefined) return true                      // first iteration
+  if (last === undefined) return true // first iteration
   return last.type === "message" && last.role === "assistant" // turn finished cleanly
 }
 ```
@@ -43,7 +43,7 @@ const needsUserInput = (state: State): boolean => {
 import { Duration, Effect, Queue, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, streamUntilComplete } from "@effect-uai/core/Loop"
+import { loop, nextAfter, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
@@ -69,24 +69,23 @@ export const conversation = (
         const history = [...state.history, ...incoming.map(Items.userText)]
 
         const lm = yield* LanguageModel
-        return lm
-          .streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors })
-          .pipe(
-            streamUntilComplete<State, ToolEvent>((turn) =>
-              Effect.sync(() => {
-                const calls = Turn.functionCalls(turn)
+        return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
+          onTurnComplete<State, ToolEvent>((turn) =>
+            Effect.sync(() => {
+              const calls = Turn.functionCalls(turn)
 
-                if (calls.length === 0) {
-                  return nextAfter(Stream.empty, Turn.appendTurn({ history }, turn))
-                }
+              if (calls.length === 0) {
+                return nextAfter(Stream.empty, Turn.appendTurn({ history }, turn))
+              }
 
-                const events = Toolkit.executeAll(tools, calls)
-                return Toolkit.nextStateFrom(events, (results) =>
+              return Toolkit.executeAll(tools, calls).pipe(
+                Toolkit.continueWith((results) =>
                   Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
-                )
-              }),
-            ),
-          )
+                ),
+              )
+            }),
+          ),
+        )
       }),
     ),
   )
@@ -127,9 +126,9 @@ worker, process. The runner / caller terminates by interrupting the
 forked fiber:
 
 ```ts
-const fiber = yield* Effect.forkChild(Stream.runDrain(conversation(queue, tools)))
+const fiber = yield * Effect.forkChild(Stream.runDrain(conversation(queue, tools)))
 // ... later, on Ctrl-C / disconnect / timeout
-yield* Fiber.interrupt(fiber)
+yield * Fiber.interrupt(fiber)
 ```
 
 ## Driving from stdin (interactive CLI)

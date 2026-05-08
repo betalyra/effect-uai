@@ -1,7 +1,6 @@
 import { Context, Effect, Layer, Match, Option, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
-import { matchType } from "@effect-uai/core/Match"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import {
   type CommonRequest,
@@ -23,7 +22,7 @@ import {
 // Public types
 // ---------------------------------------------------------------------------
 
-export interface ResponsesRequest extends Omit<CommonRequest, "model"> {
+export type ResponsesRequest = Omit<CommonRequest, "model"> & {
   /**
    * Narrows `CommonRequest.model` (`string`) to the typed `OpenAIModel`
    * literal union for autocomplete.
@@ -52,7 +51,7 @@ export interface ResponsesRequest extends Omit<CommonRequest, "model"> {
   readonly verbosity?: "low" | "medium" | "high"
 }
 
-export interface ResponsesService {
+export type ResponsesService = {
   /**
    * Stream the provider's native event vocabulary (post-SSE-decode).
    * Use this when you need full vendor fidelity. For provider-portable
@@ -86,7 +85,7 @@ export class Responses extends Context.Service<Responses, ResponsesService>()(
   "@betalyra/effect-uai/providers/responses/Responses",
 ) {}
 
-export interface Config {
+export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
 }
@@ -172,19 +171,18 @@ const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
  * and produce `Option.none`.
  */
 const eventToError = Match.type<ProviderEvent>().pipe(
-  matchType(
-    "error",
-    (e): AiError.AiError => new AiError.Unavailable({ provider: "responses", raw: e }),
-  ),
-  matchType("response.failed", (e): AiError.AiError => {
-    const code = e.response.error?.code
-    const message = e.response.error?.message
-    return new AiError.GenerationFailed({
-      provider: "responses",
-      ...(code !== undefined && code !== null && { code }),
-      ...(message !== undefined && message !== null && { message }),
-      raw: e,
-    })
+  Match.discriminators("type")({
+    error: (e): AiError.AiError => new AiError.Unavailable({ provider: "responses", raw: e }),
+    "response.failed": (e): AiError.AiError => {
+      const code = e.response.error?.code
+      const message = e.response.error?.message
+      return new AiError.GenerationFailed({
+        provider: "responses",
+        ...(code !== undefined && code !== null && { code }),
+        ...(message !== undefined && message !== null && { message }),
+        raw: e,
+      })
+    },
   }),
   Match.option,
 )

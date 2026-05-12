@@ -38,6 +38,10 @@
       "types": "./dist/domain/AiError.d.mts",
       "import": "./dist/domain/AiError.mjs"
     },
+    "./Audio": {
+      "types": "./dist/domain/Audio.d.mts",
+      "import": "./dist/domain/Audio.mjs"
+    },
     "./Image": {
       "types": "./dist/domain/Image.d.mts",
       "import": "./dist/domain/Image.mjs"
@@ -49,6 +53,10 @@
     "./Media": {
       "types": "./dist/domain/Media.d.mts",
       "import": "./dist/domain/Media.mjs"
+    },
+    "./Transcript": {
+      "types": "./dist/domain/Transcript.d.mts",
+      "import": "./dist/domain/Transcript.mjs"
     },
     "./Turn": {
       "types": "./dist/domain/Turn.d.mts",
@@ -65,6 +73,14 @@
     "./LanguageModel": {
       "types": "./dist/language-model/LanguageModel.d.mts",
       "import": "./dist/language-model/LanguageModel.mjs"
+    },
+    "./SpeechSynthesizer": {
+      "types": "./dist/speech-synthesizer/SpeechSynthesizer.d.mts",
+      "import": "./dist/speech-synthesizer/SpeechSynthesizer.mjs"
+    },
+    "./Transcriber": {
+      "types": "./dist/transcriber/Transcriber.d.mts",
+      "import": "./dist/transcriber/Transcriber.mjs"
     },
     "./Loop": {
       "types": "./dist/loop/Loop.d.mts",
@@ -121,6 +137,14 @@
     "./testing/MockProvider": {
       "types": "./dist/testing/MockProvider.d.mts",
       "import": "./dist/testing/MockProvider.mjs"
+    },
+    "./testing/MockSpeechSynthesizer": {
+      "types": "./dist/testing/MockSpeechSynthesizer.d.mts",
+      "import": "./dist/testing/MockSpeechSynthesizer.mjs"
+    },
+    "./testing/MockTranscriber": {
+      "types": "./dist/testing/MockTranscriber.d.mts",
+      "import": "./dist/testing/MockTranscriber.mjs"
     }
   },
   "publishConfig": {

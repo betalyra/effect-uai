@@ -1,0 +1,65 @@
+{
+  "name": "@effect-uai/openai-speech",
+  "version": "0.3.0",
+  "description": "OpenAI speech-to-text and text-to-speech provider for @effect-uai/core.",
+  "keywords": [
+    "ai",
+    "effect",
+    "openai",
+    "speech",
+    "stt",
+    "transcription",
+    "tts"
+  ],
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/openai-speech",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "license": "MIT",
+  "author": "Betalyra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai",
+    "directory": "packages/providers/openai-speech"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./OpenAITranscriber": {
+      "types": "./dist/OpenAITranscriber.d.mts",
+      "import": "./dist/OpenAITranscriber.mjs"
+    },
+    "./OpenAISynthesizer": {
+      "types": "./dist/OpenAISynthesizer.d.mts",
+      "import": "./dist/OpenAISynthesizer.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm typecheck && pnpm build"
+  },
+  "devDependencies": {
+    "@effect-uai/core": "workspace:*",
+    "effect": "4.0.0-beta.57",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@effect-uai/core": "workspace:>=0.2.0 <1",
+    "effect": "4.0.0-beta.57"
+  }
+}

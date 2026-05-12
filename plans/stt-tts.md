@@ -502,9 +502,9 @@ export type CommonStreamTranscribeRequest = Omit<CommonTranscribeRequest, "audio
 
 export type TranscriberService = {
   /**
-   * One-shot transcription. Returns the full result. Some providers
-   * (AWS Transcribe) have no real sync endpoint and emulate this by
-   * draining a streaming pipeline internally.
+   * One-shot transcription. Returns the full result. Universal —
+   * AWS Transcribe (which has no native sync endpoint) emulates this
+   * by draining a streaming session internally.
    */
   readonly transcribe: (
     request: CommonTranscribeRequest,
@@ -516,8 +516,8 @@ export type TranscriberService = {
    * released when the output stream is finalized (success, failure, or
    * interruption) — no explicit Scope handling needed at the call site.
    *
-   * Providers without a streaming endpoint emit `AiError.Unsupported`
-   * on the output stream's error channel.
+   * Gated by the `SttStreaming` capability marker — only providers
+   * that ship the marker in their Layer can be used here.
    */
   readonly streamTranscriptionFrom: <E, R>(
     audioIn: Stream.Stream<Uint8Array, E, R>,
@@ -526,8 +526,19 @@ export type TranscriberService = {
 }
 
 export class Transcriber extends Context.Service<Transcriber, TranscriberService>()(
-  "@betalyra/effect-uai/Transcriber",
+  "@effect-uai/Transcriber",
 ) {}
+
+/**
+ * Capability marker — provided by provider layers whose
+ * `streamTranscriptionFrom` is wired up at the wire level. Azure does
+ * not provide it (SDK-only at wire level). Calling
+ * `streamTranscriptionFrom` while only Azure's Layer is in scope fails
+ * at `Effect.provide` with a type error, not at runtime.
+ */
+export class SttStreaming extends Context.Tag(
+  "@effect-uai/capability/SttStreaming",
+)<SttStreaming, void>() {}
 
 export const transcribe = (
   request: CommonTranscribeRequest,
@@ -535,7 +546,9 @@ export const transcribe = (
   Effect.flatMap(Transcriber.asEffect(), (t) => t.transcribe(request))
 
 /**
- * Dual-arity: pipeable (data-last) and direct (data-first).
+ * Dual-arity: pipeable (data-last) and direct (data-first). Requires
+ * `SttStreaming` in R — providers without streaming-STT support are
+ * a type error at provide time.
  *
  * ```ts
  * // Pipeable — composes with other Stream operators
@@ -553,16 +566,20 @@ export const streamTranscriptionFrom: {
     request: CommonStreamTranscribeRequest,
   ): <E, R>(
     audioIn: Stream.Stream<Uint8Array, E, R>,
-  ) => Stream.Stream<TranscriptEvent, AiError.AiError | E, R | Transcriber>
+  ) => Stream.Stream<TranscriptEvent, AiError.AiError | E, R | Transcriber | SttStreaming>
   <E, R>(
     audioIn: Stream.Stream<Uint8Array, E, R>,
     request: CommonStreamTranscribeRequest,
-  ): Stream.Stream<TranscriptEvent, AiError.AiError | E, R | Transcriber>
+  ): Stream.Stream<TranscriptEvent, AiError.AiError | E, R | Transcriber | SttStreaming>
 } = Function.dual(
   2,
   <E, R>(audioIn: Stream.Stream<Uint8Array, E, R>, request: CommonStreamTranscribeRequest) =>
     Stream.unwrap(
-      Effect.map(Transcriber.asEffect(), (t) => t.streamTranscriptionFrom(audioIn, request)),
+      Effect.gen(function* () {
+        const t = yield* Transcriber
+        yield* SttStreaming  // phantom — no value used, marker contributes to R only
+        return t.streamTranscriptionFrom(audioIn, request)
+      }),
     ),
 )
 ```
@@ -598,8 +615,9 @@ export type CommonSynthesizeRequest = {
 
 /**
  * Incremental-synthesis request — text arrives as a `Stream<string>`.
- * Currently supported by ElevenLabs, Cartesia, Deepgram, and Google
- * (Chirp 3 HD only). All others emit `AiError.Unsupported`.
+ * Gated by the `TtsIncrementalText` capability marker; only provider
+ * layers that include the marker (ElevenLabs, Cartesia, Deepgram,
+ * Inworld, MiniMax, Google with Chirp 3 HD voices) accept calls here.
  *
  * Multi-context features (Cartesia `context_id`, ElevenLabs `multi-
  * stream-input`) are NOT exposed here — one logical utterance per call.
@@ -623,8 +641,10 @@ export type SpeechSynthesizerService = {
    * Incremental text in (as a Stream), audio chunks streamed out. The
    * underlying WS connection is acquired on first pull and released
    * when the output stream is finalized — no explicit Scope handling
-   * needed at the call site. Providers without a WS-style endpoint
-   * emit `AiError.Unsupported` on the output stream's error channel.
+   * needed at the call site.
+   *
+   * Gated by the `TtsIncrementalText` capability marker — only providers
+   * that ship the marker in their Layer can be used here.
    */
   readonly streamSynthesisFrom: <E, R>(
     textIn: Stream.Stream<string, E, R>,
@@ -633,8 +653,19 @@ export type SpeechSynthesizerService = {
 }
 
 export class SpeechSynthesizer extends Context.Service<SpeechSynthesizer, SpeechSynthesizerService>()(
-  "@betalyra/effect-uai/SpeechSynthesizer",
+  "@effect-uai/SpeechSynthesizer",
 ) {}
+
+/**
+ * Capability marker — provided by provider layers whose
+ * `streamSynthesisFrom` is wired up at the wire level. OpenAI, Azure
+ * (wire), and AWS Polly non-Generative do not provide it. Calling
+ * `streamSynthesisFrom` while only one of those Layers is in scope
+ * fails at `Effect.provide` with a type error.
+ */
+export class TtsIncrementalText extends Context.Tag(
+  "@effect-uai/capability/TtsIncrementalText",
+)<TtsIncrementalText, void>() {}
 
 export const synthesize = (
   request: CommonSynthesizeRequest,
@@ -647,7 +678,8 @@ export const streamSynthesis = (
   Stream.unwrap(Effect.map(SpeechSynthesizer.asEffect(), (s) => s.streamSynthesis(request)))
 
 /**
- * Dual-arity: pipeable (data-last) and direct (data-first).
+ * Dual-arity: pipeable (data-last) and direct (data-first). Requires
+ * `TtsIncrementalText` in R.
  *
  * ```ts
  * // Pipeable — chain straight off an LLM token stream
@@ -665,16 +697,20 @@ export const streamSynthesisFrom: {
     request: CommonStreamSynthesizeRequest,
   ): <E, R>(
     textIn: Stream.Stream<string, E, R>,
-  ) => Stream.Stream<AudioChunk, AiError.AiError | E, R | SpeechSynthesizer>
+  ) => Stream.Stream<AudioChunk, AiError.AiError | E, R | SpeechSynthesizer | TtsIncrementalText>
   <E, R>(
     textIn: Stream.Stream<string, E, R>,
     request: CommonStreamSynthesizeRequest,
-  ): Stream.Stream<AudioChunk, AiError.AiError | E, R | SpeechSynthesizer>
+  ): Stream.Stream<AudioChunk, AiError.AiError | E, R | SpeechSynthesizer | TtsIncrementalText>
 } = Function.dual(
   2,
   <E, R>(textIn: Stream.Stream<string, E, R>, request: CommonStreamSynthesizeRequest) =>
     Stream.unwrap(
-      Effect.map(SpeechSynthesizer.asEffect(), (s) => s.streamSynthesisFrom(textIn, request)),
+      Effect.gen(function* () {
+        const s = yield* SpeechSynthesizer
+        yield* TtsIncrementalText  // phantom — marker contributes to R only
+        return s.streamSynthesisFrom(textIn, request)
+      }),
     ),
 )
 ```
@@ -749,20 +785,97 @@ export class OpenAITranscriber extends Context.Service<OpenAITranscriber, OpenAI
 
 Yielding `OpenAITranscriber` gives you the typed request with `temperature` / `responseFormat`; yielding the generic `Transcriber` gives you the cross-provider shape.
 
-## Capability gaps and the `Unsupported` rule
+## Capability gating — two-layer strategy
 
-Every method that a provider cannot implement at the wire level fails with `AiError.Unsupported` rather than throwing or returning empty. This keeps the service type uniform and forces consumers to handle the case explicitly.
+Capability gaps come in two flavors. The strategy uses Effect's R channel for one, runtime errors for the other.
 
-| Provider          | `transcribe`         | `streamTranscriptionFrom` | `synthesize` | `streamSynthesis` | `streamSynthesisFrom` |
-|-------------------|----------------------|---------------------------|--------------|-------------------|------------------------|
-| OpenAI            | ok                   | ok (Realtime WS)          | ok           | ok (chunked HTTP) | **Unsupported**        |
-| Google            | ok                   | ok (gRPC bidi)            | ok           | ok                | ok (Chirp 3 HD only — `Unsupported` for other voices) |
-| ElevenLabs        | ok                   | ok                        | ok           | ok                | ok                     |
-| Deepgram          | ok                   | ok                        | ok           | ok                | ok                     |
-| Cartesia          | (synth via streaming)| ok                        | ok           | ok                | ok                     |
-| Azure             | ok                   | **Unsupported** (SDK-only at wire level) | ok | ok | **Unsupported** (SDK-only) |
-| AWS Transcribe    | (synth via streaming)| ok                        | n/a          | n/a               | n/a                    |
-| AWS Polly         | n/a                  | n/a                       | ok           | ok                | **Unsupported** (non-Generative) |
+### Layer 1: provider-level gaps → R-channel marker tags (compile-time)
+
+For methods a provider can *never* offer at the wire level (independent of request data), the top-level helper threads a phantom marker tag into the `R` channel. Provider layers only include the marker in their output type if the provider supports it. Calling a gated method on a provider that doesn't supply the marker fails at `Effect.provide` — type error, no runtime check.
+
+```ts
+// In core/src/speech-synthesizer/SpeechSynthesizer.ts
+export class TtsIncrementalText extends Context.Tag(
+  "@effect-uai/capability/TtsIncrementalText",
+)<TtsIncrementalText, void>() {}
+
+// In core/src/transcriber/Transcriber.ts
+export class SttStreaming extends Context.Tag(
+  "@effect-uai/capability/SttStreaming",
+)<SttStreaming, void>() {}
+```
+
+The top-level helpers yield the marker so it bubbles into `R`:
+
+```ts
+export const streamSynthesisFrom: {
+  (req: CommonStreamSynthesizeRequest): <E, R>(
+    textIn: Stream.Stream<string, E, R>,
+  ) => Stream.Stream<AudioChunk, AiError.AiError | E, R | SpeechSynthesizer | TtsIncrementalText>
+  // ...
+}
+```
+
+Provider layers declare what they provide:
+
+```ts
+export const ElevenLabsLive: Layer.Layer<SpeechSynthesizer | TtsIncrementalText>
+export const OpenAILive:     Layer.Layer<SpeechSynthesizer>                       // no TtsIncrementalText
+```
+
+Call site:
+
+```ts
+const audio = textStream.pipe(SpeechSynthesizer.streamSynthesisFrom(req))
+// audio: Stream<..., ..., SpeechSynthesizer | TtsIncrementalText>
+
+audio.pipe(Effect.provide(ElevenLabsLive))   // compiles
+audio.pipe(Effect.provide(OpenAILive))       // type error: TtsIncrementalText not provided
+```
+
+**Two markers** cover the genuinely-rare hard gaps without cluttering common-case signatures:
+
+| Marker                 | Gates                       | Why marker-worthy |
+|------------------------|-----------------------------|-------------------|
+| `TtsIncrementalText`   | `streamSynthesisFrom`       | Rare — OpenAI, Azure (wire), AWS Polly non-Generative can't offer it. |
+| `SttStreaming`         | `streamTranscriptionFrom`   | Rare-ish — Azure can't offer it at the wire level. Most STT providers can. |
+
+**Methods without markers** (universal across providers that ship the service tag):
+- `Transcriber.transcribe` — universal except AWS Transcribe, which emulates by draining a streaming session.
+- `SpeechSynthesizer.synthesize` — universal.
+- `SpeechSynthesizer.streamSynthesis` (chunked HTTP) — universal.
+
+**Service-level gaps** (provider doesn't ship the tag at all):
+- MiniMax — no STT → `@effect-uai/minimax` doesn't export a `Transcriber` Layer. Callers see `Transcriber` missing from R; no marker needed.
+- Hume — no STT → same.
+
+### Layer 2: request-data-dependent gaps → `AiError.Unsupported` (runtime)
+
+Some gaps depend on values in the request itself, which can't be expressed in the type system without unwieldy template literal types or branded strings. These stay as runtime errors:
+
+- **Google `streamSynthesisFrom`** works only for voice IDs matching `*-Chirp3-HD-*`. Same Layer, same provider — validity depends on `voiceId` string at runtime → `Unsupported` if the voice isn't Chirp 3 HD.
+- **OpenAI `wordTimestamps`** requires `whisper-1` + `verbose_json`; using it on `gpt-4o-transcribe` → `Unsupported`.
+- **MiniMax `subtitle_enable`** is restricted to `speech-01-*` models → `Unsupported` on others.
+
+`AiError.Unsupported` is therefore narrower than originally planned — it fires only when request data makes a method invalid for the otherwise-supported provider, not for blanket provider-level gaps.
+
+### Updated capability matrix
+
+`Type` = compile-time R-channel marker. `Runtime` = `AiError.Unsupported` on call. `n/a` = service tag not provided.
+
+| Provider          | `transcribe`         | `streamTranscriptionFrom`             | `synthesize` | `streamSynthesis` | `streamSynthesisFrom`                  |
+|-------------------|----------------------|---------------------------------------|--------------|-------------------|----------------------------------------|
+| OpenAI            | ok                   | provides `SttStreaming` (Realtime WS) | ok           | ok (chunked HTTP) | **does not provide `TtsIncrementalText`** |
+| Google            | ok                   | provides `SttStreaming` (gRPC bidi)   | ok           | ok                | provides `TtsIncrementalText` — `Runtime Unsupported` if voiceId ≠ `*-Chirp3-HD-*` |
+| ElevenLabs        | ok                   | provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText`          |
+| Deepgram          | ok                   | provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText`          |
+| Cartesia          | (emulated)           | provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText`          |
+| Inworld           | ok (`[docs unclear]`)| provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText` (Realtime API protocol) |
+| MiniMax           | `Transcriber` n/a    | `Transcriber` n/a                     | ok           | ok                | provides `TtsIncrementalText`          |
+| Azure             | ok                   | **does not provide `SttStreaming`**   | ok           | ok                | **does not provide `TtsIncrementalText`** |
+| AWS Transcribe    | (emulated)           | provides `SttStreaming`               | n/a          | n/a               | n/a                                    |
+| AWS Polly         | n/a                  | n/a                                   | ok           | ok                | **does not provide `TtsIncrementalText`** |
+| Hume              | `Transcriber` n/a    | `Transcriber` n/a                     | ok           | ok                | provides `TtsIncrementalText`          |
 
 ---
 
@@ -794,8 +907,8 @@ Rationale for splitting Google: the speech SDKs add ~3MB of dependencies and pin
 1. `packages/core/src/domain/Audio.ts` — `AudioMimeType`, `AudioSource`, `AudioFormat`, `AudioChunk`, `AudioBlob`, type guards.
 2. `packages/core/src/domain/Transcript.ts` — `WordTimestamp`, `TranscriptResult`, `TranscriptEvent`, type guards.
 3. `packages/core/src/domain/AiError.ts` — add `Unsupported` variant if not already present (for capability gaps).
-4. `packages/core/src/transcriber/Transcriber.ts` — service tag, `CommonTranscribeRequest`, `CommonStreamTranscribeRequest`, top-level `transcribe` + dual-arity `streamTranscriptionFrom`.
-5. `packages/core/src/speech-synthesizer/SpeechSynthesizer.ts` — service tag, `CommonSynthesizeRequest`, `CommonStreamSynthesizeRequest`, top-level `synthesize` / `streamSynthesis` + dual-arity `streamSynthesisFrom`.
+4. `packages/core/src/transcriber/Transcriber.ts` — `Transcriber` service tag, `SttStreaming` capability marker, `CommonTranscribeRequest`, `CommonStreamTranscribeRequest`, top-level `transcribe` + dual-arity `streamTranscriptionFrom` (requires `SttStreaming` in R).
+5. `packages/core/src/speech-synthesizer/SpeechSynthesizer.ts` — `SpeechSynthesizer` service tag, `TtsIncrementalText` capability marker, `CommonSynthesizeRequest`, `CommonStreamSynthesizeRequest`, top-level `synthesize` / `streamSynthesis` + dual-arity `streamSynthesisFrom` (requires `TtsIncrementalText` in R).
 6. `packages/core/src/index.ts` — add exports `Audio`, `Transcript`, `Transcriber`, `SpeechSynthesizer`.
 7. `packages/core/src/testing/` — mock `TranscriberLive` / `SpeechSynthesizerLive` layers that emit scripted events for use in recipe tests.
 

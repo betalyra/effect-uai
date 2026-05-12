@@ -80,6 +80,26 @@ export class IncompleteTurn extends Data.TaggedError("IncompleteTurn")<{
   raw?: unknown
 }> {}
 
+/**
+ * The provider does not implement the requested capability for this
+ * specific request. Distinct from `InvalidRequest` (the request shape is
+ * malformed) and `AuthFailed` (the request was rejected).
+ *
+ * Reserved for request-data-dependent gaps where the provider supports
+ * the method in general but not for these inputs — e.g. Google's
+ * `streamSynthesisFrom` works only for Chirp 3 HD voices; calling it
+ * with a Neural2 voice ID fails `Unsupported`.
+ *
+ * Blanket provider-level gaps (e.g. OpenAI has no incremental-text-in
+ * TTS at all) are gated at compile time via capability marker tags
+ * (`TtsIncrementalText`, `SttStreaming`) on the R channel instead.
+ */
+export class Unsupported extends Data.TaggedError("Unsupported")<{
+  provider: string
+  capability: string
+  reason?: string
+}> {}
+
 export type AiError =
   | RateLimited
   | Unavailable
@@ -91,3 +111,4 @@ export type AiError =
   | Cancelled
   | IncompleteTurn
   | GenerationFailed
+  | Unsupported

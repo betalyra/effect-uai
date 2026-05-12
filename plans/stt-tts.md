@@ -887,7 +887,8 @@ Order: providers that fit the existing HTTP-only mold first (OpenAI), then Eleve
 
 | Package                       | Contents                                       | Status                                     |
 |-------------------------------|------------------------------------------------|--------------------------------------------|
-| `@effect-uai/responses`       | OpenAI LLM, embeddings, **STT, TTS**           | extend existing — same HTTP API, same auth |
+| `@effect-uai/responses`       | OpenAI Responses API (LLM, embeddings)         | unchanged                                  |
+| `@effect-uai/openai-speech`   | OpenAI STT, TTS                                | **new** — separate from `responses` because `responses` is named after the Responses API protocol, not the provider |
 | `@effect-uai/google`          | Gemini LLM, embeddings                         | unchanged                                  |
 | `@effect-uai/google-speech`   | Google STT, TTS                                | **new** — depends on `@google-cloud/speech` and `@google-cloud/text-to-speech` |
 | `@effect-uai/elevenlabs`      | ElevenLabs STT, TTS                            | new                                        |
@@ -896,7 +897,9 @@ Order: providers that fit the existing HTTP-only mold first (OpenAI), then Eleve
 | `@effect-uai/deepgram`        | Deepgram STT, TTS                              | new                                        |
 | `@effect-uai/cartesia`        | Cartesia STT, TTS                              | new                                        |
 
-Rationale for splitting Google: the speech SDKs add ~3MB of dependencies and pin a different transport stack (gRPC via `@google-cloud/speech` → `google-gax` → `@grpc/grpc-js`) than the REST-based Gemini adapter. Users who only need Gemini shouldn't have to install or audit those deps. OpenAI STT/TTS, by contrast, uses the same `api.openai.com` HTTP surface and same bearer-token auth as the existing Responses adapter — extending in place adds zero deps.
+Rationale for splitting OpenAI: `@effect-uai/responses` is named after OpenAI's *Responses API* protocol (the `/v1/responses` endpoint plus the embeddings endpoint that shares its shape), not after the provider. OpenAI's audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/speech`) have different request/response shapes and don't belong in a package named after a different API surface. They live in `@effect-uai/openai-speech` instead.
+
+Rationale for splitting Google: the speech SDKs add ~3MB of dependencies and pin a different transport stack (gRPC via `@google-cloud/speech` → `google-gax` → `@grpc/grpc-js`) than the REST-based Gemini adapter. Users who only need Gemini shouldn't have to install or audit those deps.
 
 ## Runtime support note
 
@@ -914,23 +917,31 @@ Rationale for splitting Google: the speech SDKs add ~3MB of dependencies and pin
 
 **Exit criteria**: types compile; mock layers pass a basic round-trip test (push 3 audio chunks, see 3 partials + 1 final).
 
-## Phase 1 — OpenAI (`@effect-uai/responses` package)
+## Phase 1 — OpenAI (new `@effect-uai/openai-speech` package)
 
-Existing package, adding two new modules:
+Split from `@effect-uai/responses` (which is named after OpenAI's Responses API protocol, not the provider). The audio endpoints live in their own package so the Responses package stays focused on its protocol surface.
 
-1. `OpenAITranscriber.ts`
-   - `transcribe`: `POST /v1/audio/transcriptions` (multipart). Handle `verbose_json` for word timestamps when `wordTimestamps=true`.
-   - `streamTranscriptionFrom`: returned `Stream` is `Stream.scoped` — acquires a WebSocket to `wss://api.openai.com/v1/realtime?intent=transcription`, sends `transcription_session.update` first frame derived from `CommonStreamTranscribeRequest`, then forks a fiber that drains the input audio stream into `input_audio_buffer.append` frames. Server events are decoded into `TranscriptEvent`s (`*.delta` → `partial`, `*.completed` → `final`, `speech_started`/`speech_stopped` → `speech-started`/`utterance-ended`). Input-stream end → close WS via Scope finalizer.
-2. `OpenAISynthesizer.ts`
-   - `synthesize`: `POST /v1/audio/speech`. Buffer chunked HTTP response into `AudioBlob`.
-   - `streamSynthesis`: same endpoint, surface chunks as `Stream<AudioChunk>` via `Stream.fromReadableStream` (or SSE decode when `stream_format=sse` for gpt-4o-mini-tts).
-   - `streamSynthesisFrom`: returns `Stream.fail(AiError.Unsupported)` — no incremental text-in.
-3. `models.ts`: add `OpenAITranscribeModel`, `OpenAITtsModel`, `OpenAIVoiceId`.
-4. `codec.ts`: encoders for `CommonTranscribeRequest` → multipart, `CommonSynthesizeRequest` → JSON.
-5. `index.ts`: export new namespaces.
-6. Recipe: `recipes/basic-transcription` (sync), `recipes/basic-speech-synthesis` (sync + chunked stream), `recipes/streaming-transcription` (Realtime WS).
+**1a — Sync STT + sync/streaming TTS (shipped):**
 
-**Exit criteria**: end-to-end test against the live API using `OPENAI_API_KEY` (gated behind env var); sample WAV → transcript; sample text → mp3 bytes.
+1. Package scaffold mirroring `@effect-uai/responses`.
+2. `models.ts`: `OpenAITranscribeModel`, `OpenAITtsModel`, `OpenAIVoiceId` (stock-only — no `(string & {})` escape).
+3. `codec.ts`: `audioToBlob` (Match over `AudioSource` variants; URL → `InvalidRequest`), `defaultFileName` (MIME → `audio.<ext>`), `containerToResponseFormat` / `realizedFormat` (Match), shared `httpStatusError` + `transportFailure` helpers.
+4. `OpenAITranscriber.ts`
+   - `transcribe`: `POST /v1/audio/transcriptions` (multipart). `wordTimestamps: true` requires `whisper-1` → fails `Unsupported` on GPT-4o models. `diarization: true` → `Unsupported`. Verbose JSON path returns per-word `WordTimestamp`s.
+   - `streamTranscriptionFrom`: returns `Stream.fail(Unsupported)`. Layer **does not register `SttStreaming`** — callers get a compile-time error against this Layer alone.
+5. `OpenAISynthesizer.ts`
+   - `synthesize`: `POST /v1/audio/speech`. Buffers chunked response into `AudioBlob` (24 kHz fixed; `pcm` → `raw`+`pcm_s16le`).
+   - `streamSynthesis`: same endpoint, surfaces raw bytes as `Stream<AudioChunk>` via `response.stream`.
+   - `streamSynthesisFrom`: returns `Stream.fail(Unsupported)`. Layer **does not register `TtsIncrementalText`** — same compile-time gating.
+
+**1b — Realtime WebSocket streaming (follow-up):**
+
+1. Add `ws` peer dep + custom `WebSocketConstructor` Layer that supports headers (`Authorization: Bearer …` + `OpenAI-Beta: realtime=v1`).
+2. Wire `streamTranscriptionFrom` to `wss://api.openai.com/v1/realtime?intent=transcription`: send `transcription_session.update` first frame; drain input audio as `input_audio_buffer.append` frames; decode server events to `TranscriptEvent` (`*.delta` → `partial`, `*.completed` → `final`, `speech_started`/`speech_stopped` → VAD events). Close WS via Scope finalizer.
+3. Layer now also registers the `SttStreaming` capability marker.
+4. Recipe: `recipes/streaming-transcription` (live mic → transcript).
+
+**Phase 1a exit criteria**: end-to-end test against the live API using `OPENAI_API_KEY` (gated behind env var); sample WAV → transcript; sample text → mp3 bytes.
 
 ## Phase 2 — ElevenLabs (new `@effect-uai/elevenlabs` package)
 

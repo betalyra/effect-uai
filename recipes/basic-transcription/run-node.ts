@@ -21,7 +21,7 @@ import * as Socket from "effect/unstable/socket/Socket"
 import type { AudioMimeType, AudioSource } from "@effect-uai/core/Audio"
 import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsTranscriber"
 import { layer as geminiLayer } from "@effect-uai/google/GeminiTranscriber"
-import { layer as openaiLayer } from "@effect-uai/openai-speech/OpenAITranscriber"
+import { layer as openaiLayer } from "@effect-uai/openai/OpenAITranscriber"
 import { transcribeFast, transcribeVerbose, type Provider } from "./index.js"
 
 const mimeForExt: (ext: string) => AudioMimeType = Match.type<string>().pipe(

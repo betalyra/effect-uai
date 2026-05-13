@@ -16,7 +16,7 @@ import { FetchHttpClient } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsSynthesizer"
 import { layer as geminiLayer } from "@effect-uai/google/GeminiSynthesizer"
-import { layer as openaiLayer } from "@effect-uai/openai-speech/OpenAISynthesizer"
+import { layer as openaiLayer } from "@effect-uai/openai/OpenAISynthesizer"
 import { outputExtFor, synthesizeOneShot, synthesizeStreaming, type Provider } from "./index.js"
 
 type Mode = "one-shot" | "streaming" | "both"

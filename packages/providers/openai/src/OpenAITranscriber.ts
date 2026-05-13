@@ -45,7 +45,7 @@ export type OpenAITranscriberService = {
 export class OpenAITranscriber extends Context.Service<
   OpenAITranscriber,
   OpenAITranscriberService
->()("@betalyra/effect-uai/providers/openai-speech/OpenAITranscriber") {}
+>()("@betalyra/effect-uai/providers/openai/OpenAITranscriber") {}
 
 export type Config = {
   readonly apiKey: Redacted.Redacted

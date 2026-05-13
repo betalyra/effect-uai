@@ -986,7 +986,7 @@ Order: providers that fit the existing HTTP-only mold first (OpenAI), then Eleve
 | Package                           | Contents                                                                            | Status                                                                                                                          |
 | --------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `@effect-uai/responses`           | OpenAI Responses API (LLM, embeddings)                                              | unchanged                                                                                                                       |
-| `@effect-uai/openai-speech`       | OpenAI STT, TTS                                                                     | **new** — separate from `responses` because `responses` is named after the Responses API protocol, not the provider             |
+| `@effect-uai/openai`              | OpenAI STT, TTS                                                                     | **new** — separate from `responses` because `responses` is named after the Responses API protocol, not the provider             |
 | `@effect-uai/google`              | Gemini LLM, embeddings, **Gemini speech (TTS + audio understanding via REST+JSON)** | extended — sync TTS + sync (prompt-based) STT via `generateContent`. No gRPC.                                                   |
 | `@effect-uai/google-cloud-speech` | Google Cloud STT, Cloud TTS                                                         | **new** — depends on `@google-cloud/speech` and `@google-cloud/text-to-speech`. Adds streaming + word timestamps + diarization. |
 | `@effect-uai/elevenlabs`          | ElevenLabs STT, TTS                                                                 | new                                                                                                                             |
@@ -995,7 +995,7 @@ Order: providers that fit the existing HTTP-only mold first (OpenAI), then Eleve
 | `@effect-uai/deepgram`            | Deepgram STT, TTS                                                                   | new                                                                                                                             |
 | `@effect-uai/cartesia`            | Cartesia STT, TTS                                                                   | new                                                                                                                             |
 
-Rationale for splitting OpenAI: `@effect-uai/responses` is named after OpenAI's _Responses API_ protocol (the `/v1/responses` endpoint plus the embeddings endpoint that shares its shape), not after the provider. OpenAI's audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/speech`) have different request/response shapes and don't belong in a package named after a different API surface. They live in `@effect-uai/openai-speech` instead.
+Rationale for splitting OpenAI: `@effect-uai/responses` is named after OpenAI's _Responses API_ protocol (the `/v1/responses` endpoint plus the embeddings endpoint that shares its shape), not after the provider. OpenAI's audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/speech`) have different request/response shapes and don't belong in a package named after a different API surface. They live in `@effect-uai/openai` instead.
 
 Rationale for splitting Google into two packages: the Gemini API exposes both TTS and audio understanding over REST+JSON ([speech-generation docs](https://ai.google.dev/gemini-api/docs/speech-generation), [audio docs](https://ai.google.dev/gemini-api/docs/audio)) — same transport stack as the existing Gemini adapter, so it folds into `@effect-uai/google` with **zero new deps**. The dedicated Cloud Speech / Cloud TTS APIs require gRPC (`@google-cloud/speech` → `google-gax` → `@grpc/grpc-js`, ~3 MB) but unlock streaming STT, streaming TTS, word timestamps, diarization, and SSML — features the Gemini API doesn't expose. Users who only need sync Google speech pay nothing for gRPC; users who need streaming opt into `@effect-uai/google-cloud-speech`.
 
@@ -1015,7 +1015,7 @@ Rationale for splitting Google into two packages: the Gemini API exposes both TT
 
 **Exit criteria**: types compile; mock layers pass a basic round-trip test (push 3 audio chunks, see 3 partials + 1 final).
 
-## Phase 1 — OpenAI (new `@effect-uai/openai-speech` package)
+## Phase 1 — OpenAI (new `@effect-uai/openai` package)
 
 Split from `@effect-uai/responses` (which is named after OpenAI's Responses API protocol, not the provider). The audio endpoints live in their own package so the Responses package stays focused on its protocol surface.
 

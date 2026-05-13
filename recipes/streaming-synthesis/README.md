@@ -37,4 +37,4 @@ Open <http://localhost:3000>, paste text, click **Synthesize**. Audio should sta
 
 ## Provider markers
 
-`SpeechSynthesizer.streamSynthesisFrom` is gated by the `TtsIncrementalText` capability marker on the R channel. `@effect-uai/elevenlabs/ElevenLabsSynthesizer` registers the marker, so the code compiles. A Layer that doesn't register it (e.g. `@effect-uai/openai-speech/OpenAISynthesizer`, where OpenAI offers no incremental-text-in TTS) would fail at `Effect.provide` with a type error — not at runtime.
+`SpeechSynthesizer.streamSynthesisFrom` is gated by the `TtsIncrementalText` capability marker on the R channel. `@effect-uai/elevenlabs/ElevenLabsSynthesizer` registers the marker, so the code compiles. A Layer that doesn't register it (e.g. `@effect-uai/openai/OpenAISynthesizer`, where OpenAI offers no incremental-text-in TTS) would fail at `Effect.provide` with a type error — not at runtime.

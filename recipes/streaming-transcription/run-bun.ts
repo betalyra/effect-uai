@@ -5,25 +5,69 @@
  * inbound mic frames → `Transcriber.streamTranscriptionFrom` → JSON
  * TranscriptEvents back over the same socket.
  *
- *   ELEVENLABS_API_KEY=... bun recipes/streaming-transcription/run-bun.ts
+ *   # Default: OpenAI Realtime
+ *   OPENAI_API_KEY=sk-... bun recipes/streaming-transcription/run-bun.ts
+ *
+ *   # ElevenLabs
+ *   ELEVENLABS_API_KEY=... bun recipes/streaming-transcription/run-bun.ts --provider elevenlabs
  */
 import * as path from "node:path"
-import { Cause, Config, Effect, Layer, ManagedRuntime, Queue, Stream } from "effect"
+import { Cause, Config, Effect, Layer, ManagedRuntime, Match, Queue, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsTranscriber"
-import { transcribeMicStream } from "./index.js"
+import { layer as openaiLayer } from "@effect-uai/openai/OpenAIRealtimeTranscriber"
+import { providerConfig, transcribeMicStream, type Provider } from "./index.js"
+
+// ---------------------------------------------------------------------------
+// CLI args
+// ---------------------------------------------------------------------------
+
+const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefined => {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : undefined
+}
+
+const parseProvider = (argv: ReadonlyArray<string>): Provider =>
+  Match.value(flagValue(argv, "--provider") ?? "openai").pipe(
+    Match.whenOr("openai", "elevenlabs", (p): Provider => p),
+    Match.orElse(() => {
+      console.error("Usage: bun run-bun.ts [--provider openai|elevenlabs]")
+      process.exit(1)
+    }),
+  )
+
+const provider = parseProvider(process.argv.slice(2))
+const { inputFormat } = providerConfig(provider)
 
 // ---------------------------------------------------------------------------
 // App runtime — Layer is built once and reused across all WS connections.
 // ---------------------------------------------------------------------------
 
-const appLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
-    return elevenlabsLayer({ apiKey })
-  }),
-).pipe(Layer.provide(FetchHttpClient.layer), Layer.provide(Socket.layerWebSocketConstructorGlobal))
+const layerFor = Match.type<Provider>().pipe(
+  Match.when("openai", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+        return openaiLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.when("elevenlabs", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
+        return elevenlabsLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.exhaustive,
+)
+
+const appLayer = layerFor(provider).pipe(
+  Layer.provide(FetchHttpClient.layer),
+  Layer.provide(Socket.layerWebSocketConstructorGlobal),
+)
 
 const runtime = ManagedRuntime.make(appLayer)
 
@@ -35,7 +79,7 @@ type AudioQueue = Queue.Queue<Uint8Array, Cause.Done<void>>
 
 const pipeline = (queue: AudioQueue, send: (json: string) => void) =>
   Stream.fromQueue(queue).pipe(
-    transcribeMicStream,
+    transcribeMicStream(provider),
     Stream.runForEach((event) => Effect.sync(() => send(JSON.stringify(event)))),
     Effect.tapCause((cause) =>
       // Clean teardown (browser disconnect, upstream WS close) shows up as
@@ -64,6 +108,8 @@ if (!built.success) {
 const clientJs = await built.outputs[0]!.text()
 const indexHtml = await Bun.file(path.join(recipeDir, "public/index.html")).text()
 const audioWorkletJs = await Bun.file(path.join(recipeDir, "public/audio-worklet.js")).text()
+
+const configJson = JSON.stringify({ provider, sampleRate: inputFormat.sampleRate })
 
 // ---------------------------------------------------------------------------
 // Bun.serve
@@ -124,6 +170,7 @@ Bun.serve<WsData>({
     "/": responseOf(indexHtml, "text/html; charset=utf-8"),
     "/client.js": responseOf(clientJs, "application/javascript; charset=utf-8"),
     "/audio-worklet.js": responseOf(audioWorkletJs, "application/javascript; charset=utf-8"),
+    "/config": responseOf(configJson, "application/json; charset=utf-8"),
     "/ws": (req, server) => {
       const queue = Effect.runSync(Queue.unbounded<Uint8Array, Cause.Done<void>>())
       const upgraded = server.upgrade(req, { data: { queue } })
@@ -151,4 +198,6 @@ Bun.serve<WsData>({
   },
 })
 
-console.log(`streaming-transcription recipe → http://localhost:${port}`)
+console.log(
+  `streaming-transcription recipe (${provider}, ${inputFormat.sampleRate} Hz) → http://localhost:${port}`,
+)

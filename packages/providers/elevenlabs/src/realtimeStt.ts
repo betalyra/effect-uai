@@ -3,9 +3,10 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
+import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent, WordTimestamp } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
-import { httpStatusError, parseJson, transportFailure } from "./codec.js"
+import { httpStatusError, transportFailure } from "./codec.js"
 
 export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
 
@@ -188,7 +189,7 @@ export const encodeAudioFrame = (bytes: Uint8Array, sampleRate: number) =>
 
 const handleServerMessage = (queue: Queue.Queue<TranscriptEvent>) => (raw: string) =>
   Effect.gen(function* () {
-    const json = yield* parseJson(raw)
+    const json = yield* JSONL.parseSafe(raw)
     if (json === undefined) return
     const decoded = yield* decodeServerMessage(json).pipe(Effect.option)
     if (decoded._tag === "None") return

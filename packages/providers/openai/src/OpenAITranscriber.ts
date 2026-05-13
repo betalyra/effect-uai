@@ -175,7 +175,8 @@ const decodeResponse = (
 
 const baseUrl = (cfg: Config): string => cfg.baseUrl ?? "https://api.openai.com/v1"
 
-const transcribeImpl =
+/** Exported for reuse by `OpenAIRealtimeTranscriber` (same sync path). */
+export const transcribeImpl =
   (cfg: Config) =>
   (
     request: OpenAITranscribeRequest,
@@ -201,11 +202,12 @@ const transcribeImpl =
 // ---------------------------------------------------------------------------
 
 /**
- * Until Realtime WebSocket streaming lands (Phase 1 follow-up), the
- * streaming method returns `Unsupported`. The provider Layer also does
- * NOT register the `SttStreaming` capability marker, so callers using
- * `Transcriber.streamTranscriptionFrom` against only OpenAI's Layer
- * get a compile-time error before this runtime fallback ever fires.
+ * Sync-only Layer's streaming impl. For live transcription, import the
+ * `OpenAIRealtimeTranscriber` subpath instead — it registers `SttStreaming`
+ * and wires the Realtime WS endpoint. Provided here so the sync Layer can
+ * still satisfy the `TranscriberService` shape; the marker absence makes
+ * `Transcriber.streamTranscriptionFrom` calls a compile-time error against
+ * this Layer alone.
  */
 const streamUnsupported = <E, R>(
   _audioIn: Stream.Stream<Uint8Array, E, R>,
@@ -236,11 +238,10 @@ export const make = (
   }))
 
 /**
- * Layer that registers both `OpenAITranscriber` and the generic
- * `Transcriber` tag, sharing one underlying implementation.
- *
- * Does NOT register the `SttStreaming` capability marker — Realtime
- * WebSocket streaming is a Phase 1 follow-up.
+ * Sync-only Layer. Registers `OpenAITranscriber` + the generic `Transcriber`
+ * tag. Does **not** register the `SttStreaming` capability marker — for
+ * live transcription use `@effect-uai/openai/OpenAIRealtimeTranscriber`,
+ * which uses the Realtime WS endpoint and the `ws` peer dep.
  */
 export const layer = (
   cfg: Config,

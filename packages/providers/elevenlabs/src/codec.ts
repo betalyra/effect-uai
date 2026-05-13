@@ -25,17 +25,6 @@ export const wireVoiceSettings = (v: VoiceSettings | undefined) =>
         ...(v.speed !== undefined && { speed: v.speed }),
       }
 
-/**
- * Best-effort JSON parse. Returns the parsed value or `undefined` on
- * malformed input — both realtime helpers want to skip non-JSON
- * frames silently rather than fail the whole session.
- */
-export const parseJson = (raw: string) =>
-  Effect.try({
-    try: () => JSON.parse(raw) as unknown,
-    catch: () => undefined,
-  }).pipe(Effect.orElseSucceed(() => undefined))
-
 // ---------------------------------------------------------------------------
 // AudioFormat → ElevenLabs `output_format` query value
 // ---------------------------------------------------------------------------

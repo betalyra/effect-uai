@@ -18,6 +18,7 @@ import * as path from "node:path"
 import { Config, Effect, Layer, Logger, Match, References } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import type { AudioMimeType, AudioSource } from "@effect-uai/core/Audio"
+import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsTranscriber"
 import { layer as geminiLayer } from "@effect-uai/google/GeminiTranscriber"
 import { layer as openaiLayer } from "@effect-uai/openai-speech/OpenAITranscriber"
 import { transcribeFast, transcribeVerbose, type Provider } from "./index.js"
@@ -34,7 +35,7 @@ const mimeForExt: (ext: string) => AudioMimeType = Match.type<string>().pipe(
 
 const usage = (): never => {
   console.error(
-    `Usage: pnpm tsx recipes/basic-transcription/run-node.ts [--provider openai|gemini] <audio-file>`,
+    `Usage: pnpm tsx recipes/basic-transcription/run-node.ts [--provider openai|gemini|elevenlabs] <audio-file>`,
   )
   process.exit(1)
 }
@@ -46,7 +47,7 @@ const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefine
 
 const parseProvider = (argv: ReadonlyArray<string>): Provider =>
   Match.value(flagValue(argv, "--provider") ?? "openai").pipe(
-    Match.whenOr("openai", "gemini", (p): Provider => p),
+    Match.whenOr("openai", "gemini", "elevenlabs", (p): Provider => p),
     Match.orElse(usage),
   )
 
@@ -77,6 +78,14 @@ const layerFor = Match.type<Provider>().pipe(
       Effect.gen(function* () {
         const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
         return geminiLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.when("elevenlabs", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
+        return elevenlabsLayer({ apiKey })
       }),
     ),
   ),

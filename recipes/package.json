@@ -9,6 +9,7 @@
   "dependencies": {
     "@effect-uai/anthropic": "workspace:*",
     "@effect-uai/core": "workspace:*",
+    "@effect-uai/elevenlabs": "workspace:*",
     "@effect-uai/google": "workspace:*",
     "@effect-uai/jina": "workspace:*",
     "@effect-uai/openai-speech": "workspace:*",

@@ -27,11 +27,12 @@ import { Match } from "effect"
 import type { AudioSource } from "@effect-uai/core/Audio"
 import * as Transcriber from "@effect-uai/core/Transcriber"
 
-export type Provider = "openai" | "gemini"
+export type Provider = "openai" | "gemini" | "elevenlabs"
 
 const fastModelFor = Match.type<Provider>().pipe(
   Match.when("openai", () => "gpt-4o-transcribe"),
   Match.when("gemini", () => "gemini-2.5-flash"),
+  Match.when("elevenlabs", () => "scribe_v2"),
   Match.exhaustive,
 )
 

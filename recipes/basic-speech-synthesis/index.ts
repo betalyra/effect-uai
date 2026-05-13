@@ -15,7 +15,7 @@ import { Array, Effect, Match, Stream } from "effect"
 import type { AudioChunk } from "@effect-uai/core/Audio"
 import * as SpeechSynthesizer from "@effect-uai/core/SpeechSynthesizer"
 
-export type Provider = "openai" | "gemini"
+export type Provider = "openai" | "gemini" | "elevenlabs"
 
 const phrase = "Hello from effect-uai. This is a short test of speech synthesis."
 
@@ -37,6 +37,17 @@ const requestFor = Match.type<Provider>().pipe(
       channels: 1,
     } as const,
   })),
+  Match.when("elevenlabs", () => ({
+    text: phrase,
+    model: "eleven_multilingual_v2",
+    voiceId: "JBFqnCBsd6RMkjVDRZzb",
+    outputFormat: {
+      container: "mp3",
+      encoding: "mp3",
+      sampleRate: 44100,
+      bitRate: 128,
+    } as const,
+  })),
   Match.exhaustive,
 )
 
@@ -44,6 +55,7 @@ const requestFor = Match.type<Provider>().pipe(
 export const outputExtFor = Match.type<Provider>().pipe(
   Match.when("openai", () => "mp3"),
   Match.when("gemini", () => "wav"),
+  Match.when("elevenlabs", () => "mp3"),
   Match.exhaustive,
 )
 

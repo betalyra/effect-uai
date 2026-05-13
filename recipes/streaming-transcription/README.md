@@ -40,4 +40,4 @@ Env vars:
 
 ## Provider markers in action
 
-`Transcriber.streamTranscriptionFrom` is gated by the `SttStreaming` capability marker on the R channel. The `@effect-uai/elevenlabs/ElevenLabsTranscriber` Layer registers the marker, so calls compile. If you swap to a Layer that doesn't register it — e.g. `@effect-uai/openai-speech/OpenAITranscriber` (sync-only) — the same code would fail at `Effect.provide` with a type error, not at runtime.
+`Transcriber.streamTranscriptionFrom` is gated by the `SttStreaming` capability marker on the R channel. The `@effect-uai/elevenlabs/ElevenLabsTranscriber` Layer registers the marker, so calls compile. If you swap to a Layer that doesn't register it — e.g. `@effect-uai/openai/OpenAITranscriber` (sync-only — until Phase 1b lands) — the same code would fail at `Effect.provide` with a type error, not at runtime.

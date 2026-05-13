@@ -96,7 +96,7 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
-  packages/providers/openai-speech:
+  packages/providers/openai:
     devDependencies:
       '@effect-uai/core':
         specifier: workspace:*
@@ -137,9 +137,9 @@ importers:
       '@effect-uai/jina':
         specifier: workspace:*
         version: link:../packages/providers/jina
-      '@effect-uai/openai-speech':
+      '@effect-uai/openai':
         specifier: workspace:*
-        version: link:../packages/providers/openai-speech
+        version: link:../packages/providers/openai
       '@effect-uai/responses':
         specifier: workspace:*
         version: link:../packages/providers/responses

@@ -51,7 +51,7 @@ export type OpenAISynthesizerService = {
 export class OpenAISynthesizer extends Context.Service<
   OpenAISynthesizer,
   OpenAISynthesizerService
->()("@betalyra/effect-uai/providers/openai-speech/OpenAISynthesizer") {}
+>()("@betalyra/effect-uai/providers/openai/OpenAISynthesizer") {}
 
 export type Config = {
   readonly apiKey: Redacted.Redacted

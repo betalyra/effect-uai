@@ -1,5 +1,5 @@
 {
-  "name": "@effect-uai/openai-speech",
+  "name": "@effect-uai/openai",
   "version": "0.3.0",
   "description": "OpenAI speech-to-text and text-to-speech provider for @effect-uai/core.",
   "keywords": [
@@ -11,7 +11,7 @@
     "transcription",
     "tts"
   ],
-  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/openai-speech",
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/openai",
   "bugs": {
     "url": "https://github.com/betalyra/effect-uai/issues"
   },
@@ -20,7 +20,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/betalyra/effect-uai",
-    "directory": "packages/providers/openai-speech"
+    "directory": "packages/providers/openai"
   },
   "files": [
     "dist",

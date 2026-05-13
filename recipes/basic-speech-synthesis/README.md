@@ -14,10 +14,10 @@ Two synthesis paths are shown:
 
 ## Providers
 
-| Provider | Model | Voice | Output format |
-|----------|-------|-------|---------------|
-| `openai` (default) | `gpt-4o-mini-tts` | `alloy` | mp3 |
-| `gemini` | `gemini-2.5-flash-preview-tts` | `Kore` | wav (PCM wrapped with RIFF header by the adapter) |
+| Provider           | Model                          | Voice   | Output format                                     |
+| ------------------ | ------------------------------ | ------- | ------------------------------------------------- |
+| `openai` (default) | `gpt-4o-mini-tts`              | `alloy` | mp3                                               |
+| `gemini`           | `gemini-2.5-flash-preview-tts` | `Kore`  | wav (PCM wrapped with RIFF header by the adapter) |
 
 To add a new provider, extend the `Provider` union in [`index.ts`](./index.ts) and add a `Match.when` case in `requestFor` / `outputExtFor` (recipe side) and `layerFor` (runner side). `Match.exhaustive` will fail typecheck until both are updated.
 

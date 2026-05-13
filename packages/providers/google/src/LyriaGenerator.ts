@@ -1,4 +1,16 @@
-import { Array as Arr, Context, Effect, Encoding, Layer, Match, Option, Redacted, Result, Schema, Stream } from "effect"
+import {
+  Array as Arr,
+  Context,
+  Effect,
+  Encoding,
+  Layer,
+  Match,
+  Option,
+  Redacted,
+  Result,
+  Schema,
+  Stream,
+} from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
@@ -9,10 +21,7 @@ import type {
   MusicSessionInput,
   WeightedPrompt,
 } from "@effect-uai/core/Music"
-import {
-  MusicGenerator,
-  type MusicGeneratorService,
-} from "@effect-uai/core/MusicGenerator"
+import { MusicGenerator, type MusicGeneratorService } from "@effect-uai/core/MusicGenerator"
 import type { LyriaModel } from "./models.js"
 
 // ---------------------------------------------------------------------------
@@ -31,9 +40,7 @@ export type LyriaGenerateRequest = Omit<CommonGenerateMusicRequest, "model"> & {
 }
 
 export type LyriaGeneratorService = {
-  readonly generate: (
-    request: LyriaGenerateRequest,
-  ) => Effect.Effect<MusicResult, AiError.AiError>
+  readonly generate: (request: LyriaGenerateRequest) => Effect.Effect<MusicResult, AiError.AiError>
   readonly streamGeneration: (
     request: LyriaGenerateRequest,
   ) => Stream.Stream<AudioChunk, AiError.AiError>
@@ -85,24 +92,23 @@ export const containerToMimeType: (
  */
 const isClipModel = (model: string): boolean => model.includes("clip")
 
-export const realizedFormat: (mime: LyriaResponseMimeType) => AudioFormat = Match.type<
-  LyriaResponseMimeType
->().pipe(
-  Match.when(
-    "audio/mp3",
-    (): AudioFormat => ({ container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 }),
-  ),
-  Match.when(
-    "audio/wav",
-    (): AudioFormat => ({
-      container: "wav",
-      encoding: "pcm_s16le",
-      sampleRate: 44100,
-      channels: 2,
-    }),
-  ),
-  Match.exhaustive,
-)
+export const realizedFormat: (mime: LyriaResponseMimeType) => AudioFormat =
+  Match.type<LyriaResponseMimeType>().pipe(
+    Match.when(
+      "audio/mp3",
+      (): AudioFormat => ({ container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 }),
+    ),
+    Match.when(
+      "audio/wav",
+      (): AudioFormat => ({
+        container: "wav",
+        encoding: "pcm_s16le",
+        sampleRate: 44100,
+        channels: 2,
+      }),
+    ),
+    Match.exhaustive,
+  )
 
 /**
  * Collapse `prompts | WeightedPrompt[]` into a single prompt string and
@@ -174,7 +180,10 @@ const transportFailure = (cause: unknown): AiError.AiError =>
 
 const httpStatusError: (status: number, body: string) => AiError.AiError = (status, body) =>
   Match.value(status).pipe(
-    Match.when(429, (): AiError.AiError => new AiError.RateLimited({ provider: "lyria", raw: body })),
+    Match.when(
+      429,
+      (): AiError.AiError => new AiError.RateLimited({ provider: "lyria", raw: body }),
+    ),
     Match.whenOr(
       408,
       504,
@@ -199,7 +208,9 @@ const httpStatusError: (status: number, body: string) => AiError.AiError = (stat
       (n) => n >= 500,
       (n): AiError.AiError => new AiError.Unavailable({ provider: "lyria", status: n, raw: body }),
     ),
-    Match.orElse((): AiError.AiError => new AiError.InvalidRequest({ provider: "lyria", raw: body })),
+    Match.orElse(
+      (): AiError.AiError => new AiError.InvalidRequest({ provider: "lyria", raw: body }),
+    ),
   )
 
 const decodeBase64ToBytes = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
@@ -350,9 +361,7 @@ export const make = (
     generate: (request) =>
       generateImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
     streamGeneration: (request) =>
-      streamGenerationImpl(cfg)(request).pipe(
-        Stream.provideService(HttpClient.HttpClient, client),
-      ),
+      streamGenerationImpl(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client)),
     streamGenerationFrom: streamGenerationFromUnsupported,
   }))
 

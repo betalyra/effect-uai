@@ -63,9 +63,8 @@ export type TranscriptEvent =
   | { readonly _tag: "metadata"; readonly raw: unknown }
   | { readonly _tag: "error"; readonly code?: string; readonly message: string }
 
-export const isPartial = (
-  e: TranscriptEvent,
-): e is Extract<TranscriptEvent, { _tag: "partial" }> => e._tag === "partial"
+export const isPartial = (e: TranscriptEvent): e is Extract<TranscriptEvent, { _tag: "partial" }> =>
+  e._tag === "partial"
 export const isFinal = (e: TranscriptEvent): e is Extract<TranscriptEvent, { _tag: "final" }> =>
   e._tag === "final"
 export const isSpeechStarted = (

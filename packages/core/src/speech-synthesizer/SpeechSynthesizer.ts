@@ -113,19 +113,11 @@ export const streamSynthesisFrom: {
     request: CommonStreamSynthesizeRequest,
   ): <E, R>(
     textIn: Stream.Stream<string, E, R>,
-  ) => Stream.Stream<
-    AudioChunk,
-    AiError.AiError | E,
-    R | SpeechSynthesizer | TtsIncrementalText
-  >
+  ) => Stream.Stream<AudioChunk, AiError.AiError | E, R | SpeechSynthesizer | TtsIncrementalText>
   <E, R>(
     textIn: Stream.Stream<string, E, R>,
     request: CommonStreamSynthesizeRequest,
-  ): Stream.Stream<
-    AudioChunk,
-    AiError.AiError | E,
-    R | SpeechSynthesizer | TtsIncrementalText
-  >
+  ): Stream.Stream<AudioChunk, AiError.AiError | E, R | SpeechSynthesizer | TtsIncrementalText>
 } = Function.dual(
   2,
   <E, R>(textIn: Stream.Stream<string, E, R>, request: CommonStreamSynthesizeRequest) =>

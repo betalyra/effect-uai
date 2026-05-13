@@ -14,10 +14,10 @@ Two variants:
 
 ## Providers
 
-| Provider | Fast model | Verbose model |
-|----------|-----------|---------------|
-| `openai` (default) | `gpt-4o-transcribe` | `whisper-1` + `wordTimestamps: true` |
-| `gemini` | `gemini-2.5-flash` (prompt-driven, plain text only) | — |
+| Provider           | Fast model                                          | Verbose model                        |
+| ------------------ | --------------------------------------------------- | ------------------------------------ |
+| `openai` (default) | `gpt-4o-transcribe`                                 | `whisper-1` + `wordTimestamps: true` |
+| `gemini`           | `gemini-2.5-flash` (prompt-driven, plain text only) | —                                    |
 
 To add a new provider, extend the `Provider` union in [`index.ts`](./index.ts) and add a `Match.when` case in `fastModelFor` (recipe side) and `layerFor` (runner side).
 

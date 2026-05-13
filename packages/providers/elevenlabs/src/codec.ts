@@ -55,23 +55,21 @@ export const formatToOutputSlug: (format: AudioFormat) => Effect.Effect<string, 
   format,
 ) =>
   Match.value(format).pipe(
-    Match.when(
-      { container: "mp3" },
-      (f) => Effect.succeed(`mp3_${f.sampleRate}_${f.bitRate ?? 128}`),
+    Match.when({ container: "mp3" }, (f) =>
+      Effect.succeed(`mp3_${f.sampleRate}_${f.bitRate ?? 128}`),
     ),
-    Match.when({ container: "opus" }, (f) => Effect.succeed(`opus_${f.sampleRate}_${f.bitRate ?? 128}`)),
+    Match.when({ container: "opus" }, (f) =>
+      Effect.succeed(`opus_${f.sampleRate}_${f.bitRate ?? 128}`),
+    ),
     Match.when({ container: "wav" }, (f) => Effect.succeed(`wav_${f.sampleRate}`)),
-    Match.when(
-      { container: "raw", encoding: "pcm_s16le" },
-      (f) => Effect.succeed(`pcm_${f.sampleRate}`),
+    Match.when({ container: "raw", encoding: "pcm_s16le" }, (f) =>
+      Effect.succeed(`pcm_${f.sampleRate}`),
     ),
-    Match.when(
-      { container: "raw", encoding: "pcm_mulaw" },
-      (f) => Effect.succeed(`ulaw_${f.sampleRate}`),
+    Match.when({ container: "raw", encoding: "pcm_mulaw" }, (f) =>
+      Effect.succeed(`ulaw_${f.sampleRate}`),
     ),
-    Match.when(
-      { container: "raw", encoding: "pcm_alaw" },
-      (f) => Effect.succeed(`alaw_${f.sampleRate}`),
+    Match.when({ container: "raw", encoding: "pcm_alaw" }, (f) =>
+      Effect.succeed(`alaw_${f.sampleRate}`),
     ),
     Match.orElse((f) =>
       Effect.fail(

@@ -31,10 +31,7 @@ import { streamSynthesis as realtimeStream } from "./realtimeTts.js"
  * deterministic; `previousText` / `nextText` thread context across
  * sequential calls for natural prosody.
  */
-export type ElevenLabsSynthesizeRequest = Omit<
-  CommonSynthesizeRequest,
-  "model" | "voiceId"
-> & {
+export type ElevenLabsSynthesizeRequest = Omit<CommonSynthesizeRequest, "model" | "voiceId"> & {
   readonly model: ElevenLabsTtsModel
   readonly voiceId: ElevenLabsVoiceId
   readonly voiceSettings?: VoiceSettings
@@ -44,9 +41,7 @@ export type ElevenLabsSynthesizeRequest = Omit<
 }
 
 export type ElevenLabsSynthesizerService = {
-  readonly synthesize: (
-    r: ElevenLabsSynthesizeRequest,
-  ) => Effect.Effect<AudioBlob, AiError.AiError>
+  readonly synthesize: (r: ElevenLabsSynthesizeRequest) => Effect.Effect<AudioBlob, AiError.AiError>
   readonly streamSynthesis: (
     r: ElevenLabsSynthesizeRequest,
   ) => Stream.Stream<AudioChunk, AiError.AiError>

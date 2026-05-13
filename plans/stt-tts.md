@@ -7,15 +7,17 @@ Compiled 2026-05-11. Pricing and model names change quickly — always re-verify
 ## Scope
 
 **In scope**
+
 - Streaming / low-latency endpoints (live mic→text; streamed TTS synthesis).
 - Synchronous request/response endpoints (transcribe a file in one call; synthesize a string in one call).
 - A `voiceId` field on the TTS abstraction that accepts custom/cloned voice IDs the user already owns.
 
 **Out of scope (for this work session)**
+
 - Batch / async-with-callback APIs (submit job, poll or webhook later).
 - Realtime multimodal speech-to-speech models (GPT Realtime, Gemini Live, ElevenLabs Conversational AI). Handled in a separate session.
 - Open-source self-hosted models.
-- Voice-cloning *creation* APIs (registering a new cloned voice). We only consume already-registered voice IDs.
+- Voice-cloning _creation_ APIs (registering a new cloned voice). We only consume already-registered voice IDs.
 
 ---
 
@@ -24,6 +26,7 @@ Compiled 2026-05-11. Pricing and model names change quickly — always re-verify
 ### OpenAI
 
 **STT**
+
 - Models (2026): `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, legacy `whisper-1`.
 - Streaming: WebSocket via Realtime API (`wss://api.openai.com/v1/realtime?intent=transcription`) and HTTP `stream: true` on `/v1/audio/transcriptions`.
 - Sync: `POST /v1/audio/transcriptions`.
@@ -32,6 +35,7 @@ Compiled 2026-05-11. Pricing and model names change quickly — always re-verify
 - SDK: official `openai` Node SDK.
 
 **TTS**
+
 - Models (2026): `gpt-4o-mini-tts` (recommended, steerable), legacy `tts-1`, `tts-1-hd`.
 - Streaming: chunked HTTP.
 - Sync: `POST /v1/audio/speech`.
@@ -53,6 +57,7 @@ Google ships two distinct API surfaces that we have to choose between (or both).
 Recommended **first** integration: shares HTTP stack with `@effect-uai/google` (the existing Gemini package) and runs on every JS runtime (no gRPC).
 
 **TTS** — [docs](https://ai.google.dev/gemini-api/docs/speech-generation)
+
 - Models: `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro-preview-tts`, `gemini-3.1-flash-tts-preview`.
 - Endpoint: `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` with `generationConfig.responseModalities: ["AUDIO"]` and `generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName`.
 - Voices: ~30 prebuilt (`Kore`, `Puck`, `Zephyr`, `Enceladus`, …) — string slugs, no project-scoped custom voices.
@@ -63,19 +68,21 @@ Recommended **first** integration: shares HTTP stack with `@effect-uai/google` (
 - Languages: ~80 (auto-detected).
 
 **Audio understanding (transcription-like)** — [docs](https://ai.google.dev/gemini-api/docs/audio)
+
 - Models: `gemini-3-flash-preview` and other Gemini models that accept audio modality.
 - Endpoint: `POST .../models/{model}:generateContent` with the audio supplied either inline (`inlineData.data` base64, ≤20 MB total request) or by Files API URI (`fileData.fileUri`, supports up to 9.5 h).
 - Formats accepted: `audio/wav`, `audio/mp3`, `audio/aiff`, `audio/aac`, `audio/ogg`, `audio/flac`.
 - Transcription is **prompt-driven**, not a dedicated endpoint: you ask "Transcribe this audio" (optionally with `responseSchema` for structured output). Timestamps come back only when the prompt requests them as `MM:SS` text.
 - **Not supported**: streaming partial transcripts, word-level timestamps, language forcing, speaker diarization.
 
-→ Maps cleanly onto our `SpeechSynthesizer.synthesize` and a *limited* `Transcriber.transcribe`. Compile-time markers `SttStreaming` and `TtsIncrementalText` are **not provided** by this Layer. `wordTimestamps: true` and `diarization: true` on `transcribe` → `Unsupported` at runtime.
+→ Maps cleanly onto our `SpeechSynthesizer.synthesize` and a _limited_ `Transcriber.transcribe`. Compile-time markers `SttStreaming` and `TtsIncrementalText` are **not provided** by this Layer. `wordTimestamps: true` and `diarization: true` on `transcribe` → `Unsupported` at runtime.
 
 #### Path B — Cloud Speech-to-Text + Cloud Text-to-Speech (gRPC)
 
 Full-featured fallback for users who need streaming STT/TTS or word timestamps. Separate package (`@effect-uai/google-cloud-speech`) because the gRPC stack adds ~3 MB of deps and doesn't run in browsers / Workers / Edge.
 
 **STT**
+
 - Models (2026): `chirp_2` (recommended, GA), legacy `latest_long`, `latest_short`, `telephony`.
 - Streaming: gRPC `StreamingRecognize` bidirectional.
 - Sync: `recognize` for <1 min audio. (`longrunningrecognize` is poll-based — out of scope.)
@@ -85,6 +92,7 @@ Full-featured fallback for users who need streaming STT/TTS or word timestamps. 
 - SDK: `@google-cloud/speech`.
 
 **TTS**
+
 - Models (2026): `Chirp 3: HD` voices (recommended; supports text streaming), Neural2, WaveNet, Studio, Standard.
 - Streaming: bidirectional gRPC for Chirp 3 HD; non-streaming endpoint for other engines.
 - Sync: `synthesize`.
@@ -102,6 +110,7 @@ Sources: [Gemini speech generation](https://ai.google.dev/gemini-api/docs/speech
 ### ElevenLabs
 
 **STT**
+
 - Models (2026): `scribe_v2_realtime` (streaming, recommended), `scribe_v1` (sync).
 - Streaming: WebSocket at `wss://api.elevenlabs.io/v1/speech-to-text/realtime`. ~150 ms claimed latency.
 - Sync: `POST /v1/speech-to-text`.
@@ -111,6 +120,7 @@ Sources: [Gemini speech generation](https://ai.google.dev/gemini-api/docs/speech
 - SDK: `@elevenlabs/elevenlabs-js`.
 
 **TTS**
+
 - Models (2026): `eleven_v3` (most expressive), `eleven_multilingual_v2` (production multilingual), `eleven_turbo_v2_5`, `eleven_flash_v2_5` (~75 ms model latency).
 - Streaming: chunked HTTP `/v1/text-to-speech/{voice_id}/stream` and WebSocket `/v1/text-to-speech/{voice_id}/stream-input` for incremental text-in.
 - Sync: `/v1/text-to-speech/{voice_id}`.
@@ -129,6 +139,7 @@ Sources: [models](https://elevenlabs.io/docs/overview/models), [realtime STT](ht
 ### Deepgram
 
 **STT**
+
 - Models (2026): `nova-3` (recommended; multilingual code-switching, ~5.3% WER), `nova-3-medical`, `nova-3-multilingual`. `nova-2` still available.
 - Streaming: WebSocket at `wss://api.deepgram.com/v1/listen`. Sub-300 ms.
 - Sync: `POST /v1/listen` (file or URL).
@@ -138,6 +149,7 @@ Sources: [models](https://elevenlabs.io/docs/overview/models), [realtime STT](ht
 - SDK: `@deepgram/sdk` (first-class Node).
 
 **TTS**
+
 - Models (2026): `aura-2` (recommended; ~90 ms first audio), `aura-1` legacy.
 - Streaming: WebSocket and chunked HTTP at `/v1/speak`.
 - Sync: `/v1/speak`.
@@ -155,6 +167,7 @@ Sources: [pricing](https://deepgram.com/pricing), [Nova-3](https://deepgram.com/
 ### AssemblyAI
 
 **STT**
+
 - Models (2026): `universal-streaming` (recommended for voice agents, multilingual), `universal-2` (sync, 99 languages), `universal-3-pro` (highest-accuracy pre-recorded).
 - Streaming: WebSocket at `wss://streaming.assemblyai.com/v3/ws`. ~300 ms P50.
 - Sync: `POST /v2/transcript` with audio URL.
@@ -172,6 +185,7 @@ Sources: [pricing](https://www.assemblyai.com/pricing), [streaming](https://www.
 ### Cartesia
 
 **STT**
+
 - Models (2026): `ink-whisper` (real-time optimized).
 - Streaming: WebSocket.
 - Sync: REST.
@@ -180,6 +194,7 @@ Sources: [pricing](https://www.assemblyai.com/pricing), [streaming](https://www.
 - SDK: `@cartesia/cartesia-js`.
 
 **TTS**
+
 - Models (2026): `sonic-3` (recommended; expressive), `sonic-2`, `sonic-turbo`.
 - Streaming: WebSocket with text-in streaming and HTTP chunked. **~40–90 ms first audio (industry-leading).**
 - Sync: REST `/tts/bytes`.
@@ -198,12 +213,14 @@ Sources: [pricing](https://cartesia.ai/pricing), [Sonic-3](https://cartesia.ai/s
 ### Inworld AI
 
 **STT**
+
 - Offered in the Voice AI stack but not a market lead. Verify current model name before adoption.
 - Streaming and sync, WebSocket-based.
 - Pricing bundled into the credit pool ($15–$25 per 1M units depending on tier).
 - TS SDK available.
 
 **TTS**
+
 - Models (2026): `realtime-tts-2` (newest flagship, expressive), `realtime-tts-1.5` / `realtime-tts-1.5-max` (sub-120/200 ms P90), `inworld-tts-1` (Mini), `inworld-tts-1-max`.
 - Streaming: WebSocket with low first-token latency.
 - Sync: REST.
@@ -223,6 +240,7 @@ Sources: [pricing](https://inworld.ai/pricing), [TTS launch](https://inworld.ai/
 **STT**: no first-party public STT API at writing — verify before scoping.
 
 **TTS**
+
 - Models (2026): `speech-02-hd`, `speech-02-turbo`, `speech-2.6-turbo` (latest real-time).
 - Streaming: HTTP chunked with `stream=true` and WebSocket (`/ws/v1/t2a_v2`).
 - Sync: `POST /v1/t2a_v2` (up to 10K chars per request).
@@ -241,6 +259,7 @@ Sources: [API overview](https://platform.minimax.io/docs/api-reference/api-overv
 ### Azure (Microsoft Cognitive Services / Foundry Speech)
 
 **STT**
+
 - Models: managed Azure STT line; Whisper-on-Azure also offered. Custom Speech for vocab adaptation.
 - Streaming: WebSocket via Speech SDK (continuous recognition).
 - Sync: REST short-audio API.
@@ -250,6 +269,7 @@ Sources: [API overview](https://platform.minimax.io/docs/api-reference/api-overv
 - SDK: `microsoft-cognitiveservices-speech-sdk`.
 
 **TTS**
+
 - Models (2026): Neural HD voices (recommended), Neural voices, Custom Neural Voice (training), Personal Voice (zero-shot clone).
 - Streaming: yes via Speech SDK.
 - Sync: REST.
@@ -267,6 +287,7 @@ Sources: [pricing](https://azure.microsoft.com/en-us/pricing/details/speech/), [
 ### AWS
 
 **STT — Amazon Transcribe**
+
 - Models: single managed model; standard and medical/call-analytics variants.
 - Streaming: HTTP/2 streaming and WebSocket. Partial result stabilization.
 - Sync: `StartTranscriptionJob` is **async/polling — out of scope.** Streaming covers the low-latency single-pass use case; AWS has no true "sync file in / transcript out" endpoint in scope.
@@ -276,6 +297,7 @@ Sources: [pricing](https://azure.microsoft.com/en-us/pricing/details/speech/), [
 - SDK: `@aws-sdk/client-transcribe-streaming`.
 
 **TTS — Amazon Polly**
+
 - Models (2026): `generative` (recommended, now with bidirectional streaming as of March 2026), `long-form`, `neural`, `standard`.
 - Streaming: `SynthesizeSpeech` chunked HTTP; bidirectional streaming for Generative.
 - Sync: `SynthesizeSpeech`.
@@ -295,6 +317,7 @@ Sources: [Polly pricing](https://aws.amazon.com/polly/pricing/), [Transcribe pri
 **STT**: none in scope (Hume's voice product is emotion analysis, not general transcription).
 
 **TTS — Octave**
+
 - Models (2026): `octave-2` (recommended; 50% cheaper than v1), `octave` legacy.
 - Streaming: streamed JSON, streamed file (raw audio bytes), and WebSocket for incremental text-in. ~100 ms latency, ~200 ms TTFT.
 - Sync: yes.
@@ -322,21 +345,22 @@ Sources: [TTS overview](https://dev.hume.ai/docs/text-to-speech-tts/overview), [
 
 **Custom voice ID support — relevant to the abstraction**:
 
-| Provider     | Stock voices | Custom voice IDs in API | ID format             |
-|--------------|--------------|-------------------------|-----------------------|
-| OpenAI       | yes          | **no**                  | fixed slug            |
-| Google       | yes          | yes (paid program)      | project-scoped slug   |
-| ElevenLabs   | yes          | yes                     | 20-char alphanumeric  |
-| Deepgram     | yes          | **no**                  | named slug            |
-| AssemblyAI   | n/a (no TTS) | —                       | —                     |
-| Cartesia     | yes          | yes                     | UUID                  |
-| Inworld      | yes          | yes                     | named ID              |
-| MiniMax      | yes          | yes                     | user-supplied string  |
-| Azure        | yes          | yes (Personal / Custom) | slug / deployment ID  |
-| AWS Polly    | yes          | **no**                  | named slug            |
-| Hume         | yes          | yes                     | named + UUID          |
+| Provider   | Stock voices | Custom voice IDs in API | ID format            |
+| ---------- | ------------ | ----------------------- | -------------------- |
+| OpenAI     | yes          | **no**                  | fixed slug           |
+| Google     | yes          | yes (paid program)      | project-scoped slug  |
+| ElevenLabs | yes          | yes                     | 20-char alphanumeric |
+| Deepgram   | yes          | **no**                  | named slug           |
+| AssemblyAI | n/a (no TTS) | —                       | —                    |
+| Cartesia   | yes          | yes                     | UUID                 |
+| Inworld    | yes          | yes                     | named ID             |
+| MiniMax    | yes          | yes                     | user-supplied string |
+| Azure      | yes          | yes (Personal / Custom) | slug / deployment ID |
+| AWS Polly  | yes          | **no**                  | named slug           |
+| Hume       | yes          | yes                     | named + UUID         |
 
 **Notably absent and why**
+
 - Realtime speech-to-speech (GPT Realtime, Gemini Live, ElevenLabs Conversational AI) — explicitly out of scope; separate session.
 - Speechmatics, Gladia, Rev AI, PlayHT, Resemble AI, Wellsaid — credible but second-tier in mindshare; defer until the abstraction is proven on the primary set.
 - Groq Whisper — extremely fast hosted Whisper; consider as a budget tier if we want a cheap sync STT path.
@@ -352,7 +376,7 @@ Sources: [TTS overview](https://dev.hume.ai/docs/text-to-speech-tts/overview), [
 4. **Capability flags worth surfacing**
    - STT: `diarization`, `wordTimestamps`, `languageDetection`, `keyterms` / vocab biasing, `profanityFilter`, `interimResults`.
    - TTS: `streamingTextInput` (WS incremental text), `emotionControl`, `speed`, `pitch`, `style`, `outputFormat`, `sampleRate`.
-   Not all providers expose all — model as optional with per-provider capability detection.
+     Not all providers expose all — model as optional with per-provider capability detection.
 5. **Operational hazards** to surface in provider metadata:
    - AssemblyAI streaming bills on open-WebSocket time, not audio time.
    - AWS Transcribe has no real sync file endpoint — only streaming or async-job.
@@ -379,16 +403,16 @@ import type { MediaBase64, MediaBytes, MediaUrl } from "./Media.js"
  * raw L16 sync; Deepgram rejects ogg-flac as TTS output).
  */
 export type AudioMimeType =
-  | "audio/mpeg"          // mp3
+  | "audio/mpeg" // mp3
   | "audio/wav"
   | "audio/x-wav"
-  | "audio/ogg"           // container only — codec is opus|vorbis|flac
+  | "audio/ogg" // container only — codec is opus|vorbis|flac
   | "audio/opus"
   | "audio/flac"
   | "audio/aac"
-  | "audio/mp4"           // m4a
+  | "audio/mp4" // m4a
   | "audio/webm"
-  | "audio/L16"           // raw PCM 16-bit
+  | "audio/L16" // raw PCM 16-bit
   | "audio/pcm"
   | "audio/mulaw"
   | "audio/alaw"
@@ -401,7 +425,10 @@ export type AudioMimeType =
  * (OpenAI, Cartesia, Azure short-audio) reject it and the adapter must
  * upload via file path instead.
  */
-export type AudioSource = MediaUrl<AudioMimeType> | MediaBase64<AudioMimeType> | MediaBytes<AudioMimeType>
+export type AudioSource =
+  | MediaUrl<AudioMimeType>
+  | MediaBase64<AudioMimeType>
+  | MediaBytes<AudioMimeType>
 
 /**
  * Structural audio format. Used both as TTS output spec and as STT
@@ -412,8 +439,15 @@ export type AudioSource = MediaUrl<AudioMimeType> | MediaBase64<AudioMimeType> |
 export type AudioFormat = {
   readonly container: "mp3" | "wav" | "ogg" | "opus" | "flac" | "aac" | "webm" | "raw"
   readonly encoding:
-    | "pcm_s16le" | "pcm_f32le" | "pcm_mulaw" | "pcm_alaw"
-    | "mp3" | "opus" | "vorbis" | "flac" | "aac"
+    | "pcm_s16le"
+    | "pcm_f32le"
+    | "pcm_mulaw"
+    | "pcm_alaw"
+    | "mp3"
+    | "opus"
+    | "vorbis"
+    | "flac"
+    | "aac"
   readonly sampleRate: 8000 | 16000 | 22050 | 24000 | 32000 | 44100 | 48000
   readonly bitRate?: number
   readonly channels?: 1 | 2
@@ -479,18 +513,33 @@ export type TranscriptResult = {
  *   as `AiError` on the Stream's error channel.
  */
 export type TranscriptEvent =
-  | { readonly _tag: "partial"; readonly text: string; readonly words?: ReadonlyArray<WordTimestamp>; readonly stability?: number }
-  | { readonly _tag: "final"; readonly text: string; readonly words?: ReadonlyArray<WordTimestamp>; readonly languageCode?: string }
+  | {
+      readonly _tag: "partial"
+      readonly text: string
+      readonly words?: ReadonlyArray<WordTimestamp>
+      readonly stability?: number
+    }
+  | {
+      readonly _tag: "final"
+      readonly text: string
+      readonly words?: ReadonlyArray<WordTimestamp>
+      readonly languageCode?: string
+    }
   | { readonly _tag: "speech-started"; readonly atSeconds: number }
   | { readonly _tag: "utterance-ended"; readonly atSeconds: number }
-  | { readonly _tag: "audio-event"; readonly label: string; readonly startSeconds: number; readonly endSeconds: number }
+  | {
+      readonly _tag: "audio-event"
+      readonly label: string
+      readonly startSeconds: number
+      readonly endSeconds: number
+    }
   | { readonly _tag: "metadata"; readonly raw: unknown }
   | { readonly _tag: "error"; readonly code?: string; readonly message: string }
 ```
 
 ## Transcriber service — new module `core/src/transcriber/Transcriber.ts`
 
-```ts
+````ts
 import { Context, Effect, Function, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { AudioFormat, AudioSource } from "../domain/Audio.js"
@@ -565,9 +614,10 @@ export class Transcriber extends Context.Service<Transcriber, TranscriberService
  * `streamTranscriptionFrom` while only Azure's Layer is in scope fails
  * at `Effect.provide` with a type error, not at runtime.
  */
-export class SttStreaming extends Context.Tag(
-  "@effect-uai/capability/SttStreaming",
-)<SttStreaming, void>() {}
+export class SttStreaming extends Context.Tag("@effect-uai/capability/SttStreaming")<
+  SttStreaming,
+  void
+>() {}
 
 export const transcribe = (
   request: CommonTranscribeRequest,
@@ -606,16 +656,16 @@ export const streamTranscriptionFrom: {
     Stream.unwrap(
       Effect.gen(function* () {
         const t = yield* Transcriber
-        yield* SttStreaming  // phantom — no value used, marker contributes to R only
+        yield* SttStreaming // phantom — no value used, marker contributes to R only
         return t.streamTranscriptionFrom(audioIn, request)
       }),
     ),
 )
-```
+````
 
 ## SpeechSynthesizer service — new module `core/src/speech-synthesizer/SpeechSynthesizer.ts`
 
-```ts
+````ts
 import { Context, Effect, Function, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { AudioBlob, AudioChunk, AudioFormat } from "../domain/Audio.js"
@@ -681,9 +731,10 @@ export type SpeechSynthesizerService = {
   ) => Stream.Stream<AudioChunk, AiError.AiError | E, R>
 }
 
-export class SpeechSynthesizer extends Context.Service<SpeechSynthesizer, SpeechSynthesizerService>()(
-  "@effect-uai/SpeechSynthesizer",
-) {}
+export class SpeechSynthesizer extends Context.Service<
+  SpeechSynthesizer,
+  SpeechSynthesizerService
+>()("@effect-uai/SpeechSynthesizer") {}
 
 /**
  * Capability marker — provided by provider layers whose
@@ -692,9 +743,10 @@ export class SpeechSynthesizer extends Context.Service<SpeechSynthesizer, Speech
  * `streamSynthesisFrom` while only one of those Layers is in scope
  * fails at `Effect.provide` with a type error.
  */
-export class TtsIncrementalText extends Context.Tag(
-  "@effect-uai/capability/TtsIncrementalText",
-)<TtsIncrementalText, void>() {}
+export class TtsIncrementalText extends Context.Tag("@effect-uai/capability/TtsIncrementalText")<
+  TtsIncrementalText,
+  void
+>() {}
 
 export const synthesize = (
   request: CommonSynthesizeRequest,
@@ -737,12 +789,12 @@ export const streamSynthesisFrom: {
     Stream.unwrap(
       Effect.gen(function* () {
         const s = yield* SpeechSynthesizer
-        yield* TtsIncrementalText  // phantom — marker contributes to R only
+        yield* TtsIncrementalText // phantom — marker contributes to R only
         return s.streamSynthesisFrom(textIn, request)
       }),
     ),
 )
-```
+````
 
 ## End-to-end pipeline example
 
@@ -761,7 +813,7 @@ const audioOut = mic.frames.pipe(
   SpeechSynthesizer.streamSynthesisFrom(ttsReq),
 )
 
-yield* Stream.runForEach(audioOut, (chunk) => speaker.write(chunk.bytes))
+yield * Stream.runForEach(audioOut, (chunk) => speaker.write(chunk.bytes))
 ```
 
 No Queues, no explicit Scope, no fiber forks. Interrupt the consumer and every transport in the chain tears down structurally.
@@ -773,16 +825,16 @@ Mirrors how `Responses.ts` extends `LanguageModel.CommonRequest`:
 ```ts
 // packages/providers/responses/src/OpenAITranscriber.ts
 export type OpenAITranscribeRequest = Omit<CommonTranscribeRequest, "model"> & {
-  readonly model: OpenAITranscribeModel  // "gpt-4o-transcribe" | "gpt-4o-mini-transcribe" | "whisper-1"
+  readonly model: OpenAITranscribeModel // "gpt-4o-transcribe" | "gpt-4o-mini-transcribe" | "whisper-1"
   readonly temperature?: number
   readonly responseFormat?: "json" | "verbose_json" | "srt" | "vtt" | "text"
   readonly timestampGranularities?: ReadonlyArray<"word" | "segment">
 }
 
 export type OpenAISynthesizeRequest = Omit<CommonSynthesizeRequest, "model" | "voiceId"> & {
-  readonly model: OpenAITtsModel        // "gpt-4o-mini-tts" | "tts-1" | "tts-1-hd"
-  readonly voiceId: OpenAIVoiceId        // typed literal union (no custom voice escape)
-  readonly instructions?: string         // gpt-4o-mini-tts only
+  readonly model: OpenAITtsModel // "gpt-4o-mini-tts" | "tts-1" | "tts-1-hd"
+  readonly voiceId: OpenAIVoiceId // typed literal union (no custom voice escape)
+  readonly instructions?: string // gpt-4o-mini-tts only
 }
 ```
 
@@ -791,25 +843,35 @@ For TTS voice IDs:
 ```ts
 // Stock-only provider (OpenAI):
 export type OpenAIVoiceId =
-  | "alloy" | "ash" | "ballad" | "coral" | "echo"
-  | "fable" | "onyx" | "nova" | "sage" | "shimmer" | "verse"
+  | "alloy"
+  | "ash"
+  | "ballad"
+  | "coral"
+  | "echo"
+  | "fable"
+  | "onyx"
+  | "nova"
+  | "sage"
+  | "shimmer"
+  | "verse"
 // No `(string & {})` — there is no custom-voice path.
 
 // Provider with custom voice cloning (ElevenLabs):
 export type ElevenLabsVoiceId =
-  | "JBFqnCBsd6RMkjVDRZzb"  // Rachel
-  | "21m00Tcm4TlvDq8ikWAM"  // Drew
+  | "JBFqnCBsd6RMkjVDRZzb" // Rachel
+  | "21m00Tcm4TlvDq8ikWAM" // Drew
   // ... curated stock IDs
   // eslint-disable-next-line @typescript-eslint/ban-types
-  | (string & {})            // accepts cloned voice IDs
+  | (string & {}) // accepts cloned voice IDs
 ```
 
 Provider-typed service tags (one per service-per-provider) follow the existing pattern from `Responses`:
 
 ```ts
-export class OpenAITranscriber extends Context.Service<OpenAITranscriber, OpenAITranscriberService>()(
-  "@effect-uai/responses/OpenAITranscriber",
-) {}
+export class OpenAITranscriber extends Context.Service<
+  OpenAITranscriber,
+  OpenAITranscriberService
+>()("@effect-uai/responses/OpenAITranscriber") {}
 ```
 
 Yielding `OpenAITranscriber` gives you the typed request with `temperature` / `responseFormat`; yielding the generic `Transcriber` gives you the cross-provider shape.
@@ -820,25 +882,29 @@ Capability gaps come in two flavors. The strategy uses Effect's R channel for on
 
 ### Layer 1: provider-level gaps → R-channel marker tags (compile-time)
 
-For methods a provider can *never* offer at the wire level (independent of request data), the top-level helper threads a phantom marker tag into the `R` channel. Provider layers only include the marker in their output type if the provider supports it. Calling a gated method on a provider that doesn't supply the marker fails at `Effect.provide` — type error, no runtime check.
+For methods a provider can _never_ offer at the wire level (independent of request data), the top-level helper threads a phantom marker tag into the `R` channel. Provider layers only include the marker in their output type if the provider supports it. Calling a gated method on a provider that doesn't supply the marker fails at `Effect.provide` — type error, no runtime check.
 
 ```ts
 // In core/src/speech-synthesizer/SpeechSynthesizer.ts
-export class TtsIncrementalText extends Context.Tag(
-  "@effect-uai/capability/TtsIncrementalText",
-)<TtsIncrementalText, void>() {}
+export class TtsIncrementalText extends Context.Tag("@effect-uai/capability/TtsIncrementalText")<
+  TtsIncrementalText,
+  void
+>() {}
 
 // In core/src/transcriber/Transcriber.ts
-export class SttStreaming extends Context.Tag(
-  "@effect-uai/capability/SttStreaming",
-)<SttStreaming, void>() {}
+export class SttStreaming extends Context.Tag("@effect-uai/capability/SttStreaming")<
+  SttStreaming,
+  void
+>() {}
 ```
 
 The top-level helpers yield the marker so it bubbles into `R`:
 
 ```ts
 export const streamSynthesisFrom: {
-  (req: CommonStreamSynthesizeRequest): <E, R>(
+  (
+    req: CommonStreamSynthesizeRequest,
+  ): <E, R>(
     textIn: Stream.Stream<string, E, R>,
   ) => Stream.Stream<AudioChunk, AiError.AiError | E, R | SpeechSynthesizer | TtsIncrementalText>
   // ...
@@ -849,7 +915,7 @@ Provider layers declare what they provide:
 
 ```ts
 export const ElevenLabsLive: Layer.Layer<SpeechSynthesizer | TtsIncrementalText>
-export const OpenAILive:     Layer.Layer<SpeechSynthesizer>                       // no TtsIncrementalText
+export const OpenAILive: Layer.Layer<SpeechSynthesizer> // no TtsIncrementalText
 ```
 
 Call site:
@@ -858,23 +924,25 @@ Call site:
 const audio = textStream.pipe(SpeechSynthesizer.streamSynthesisFrom(req))
 // audio: Stream<..., ..., SpeechSynthesizer | TtsIncrementalText>
 
-audio.pipe(Effect.provide(ElevenLabsLive))   // compiles
-audio.pipe(Effect.provide(OpenAILive))       // type error: TtsIncrementalText not provided
+audio.pipe(Effect.provide(ElevenLabsLive)) // compiles
+audio.pipe(Effect.provide(OpenAILive)) // type error: TtsIncrementalText not provided
 ```
 
 **Two markers** cover the genuinely-rare hard gaps without cluttering common-case signatures:
 
-| Marker                 | Gates                       | Why marker-worthy |
-|------------------------|-----------------------------|-------------------|
-| `TtsIncrementalText`   | `streamSynthesisFrom`       | Rare — OpenAI, Azure (wire), AWS Polly non-Generative can't offer it. |
-| `SttStreaming`         | `streamTranscriptionFrom`   | Rare-ish — Azure can't offer it at the wire level. Most STT providers can. |
+| Marker               | Gates                     | Why marker-worthy                                                          |
+| -------------------- | ------------------------- | -------------------------------------------------------------------------- |
+| `TtsIncrementalText` | `streamSynthesisFrom`     | Rare — OpenAI, Azure (wire), AWS Polly non-Generative can't offer it.      |
+| `SttStreaming`       | `streamTranscriptionFrom` | Rare-ish — Azure can't offer it at the wire level. Most STT providers can. |
 
 **Methods without markers** (universal across providers that ship the service tag):
+
 - `Transcriber.transcribe` — universal except AWS Transcribe, which emulates by draining a streaming session.
 - `SpeechSynthesizer.synthesize` — universal.
 - `SpeechSynthesizer.streamSynthesis` (chunked HTTP) — universal.
 
 **Service-level gaps** (provider doesn't ship the tag at all):
+
 - MiniMax — no STT → `@effect-uai/minimax` doesn't export a `Transcriber` Layer. Callers see `Transcriber` missing from R; no marker needed.
 - Hume — no STT → same.
 
@@ -892,20 +960,20 @@ Some gaps depend on values in the request itself, which can't be expressed in th
 
 `Type` = compile-time R-channel marker. `Runtime` = `AiError.Unsupported` on call. `n/a` = service tag not provided.
 
-| Provider          | `transcribe`         | `streamTranscriptionFrom`             | `synthesize` | `streamSynthesis` | `streamSynthesisFrom`                  |
-|-------------------|----------------------|---------------------------------------|--------------|-------------------|----------------------------------------|
-| OpenAI            | ok                   | provides `SttStreaming` (Realtime WS) | ok           | ok (chunked HTTP) | **does not provide `TtsIncrementalText`** |
-| Google (Gemini API) | ok (no word timestamps; `Unsupported` for `wordTimestamps`/`diarization`) | **does not provide `SttStreaming`** | ok           | **does not provide** (Gemini TTS is sync-only — `streamSynthesis` is emulated by emitting one chunk) | **does not provide `TtsIncrementalText`** |
-| Google (Cloud Speech / TTS, gRPC) | ok                   | provides `SttStreaming` (gRPC bidi)   | ok           | ok                | provides `TtsIncrementalText` — `Runtime Unsupported` if voiceId ≠ `*-Chirp3-HD-*` |
-| ElevenLabs        | ok                   | provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText`          |
-| Deepgram          | ok                   | provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText`          |
-| Cartesia          | (emulated)           | provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText`          |
-| Inworld           | ok (`[docs unclear]`)| provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText` (Realtime API protocol) |
-| MiniMax           | `Transcriber` n/a    | `Transcriber` n/a                     | ok           | ok                | provides `TtsIncrementalText`          |
-| Azure             | ok                   | **does not provide `SttStreaming`**   | ok           | ok                | **does not provide `TtsIncrementalText`** |
-| AWS Transcribe    | (emulated)           | provides `SttStreaming`               | n/a          | n/a               | n/a                                    |
-| AWS Polly         | n/a                  | n/a                                   | ok           | ok                | **does not provide `TtsIncrementalText`** |
-| Hume              | `Transcriber` n/a    | `Transcriber` n/a                     | ok           | ok                | provides `TtsIncrementalText`          |
+| Provider                          | `transcribe`                                                              | `streamTranscriptionFrom`             | `synthesize` | `streamSynthesis`                                                                                    | `streamSynthesisFrom`                                                              |
+| --------------------------------- | ------------------------------------------------------------------------- | ------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| OpenAI                            | ok                                                                        | provides `SttStreaming` (Realtime WS) | ok           | ok (chunked HTTP)                                                                                    | **does not provide `TtsIncrementalText`**                                          |
+| Google (Gemini API)               | ok (no word timestamps; `Unsupported` for `wordTimestamps`/`diarization`) | **does not provide `SttStreaming`**   | ok           | **does not provide** (Gemini TTS is sync-only — `streamSynthesis` is emulated by emitting one chunk) | **does not provide `TtsIncrementalText`**                                          |
+| Google (Cloud Speech / TTS, gRPC) | ok                                                                        | provides `SttStreaming` (gRPC bidi)   | ok           | ok                                                                                                   | provides `TtsIncrementalText` — `Runtime Unsupported` if voiceId ≠ `*-Chirp3-HD-*` |
+| ElevenLabs                        | ok                                                                        | provides `SttStreaming`               | ok           | ok                                                                                                   | provides `TtsIncrementalText`                                                      |
+| Deepgram                          | ok                                                                        | provides `SttStreaming`               | ok           | ok                                                                                                   | provides `TtsIncrementalText`                                                      |
+| Cartesia                          | (emulated)                                                                | provides `SttStreaming`               | ok           | ok                                                                                                   | provides `TtsIncrementalText`                                                      |
+| Inworld                           | ok (`[docs unclear]`)                                                     | provides `SttStreaming`               | ok           | ok                                                                                                   | provides `TtsIncrementalText` (Realtime API protocol)                              |
+| MiniMax                           | `Transcriber` n/a                                                         | `Transcriber` n/a                     | ok           | ok                                                                                                   | provides `TtsIncrementalText`                                                      |
+| Azure                             | ok                                                                        | **does not provide `SttStreaming`**   | ok           | ok                                                                                                   | **does not provide `TtsIncrementalText`**                                          |
+| AWS Transcribe                    | (emulated)                                                                | provides `SttStreaming`               | n/a          | n/a                                                                                                  | n/a                                                                                |
+| AWS Polly                         | n/a                                                                       | n/a                                   | ok           | ok                                                                                                   | **does not provide `TtsIncrementalText`**                                          |
+| Hume                              | `Transcriber` n/a                                                         | `Transcriber` n/a                     | ok           | ok                                                                                                   | provides `TtsIncrementalText`                                                      |
 
 ---
 
@@ -915,19 +983,19 @@ Order: providers that fit the existing HTTP-only mold first (OpenAI), then Eleve
 
 ## Package layout
 
-| Package                       | Contents                                       | Status                                     |
-|-------------------------------|------------------------------------------------|--------------------------------------------|
-| `@effect-uai/responses`       | OpenAI Responses API (LLM, embeddings)         | unchanged                                  |
-| `@effect-uai/openai-speech`   | OpenAI STT, TTS                                | **new** — separate from `responses` because `responses` is named after the Responses API protocol, not the provider |
-| `@effect-uai/google`          | Gemini LLM, embeddings, **Gemini speech (TTS + audio understanding via REST+JSON)** | extended — sync TTS + sync (prompt-based) STT via `generateContent`. No gRPC. |
-| `@effect-uai/google-cloud-speech` | Google Cloud STT, Cloud TTS                    | **new** — depends on `@google-cloud/speech` and `@google-cloud/text-to-speech`. Adds streaming + word timestamps + diarization. |
-| `@effect-uai/elevenlabs`      | ElevenLabs STT, TTS                            | new                                        |
-| `@effect-uai/inworld`         | Inworld STT (pending docs verification), TTS  | new                                        |
-| `@effect-uai/minimax`         | MiniMax TTS (no STT — provider does not offer it) | new                                     |
-| `@effect-uai/deepgram`        | Deepgram STT, TTS                              | new                                        |
-| `@effect-uai/cartesia`        | Cartesia STT, TTS                              | new                                        |
+| Package                           | Contents                                                                            | Status                                                                                                                          |
+| --------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `@effect-uai/responses`           | OpenAI Responses API (LLM, embeddings)                                              | unchanged                                                                                                                       |
+| `@effect-uai/openai-speech`       | OpenAI STT, TTS                                                                     | **new** — separate from `responses` because `responses` is named after the Responses API protocol, not the provider             |
+| `@effect-uai/google`              | Gemini LLM, embeddings, **Gemini speech (TTS + audio understanding via REST+JSON)** | extended — sync TTS + sync (prompt-based) STT via `generateContent`. No gRPC.                                                   |
+| `@effect-uai/google-cloud-speech` | Google Cloud STT, Cloud TTS                                                         | **new** — depends on `@google-cloud/speech` and `@google-cloud/text-to-speech`. Adds streaming + word timestamps + diarization. |
+| `@effect-uai/elevenlabs`          | ElevenLabs STT, TTS                                                                 | new                                                                                                                             |
+| `@effect-uai/inworld`             | Inworld STT (pending docs verification), TTS                                        | new                                                                                                                             |
+| `@effect-uai/minimax`             | MiniMax TTS (no STT — provider does not offer it)                                   | new                                                                                                                             |
+| `@effect-uai/deepgram`            | Deepgram STT, TTS                                                                   | new                                                                                                                             |
+| `@effect-uai/cartesia`            | Cartesia STT, TTS                                                                   | new                                                                                                                             |
 
-Rationale for splitting OpenAI: `@effect-uai/responses` is named after OpenAI's *Responses API* protocol (the `/v1/responses` endpoint plus the embeddings endpoint that shares its shape), not after the provider. OpenAI's audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/speech`) have different request/response shapes and don't belong in a package named after a different API surface. They live in `@effect-uai/openai-speech` instead.
+Rationale for splitting OpenAI: `@effect-uai/responses` is named after OpenAI's _Responses API_ protocol (the `/v1/responses` endpoint plus the embeddings endpoint that shares its shape), not after the provider. OpenAI's audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/speech`) have different request/response shapes and don't belong in a package named after a different API surface. They live in `@effect-uai/openai-speech` instead.
 
 Rationale for splitting Google into two packages: the Gemini API exposes both TTS and audio understanding over REST+JSON ([speech-generation docs](https://ai.google.dev/gemini-api/docs/speech-generation), [audio docs](https://ai.google.dev/gemini-api/docs/audio)) — same transport stack as the existing Gemini adapter, so it folds into `@effect-uai/google` with **zero new deps**. The dedicated Cloud Speech / Cloud TTS APIs require gRPC (`@google-cloud/speech` → `google-gax` → `@grpc/grpc-js`, ~3 MB) but unlock streaming STT, streaming TTS, word timestamps, diarization, and SSML — features the Gemini API doesn't expose. Users who only need sync Google speech pay nothing for gRPC; users who need streaming opt into `@effect-uai/google-cloud-speech`.
 

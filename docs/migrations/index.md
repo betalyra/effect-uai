@@ -9,7 +9,7 @@ site with the full "old → new" picture: renames, removals, behavior
 changes, and recommended migration order.
 
 The [CHANGELOG](https://github.com/betalyra/effect-uai/blob/main/packages/core/CHANGELOG.md)
-covers the *why* (one entry per PR). These pages cover the *how* (one
+covers the _why_ (one entry per PR). These pages cover the _how_ (one
 page per release, written for a reader doing the upgrade in front of
 their editor).
 

@@ -76,47 +76,47 @@ const parseMode = (argPath: string | undefined): Effect.Effect<Mode> =>
     )
   })
 
-const runSimplePath =
-  (prompt: string) =>
-  () =>
-    Effect.gen(function* () {
-      yield* Effect.logInfo("running simple variant", { promptPreview: prompt.slice(0, 80) })
-      const result = yield* runSimple(prompt)
-      yield* Effect.logInfo("simple generation complete", {
-        bytes: result.bytes.length,
-        format: result.format,
-        watermark: result.watermark,
-      })
-      yield* Effect.tryPromise(() =>
-        fs.writeFile(path.join(outDir, "out-simple.mp3"), result.bytes),
-      )
-      yield* Effect.logInfo("wrote out-simple.mp3 alongside this recipe")
+const runSimplePath = (prompt: string) => () =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("running simple variant", { promptPreview: prompt.slice(0, 80) })
+    const result = yield* runSimple(prompt)
+    yield* Effect.logInfo("simple generation complete", {
+      bytes: result.bytes.length,
+      format: result.format,
+      watermark: result.watermark,
     })
+    yield* Effect.tryPromise(() => fs.writeFile(path.join(outDir, "out-simple.mp3"), result.bytes))
+    yield* Effect.logInfo("wrote out-simple.mp3 alongside this recipe")
+  })
 
-const runWeightedPath =
-  (config: WeightedConfig) =>
-  () =>
-    Effect.gen(function* () {
-      yield* Effect.logInfo("running weighted variant", {
-        promptCount: config.prompts.length,
-        bpm: config.bpm,
-        scale: config.scale,
-        hasLyrics: config.lyrics !== undefined,
-      })
-      const result = yield* runWeighted(config)
-      yield* Effect.logInfo("weighted generation complete", {
-        bytes: result.bytes.length,
-        format: result.format,
-        lyrics: result.lyrics?.slice(0, 80),
-        watermark: result.watermark,
-      })
-      yield* Effect.tryPromise(() =>
-        fs.writeFile(path.join(outDir, "out-weighted.mp3"), result.bytes),
-      )
-      yield* Effect.logInfo("wrote out-weighted.mp3 alongside this recipe")
+const runWeightedPath = (config: WeightedConfig) => () =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("running weighted variant", {
+      promptCount: config.prompts.length,
+      bpm: config.bpm,
+      scale: config.scale,
+      hasLyrics: config.lyrics !== undefined,
     })
+    const result = yield* runWeighted(config)
+    yield* Effect.logInfo("weighted generation complete", {
+      bytes: result.bytes.length,
+      format: result.format,
+      lyrics: result.lyrics?.slice(0, 80),
+      watermark: result.watermark,
+    })
+    yield* Effect.tryPromise(() =>
+      fs.writeFile(path.join(outDir, "out-weighted.mp3"), result.bytes),
+    )
+    yield* Effect.logInfo("wrote out-weighted.mp3 alongside this recipe")
+  })
 
-const runMode = (mode: Mode): Effect.Effect<void, unknown, ReturnType<typeof lyriaLayer> extends Layer.Layer<infer A, any, any> ? A : never> =>
+const runMode = (
+  mode: Mode,
+): Effect.Effect<
+  void,
+  unknown,
+  ReturnType<typeof lyriaLayer> extends Layer.Layer<infer A, any, any> ? A : never
+> =>
   Match.value(mode).pipe(
     Match.tag("both", () =>
       Effect.gen(function* () {

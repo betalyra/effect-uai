@@ -15,10 +15,7 @@
  * (weighted) file.
  */
 import * as MusicGenerator from "@effect-uai/core/MusicGenerator"
-import type {
-  CommonGenerateMusicRequest,
-  WeightedPrompt,
-} from "@effect-uai/core/Music"
+import type { CommonGenerateMusicRequest, WeightedPrompt } from "@effect-uai/core/Music"
 
 /**
  * JSON shape accepted by `.json` config files for the weighted variant.

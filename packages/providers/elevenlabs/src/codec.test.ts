@@ -106,8 +106,7 @@ describe("defaultFileName", () => {
 })
 
 describe("httpStatusError", () => {
-  const tags = (status: number) =>
-    JSON.parse(JSON.stringify(httpStatusError(status, "body")))._tag
+  const tags = (status: number) => JSON.parse(JSON.stringify(httpStatusError(status, "body")))._tag
   it("maps 429 to RateLimited", () => expect(tags(429)).toBe("RateLimited"))
   it("maps 408/504 to Timeout", () => {
     expect(tags(408)).toBe("Timeout")

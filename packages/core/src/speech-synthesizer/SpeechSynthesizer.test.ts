@@ -118,9 +118,7 @@ describe("SpeechSynthesizer.streamSynthesisFrom", () => {
     })
     const tokens = Stream.fromIterable(["Hello, ", "world."])
     const audio = tokens.pipe(SpeechSynthesizer.streamSynthesisFrom(ssfReq))
-    const out = await Effect.runPromise(
-      Stream.runCollect(audio).pipe(Effect.provide(mock.layer)),
-    )
+    const out = await Effect.runPromise(Stream.runCollect(audio).pipe(Effect.provide(mock.layer)))
     expect(out.map((c) => Array.from(c.bytes))).toEqual([[10], [20]])
   })
 

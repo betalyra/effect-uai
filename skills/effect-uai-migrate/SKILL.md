@@ -160,7 +160,7 @@ ToolResult.$match({ Value: ..., Failure: ... })(result) // matcher
 
 ---
 
-## When this skill should *not* run
+## When this skill should _not_ run
 
 - User is starting a new project — point them at `effect-uai-basic-usage`.
 - User is on the latest version and asking how a specific API works —

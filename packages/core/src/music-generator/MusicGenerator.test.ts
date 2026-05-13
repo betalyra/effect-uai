@@ -2,11 +2,7 @@ import { Effect, Stream } from "effect"
 import { describe, expect, expectTypeOf, it } from "vitest"
 import type * as AiError from "../domain/AiError.js"
 import type { AudioChunk, AudioFormat } from "../domain/Audio.js"
-import {
-  configInput,
-  promptsInput,
-  type MusicResult,
-} from "../domain/Music.js"
+import { configInput, promptsInput, type MusicResult } from "../domain/Music.js"
 import * as MockMusicGenerator from "../testing/MockMusicGenerator.js"
 import * as MusicGenerator from "./MusicGenerator.js"
 
@@ -149,9 +145,7 @@ describe("MusicGenerator.streamGenerationFrom", () => {
       ]),
     ])
     const audio = inputs.pipe(MusicGenerator.streamGenerationFrom(sgfReq))
-    const out = await Effect.runPromise(
-      Stream.runCollect(audio).pipe(Effect.provide(mock.layer)),
-    )
+    const out = await Effect.runPromise(Stream.runCollect(audio).pipe(Effect.provide(mock.layer)))
     expect(out.map((c) => Array.from(c.bytes))).toEqual([[10], [20]])
   })
 

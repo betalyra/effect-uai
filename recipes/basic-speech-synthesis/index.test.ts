@@ -45,8 +45,14 @@ describe("basic-speech-synthesis provider dispatch", () => {
   it("sends each provider's expected model + voice on the request", async () => {
     const mock = MockSpeechSynthesizer.layer({
       blobs: [
-        { format: { container: "mp3", encoding: "mp3", sampleRate: 24000 }, bytes: new Uint8Array() },
-        { format: { container: "wav", encoding: "pcm_s16le", sampleRate: 24000 }, bytes: new Uint8Array() },
+        {
+          format: { container: "mp3", encoding: "mp3", sampleRate: 24000 },
+          bytes: new Uint8Array(),
+        },
+        {
+          format: { container: "wav", encoding: "pcm_s16le", sampleRate: 24000 },
+          bytes: new Uint8Array(),
+        },
       ],
     })
     const program = Effect.gen(function* () {

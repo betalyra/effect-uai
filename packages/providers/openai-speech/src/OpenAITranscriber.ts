@@ -8,12 +8,7 @@ import {
   Transcriber,
   type TranscriberService,
 } from "@effect-uai/core/Transcriber"
-import {
-  audioToBlob,
-  defaultFileName,
-  httpStatusError,
-  transportFailure,
-} from "./codec.js"
+import { audioToBlob, defaultFileName, httpStatusError, transportFailure } from "./codec.js"
 import type { OpenAITranscribeModel } from "./models.js"
 
 // ---------------------------------------------------------------------------
@@ -66,12 +61,11 @@ export type Config = {
  * comma-separated hint; OpenAI uses it as style/context, not strict
  * vocab biasing.
  */
-const promptToString: (
-  prompt: string | { readonly terms: ReadonlyArray<string> },
-) => string = Match.type<string | { readonly terms: ReadonlyArray<string> }>().pipe(
-  Match.when(Match.string, (s) => s),
-  Match.orElse(({ terms }) => terms.join(", ")),
-)
+const promptToString: (prompt: string | { readonly terms: ReadonlyArray<string> }) => string =
+  Match.type<string | { readonly terms: ReadonlyArray<string> }>().pipe(
+    Match.when(Match.string, (s) => s),
+    Match.orElse(({ terms }) => terms.join(", ")),
+  )
 
 // ---------------------------------------------------------------------------
 // Codec — request → FormData

@@ -60,13 +60,12 @@ const makeService = (
             const i = yield* Ref.getAndUpdate(sCursor, (n) => n + 1)
             const scripted = script.streams ?? []
             if (i >= scripted.length) {
-              const exhausted: Stream.Stream<TranscriptEvent, AiError.AiError | E, R> =
-                Stream.fail(
-                  new AiError.InvalidRequest({
-                    provider: "mock",
-                    raw: `MockTranscriber exhausted: ${scripted.length} streams scripted, but call ${i + 1} was made`,
-                  }),
-                )
+              const exhausted: Stream.Stream<TranscriptEvent, AiError.AiError | E, R> = Stream.fail(
+                new AiError.InvalidRequest({
+                  provider: "mock",
+                  raw: `MockTranscriber exhausted: ${scripted.length} streams scripted, but call ${i + 1} was made`,
+                }),
+              )
               return exhausted
             }
             // Drain the input audio fully before emitting the scripted events,

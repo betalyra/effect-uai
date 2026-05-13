@@ -20,19 +20,16 @@ const unsupportedInputFormat = (format: AudioFormat) =>
     reason: `ElevenLabs realtime STT accepts pcm_<rate> or ulaw_8000 only. Got ${JSON.stringify(format)}.`,
   })
 
-export const inputFormatToSlug: (
-  format: AudioFormat,
-) => Effect.Effect<string, AiError.AiError> = Match.type<AudioFormat>().pipe(
-  Match.when(
-    { container: "raw", encoding: "pcm_s16le" },
-    (f) => Effect.succeed(`pcm_${f.sampleRate}`),
-  ),
-  Match.when(
-    { container: "raw", encoding: "pcm_mulaw", sampleRate: 8000 },
-    () => Effect.succeed("ulaw_8000"),
-  ),
-  Match.orElse((f) => Effect.fail(unsupportedInputFormat(f))),
-)
+export const inputFormatToSlug: (format: AudioFormat) => Effect.Effect<string, AiError.AiError> =
+  Match.type<AudioFormat>().pipe(
+    Match.when({ container: "raw", encoding: "pcm_s16le" }, (f) =>
+      Effect.succeed(`pcm_${f.sampleRate}`),
+    ),
+    Match.when({ container: "raw", encoding: "pcm_mulaw", sampleRate: 8000 }, () =>
+      Effect.succeed("ulaw_8000"),
+    ),
+    Match.orElse((f) => Effect.fail(unsupportedInputFormat(f))),
+  )
 
 // ---------------------------------------------------------------------------
 // Single-use token — auth rides on a query param so any
@@ -114,39 +111,38 @@ const wireToWordTimestamp = (w: typeof RealtimeWord.Type): WordTimestamp => ({
   ...(w.logprob !== undefined && { confidence: Math.exp(w.logprob) }),
 })
 
-export const wireToEvent: (
-  msg: typeof ServerMessage.Type,
-) => TranscriptEvent | undefined = Match.type<typeof ServerMessage.Type>().pipe(
-  Match.when({ message_type: "session_started" }, () => undefined),
-  Match.when(
-    { message_type: "partial_transcript" },
-    (m): TranscriptEvent => ({ _tag: "partial", text: m.text }),
-  ),
-  // The realtime endpoint emits both `committed_transcript` and
-  // `committed_transcript_with_timestamps` for the same segment — the
-  // latter is always a superset. Suppress the text-only variant so the
-  // consumer sees one `final` per utterance instead of two.
-  Match.when({ message_type: "committed_transcript" }, () => undefined),
-  Match.when({ message_type: "committed_transcript_with_timestamps" }, (m): TranscriptEvent => {
-    const words = m.words == null ? undefined : m.words.map(wireToWordTimestamp)
-    return {
-      _tag: "final",
-      text: m.text,
-      ...(m.language_code != null && { languageCode: m.language_code }),
-      ...(words !== undefined && words.length > 0 && { words }),
-    }
-  }),
-  Match.orElse(
-    (m): TranscriptEvent => ({
-      _tag: "error",
-      code: m.message_type,
-      message:
-        typeof m.error === "string"
-          ? m.error
-          : JSON.stringify(m.error ?? `ElevenLabs ${m.message_type}`),
+export const wireToEvent: (msg: typeof ServerMessage.Type) => TranscriptEvent | undefined =
+  Match.type<typeof ServerMessage.Type>().pipe(
+    Match.when({ message_type: "session_started" }, () => undefined),
+    Match.when(
+      { message_type: "partial_transcript" },
+      (m): TranscriptEvent => ({ _tag: "partial", text: m.text }),
+    ),
+    // The realtime endpoint emits both `committed_transcript` and
+    // `committed_transcript_with_timestamps` for the same segment — the
+    // latter is always a superset. Suppress the text-only variant so the
+    // consumer sees one `final` per utterance instead of two.
+    Match.when({ message_type: "committed_transcript" }, () => undefined),
+    Match.when({ message_type: "committed_transcript_with_timestamps" }, (m): TranscriptEvent => {
+      const words = m.words == null ? undefined : m.words.map(wireToWordTimestamp)
+      return {
+        _tag: "final",
+        text: m.text,
+        ...(m.language_code != null && { languageCode: m.language_code }),
+        ...(words !== undefined && words.length > 0 && { words }),
+      }
     }),
-  ),
-)
+    Match.orElse(
+      (m): TranscriptEvent => ({
+        _tag: "error",
+        code: m.message_type,
+        message:
+          typeof m.error === "string"
+            ? m.error
+            : JSON.stringify(m.error ?? `ElevenLabs ${m.message_type}`),
+      }),
+    ),
+  )
 
 // ---------------------------------------------------------------------------
 // URL + frame builders
@@ -159,7 +155,12 @@ export type RealtimeOptions = {
   readonly commitStrategy?: "manual" | "vad"
 }
 
-export const buildWsUrl = (cfg: Config, token: string, audioFormat: string, opts: RealtimeOptions) => {
+export const buildWsUrl = (
+  cfg: Config,
+  token: string,
+  audioFormat: string,
+  opts: RealtimeOptions,
+) => {
   const wsBase = (cfg.baseUrl ?? "https://api.elevenlabs.io/v1").replace(/^http/, "ws")
   const params = new URLSearchParams({
     token,

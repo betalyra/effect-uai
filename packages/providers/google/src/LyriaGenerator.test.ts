@@ -149,11 +149,7 @@ describe("LyriaGenerator Layer (compile-time)", () => {
       prompts: "ambient",
     }).pipe(Effect.provide(live))
     expectTypeOf(gen).toEqualTypeOf<
-      Effect.Effect<
-        import("@effect-uai/core/Music").MusicResult,
-        AiError.AiError,
-        never
-      >
+      Effect.Effect<import("@effect-uai/core/Music").MusicResult, AiError.AiError, never>
     >()
     const _stream = Stream.runCollect(
       MusicGenerator.streamGeneration({

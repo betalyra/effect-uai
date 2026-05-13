@@ -111,8 +111,7 @@ const collectText = (wire: typeof Wire.Type) =>
 // Service implementation
 // ---------------------------------------------------------------------------
 
-const baseUrl = (cfg: Config) =>
-  cfg.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta"
+const baseUrl = (cfg: Config) => cfg.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta"
 
 const transcribeImpl = (cfg: Config) => (request: GeminiTranscribeRequest) =>
   Effect.gen(function* () {
@@ -124,9 +123,7 @@ const transcribeImpl = (cfg: Config) => (request: GeminiTranscribeRequest) =>
     ).pipe(
       HttpClientRequest.setHeader("x-goog-api-key", Redacted.value(cfg.apiKey)),
       HttpClientRequest.bodyJsonUnsafe({
-        contents: [
-          { parts: [{ text: buildPrompt(request) }, { inlineData: inline }] },
-        ],
+        contents: [{ parts: [{ text: buildPrompt(request) }, { inlineData: inline }] }],
       }),
     )
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
@@ -137,9 +134,7 @@ const transcribeImpl = (cfg: Config) => (request: GeminiTranscribeRequest) =>
     const json = yield* response.json.pipe(Effect.mapError(transportFailure))
     const text = yield* decodeWire(json).pipe(
       Effect.map(collectText),
-      Effect.mapError(
-        (cause) => new AiError.GenerationFailed({ provider: "gemini", raw: cause }),
-      ),
+      Effect.mapError((cause) => new AiError.GenerationFailed({ provider: "gemini", raw: cause })),
       Effect.flatMap((t) =>
         t.length === 0
           ? Effect.fail(
@@ -200,7 +195,8 @@ export const layer = (cfg: Config) =>
       Effect.map(
         make(cfg),
         (s): TranscriberService => ({
-          transcribe: (req: CommonTranscribeRequest) => s.transcribe(req as GeminiTranscribeRequest),
+          transcribe: (req: CommonTranscribeRequest) =>
+            s.transcribe(req as GeminiTranscribeRequest),
           streamTranscriptionFrom: s.streamTranscriptionFrom,
         }),
       ),

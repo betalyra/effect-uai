@@ -34,11 +34,7 @@ export type StreamSynthesizeRequest = {
 // URL + frame builders
 // ---------------------------------------------------------------------------
 
-export const buildWsUrl = (
-  cfg: Config,
-  request: StreamSynthesizeRequest,
-  outputFormat: string,
-) => {
+export const buildWsUrl = (cfg: Config, request: StreamSynthesizeRequest, outputFormat: string) => {
   const wsBase = (cfg.baseUrl ?? "https://api.elevenlabs.io/v1").replace(/^http/, "ws")
   const params = new URLSearchParams({
     output_format: outputFormat,
@@ -58,8 +54,7 @@ const bosFrame = (cfg: Config, request: StreamSynthesizeRequest) => {
   })
 }
 
-const textFrame = (text: string) =>
-  JSON.stringify({ text: text.endsWith(" ") ? text : `${text} ` })
+const textFrame = (text: string) => JSON.stringify({ text: text.endsWith(" ") ? text : `${text} ` })
 const eosFrame = JSON.stringify({ text: "" })
 
 // ---------------------------------------------------------------------------

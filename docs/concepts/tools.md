@@ -127,9 +127,7 @@ import { Context, Effect, Layer, Stream } from "effect"
 class WeatherApiKey extends Context.Service<WeatherApiKey, { readonly key: string }>()(
   "app/WeatherApiKey",
 ) {}
-class GeoApiKey extends Context.Service<GeoApiKey, { readonly key: string }>()(
-  "app/GeoApiKey",
-) {}
+class GeoApiKey extends Context.Service<GeoApiKey, { readonly key: string }>()("app/GeoApiKey") {}
 
 const lookupWeather = Tool.make({
   name: "lookup_weather",
@@ -268,7 +266,7 @@ which returns safe calls up front, an `announce` stream of
 verdicts arrive:
 
 ```ts
-const { approved, decisions, announce } = yield* fromVerdictQueue(isSensitive, verdicts)(calls)
+const { approved, decisions, announce } = yield * fromVerdictQueue(isSensitive, verdicts)(calls)
 
 const events = Stream.merge(
   announce,

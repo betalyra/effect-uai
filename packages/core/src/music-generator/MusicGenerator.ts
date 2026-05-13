@@ -102,19 +102,11 @@ export const streamGenerationFrom: {
     request: CommonStreamGenerateMusicRequest,
   ): <E, R>(
     input: Stream.Stream<MusicSessionInput, E, R>,
-  ) => Stream.Stream<
-    AudioChunk,
-    AiError.AiError | E,
-    R | MusicGenerator | MusicInteractiveSession
-  >
+  ) => Stream.Stream<AudioChunk, AiError.AiError | E, R | MusicGenerator | MusicInteractiveSession>
   <E, R>(
     input: Stream.Stream<MusicSessionInput, E, R>,
     request: CommonStreamGenerateMusicRequest,
-  ): Stream.Stream<
-    AudioChunk,
-    AiError.AiError | E,
-    R | MusicGenerator | MusicInteractiveSession
-  >
+  ): Stream.Stream<AudioChunk, AiError.AiError | E, R | MusicGenerator | MusicInteractiveSession>
 } = Function.dual(
   2,
   <E, R>(

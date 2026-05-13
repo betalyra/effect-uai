@@ -34,6 +34,7 @@ Then open <http://localhost:3000>, click **Start**, and allow microphone access.
 > **Important**: run with **`bun`**, not `pnpm tsx` — the runner uses `Bun.serve` and `Bun.build` globals that don't exist in Node.
 
 Env vars:
+
 - `ELEVENLABS_API_KEY` — required. Used by the server to fetch a single-use token for the realtime WS endpoint.
 - `PORT` — optional, defaults to `3000`.
 

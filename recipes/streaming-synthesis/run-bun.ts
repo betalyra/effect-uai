@@ -26,10 +26,7 @@ const appLayer = Layer.unwrap(
     const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
     return elevenlabsLayer({ apiKey })
   }),
-).pipe(
-  Layer.provide(FetchHttpClient.layer),
-  Layer.provide(Socket.layerWebSocketConstructorGlobal),
-)
+).pipe(Layer.provide(FetchHttpClient.layer), Layer.provide(Socket.layerWebSocketConstructorGlobal))
 
 const runtime = ManagedRuntime.make(appLayer)
 
@@ -67,9 +64,7 @@ if (!built.success) {
 }
 const clientJs = await built.outputs[0]!.text()
 const indexHtml = await Bun.file(path.join(recipeDir, "public/index.html")).text()
-const playbackWorkletJs = await Bun.file(
-  path.join(recipeDir, "public/playback-worklet.js"),
-).text()
+const playbackWorkletJs = await Bun.file(path.join(recipeDir, "public/playback-worklet.js")).text()
 
 // ---------------------------------------------------------------------------
 // Bun.serve
@@ -130,7 +125,10 @@ declare const Bun: {
         readonly send: (msg: Uint8Array) => number
         readonly close: () => void
       }) => void
-      readonly message: (ws: { readonly data: D }, msg: string | Buffer | Uint8Array | ArrayBuffer) => void
+      readonly message: (
+        ws: { readonly data: D },
+        msg: string | Buffer | Uint8Array | ArrayBuffer,
+      ) => void
       readonly close: (ws: { readonly data: D }) => void
     }
   }) => unknown
@@ -141,10 +139,7 @@ Bun.serve<WsData>({
   routes: {
     "/": responseOf(indexHtml, "text/html; charset=utf-8"),
     "/client.js": responseOf(clientJs, "application/javascript; charset=utf-8"),
-    "/playback-worklet.js": responseOf(
-      playbackWorkletJs,
-      "application/javascript; charset=utf-8",
-    ),
+    "/playback-worklet.js": responseOf(playbackWorkletJs, "application/javascript; charset=utf-8"),
     "/ws": (req, server) => {
       const queue = Effect.runSync(Queue.unbounded<string, Cause.Done<void>>())
       const upgraded = server.upgrade(req, { data: { queue } })

@@ -119,9 +119,7 @@ describe("Transcriber.streamTranscriptionFrom", () => {
     })
     const audio = Stream.fromIterable([new Uint8Array([0])])
     const events = Transcriber.streamTranscriptionFrom(audio, sttReq)
-    const out = await Effect.runPromise(
-      Stream.runCollect(events).pipe(Effect.provide(mock.layer)),
-    )
+    const out = await Effect.runPromise(Stream.runCollect(events).pipe(Effect.provide(mock.layer)))
     expect(out).toEqual([{ _tag: "final", text: "x" }])
   })
 })

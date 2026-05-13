@@ -23,10 +23,7 @@ const appLayer = Layer.unwrap(
     const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
     return elevenlabsLayer({ apiKey })
   }),
-).pipe(
-  Layer.provide(FetchHttpClient.layer),
-  Layer.provide(Socket.layerWebSocketConstructorGlobal),
-)
+).pipe(Layer.provide(FetchHttpClient.layer), Layer.provide(Socket.layerWebSocketConstructorGlobal))
 
 const runtime = ManagedRuntime.make(appLayer)
 
@@ -107,8 +104,15 @@ declare const Bun: {
         ) => Response | undefined)
     >
     readonly websocket: {
-      readonly open: (ws: { readonly data: D; readonly send: (msg: string) => number; readonly close: () => void }) => void
-      readonly message: (ws: { readonly data: D }, msg: string | Buffer | Uint8Array | ArrayBuffer) => void
+      readonly open: (ws: {
+        readonly data: D
+        readonly send: (msg: string) => number
+        readonly close: () => void
+      }) => void
+      readonly message: (
+        ws: { readonly data: D },
+        msg: string | Buffer | Uint8Array | ArrayBuffer,
+      ) => void
       readonly close: (ws: { readonly data: D }) => void
     }
   }) => unknown

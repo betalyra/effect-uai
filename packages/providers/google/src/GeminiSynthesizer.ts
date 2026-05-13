@@ -50,20 +50,16 @@ const PCM_CHANNELS = 1
 
 export const realizeOutput = Match.type<AudioFormat["container"]>().pipe(
   Match.when("raw", () =>
-    Effect.succeed(
-      [
-        { container: "raw", encoding: "pcm_s16le", sampleRate: PCM_RATE, channels: PCM_CHANNELS },
-        (b: Uint8Array) => b,
-      ] as const,
-    ),
+    Effect.succeed([
+      { container: "raw", encoding: "pcm_s16le", sampleRate: PCM_RATE, channels: PCM_CHANNELS },
+      (b: Uint8Array) => b,
+    ] as const),
   ),
   Match.when("wav", () =>
-    Effect.succeed(
-      [
-        { container: "wav", encoding: "pcm_s16le", sampleRate: PCM_RATE, channels: PCM_CHANNELS },
-        (b: Uint8Array) => wrapPcmAsWav(b, PCM_RATE, PCM_CHANNELS),
-      ] as const,
-    ),
+    Effect.succeed([
+      { container: "wav", encoding: "pcm_s16le", sampleRate: PCM_RATE, channels: PCM_CHANNELS },
+      (b: Uint8Array) => wrapPcmAsWav(b, PCM_RATE, PCM_CHANNELS),
+    ] as const),
   ),
   Match.whenOr("mp3", "opus", "aac", "flac", "ogg", "webm", (c) =>
     Effect.fail(
@@ -124,8 +120,7 @@ const ttsBody = (r: GeminiSynthesizeRequest) => ({
 // Service implementation
 // ---------------------------------------------------------------------------
 
-const baseUrl = (cfg: Config) =>
-  cfg.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta"
+const baseUrl = (cfg: Config) => cfg.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta"
 
 const synthesizeImpl = (cfg: Config) => (request: GeminiSynthesizeRequest) =>
   Effect.gen(function* () {
@@ -145,9 +140,7 @@ const synthesizeImpl = (cfg: Config) => (request: GeminiSynthesizeRequest) =>
     const json = yield* response.json.pipe(Effect.mapError(transportFailure))
     const inline = yield* decodeWire(json).pipe(
       Effect.map(findInline),
-      Effect.mapError(
-        (cause) => new AiError.GenerationFailed({ provider: "gemini", raw: cause }),
-      ),
+      Effect.mapError((cause) => new AiError.GenerationFailed({ provider: "gemini", raw: cause })),
       Effect.flatMap((found) =>
         found === undefined
           ? Effect.fail(
@@ -210,7 +203,8 @@ export const layer = (cfg: Config) =>
       Effect.map(
         make(cfg),
         (s): SpeechSynthesizerService => ({
-          synthesize: (req: CommonSynthesizeRequest) => s.synthesize(req as GeminiSynthesizeRequest),
+          synthesize: (req: CommonSynthesizeRequest) =>
+            s.synthesize(req as GeminiSynthesizeRequest),
           streamSynthesis: (req: CommonSynthesizeRequest) =>
             s.streamSynthesis(req as GeminiSynthesizeRequest),
           streamSynthesisFrom: s.streamSynthesisFrom,

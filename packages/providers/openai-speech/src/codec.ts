@@ -36,9 +36,7 @@ export const audioToBlob: (audio: AudioSource) => Effect.Effect<Blob, AiError.Ai
   Match.type<AudioSource>().pipe(
     Match.tag("bytes", (a) => Effect.succeed(bytesToBlob(a.bytes, a.mimeType))),
     Match.tag("base64", (a) =>
-      decodeBase64ToBytes(a.base64).pipe(
-        Effect.map((bytes) => bytesToBlob(bytes, a.mimeType)),
-      ),
+      decodeBase64ToBytes(a.base64).pipe(Effect.map((bytes) => bytesToBlob(bytes, a.mimeType))),
     ),
     Match.tag("url", () => Effect.fail(urlNotSupported)),
     Match.exhaustive,
@@ -100,7 +98,9 @@ export const containerToResponseFormat: (
 ) => Effect.Effect<OpenAIResponseFormat, AiError.AiError> = Match.type<
   AudioFormat["container"]
 >().pipe(
-  Match.whenOr("mp3", "opus", "aac", "flac", "wav", (c) => Effect.succeed(c as OpenAIResponseFormat)),
+  Match.whenOr("mp3", "opus", "aac", "flac", "wav", (c) =>
+    Effect.succeed(c as OpenAIResponseFormat),
+  ),
   Match.when("raw", () => Effect.succeed<OpenAIResponseFormat>("pcm")),
   Match.whenOr("ogg", "webm", (c) =>
     Effect.fail(
@@ -121,7 +121,10 @@ export const containerToResponseFormat: (
  */
 export const realizedFormat: (rf: OpenAIResponseFormat) => AudioFormat =
   Match.type<OpenAIResponseFormat>().pipe(
-    Match.when("mp3", (): AudioFormat => ({ container: "mp3", encoding: "mp3", sampleRate: 24000 })),
+    Match.when(
+      "mp3",
+      (): AudioFormat => ({ container: "mp3", encoding: "mp3", sampleRate: 24000 }),
+    ),
     Match.when(
       "opus",
       (): AudioFormat => ({ container: "opus", encoding: "opus", sampleRate: 24000 }),
@@ -155,7 +158,10 @@ export const realizedFormat: (rf: OpenAIResponseFormat) => AudioFormat =
  */
 export const httpStatusError: (status: number, body: string) => AiError.AiError = (status, body) =>
   Match.value(status).pipe(
-    Match.when(429, (): AiError.AiError => new AiError.RateLimited({ provider: "openai", raw: body })),
+    Match.when(
+      429,
+      (): AiError.AiError => new AiError.RateLimited({ provider: "openai", raw: body }),
+    ),
     Match.whenOr(
       408,
       504,
@@ -184,7 +190,9 @@ export const httpStatusError: (status: number, body: string) => AiError.AiError 
       (n) => n >= 500,
       (n): AiError.AiError => new AiError.Unavailable({ provider: "openai", status: n, raw: body }),
     ),
-    Match.orElse((): AiError.AiError => new AiError.InvalidRequest({ provider: "openai", raw: body })),
+    Match.orElse(
+      (): AiError.AiError => new AiError.InvalidRequest({ provider: "openai", raw: body }),
+    ),
   )
 
 export const transportFailure = (cause: unknown): AiError.AiError =>

@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>effect-uai · streaming synthesis</title>
     <style>
-      :root { color-scheme: light dark; }
+      :root {
+        color-scheme: light dark;
+      }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
         max-width: 720px;
@@ -13,7 +15,10 @@
         padding: 0 1.5rem;
         line-height: 1.5;
       }
-      h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }
+      h1 {
+        font-size: 1.4rem;
+        margin-bottom: 0.5rem;
+      }
       input[type="text"] {
         width: 100%;
         padding: 0.75rem 1rem;
@@ -31,17 +36,20 @@
         margin-top: 1rem;
         white-space: pre-wrap;
       }
-      #history .entry { margin-bottom: 0.3rem; }
-      .err { color: #c0392b; }
+      #history .entry {
+        margin-bottom: 0.3rem;
+      }
+      .err {
+        color: #c0392b;
+      }
     </style>
   </head>
   <body>
     <h1>streaming synthesis · effect-uai</h1>
     <p>
       Type a line and hit <strong>Enter</strong>. Words flow into the ElevenLabs
-      <code>/stream-input</code> WebSocket on the server; PCM chunks come back
-      and play through a ring-buffered <code>AudioWorklet</code>. Keep typing
-      to feed more text into the same session.
+      <code>/stream-input</code> WebSocket on the server; PCM chunks come back and play through a
+      ring-buffered <code>AudioWorklet</code>. Keep typing to feed more text into the same session.
     </p>
     <input id="text" type="text" placeholder="Type something, hit Enter to speak…" autofocus />
     <p id="status">idle</p>

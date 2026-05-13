@@ -54,6 +54,10 @@
       "types": "./dist/domain/Media.d.mts",
       "import": "./dist/domain/Media.mjs"
     },
+    "./Music": {
+      "types": "./dist/domain/Music.d.mts",
+      "import": "./dist/domain/Music.mjs"
+    },
     "./Transcript": {
       "types": "./dist/domain/Transcript.d.mts",
       "import": "./dist/domain/Transcript.mjs"
@@ -73,6 +77,10 @@
     "./LanguageModel": {
       "types": "./dist/language-model/LanguageModel.d.mts",
       "import": "./dist/language-model/LanguageModel.mjs"
+    },
+    "./MusicGenerator": {
+      "types": "./dist/music-generator/MusicGenerator.d.mts",
+      "import": "./dist/music-generator/MusicGenerator.mjs"
     },
     "./SpeechSynthesizer": {
       "types": "./dist/speech-synthesizer/SpeechSynthesizer.d.mts",
@@ -137,6 +145,10 @@
     "./testing/MockProvider": {
       "types": "./dist/testing/MockProvider.d.mts",
       "import": "./dist/testing/MockProvider.mjs"
+    },
+    "./testing/MockMusicGenerator": {
+      "types": "./dist/testing/MockMusicGenerator.d.mts",
+      "import": "./dist/testing/MockMusicGenerator.mjs"
     },
     "./testing/MockSpeechSynthesizer": {
       "types": "./dist/testing/MockSpeechSynthesizer.d.mts",

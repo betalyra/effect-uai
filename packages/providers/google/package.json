@@ -41,6 +41,10 @@
     "./GeminiEmbedding": {
       "types": "./dist/GeminiEmbedding.d.mts",
       "import": "./dist/GeminiEmbedding.mjs"
+    },
+    "./LyriaGenerator": {
+      "types": "./dist/LyriaGenerator.d.mts",
+      "import": "./dist/LyriaGenerator.mjs"
     }
   },
   "publishConfig": {

@@ -1,29 +1,25 @@
-import { Effect, Encoding, Queue, Redacted, Schema, Stream } from "effect"
+import { Effect, Encoding, Queue, Redacted, Result, Schema, Stream } from "effect"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import {
   defaultFormat,
   formatToOutputSlug,
+  parseJson,
+  type VoiceSettings,
+  wireVoiceSettings,
 } from "./codec.js"
 import type { ElevenLabsTtsModel, ElevenLabsVoiceId } from "./models.js"
 
 export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
 
-export type VoiceSettings = {
-  readonly stability?: number
-  readonly similarityBoost?: number
-  readonly style?: number
-  readonly useSpeakerBoost?: boolean
-  readonly speed?: number
-}
+export type { VoiceSettings } from "./codec.js"
 
 /**
- * Incremental-text-in request for the ElevenLabs `/stream-input`
- * WebSocket. `voiceSettings` only takes effect on the BOS frame — the
- * ElevenLabs protocol rejects mid-stream voice changes. `autoMode`
- * defaults to true so the model decides when to flush, which is what
- * you want for LLM-token streams.
+ * Incremental-text-in request for `/stream-input`. `voiceSettings`
+ * applies only on the BOS frame — mid-stream voice changes are
+ * rejected. `autoMode: true` (default) lets the model pick flush
+ * boundaries, which is what you want for LLM-token streams.
  */
 export type StreamSynthesizeRequest = {
   readonly model?: ElevenLabsTtsModel
@@ -37,17 +33,6 @@ export type StreamSynthesizeRequest = {
 // ---------------------------------------------------------------------------
 // URL + frame builders
 // ---------------------------------------------------------------------------
-
-const wireVoiceSettings = (v: VoiceSettings | undefined) =>
-  v === undefined
-    ? undefined
-    : {
-        ...(v.stability !== undefined && { stability: v.stability }),
-        ...(v.similarityBoost !== undefined && { similarity_boost: v.similarityBoost }),
-        ...(v.style !== undefined && { style: v.style }),
-        ...(v.useSpeakerBoost !== undefined && { use_speaker_boost: v.useSpeakerBoost }),
-        ...(v.speed !== undefined && { speed: v.speed }),
-      }
 
 export const buildWsUrl = (
   cfg: Config,
@@ -64,11 +49,6 @@ export const buildWsUrl = (
   return `${wsBase}/text-to-speech/${request.voiceId}/stream-input?${params.toString()}`
 }
 
-/**
- * The BOS frame primes the connection: it MUST be sent first with
- * `text: " "` (literal space), and is the only frame that may carry
- * `voice_settings` and (here) the API key.
- */
 const bosFrame = (cfg: Config, request: StreamSynthesizeRequest) => {
   const vs = wireVoiceSettings(request.voiceSettings)
   return JSON.stringify({
@@ -78,11 +58,12 @@ const bosFrame = (cfg: Config, request: StreamSynthesizeRequest) => {
   })
 }
 
-const textFrame = (text: string) => JSON.stringify({ text: text.endsWith(" ") ? text : `${text} ` })
+const textFrame = (text: string) =>
+  JSON.stringify({ text: text.endsWith(" ") ? text : `${text} ` })
 const eosFrame = JSON.stringify({ text: "" })
 
 // ---------------------------------------------------------------------------
-// Wire schema (server → client)
+// Wire schema (server → client) + helpers
 // ---------------------------------------------------------------------------
 
 const ServerFrame = Schema.Struct({
@@ -94,51 +75,38 @@ const ServerFrame = Schema.Struct({
 const decodeServerFrame = Schema.decodeUnknownEffect(ServerFrame)
 
 const decodeAudio = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
-  Effect.suspend(() => {
-    const result = Encoding.decodeBase64(b64)
-    return result._tag === "Success"
-      ? Effect.succeed(result.success)
-      : Effect.fail(
-          new AiError.GenerationFailed({
-            provider: "elevenlabs",
-            raw: { message: "failed to decode audio frame", cause: result.failure },
-          }),
-        )
+  Result.match(Encoding.decodeBase64(b64), {
+    onSuccess: Effect.succeed,
+    onFailure: (cause) =>
+      Effect.fail(
+        new AiError.GenerationFailed({
+          provider: "elevenlabs",
+          raw: { message: "failed to decode audio frame", cause },
+        }),
+      ),
   })
 
 const handleServerFrame = (queue: Queue.Queue<AudioChunk>) => (raw: string) =>
-  Effect.suspend(() => {
-    const parsed = Effect.try({
-      try: () => JSON.parse(raw) as unknown,
-      catch: () => undefined,
-    }).pipe(Effect.orElseSucceed(() => undefined))
-    return Effect.flatMap(parsed, (json) =>
-      json === undefined
-        ? Effect.void
-        : decodeServerFrame(json).pipe(
-            Effect.flatMap((frame) => {
-              if (frame.error !== undefined) {
-                return Effect.logWarning("[elevenlabs-tts] server error frame", {
-                  error: frame.error,
-                  message: frame.message,
-                })
-              }
-              if (frame.audio == null || frame.audio === "") return Effect.void
-              return decodeAudio(frame.audio).pipe(
-                Effect.flatMap((bytes) => Queue.offer(queue, { bytes })),
-                Effect.orElseSucceed(() => undefined),
-              )
-            }),
-            Effect.orElseSucceed(() => undefined),
-            Effect.asVoid,
-          ),
-    )
+  Effect.gen(function* () {
+    const json = yield* parseJson(raw)
+    if (json === undefined) return
+    const decoded = yield* decodeServerFrame(json).pipe(Effect.option)
+    if (decoded._tag === "None") return
+    const frame = decoded.value
+    if (frame.error !== undefined) {
+      yield* Effect.logWarning("[elevenlabs-tts] server error frame", {
+        error: frame.error,
+        message: frame.message,
+      })
+      return
+    }
+    if (frame.audio == null || frame.audio === "") return
+    const bytes = yield* decodeAudio(frame.audio).pipe(Effect.option)
+    if (bytes._tag === "Some") yield* Queue.offer(queue, { bytes: bytes.value })
   })
 
 // ---------------------------------------------------------------------------
-// Stream<string> → Stream<AudioChunk>
-//
-// Requires `Socket.WebSocketConstructor` in context.
+// Stream<string> → Stream<AudioChunk>. Requires `Socket.WebSocketConstructor`.
 // ---------------------------------------------------------------------------
 
 export const streamSynthesis =
@@ -149,17 +117,14 @@ export const streamSynthesis =
   ): Stream.Stream<AudioChunk, AiError.AiError | E, R | Socket.WebSocketConstructor> =>
     Stream.unwrap(
       Effect.gen(function* () {
-        const format = request.outputFormat ?? defaultFormat
-        const slug = yield* formatToOutputSlug(format)
-        const url = buildWsUrl(cfg, request, slug)
-        const socket = yield* Socket.makeWebSocket(url)
+        const slug = yield* formatToOutputSlug(request.outputFormat ?? defaultFormat)
+        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg, request, slug))
         const queue = yield* Queue.bounded<AudioChunk>(64)
-
         const write = yield* socket.writer
 
         // Writer fiber: BOS → drain text stream → EOS. Socket-side
-        // failures end this fiber; the reader still surfaces the
-        // resulting close event downstream as a clean stream end.
+        // failures end this fiber; the reader still surfaces a clean
+        // stream end via Queue.shutdown when the upstream WS closes.
         yield* Effect.gen(function* () {
           yield* write(bosFrame(cfg, request))
           yield* Stream.runForEach(textIn, (text) =>

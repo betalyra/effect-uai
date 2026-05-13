@@ -5,9 +5,8 @@
  *
  *   browser text  →  Stream<string>  →  streamSynthesisFrom  →  audio chunks  →  browser
  *
- * The first text message from the browser is split into words and
- * pushed one-by-one into the input stream — a tiny LLM-token
- * simulation, so the demo feels representative of the real use case.
+ * The queue stays open across submissions: each Enter from the browser
+ * adds another sentence to the same upstream TTS session.
  *
  *   ELEVENLABS_API_KEY=... bun recipes/streaming-synthesis/run-bun.ts
  */
@@ -83,23 +82,22 @@ const port = Number(process.env["PORT"] ?? 3000)
 const responseOf = (body: string, type: string): Response =>
   new Response(body, { headers: { "content-type": type } })
 
+const TERMINATORS = /[.!?]\s*$/
+
+// Push each submission as a single frame so ElevenLabs sees one
+// generation unit — smoother prosody, no per-word audio seams.
+// Terminator nudges the model to flush promptly.
 const offerSubmission = (queue: TextQueue, text: string): void => {
-  // Push the whole submission as one frame so ElevenLabs sees the
-  // sentence as a single generation unit — produces smoother prosody
-  // and no per-word audio boundaries. The queue stays open across
-  // submissions; only the browser disconnecting ends it.
   const trimmed = text.trim()
   if (trimmed.length === 0) return
-  Queue.offerUnsafe(queue, trimmed.endsWith(".") || trimmed.endsWith("!") || trimmed.endsWith("?")
-    ? `${trimmed} `
-    : `${trimmed}. `)
+  Queue.offerUnsafe(queue, TERMINATORS.test(trimmed) ? `${trimmed} ` : `${trimmed}. `)
 }
 
 const parseTextFrame = (msg: unknown): string | undefined => {
   if (typeof msg !== "string") return undefined
   try {
-    const json = JSON.parse(msg) as { text?: unknown }
-    return typeof json.text === "string" ? json.text : undefined
+    const { text } = JSON.parse(msg) as { text?: unknown }
+    return typeof text === "string" ? text : undefined
   } catch {
     return undefined
   }

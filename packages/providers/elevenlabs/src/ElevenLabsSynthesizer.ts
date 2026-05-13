@@ -1,32 +1,28 @@
 import { Context, Effect, Layer, Redacted, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
-import * as AiError from "@effect-uai/core/AiError"
+import * as Socket from "effect/unstable/socket/Socket"
+import type * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk } from "@effect-uai/core/Audio"
 import {
   type CommonStreamSynthesizeRequest,
   type CommonSynthesizeRequest,
   SpeechSynthesizer,
   type SpeechSynthesizerService,
+  TtsIncrementalText,
 } from "@effect-uai/core/SpeechSynthesizer"
-import {
-  defaultFormat,
-  formatToOutputSlug,
-  httpStatusError,
-  transportFailure,
-} from "./codec.js"
+import { defaultFormat, formatToOutputSlug, httpStatusError, transportFailure } from "./codec.js"
 import type { ElevenLabsTtsModel, ElevenLabsVoiceId } from "./models.js"
+import { streamSynthesis as realtimeStream, type VoiceSettings } from "./realtimeTts.js"
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
 /**
- * ElevenLabs-typed synthesize request. `model` narrows to
- * `ElevenLabsTtsModel`. `voiceSettings` exposes the provider's
- * prosody/timbre controls; omit for ElevenLabs's tuned defaults.
- *
- * `seed` makes generation deterministic; `previousText` / `nextText`
- * thread context across sequential calls for natural prosody.
+ * ElevenLabs-typed synthesize request. `voiceSettings` exposes the
+ * provider's prosody/timbre controls; `seed` makes generation
+ * deterministic; `previousText` / `nextText` thread context across
+ * sequential calls for natural prosody.
  */
 export type ElevenLabsSynthesizeRequest = Omit<
   CommonSynthesizeRequest,
@@ -34,13 +30,7 @@ export type ElevenLabsSynthesizeRequest = Omit<
 > & {
   readonly model: ElevenLabsTtsModel
   readonly voiceId: ElevenLabsVoiceId
-  readonly voiceSettings?: {
-    readonly stability?: number
-    readonly similarityBoost?: number
-    readonly style?: number
-    readonly useSpeakerBoost?: boolean
-    readonly speed?: number
-  }
+  readonly voiceSettings?: VoiceSettings
   readonly seed?: number
   readonly previousText?: string
   readonly nextText?: string
@@ -67,7 +57,7 @@ export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: st
 // Codec — request → JSON body
 // ---------------------------------------------------------------------------
 
-const wireVoiceSettings = (v: ElevenLabsSynthesizeRequest["voiceSettings"]) =>
+const wireVoiceSettings = (v: VoiceSettings | undefined) =>
   v === undefined
     ? undefined
     : {
@@ -89,7 +79,7 @@ const buildBody = (r: ElevenLabsSynthesizeRequest) => ({
 })
 
 // ---------------------------------------------------------------------------
-// HTTP plumbing
+// HTTP plumbing (sync + chunked-HTTP streaming)
 // ---------------------------------------------------------------------------
 
 const baseUrl = (cfg: Config) => cfg.baseUrl ?? "https://api.elevenlabs.io/v1"
@@ -136,52 +126,35 @@ const streamSynthesisImpl = (cfg: Config) => (request: ElevenLabsSynthesizeReque
     }),
   )
 
-/**
- * ElevenLabs DOES expose a WebSocket `/stream-input` endpoint for
- * incremental text-in, but it's deferred to Phase 2b (needs a custom
- * `WebSocketConstructor` Layer for the `xi-api-key` header). This Layer
- * therefore omits `TtsIncrementalText` — callers using
- * `SpeechSynthesizer.streamSynthesisFrom` against it get a compile-time
- * error.
- */
-const unsupportedStreamFrom = <E, R>(
-  _textIn: Stream.Stream<string, E, R>,
-  _request: CommonStreamSynthesizeRequest,
-): Stream.Stream<AudioChunk, AiError.AiError | E, R> => {
-  const fail: Stream.Stream<AudioChunk, AiError.AiError | E, R> = Stream.fail(
-    new AiError.Unsupported({
-      provider: "elevenlabs",
-      capability: "streamSynthesisFrom",
-      reason:
-        "ElevenLabs `/stream-input` WebSocket is not wired in Phase 2a. The Layer omits `TtsIncrementalText`; the bidirectional path ships in Phase 2b.",
-    }),
-  )
-  return fail
-}
-
 // ---------------------------------------------------------------------------
 // Constructors
 // ---------------------------------------------------------------------------
 
 export const make = (cfg: Config) =>
-  Effect.map(
-    HttpClient.HttpClient.asEffect(),
-    (client): ElevenLabsSynthesizerService => ({
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+    const ctor = yield* Socket.WebSocketConstructor
+    return {
       synthesize: (r) =>
         synthesizeImpl(cfg)(r).pipe(Effect.provideService(HttpClient.HttpClient, client)),
       streamSynthesis: (r) =>
         streamSynthesisImpl(cfg)(r).pipe(Stream.provideService(HttpClient.HttpClient, client)),
-      streamSynthesisFrom: unsupportedStreamFrom,
-    }),
-  )
+      streamSynthesisFrom: (textIn, request) =>
+        realtimeStream(cfg)(textIn, request as ElevenLabsSynthesizeRequest).pipe(
+          Stream.provideService(Socket.WebSocketConstructor, ctor),
+        ),
+    } satisfies ElevenLabsSynthesizerService
+  })
 
 /**
- * Layer registers both `ElevenLabsSynthesizer` and the generic
- * `SpeechSynthesizer`. Does NOT register `TtsIncrementalText` —
- * incremental text-in WS ships in Phase 2b.
+ * Layer registers `ElevenLabsSynthesizer`, the generic
+ * `SpeechSynthesizer`, **and `TtsIncrementalText`** — incremental
+ * text-in is wired to the realtime `/stream-input` WebSocket. Provide
+ * `Socket.layerWebSocketConstructorGlobal` and an `HttpClient` Layer at
+ * the call site.
  */
 export const layer = (cfg: Config) =>
-  Layer.merge(
+  Layer.mergeAll(
     Layer.effect(ElevenLabsSynthesizer, make(cfg)),
     Layer.effect(
       SpeechSynthesizer,
@@ -192,8 +165,10 @@ export const layer = (cfg: Config) =>
             s.synthesize(req as ElevenLabsSynthesizeRequest),
           streamSynthesis: (req: CommonSynthesizeRequest) =>
             s.streamSynthesis(req as ElevenLabsSynthesizeRequest),
-          streamSynthesisFrom: s.streamSynthesisFrom,
+          streamSynthesisFrom: (textIn, req: CommonStreamSynthesizeRequest) =>
+            s.streamSynthesisFrom(textIn, req),
         }),
       ),
     ),
+    Layer.succeed(TtsIncrementalText, undefined),
   )

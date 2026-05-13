@@ -44,7 +44,36 @@ Sources: [pricing](https://openai.com/api/pricing/), [realtime WS](https://devel
 
 ---
 
-### Google Cloud
+### Google
+
+Google ships two distinct API surfaces that we have to choose between (or both). Earlier drafts of this plan assumed only the gRPC-only Cloud Speech APIs existed; the Gemini API actually exposes both TTS and audio understanding over REST+JSON, with significant capability trade-offs.
+
+#### Path A — Gemini API (REST + JSON)
+
+Recommended **first** integration: shares HTTP stack with `@effect-uai/google` (the existing Gemini package) and runs on every JS runtime (no gRPC).
+
+**TTS** — [docs](https://ai.google.dev/gemini-api/docs/speech-generation)
+- Models: `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro-preview-tts`, `gemini-3.1-flash-tts-preview`.
+- Endpoint: `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` with `generationConfig.responseModalities: ["AUDIO"]` and `generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName`.
+- Voices: ~30 prebuilt (`Kore`, `Puck`, `Zephyr`, `Enceladus`, …) — string slugs, no project-scoped custom voices.
+- Multi-speaker: up to 2 via `multiSpeakerVoiceConfig.speakerVoiceConfigs[]`.
+- Response: `candidates[0].content.parts[0].inlineData.data` = base64 PCM 16-bit signed LE, 24 kHz mono.
+- Streaming: **not supported** — sync only.
+- Controls: prompt-level prosody (`[whispers]`, `[shouting]` tags + natural-language style direction). No SSML, no `speed`/`pitch` knobs.
+- Languages: ~80 (auto-detected).
+
+**Audio understanding (transcription-like)** — [docs](https://ai.google.dev/gemini-api/docs/audio)
+- Models: `gemini-3-flash-preview` and other Gemini models that accept audio modality.
+- Endpoint: `POST .../models/{model}:generateContent` with the audio supplied either inline (`inlineData.data` base64, ≤20 MB total request) or by Files API URI (`fileData.fileUri`, supports up to 9.5 h).
+- Formats accepted: `audio/wav`, `audio/mp3`, `audio/aiff`, `audio/aac`, `audio/ogg`, `audio/flac`.
+- Transcription is **prompt-driven**, not a dedicated endpoint: you ask "Transcribe this audio" (optionally with `responseSchema` for structured output). Timestamps come back only when the prompt requests them as `MM:SS` text.
+- **Not supported**: streaming partial transcripts, word-level timestamps, language forcing, speaker diarization.
+
+→ Maps cleanly onto our `SpeechSynthesizer.synthesize` and a *limited* `Transcriber.transcribe`. Compile-time markers `SttStreaming` and `TtsIncrementalText` are **not provided** by this Layer. `wordTimestamps: true` and `diarization: true` on `transcribe` → `Unsupported` at runtime.
+
+#### Path B — Cloud Speech-to-Text + Cloud Text-to-Speech (gRPC)
+
+Full-featured fallback for users who need streaming STT/TTS or word timestamps. Separate package (`@effect-uai/google-cloud-speech`) because the gRPC stack adds ~3 MB of deps and doesn't run in browsers / Workers / Edge.
 
 **STT**
 - Models (2026): `chirp_2` (recommended, GA), legacy `latest_long`, `latest_short`, `telephony`.
@@ -66,7 +95,7 @@ Sources: [pricing](https://openai.com/api/pricing/), [realtime WS](https://devel
 - Formats: LINEAR16 PCM, MP3, OGG_OPUS, MULAW, ALAW; configurable sample rate.
 - SDK: `@google-cloud/text-to-speech`.
 
-Sources: [STT pricing](https://cloud.google.com/speech-to-text/pricing), [TTS pricing](https://cloud.google.com/text-to-speech/pricing), [Chirp 3 HD docs](https://docs.cloud.google.com/text-to-speech/docs/chirp3-hd).
+Sources: [Gemini speech generation](https://ai.google.dev/gemini-api/docs/speech-generation), [Gemini audio understanding](https://ai.google.dev/gemini-api/docs/audio), [Cloud STT pricing](https://cloud.google.com/speech-to-text/pricing), [Cloud TTS pricing](https://cloud.google.com/text-to-speech/pricing), [Chirp 3 HD docs](https://docs.cloud.google.com/text-to-speech/docs/chirp3-hd).
 
 ---
 
@@ -866,7 +895,8 @@ Some gaps depend on values in the request itself, which can't be expressed in th
 | Provider          | `transcribe`         | `streamTranscriptionFrom`             | `synthesize` | `streamSynthesis` | `streamSynthesisFrom`                  |
 |-------------------|----------------------|---------------------------------------|--------------|-------------------|----------------------------------------|
 | OpenAI            | ok                   | provides `SttStreaming` (Realtime WS) | ok           | ok (chunked HTTP) | **does not provide `TtsIncrementalText`** |
-| Google            | ok                   | provides `SttStreaming` (gRPC bidi)   | ok           | ok                | provides `TtsIncrementalText` — `Runtime Unsupported` if voiceId ≠ `*-Chirp3-HD-*` |
+| Google (Gemini API) | ok (no word timestamps; `Unsupported` for `wordTimestamps`/`diarization`) | **does not provide `SttStreaming`** | ok           | **does not provide** (Gemini TTS is sync-only — `streamSynthesis` is emulated by emitting one chunk) | **does not provide `TtsIncrementalText`** |
+| Google (Cloud Speech / TTS, gRPC) | ok                   | provides `SttStreaming` (gRPC bidi)   | ok           | ok                | provides `TtsIncrementalText` — `Runtime Unsupported` if voiceId ≠ `*-Chirp3-HD-*` |
 | ElevenLabs        | ok                   | provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText`          |
 | Deepgram          | ok                   | provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText`          |
 | Cartesia          | (emulated)           | provides `SttStreaming`               | ok           | ok                | provides `TtsIncrementalText`          |
@@ -881,7 +911,7 @@ Some gaps depend on values in the request itself, which can't be expressed in th
 
 # Implementation plan
 
-Order: providers that fit the existing HTTP-only mold first (OpenAI), then ElevenLabs (canonical streaming TTS), then Inworld + MiniMax (user-prioritized), then Deepgram + Cartesia (similar HTTP/WS shape), then Google (separate package — gRPC SDK). Providers with unique wire mechanics (Azure SDK-only, AWS SigV4 + event-stream) are deferred.
+Order: providers that fit the existing HTTP-only mold first (OpenAI), then ElevenLabs (canonical streaming TTS), then Inworld + MiniMax (user-prioritized), then Deepgram + Cartesia (similar HTTP/WS shape), then Google via the Gemini REST API (cross-runtime, no gRPC), then Google Cloud Speech (gRPC, only for users who need streaming / word timestamps). Providers with unique wire mechanics (Azure SDK-only, AWS SigV4 + event-stream) are deferred.
 
 ## Package layout
 
@@ -889,8 +919,8 @@ Order: providers that fit the existing HTTP-only mold first (OpenAI), then Eleve
 |-------------------------------|------------------------------------------------|--------------------------------------------|
 | `@effect-uai/responses`       | OpenAI Responses API (LLM, embeddings)         | unchanged                                  |
 | `@effect-uai/openai-speech`   | OpenAI STT, TTS                                | **new** — separate from `responses` because `responses` is named after the Responses API protocol, not the provider |
-| `@effect-uai/google`          | Gemini LLM, embeddings                         | unchanged                                  |
-| `@effect-uai/google-speech`   | Google STT, TTS                                | **new** — depends on `@google-cloud/speech` and `@google-cloud/text-to-speech` |
+| `@effect-uai/google`          | Gemini LLM, embeddings, **Gemini speech (TTS + audio understanding via REST+JSON)** | extended — sync TTS + sync (prompt-based) STT via `generateContent`. No gRPC. |
+| `@effect-uai/google-cloud-speech` | Google Cloud STT, Cloud TTS                    | **new** — depends on `@google-cloud/speech` and `@google-cloud/text-to-speech`. Adds streaming + word timestamps + diarization. |
 | `@effect-uai/elevenlabs`      | ElevenLabs STT, TTS                            | new                                        |
 | `@effect-uai/inworld`         | Inworld STT (pending docs verification), TTS  | new                                        |
 | `@effect-uai/minimax`         | MiniMax TTS (no STT — provider does not offer it) | new                                     |
@@ -899,11 +929,11 @@ Order: providers that fit the existing HTTP-only mold first (OpenAI), then Eleve
 
 Rationale for splitting OpenAI: `@effect-uai/responses` is named after OpenAI's *Responses API* protocol (the `/v1/responses` endpoint plus the embeddings endpoint that shares its shape), not after the provider. OpenAI's audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/speech`) have different request/response shapes and don't belong in a package named after a different API surface. They live in `@effect-uai/openai-speech` instead.
 
-Rationale for splitting Google: the speech SDKs add ~3MB of dependencies and pin a different transport stack (gRPC via `@google-cloud/speech` → `google-gax` → `@grpc/grpc-js`) than the REST-based Gemini adapter. Users who only need Gemini shouldn't have to install or audit those deps.
+Rationale for splitting Google into two packages: the Gemini API exposes both TTS and audio understanding over REST+JSON ([speech-generation docs](https://ai.google.dev/gemini-api/docs/speech-generation), [audio docs](https://ai.google.dev/gemini-api/docs/audio)) — same transport stack as the existing Gemini adapter, so it folds into `@effect-uai/google` with **zero new deps**. The dedicated Cloud Speech / Cloud TTS APIs require gRPC (`@google-cloud/speech` → `google-gax` → `@grpc/grpc-js`, ~3 MB) but unlock streaming STT, streaming TTS, word timestamps, diarization, and SSML — features the Gemini API doesn't expose. Users who only need sync Google speech pay nothing for gRPC; users who need streaming opt into `@effect-uai/google-cloud-speech`.
 
 ## Runtime support note
 
-`@grpc/grpc-js` (transitive dep of `@google-cloud/speech`) works on **Node ≥18, Bun ≥1.1, Deno ≥2**. It does not work in browsers, Cloudflare Workers, or Vercel Edge (no raw HTTP/2 client). All other provider packages remain HTTP/WebSocket only and run on every JS runtime.
+`@grpc/grpc-js` (transitive dep of `@google-cloud/speech`) works on **Node ≥18, Bun ≥1.1, Deno ≥2**. It does not work in browsers, Cloudflare Workers, or Vercel Edge (no raw HTTP/2 client). All other provider packages — **including the Gemini-speech additions to `@effect-uai/google`** — remain HTTP/WebSocket only and run on every JS runtime.
 
 ## Phase 0 — Core abstraction (no provider code)
 
@@ -1019,15 +1049,37 @@ Both have clean WS shapes that mirror Phase 2. Implement in parallel or sequenti
 
 **Exit criteria**: cross-provider switch test passes — same input audio → similar transcript across OpenAI / ElevenLabs / Deepgram / Cartesia.
 
-## Phase 6 — Google Cloud (new `@effect-uai/google-speech` package)
+## Phase 6 — Google
 
-New package, kept separate from `@effect-uai/google` so Gemini users don't pay the SDK install cost. Built on `@google-cloud/speech` + `@google-cloud/text-to-speech` rather than raw `@grpc/grpc-js` — the SDKs ship generated proto types, ADC handling, and retry logic, and have the same runtime constraints as raw grpc-js anyway.
+Split into two sub-phases because the Gemini REST API and the Cloud Speech gRPC API have radically different transport stacks. The Gemini path ships first (HTTP, every runtime, zero new deps) and covers the common case; the Cloud Speech path follows when users need features the Gemini API can't expose.
+
+### Phase 6a — Gemini speech (extend `@effect-uai/google`)
+
+Folded into the existing Gemini package — same `generateContent` endpoint family, same auth, same `HttpClient` Layer. No package split needed.
+
+1. `models.ts` additions: `GeminiTtsModel` (`gemini-2.5-flash-preview-tts`, `gemini-2.5-pro-preview-tts`, `gemini-3.1-flash-tts-preview`), `GeminiSttModel` (`gemini-3-flash-preview` and other audio-capable Gemini models), `GeminiVoiceName` (`Kore`, `Puck`, `Zephyr`, `Enceladus`, …).
+2. `GeminiSynthesizer.ts`
+   - `synthesize`: `POST /v1beta/models/{model}:generateContent` with `generationConfig.responseModalities: ["AUDIO"]` and `speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName`. Multi-speaker via `multiSpeakerVoiceConfig.speakerVoiceConfigs[]` when `request.speakers` is provided. Decode base64 PCM from `candidates[0].content.parts[0].inlineData.data` → `AudioBlob` (24 kHz mono, raw `pcm_s16le`).
+   - `streamSynthesis`: emulated — calls `synthesize`, emits the result as a single `AudioChunk`. Gemini TTS has no chunked-streaming endpoint.
+   - `streamSynthesisFrom`: `Stream.fail(Unsupported)`. Layer **does not register `TtsIncrementalText`**.
+3. `GeminiTranscriber.ts`
+   - `transcribe`: `POST /v1beta/models/{model}:generateContent` with the audio as `inlineData` (≤20 MB) or via Files API URI. Prompt: `"Transcribe this audio verbatim. Return only the transcript text."` Parse `candidates[0].content.parts[0].text` → `TranscriptResult { text }`. No word timestamps. `wordTimestamps: true` or `diarization: true` → `Unsupported`.
+   - `streamTranscriptionFrom`: `Stream.fail(Unsupported)`. Layer **does not register `SttStreaming`**.
+4. Codec helpers in `codec.ts`: `audioSourceToInlineData` (Match over `AudioSource` variants; URL → `InvalidRequest` for inline path; Files API path lives as a separate `audioSourceToFileData` if/when we wire Files upload).
+5. Auth: reuses `@effect-uai/google` `apiKey` / `x-goog-api-key` header logic.
+6. Recipe: Gemini variants of `basic-transcription` and `basic-speech-synthesis` recipes (or extend existing recipes with a provider switch).
+
+**Exit criteria**: Gemini TTS round-trip writes a valid WAV from a 24 kHz PCM blob; Gemini transcription returns the expected text on a known sample; compile-time gating proves `streamSynthesisFrom` / `streamTranscriptionFrom` against the Gemini Layer alone is a type error.
+
+### Phase 6b — Google Cloud Speech (new `@effect-uai/google-cloud-speech` package)
+
+For users who need streaming STT, streaming TTS, or word-level timestamps. Built on `@google-cloud/speech` + `@google-cloud/text-to-speech` rather than raw `@grpc/grpc-js` — the SDKs ship generated proto types, ADC handling, and retry logic, and have the same runtime constraints as raw grpc-js anyway.
 
 1. Package scaffold: `package.json`, `tsconfig.json`, `src/index.ts`. Dependencies: `@google-cloud/speech`, `@google-cloud/text-to-speech`, `effect`, `@effect-uai/core`.
-2. `GoogleTranscriber.ts`
+2. `GoogleCloudTranscriber.ts`
    - `transcribe`: `SpeechClient.recognize({ config, content | uri })`. Map `prompt.terms` → `config.adaptation.phraseSets[].inlinePhraseSet.phrases[]`. Parse `"1.200s"` duration strings into seconds.
    - `streamTranscriptionFrom`: returned `Stream` wraps `SpeechClient.streamingRecognize()` in `Stream.scoped`. Send `streamingConfig` first; drain the input audio stream into the SDK's writable side as `{ audioContent: bytes }`. Pump SDK events → `TranscriptEvent` (`isFinal=false` → `partial` with `stability`, `isFinal=true` → `final`, `speechEventType` → `speech-started` / `utterance-ended`).
-3. `GoogleSynthesizer.ts`
+3. `GoogleCloudSynthesizer.ts`
    - `synthesize`: `TextToSpeechClient.synthesizeSpeech({ input, voice, audioConfig })`. Decode base64 `audioContent` → `AudioBlob`.
    - `streamSynthesis`: same call; surface chunks as `Stream<AudioChunk>`.
    - `streamSynthesisFrom`: wraps `TextToSpeechClient.streamingSynthesize()` in `Stream.scoped`. Chirp 3 HD voices only — validate `voiceId` matches `*-Chirp3-HD-*`; emit `Unsupported` on the output stream otherwise. First SDK message = `streaming_config`; drain input text stream as `{ input: { text } }` messages. SDK half-close on input-stream end.
@@ -1055,8 +1107,9 @@ Each of these costs more than a Phase-2-style adapter. Defer until a user reques
 ## Resolved decisions
 
 - **Two services, capability gaps surface as `Unsupported` errors** rather than splitting into more granular service tags. Provider feature sets evolve (AWS Polly just added bidirectional streaming in March 2026) — modeling availability at runtime in the error channel beats churning the type surface every time a provider adds an endpoint.
-- **Google built on the official SDKs**, not raw `@grpc/grpc-js`. Same runtime constraints (Node ≥18, Bun ≥1.1, Deno ≥2 — both rely on `node:http2`), but the SDKs save us auth glue and proto codegen.
-- **Google speech as a separate package** (`@effect-uai/google-speech`), keeping the SDK dependencies out of `@effect-uai/google` so Gemini-only users pay nothing for speech they don't use.
+- **Google split into two paths**:
+  - **Gemini speech (REST + JSON) folds into `@effect-uai/google`** — same transport stack as the existing Gemini adapter, zero new deps, runs on every JS runtime. Covers sync TTS and prompt-based transcription. Layer does not provide `SttStreaming` / `TtsIncrementalText`, and `wordTimestamps`/`diarization` on `transcribe` → `Unsupported` (Gemini doesn't expose them).
+  - **Cloud Speech (gRPC) lives in `@effect-uai/google-cloud-speech`** — built on the official `@google-cloud/speech` and `@google-cloud/text-to-speech` SDKs, not raw `@grpc/grpc-js`. Adds the streaming/word-timestamp/diarization features the Gemini path can't. Optional, opt-in dependency.
 
 ## Out of scope for this plan
 

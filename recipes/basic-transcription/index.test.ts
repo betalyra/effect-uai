@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
 import type { AudioSource } from "@effect-uai/core/Audio"
 import * as MockTranscriber from "@effect-uai/core/testing/MockTranscriber"
-import { transcribeGpt4o, transcribeWhisperVerbose } from "./index.js"
+import { transcribeFast, transcribeVerbose, type Provider } from "./index.js"
 
 const dummyAudio: AudioSource = {
   _tag: "bytes",
@@ -10,18 +10,20 @@ const dummyAudio: AudioSource = {
   mimeType: "audio/wav",
 }
 
-describe("basic-transcription", () => {
-  it("returns the gpt-4o-transcribe scripted transcript", async () => {
-    const mock = MockTranscriber.layer({
-      transcripts: [{ text: "Hello, world." }],
-    })
+const providers: ReadonlyArray<Provider> = ["openai", "gemini"]
+
+describe.each(providers)("basic-transcription fast (%s)", (provider) => {
+  it("returns the scripted transcript", async () => {
+    const mock = MockTranscriber.layer({ transcripts: [{ text: "Hello, world." }] })
     const result = await Effect.runPromise(
-      transcribeGpt4o(dummyAudio).pipe(Effect.provide(mock.layer)),
+      transcribeFast(provider, dummyAudio).pipe(Effect.provide(mock.layer)),
     )
     expect(result.text).toBe("Hello, world.")
   })
+})
 
-  it("returns word timestamps for the whisper verbose variant", async () => {
+describe("basic-transcription verbose (openai-only)", () => {
+  it("returns word timestamps", async () => {
     const mock = MockTranscriber.layer({
       transcripts: [
         {
@@ -36,25 +38,32 @@ describe("basic-transcription", () => {
       ],
     })
     const result = await Effect.runPromise(
-      transcribeWhisperVerbose(dummyAudio).pipe(Effect.provide(mock.layer)),
+      transcribeVerbose(dummyAudio).pipe(Effect.provide(mock.layer)),
     )
     expect(result.text).toBe("Hello world")
     expect(result.languageCode).toBe("en")
     expect(result.words?.length).toBe(2)
     expect(result.words?.[0]).toEqual({ text: "Hello", startSeconds: 0, endSeconds: 0.5 })
   })
+})
 
-  it("captures the model and request shape on the mock recorder", async () => {
+describe("basic-transcription provider dispatch", () => {
+  it("sends each provider's expected model on the request", async () => {
     const mock = MockTranscriber.layer({
-      transcripts: [{ text: "a" }, { text: "b" }],
+      transcripts: [{ text: "a" }, { text: "b" }, { text: "c" }],
     })
     const program = Effect.gen(function* () {
-      yield* transcribeGpt4o(dummyAudio)
-      yield* transcribeWhisperVerbose(dummyAudio)
+      yield* transcribeFast("openai", dummyAudio)
+      yield* transcribeFast("gemini", dummyAudio)
+      yield* transcribeVerbose(dummyAudio)
       return yield* mock.recorder
     })
     const rec = await Effect.runPromise(program.pipe(Effect.provide(mock.layer)))
-    expect(rec.transcribeCalls.map((c) => c.model)).toEqual(["gpt-4o-transcribe", "whisper-1"])
-    expect(rec.transcribeCalls[1]?.wordTimestamps).toBe(true)
+    expect(rec.transcribeCalls.map((c) => c.model)).toEqual([
+      "gpt-4o-transcribe",
+      "gemini-2.5-flash",
+      "whisper-1",
+    ])
+    expect(rec.transcribeCalls[2]?.wordTimestamps).toBe(true)
   })
 })

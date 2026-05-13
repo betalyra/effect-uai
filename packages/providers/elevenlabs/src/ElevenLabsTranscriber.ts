@@ -1,14 +1,17 @@
 import { Context, Effect, Layer, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { TranscriptResult, WordTimestamp } from "@effect-uai/core/Transcript"
 import {
   type CommonTranscribeRequest,
+  SttStreaming,
   Transcriber,
   type TranscriberService,
 } from "@effect-uai/core/Transcriber"
 import { audioToBlob, defaultFileName, httpStatusError, transportFailure } from "./codec.js"
 import type { ElevenLabsSttModel } from "./models.js"
+import { streamTranscription } from "./realtimeStt.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -132,44 +135,34 @@ const transcribeImpl = (cfg: Config) => (request: ElevenLabsTranscribeRequest) =
     } satisfies TranscriptResult
   })
 
-/**
- * ElevenLabs DOES expose `wss://api.elevenlabs.io/v1/speech-to-text/realtime`
- * with `scribe_v2_realtime`, but it's deferred to Phase 2b. This Layer
- * therefore omits `SttStreaming` — callers using
- * `Transcriber.streamTranscriptionFrom` against it get a compile-time
- * error.
- */
-const unsupportedStreamFrom: TranscriberService["streamTranscriptionFrom"] = () =>
-  Stream.fail(
-    new AiError.Unsupported({
-      provider: "elevenlabs",
-      capability: "streamTranscriptionFrom",
-      reason:
-        "ElevenLabs realtime STT WebSocket is not wired in Phase 2a. The Layer omits `SttStreaming`; the streaming path ships in Phase 2b.",
-    }),
-  )
-
 // ---------------------------------------------------------------------------
 // Constructors
 // ---------------------------------------------------------------------------
 
 export const make = (cfg: Config) =>
-  Effect.map(
-    HttpClient.HttpClient.asEffect(),
-    (client): ElevenLabsTranscriberService => ({
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+    const ctor = yield* Socket.WebSocketConstructor
+    return {
       transcribe: (r) =>
         transcribeImpl(cfg)(r).pipe(Effect.provideService(HttpClient.HttpClient, client)),
-      streamTranscriptionFrom: unsupportedStreamFrom,
-    }),
-  )
+      streamTranscriptionFrom: (audioIn, request) =>
+        streamTranscription(cfg)(audioIn, request).pipe(
+          Stream.provideService(HttpClient.HttpClient, client),
+          Stream.provideService(Socket.WebSocketConstructor, ctor),
+        ),
+    } satisfies ElevenLabsTranscriberService
+  })
 
 /**
- * Layer registers both `ElevenLabsTranscriber` and the generic
- * `Transcriber`. Does NOT register `SttStreaming` — realtime STT
- * WebSocket ships in Phase 2b.
+ * Layer registers `ElevenLabsTranscriber`, the generic `Transcriber`,
+ * **and the `SttStreaming` capability marker** — `streamTranscriptionFrom`
+ * is wired to the realtime WebSocket. Provide
+ * `Socket.layerWebSocketConstructorGlobal` (or a custom constructor) +
+ * an `HttpClient` Layer at the call site.
  */
 export const layer = (cfg: Config) =>
-  Layer.merge(
+  Layer.mergeAll(
     Layer.effect(ElevenLabsTranscriber, make(cfg)),
     Layer.effect(
       Transcriber,
@@ -182,4 +175,5 @@ export const layer = (cfg: Config) =>
         }),
       ),
     ),
+    Layer.succeed(SttStreaming, undefined),
   )

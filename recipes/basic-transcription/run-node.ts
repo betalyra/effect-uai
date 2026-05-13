@@ -17,6 +17,7 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { Config, Effect, Layer, Logger, Match, References } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
+import * as Socket from "effect/unstable/socket/Socket"
 import type { AudioMimeType, AudioSource } from "@effect-uai/core/Audio"
 import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsTranscriber"
 import { layer as geminiLayer } from "@effect-uai/google/GeminiTranscriber"
@@ -119,7 +120,10 @@ const program = Effect.gen(function* () {
 })
 
 const mainLayer = Layer.mergeAll(
-  layerFor(provider).pipe(Layer.provide(FetchHttpClient.layer)),
+  layerFor(provider).pipe(
+    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(Socket.layerWebSocketConstructorGlobal),
+  ),
   Logger.layer([Logger.consolePretty()]),
 )
 

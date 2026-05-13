@@ -10,9 +10,16 @@ import {
   type SpeechSynthesizerService,
   TtsIncrementalText,
 } from "@effect-uai/core/SpeechSynthesizer"
-import { defaultFormat, formatToOutputSlug, httpStatusError, transportFailure } from "./codec.js"
+import {
+  defaultFormat,
+  formatToOutputSlug,
+  httpStatusError,
+  transportFailure,
+  type VoiceSettings,
+  wireVoiceSettings,
+} from "./codec.js"
 import type { ElevenLabsTtsModel, ElevenLabsVoiceId } from "./models.js"
-import { streamSynthesis as realtimeStream, type VoiceSettings } from "./realtimeTts.js"
+import { streamSynthesis as realtimeStream } from "./realtimeTts.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -56,17 +63,6 @@ export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: st
 // ---------------------------------------------------------------------------
 // Codec — request → JSON body
 // ---------------------------------------------------------------------------
-
-const wireVoiceSettings = (v: VoiceSettings | undefined) =>
-  v === undefined
-    ? undefined
-    : {
-        ...(v.stability !== undefined && { stability: v.stability }),
-        ...(v.similarityBoost !== undefined && { similarity_boost: v.similarityBoost }),
-        ...(v.style !== undefined && { style: v.style }),
-        ...(v.useSpeakerBoost !== undefined && { use_speaker_boost: v.useSpeakerBoost }),
-        ...(v.speed !== undefined && { speed: v.speed }),
-      }
 
 const buildBody = (r: ElevenLabsSynthesizeRequest) => ({
   text: r.text,

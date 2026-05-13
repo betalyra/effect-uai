@@ -5,7 +5,7 @@ import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import type { TranscriptEvent, WordTimestamp } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
-import { httpStatusError, transportFailure } from "./codec.js"
+import { httpStatusError, parseJson, transportFailure } from "./codec.js"
 
 export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
 
@@ -186,23 +186,13 @@ export const encodeAudioFrame = (bytes: Uint8Array, sampleRate: number) =>
 // ---------------------------------------------------------------------------
 
 const handleServerMessage = (queue: Queue.Queue<TranscriptEvent>) => (raw: string) =>
-  Effect.suspend(() => {
-    const parsed = Effect.try({
-      try: () => JSON.parse(raw) as unknown,
-      catch: () => undefined,
-    }).pipe(Effect.orElseSucceed(() => undefined))
-    return Effect.flatMap(parsed, (json) =>
-      json === undefined
-        ? Effect.void
-        : decodeServerMessage(json).pipe(
-            Effect.flatMap((msg) => {
-              const event = wireToEvent(msg)
-              return event === undefined ? Effect.void : Queue.offer(queue, event)
-            }),
-            Effect.orElseSucceed(() => undefined),
-            Effect.asVoid,
-          ),
-    )
+  Effect.gen(function* () {
+    const json = yield* parseJson(raw)
+    if (json === undefined) return
+    const decoded = yield* decodeServerMessage(json).pipe(Effect.option)
+    if (decoded._tag === "None") return
+    const event = wireToEvent(decoded.value)
+    if (event !== undefined) yield* Queue.offer(queue, event)
   })
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,40 @@ import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat, AudioSource } from "@effect-uai/core/Audio"
 
 // ---------------------------------------------------------------------------
+// Shared TTS voice-settings shape (sync + streaming use the same fields)
+// ---------------------------------------------------------------------------
+
+export type VoiceSettings = {
+  readonly stability?: number
+  readonly similarityBoost?: number
+  readonly style?: number
+  readonly useSpeakerBoost?: boolean
+  readonly speed?: number
+}
+
+export const wireVoiceSettings = (v: VoiceSettings | undefined) =>
+  v === undefined
+    ? undefined
+    : {
+        ...(v.stability !== undefined && { stability: v.stability }),
+        ...(v.similarityBoost !== undefined && { similarity_boost: v.similarityBoost }),
+        ...(v.style !== undefined && { style: v.style }),
+        ...(v.useSpeakerBoost !== undefined && { use_speaker_boost: v.useSpeakerBoost }),
+        ...(v.speed !== undefined && { speed: v.speed }),
+      }
+
+/**
+ * Best-effort JSON parse. Returns the parsed value or `undefined` on
+ * malformed input — both realtime helpers want to skip non-JSON
+ * frames silently rather than fail the whole session.
+ */
+export const parseJson = (raw: string) =>
+  Effect.try({
+    try: () => JSON.parse(raw) as unknown,
+    catch: () => undefined,
+  }).pipe(Effect.orElseSucceed(() => undefined))
+
+// ---------------------------------------------------------------------------
 // AudioFormat → ElevenLabs `output_format` query value
 // ---------------------------------------------------------------------------
 

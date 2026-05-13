@@ -42,6 +42,14 @@
       "types": "./dist/GeminiEmbedding.d.mts",
       "import": "./dist/GeminiEmbedding.mjs"
     },
+    "./GeminiSynthesizer": {
+      "types": "./dist/GeminiSynthesizer.d.mts",
+      "import": "./dist/GeminiSynthesizer.mjs"
+    },
+    "./GeminiTranscriber": {
+      "types": "./dist/GeminiTranscriber.d.mts",
+      "import": "./dist/GeminiTranscriber.mjs"
+    },
     "./LyriaGenerator": {
       "types": "./dist/LyriaGenerator.d.mts",
       "import": "./dist/LyriaGenerator.mjs"

@@ -43,3 +43,8 @@ logs/
 
 # Coverage
 coverage/
+
+# Recipe audio output
+*.mp3
+*.wav
+*.pcm

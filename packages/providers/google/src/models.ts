@@ -31,6 +31,21 @@ export type GoogleModel =
  *
  * Reference: https://ai.google.dev/gemini-api/docs/embeddings
  */
+/**
+ * Known Lyria (music generation) model identifiers. `(string & {})` tail
+ * keeps autocomplete on the literals while still accepting any string.
+ *
+ * - `lyria-3-clip-preview` — fixed 30s output, MP3 only.
+ * - `lyria-3-pro-preview` — up to a couple of minutes, MP3 or WAV.
+ *
+ * Reference: https://ai.google.dev/gemini-api/docs/music-generation
+ */
+export type LyriaModel =
+  | "lyria-3-clip-preview"
+  | "lyria-3-pro-preview"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
 export type GoogleEmbeddingModel =
   | "gemini-embedding-2"
   | "gemini-embedding-001"

@@ -2,10 +2,10 @@ import { Effect, Encoding, Queue, Redacted, Result, Schema, Stream } from "effec
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
+import * as JSONL from "@effect-uai/core/JSONL"
 import {
   defaultFormat,
   formatToOutputSlug,
-  parseJson,
   type VoiceSettings,
   wireVoiceSettings,
 } from "./codec.js"
@@ -83,7 +83,7 @@ const decodeAudio = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
 
 const handleServerFrame = (queue: Queue.Queue<AudioChunk>) => (raw: string) =>
   Effect.gen(function* () {
-    const json = yield* parseJson(raw)
+    const json = yield* JSONL.parseSafe(raw)
     if (json === undefined) return
     const decoded = yield* decodeServerFrame(json).pipe(Effect.option)
     if (decoded._tag === "None") return

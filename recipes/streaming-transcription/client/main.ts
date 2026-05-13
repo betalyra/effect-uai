@@ -110,12 +110,26 @@ const stop = (): void => {
   toggleBtn.textContent = "Start"
 }
 
+const fetchConfig = async (): Promise<{ provider: string; sampleRate: number }> => {
+  const res = await fetch("/config")
+  return (await res.json()) as { provider: string; sampleRate: number }
+}
+
 const start = async (): Promise<void> => {
   toggleBtn.textContent = "Stop"
   setStatus("requesting microphone…")
   state.final = ""
   state.partial = ""
   render()
+
+  let cfg: { provider: string; sampleRate: number }
+  try {
+    cfg = await fetchConfig()
+  } catch (err) {
+    setStatus(`config fetch failed: ${(err as Error).message}`, true)
+    stop()
+    return
+  }
 
   let stream: MediaStream
   try {
@@ -156,8 +170,9 @@ const start = async (): Promise<void> => {
 
   const source = ctx.createMediaStreamSource(stream)
   const worklet = new AudioWorkletNode(ctx, "mic-worklet", {
-    processorOptions: { sourceRate: ctx.sampleRate, targetRate: 16000 },
+    processorOptions: { sourceRate: ctx.sampleRate, targetRate: cfg.sampleRate },
   })
+  setStatus(`connected · ${cfg.provider} · ${cfg.sampleRate} Hz`)
   source.connect(worklet)
   // Silent sink to keep the graph pulling on the worklet.
   const sink = ctx.createGain()

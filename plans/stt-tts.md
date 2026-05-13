@@ -1032,12 +1032,15 @@ Split from `@effect-uai/responses` (which is named after OpenAI's Responses API 
    - `streamSynthesis`: same endpoint, surfaces raw bytes as `Stream<AudioChunk>` via `response.stream`.
    - `streamSynthesisFrom`: returns `Stream.fail(Unsupported)`. Layer **does not register `TtsIncrementalText`** — same compile-time gating.
 
-**1b — Realtime WebSocket streaming (follow-up):**
+**1b — Realtime WebSocket STT (shipped):**
 
-1. Add `ws` peer dep + custom `WebSocketConstructor` Layer that supports headers (`Authorization: Bearer …` + `OpenAI-Beta: realtime=v1`).
-2. Wire `streamTranscriptionFrom` to `wss://api.openai.com/v1/realtime?intent=transcription`: send `transcription_session.update` first frame; drain input audio as `input_audio_buffer.append` frames; decode server events to `TranscriptEvent` (`*.delta` → `partial`, `*.completed` → `final`, `speech_started`/`speech_stopped` → VAD events). Close WS via Scope finalizer.
-3. Layer now also registers the `SttStreaming` capability marker.
-4. Recipe: `recipes/streaming-transcription` (live mic → transcript).
+1. `ws` peer dep (`peerDependenciesMeta.ws.optional = true`). Imported only by `src/realtimeStt.ts`, which is only reachable from the `OpenAIRealtimeTranscriber` subpath — sync-only consumers don't transitively pull in `ws`.
+2. `src/realtimeStt.ts`: opens `wss://api.openai.com/v1/realtime?intent=transcription` via `Socket.makeWebSocket` with a per-call `WebSocketConstructor` that bakes in the `Authorization: Bearer` + `OpenAI-Beta: realtime=v1` headers. First frame: `transcription_session.update` (`input_audio_format`, `input_audio_transcription.{model, language?, prompt?}`, optional `turn_detection.server_vad`). Audio drained as `input_audio_buffer.append` (base64). Server events mapped: `…transcription.delta` → `partial`, `…transcription.completed` → `final`, `speech_started`/`speech_stopped` → VAD events, `error` → `error` event.
+3. `src/OpenAIRealtimeTranscriber.ts`: new subpath that reuses `transcribeImpl` from the sync transcriber and wires `streamTranscription` for `streamTranscriptionFrom`. Layer registers `OpenAITranscriber` + `Transcriber` + the `SttStreaming` capability marker.
+4. `inputFormat` accepted: `pcm_s16le @ 24000` → `pcm16`; `pcm_mulaw @ 8000` → `g711_ulaw`; `pcm_alaw @ 8000` → `g711_alaw`. Anything else fails `Unsupported` up front.
+5. `recipes/streaming-transcription` now supports `--provider openai|elevenlabs` (default `openai`) with provider-specific sample rate served through a `/config` endpoint; client worklet decimates to the matching rate. Auth path differs per provider (OpenAI: WS upgrade headers; ElevenLabs: single-use token query param) — explained in the recipe README.
+
+**Note**: Realtime TTS via OpenAI is **not** part of Phase 1. The Realtime API's audio-out path runs an LLM in the loop (`response.create` with audio modality), which makes it a conversational surface, not a clean `streamSynthesisFrom`. That work belongs to the deferred `RealtimeSession` plan, not this STT/TTS abstraction.
 
 **Phase 1a exit criteria**: end-to-end test against the live API using `OPENAI_API_KEY` (gated behind env var); sample WAV → transcript; sample text → mp3 bytes.
 

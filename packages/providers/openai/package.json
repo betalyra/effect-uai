@@ -40,6 +40,10 @@
       "types": "./dist/OpenAITranscriber.d.mts",
       "import": "./dist/OpenAITranscriber.mjs"
     },
+    "./OpenAIRealtimeTranscriber": {
+      "types": "./dist/OpenAIRealtimeTranscriber.d.mts",
+      "import": "./dist/OpenAIRealtimeTranscriber.mjs"
+    },
     "./OpenAISynthesizer": {
       "types": "./dist/OpenAISynthesizer.d.mts",
       "import": "./dist/OpenAISynthesizer.mjs"
@@ -55,11 +59,19 @@
   },
   "devDependencies": {
     "@effect-uai/core": "workspace:*",
+    "@types/ws": "^8.5.13",
     "effect": "4.0.0-beta.57",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "ws": "^8.18.0"
   },
   "peerDependencies": {
     "@effect-uai/core": "workspace:>=0.2.0 <1",
-    "effect": "4.0.0-beta.57"
+    "effect": "4.0.0-beta.57",
+    "ws": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ws": {
+      "optional": true
+    }
   }
 }

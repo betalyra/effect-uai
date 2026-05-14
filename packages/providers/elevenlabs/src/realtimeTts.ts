@@ -123,9 +123,9 @@ export const streamSynthesis =
         const queue = yield* Queue.bounded<AudioChunk, Cause.Done>(64)
         const write = yield* socket.writer
 
-        // Writer fiber: BOS → drain text stream → EOS. Socket-side
-        // failures end this fiber; the reader still surfaces a clean
-        // stream end via Queue.shutdown when the upstream WS closes.
+        // Writer fiber: BOS → drain text stream → EOS. Socket-side failures
+        // end this fiber; the reader still surfaces a clean stream end via
+        // `Queue.end` (in the ensuring below) when the upstream WS closes.
         yield* Effect.gen(function* () {
           yield* write(bosFrame(cfg, request))
           yield* Stream.runForEach(textIn, (text) =>
@@ -134,20 +134,13 @@ export const streamSynthesis =
           yield* write(eosFrame)
         }).pipe(Effect.ignore, Effect.forkScoped)
 
-        // Reader fiber: read JSON frames, decode to AudioChunk, push to queue.
-        // Even with `closeCodeIsError` whitelisting normal closes, the
-        // underlying Deferred is failed inside the close handler before the
-        // filter runs — siblings sharing the FiberSet can see that fail. We
-        // catchCause defensively so this fiber NEVER propagates failure;
-        // `Queue.end` flushes pending chunks and then fails the next take
-        // with `Done`, which `Stream.fromQueue` treats as a clean end.
-        // (`Queue.shutdown` would CLEAR queued items and interrupt pending
-        // takes — wrong for graceful teardown.)
-        yield* socket.runString(handleServerFrame(queue)).pipe(
-          Effect.catchCause(() => Effect.void),
-          Effect.ensuring(Queue.end(queue)),
-          Effect.forkScoped,
-        )
+        // Reader fiber. `ensuring(Queue.end)` flushes pending chunks then
+        // fails the next take with `Done`, which `Stream.fromQueue` treats
+        // as a clean end. (`Queue.shutdown` would CLEAR queued items and
+        // interrupt pending takes — wrong for graceful teardown.)
+        yield* socket
+          .runString(handleServerFrame(queue))
+          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
 
         return Stream.fromQueue(queue)
       }),

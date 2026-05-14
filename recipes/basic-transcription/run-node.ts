@@ -21,6 +21,7 @@ import * as Socket from "effect/unstable/socket/Socket"
 import type { AudioMimeType, AudioSource } from "@effect-uai/core/Audio"
 import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsTranscriber"
 import { layer as geminiLayer } from "@effect-uai/google/GeminiTranscriber"
+import { layer as inworldLayer } from "@effect-uai/inworld/InworldTranscriber"
 import { layer as openaiLayer } from "@effect-uai/openai/OpenAITranscriber"
 import { transcribeFast, transcribeVerbose, type Provider } from "./index.js"
 
@@ -36,7 +37,7 @@ const mimeForExt: (ext: string) => AudioMimeType = Match.type<string>().pipe(
 
 const usage = (): never => {
   console.error(
-    `Usage: pnpm tsx recipes/basic-transcription/run-node.ts [--provider openai|gemini|elevenlabs] <audio-file>`,
+    `Usage: pnpm tsx recipes/basic-transcription/run-node.ts [--provider openai|gemini|elevenlabs|inworld] <audio-file>`,
   )
   process.exit(1)
 }
@@ -48,7 +49,7 @@ const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefine
 
 const parseProvider = (argv: ReadonlyArray<string>): Provider =>
   Match.value(flagValue(argv, "--provider") ?? "openai").pipe(
-    Match.whenOr("openai", "gemini", "elevenlabs", (p): Provider => p),
+    Match.whenOr("openai", "gemini", "elevenlabs", "inworld", (p): Provider => p),
     Match.orElse(usage),
   )
 
@@ -87,6 +88,14 @@ const layerFor = Match.type<Provider>().pipe(
       Effect.gen(function* () {
         const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
         return elevenlabsLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.when("inworld", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("INWORLD_API_KEY")
+        return inworldLayer({ apiKey })
       }),
     ),
   ),

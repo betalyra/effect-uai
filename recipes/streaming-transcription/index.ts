@@ -11,7 +11,7 @@ import { Match } from "effect"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import * as Transcriber from "@effect-uai/core/Transcriber"
 
-export type Provider = "elevenlabs" | "openai"
+export type Provider = "elevenlabs" | "openai" | "inworld"
 
 export const providerConfig: (provider: Provider) => {
   readonly model: string
@@ -32,6 +32,15 @@ export const providerConfig: (provider: Provider) => {
       container: "raw",
       encoding: "pcm_s16le",
       sampleRate: 24000,
+      channels: 1,
+    } satisfies AudioFormat,
+  })),
+  Match.when("inworld", () => ({
+    model: "inworld/inworld-stt-1",
+    inputFormat: {
+      container: "raw",
+      encoding: "pcm_s16le",
+      sampleRate: 16000,
       channels: 1,
     } satisfies AudioFormat,
   })),

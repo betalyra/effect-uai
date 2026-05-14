@@ -8,25 +8,68 @@
  * The queue stays open across submissions: each Enter from the browser
  * adds another sentence to the same upstream TTS session.
  *
+ *   # Default: ElevenLabs
  *   ELEVENLABS_API_KEY=... bun recipes/streaming-synthesis/run-bun.ts
+ *
+ *   # Inworld
+ *   INWORLD_API_KEY=... bun recipes/streaming-synthesis/run-bun.ts --provider inworld
  */
 import * as path from "node:path"
-import { Cause, Config, Effect, Layer, ManagedRuntime, Queue, Stream } from "effect"
+import { Cause, Config, Effect, Layer, ManagedRuntime, Match, Queue, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsSynthesizer"
-import { synthesizeText } from "./index.js"
+import { layer as inworldLayer } from "@effect-uai/inworld/InworldRealtimeSynthesizer"
+import { synthesizeText, type Provider } from "./index.js"
+
+// ---------------------------------------------------------------------------
+// CLI args
+// ---------------------------------------------------------------------------
+
+const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefined => {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : undefined
+}
+
+const parseProvider = (argv: ReadonlyArray<string>): Provider =>
+  Match.value(flagValue(argv, "--provider") ?? "elevenlabs").pipe(
+    Match.whenOr("elevenlabs", "inworld", (p): Provider => p),
+    Match.orElse(() => {
+      console.error("Usage: bun run-bun.ts [--provider elevenlabs|inworld]")
+      process.exit(1)
+    }),
+  )
+
+const provider = parseProvider(process.argv.slice(2))
 
 // ---------------------------------------------------------------------------
 // Runtime
 // ---------------------------------------------------------------------------
 
-const appLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
-    return elevenlabsLayer({ apiKey })
-  }),
-).pipe(Layer.provide(FetchHttpClient.layer), Layer.provide(Socket.layerWebSocketConstructorGlobal))
+const layerFor = Match.type<Provider>().pipe(
+  Match.when("elevenlabs", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
+        return elevenlabsLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.when("inworld", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("INWORLD_API_KEY")
+        return inworldLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.exhaustive,
+)
+
+const appLayer = layerFor(provider).pipe(
+  Layer.provide(FetchHttpClient.layer),
+  Layer.provide(Socket.layerWebSocketConstructorGlobal),
+)
 
 const runtime = ManagedRuntime.make(appLayer)
 
@@ -38,7 +81,7 @@ type TextQueue = Queue.Queue<string, Cause.Done<void>>
 
 const pipeline = (queue: TextQueue, sendBinary: (bytes: Uint8Array) => void) =>
   Stream.fromQueue(queue).pipe(
-    synthesizeText,
+    synthesizeText(provider),
     Stream.runForEach((chunk) => Effect.sync(() => sendBinary(chunk.bytes))),
     Effect.tapCause((cause) =>
       Cause.hasInterruptsOnly(cause)
@@ -166,4 +209,4 @@ Bun.serve<WsData>({
   },
 })
 
-console.log(`streaming-synthesis recipe → http://localhost:${port}`)
+console.log(`streaming-synthesis recipe (${provider}) → http://localhost:${port}`)

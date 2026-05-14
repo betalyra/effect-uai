@@ -47,9 +47,10 @@
   <body>
     <h1>streaming synthesis · effect-uai</h1>
     <p>
-      Type a line and hit <strong>Enter</strong>. Words flow into the ElevenLabs
-      <code>/stream-input</code> WebSocket on the server; PCM chunks come back and play through a
+      Type a line and hit <strong>Enter</strong>. Each submission flows into the configured
+      provider's incremental-text-in WebSocket; PCM audio chunks come back and play through a
       ring-buffered <code>AudioWorklet</code>. Keep typing to feed more text into the same session.
+      Provider is selected at server startup via <code>--provider</code>.
     </p>
     <input id="text" type="text" placeholder="Type something, hit Enter to speak…" autofocus />
     <p id="status">idle</p>

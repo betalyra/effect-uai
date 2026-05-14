@@ -1063,24 +1063,34 @@ Strongest fit for streaming TTS — canonical reference for the `streamSynthesis
 
 **Exit criteria**: piping `LanguageModel.streamTurn(...) |> Stream.filterMap(Turn.toTextDelta) |> ElevenLabs.streamSynthesisFrom(...)` produces continuous audio.
 
-## Phase 3 — Inworld (new `@effect-uai/inworld` package)
+## Phase 3 — Inworld (shipped — `@effect-uai/inworld`)
 
-Prioritized ahead of Deepgram and Cartesia. Inworld exposes an OpenAI-compatible HTTP endpoint plus a documented WebSocket TTS path. We ship a separate package (rather than reusing the OpenAI adapter behind a base-URL switch) to keep typed model/voice unions and provider-specific request extensions clean.
+Live end-to-end against Inworld's real API: TTS sync + chunked + WS, STT sync + WS. Same subpath split as `@effect-uai/openai` — sync-only paths stay free of the `ws` peer dep; the `…Realtime…` subpaths pull it in.
 
-1. Package scaffold mirroring `@effect-uai/elevenlabs`.
-2. `InworldTranscriber.ts`
-   - **Caveat — verify before implementing**: Inworld's STT model name (`realtime-stt-1` per earlier research) and exact endpoint shape are thinly documented. First task in this phase is to confirm against the live docs / SDK before writing code. If the STT surface is unstable, ship TTS-only for v1 and revisit.
-   - `transcribe`: REST endpoint (HTTP).
-   - `streamTranscriptionFrom`: scoped WebSocket.
-3. `InworldSynthesizer.ts`
-   - `synthesize`: REST `POST` (sync). Body shape OpenAI-compatible — can reuse codec helpers from `@effect-uai/responses` if the field set matches exactly.
-   - `streamSynthesis`: chunked HTTP variant.
-   - `streamSynthesisFrom`: scoped WebSocket with low first-token latency. Drain input text stream as text frames per Inworld's framing spec.
-4. `models.ts`: `InworldTtsModel` (`realtime-tts-2`, `realtime-tts-1.5`, `realtime-tts-1.5-max`, `inworld-tts-1`, `inworld-tts-1-max`), `InworldVoiceId` (curated stock + `(string & {})` for clones).
-5. Auth: bearer token via Inworld API key.
-6. Recipe: incremental TTS comparison with ElevenLabs (latency/voice-quality side-by-side).
+**Auth** — `Authorization: Basic <INWORLD_API_KEY>` on every request. The portal key is **already base64-encoded**; we inject it verbatim. The docs document a `?Authorization=Basic%20…` query-param WS variant, but in practice the server returns `authentication is required` for that path — header auth (via `ws` peer dep) is the only working option. Matches Inworld's own JS samples.
 
-**Exit criteria**: TTS sync + streaming + streamSynthesisFrom green. STT lands if docs verify clean; otherwise tracked as a follow-up.
+**Wire-shape gotchas (verified against [inworld-ai/inworld-api-examples](https://github.com/inworld-ai/inworld-api-examples))**:
+
+- **REST** (`/tts/v1/voice`, `/tts/v1/voice:stream`, `/stt/v1/transcribe`) uses **camelCase** JSON (`voiceId`, `audioConfig`, `audioEncoding`, `sampleRateHertz`).
+- **TTS WS** (`/tts/v1/voice:streamBidirectional`) uses **snake_case** outbound (`voice_id`, `model_id`, `audio_config.audio_encoding`, `sample_rate_hertz`, `delivery_mode`, `apply_text_normalization`). Server frames come back camelCase regardless.
+- **STT WS** (`/stt/v1/transcribe:streamBidirectional`) uses **camelCase** outbound (`transcribeConfig`, `modelId`, `audioChunk`, `endTurn`, `closeStream`). Inconsistent with TTS WS but matches the official sample.
+- **Streaming HTTP TTS** is **NDJSON** (one JSON object per line), not SSE. Each line: `{ "result": { "audioContent": "<base64>" }, "error"?: {...} }`. Use `JSONL.fromBytes` + `JSONL.parse`.
+- **`audioContent` is always base64** across sync, NDJSON, and WS responses.
+- Sync `LINEAR16`/`WAV` responses include a WAV header in `audioContent`; streaming (NDJSON + WS) chunks do **not**. Document on `AudioFormat.container`.
+
+**Modules shipped**:
+
+1. `InworldSynthesizer` — sync (`/tts/v1/voice`) + chunked NDJSON (`/tts/v1/voice:stream`). No `ws` import. No `TtsIncrementalText` marker.
+2. `InworldRealtimeSynthesizer` — sync + chunked + `streamSynthesisFrom` over WS. Reuses `synthesizeImpl` + `streamSynthesisImpl` from the sync module. Registers `TtsIncrementalText`. Pulls in `ws`.
+3. `InworldTranscriber` — sync (`/stt/v1/transcribe`). Inline base64 audio (no URL input). Word timestamps per `wordTimestamps` flag (Inworld marks them "coming soon" — empty array as of testing).
+4. `InworldRealtimeTranscriber` — sync + `streamTranscriptionFrom` over WS. Periodic `result.transcription` partials via VAD; tail `endTurn` + `closeStream` on input-stream end. Registers `SttStreaming`. Pulls in `ws`.
+5. `models.ts` — current TTS models (`inworld-tts-2`, `inworld-tts-1.5-max`, `inworld-tts-1.5-mini`) and STT models (`inworld/inworld-stt-1` + AssemblyAI / Groq / Soniox router passthroughs). Voice IDs typed as `string` — no public list-voices endpoint, hard-coded union would rot fast.
+6. `codec.ts` — `AudioFormat → audioConfig` (camelCase, for REST + WS shared base), base64 decode, HTTP-status → `AiError`, `Authorization` header builder.
+7. `wsAuth.ts` — `ws`-backed `WebSocketConstructor` with the addEventListener bridge.
+
+**Recipes** — `--provider inworld` added to `basic-transcription`, `basic-speech-synthesis`, `streaming-transcription`, and `streaming-synthesis`. Live mic transcription via `inworld/inworld-stt-1` produces real-time partials + finals via VAD.
+
+**Caveat: `inworld/inworld-stt-1` is "Experimental"** per Inworld docs. In our testing it works correctly (real-time partials, finals, speech-started/stopped events) when audio capture is genuinely producing speech. Initial silent-server reports during development turned out to be a mic-capture issue (OBSBOT driver dropping audio in Chrome), not a model issue.
 
 ## Phase 4 — MiniMax (new `@effect-uai/minimax` package, TTS only)
 

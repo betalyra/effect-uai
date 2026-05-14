@@ -1,6 +1,8 @@
 ---
 title: Multi-model compare
 description: Fan a single prompt out to OpenAI, Google, and Anthropic concurrently and stream their tagged answers as they arrive.
+source: recipes/multi-model-compare
+icon: PiGitFork
 ---
 
 Multi-model comparison is stream fan-out.

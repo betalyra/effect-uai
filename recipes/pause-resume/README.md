@@ -1,6 +1,8 @@
 ---
 title: Pause and resume
 description: Soft pause/resume of an in-flight agent loop using Effect's Latch.
+source: recipes/pause-resume
+icon: PiPause
 ---
 
 Pause between turns, not inside provider magic.

@@ -1,0 +1,123 @@
+---
+import { Icon } from "@astrojs/starlight/components"
+import {
+  PiArrowsClockwise,
+  PiArrowsInLineHorizontal,
+  PiChatCircleDots,
+  PiClockCounterClockwise,
+  PiFlowArrow,
+  PiGavel,
+  PiGitFork,
+  PiHandPalm,
+  PiListBullets,
+  PiMicrophone,
+  PiPause,
+  PiPulse,
+  PiShieldCheck,
+} from "react-icons/pi"
+
+// Icons available to frontmatter `icon: ...`. Keep in sync with the
+// landing-page card icons in `components/RecipesSection.tsx` so a recipe's
+// page-title icon matches its recipe-card icon.
+const iconMap = {
+  PiArrowsClockwise,
+  PiArrowsInLineHorizontal,
+  PiChatCircleDots,
+  PiClockCounterClockwise,
+  PiFlowArrow,
+  PiGavel,
+  PiGitFork,
+  PiHandPalm,
+  PiListBullets,
+  PiMicrophone,
+  PiPause,
+  PiPulse,
+  PiShieldCheck,
+} as const
+
+type IconKey = keyof typeof iconMap
+
+const { entry } = Astro.locals.starlightRoute
+const title = entry.data.title
+const data = entry.data as { source?: string; icon?: string }
+
+const source = data.source
+const sourceUrl =
+  source !== undefined ? `https://github.com/betalyra/effect-uai/tree/main/${source}` : undefined
+
+const iconName = data.icon
+const TitleIcon =
+  iconName !== undefined && iconName in iconMap ? iconMap[iconName as IconKey] : undefined
+---
+
+<div class="title-row">
+  <div class="title-cell">
+    {TitleIcon !== undefined && <TitleIcon className="title-icon" aria-hidden="true" />}
+    <h1 id="_top">{title}</h1>
+  </div>
+
+  {
+    sourceUrl !== undefined && (
+      <a
+        class="source-link not-content"
+        href={sourceUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <Icon name="github" size="1em" />
+        <span>View on GitHub</span>
+        <Icon name="external" size="0.9em" />
+      </a>
+    )
+  }
+</div>
+
+<style>
+  .title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .title-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+  }
+
+  .title-row h1 {
+    margin: 0;
+  }
+
+  .title-icon {
+    width: 1.6rem;
+    height: 1.6rem;
+    color: var(--color-mark);
+    flex-shrink: 0;
+  }
+
+  .source-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 999px;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      color 150ms,
+      border-color 150ms;
+  }
+
+  .source-link:hover,
+  .source-link:focus-visible {
+    color: var(--color-mark);
+    border-color: var(--color-mark);
+  }
+</style>

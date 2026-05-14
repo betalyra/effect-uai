@@ -1,6 +1,7 @@
 ---
 title: Basic transcription
 description: Drop an audio file in, get text back. Same call, swap the provider.
+source: recipes/basic-transcription
 ---
 
 A finished audio file should be easy to treat like text.

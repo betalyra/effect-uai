@@ -1,6 +1,8 @@
 ---
 title: Multi-model fallback
 description: Try OpenAI; on RateLimited or Unavailable, fall back to Gemini; on ContentFiltered, give up.
+source: recipes/multi-model-fallback
+icon: PiArrowsClockwise
 ---
 
 Provider failure is just stream failure recovery.

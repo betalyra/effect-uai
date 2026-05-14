@@ -1,6 +1,7 @@
 ---
 title: Streaming synthesis
 description: Audio starts playing on the first chunk, not the last. Incremental text-in over WebSocket.
+source: recipes/streaming-synthesis
 ---
 
 Audio should start while the text is still being written.

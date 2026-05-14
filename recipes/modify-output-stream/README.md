@@ -1,6 +1,8 @@
 ---
 title: Modify the output stream
 description: Format the loop's output for the wire by mapping a single function over the stream.
+source: recipes/modify-output-stream
+icon: PiFlowArrow
 ---
 
 The model loop should not know whether the browser wants Server-Sent Events,

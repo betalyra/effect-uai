@@ -1,6 +1,7 @@
 ---
 title: Basic speech synthesis
 description: Text in, audio out. One service, two ways to consume it, two providers.
+source: recipes/basic-speech-synthesis
 ---
 
 Reading text aloud should not force your app into a provider SDK.

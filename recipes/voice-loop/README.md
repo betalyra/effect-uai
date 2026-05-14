@@ -1,6 +1,8 @@
 ---
 title: Voice loop
 description: Talk to your agent. Streaming STT to LLM to streaming TTS, with stop-word interrupt and follow-up queueing.
+source: recipes/voice-loop
+icon: PiMicrophone
 ---
 
 A voice assistant is three streams talking to each other.

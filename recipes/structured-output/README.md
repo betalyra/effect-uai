@@ -1,6 +1,7 @@
 ---
 title: Structured output
 description: Use one schema as both the provider contract and the local validator.
+source: recipes/structured-output
 ---
 
 Structured output is the same turn primitive with a stronger boundary

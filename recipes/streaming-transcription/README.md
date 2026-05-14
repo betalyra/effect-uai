@@ -1,6 +1,7 @@
 ---
 title: Streaming transcription
 description: Live captions while the user is still speaking. Browser mic to provider WebSocket, partials and finals.
+source: recipes/streaming-transcription
 ---
 
 Live captions arrive as the user speaks, not after they finish.

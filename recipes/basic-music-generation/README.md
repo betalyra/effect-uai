@@ -1,6 +1,7 @@
 ---
 title: Basic music generation
 description: A short prompt is enough. Lyria 3 turns it into a 30-second clip.
+source: recipes/basic-music-generation
 ---
 
 A short prompt is enough to get useful background music.

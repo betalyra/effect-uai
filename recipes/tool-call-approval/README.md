@@ -1,6 +1,8 @@
 ---
 title: Tool call approval
 description: Pause the loop on sensitive tool calls, wait for a human verdict, then approve, deny, or cancel each one before continuing.
+source: recipes/tool-call-approval
+icon: PiShieldCheck
 ---
 
 **Scenario.** The model wants to call sensitive tools (`send_email`,

@@ -1,4 +1,4 @@
-import { Effect, Encoding, Queue, Redacted, Result, Schema, Stream } from "effect"
+import { Cause, Effect, Encoding, Queue, Redacted, Result, Schema, Stream } from "effect"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
@@ -81,7 +81,7 @@ const decodeAudio = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
       ),
   })
 
-const handleServerFrame = (queue: Queue.Queue<AudioChunk>) => (raw: string) =>
+const handleServerFrame = (queue: Queue.Queue<AudioChunk, Cause.Done>) => (raw: string) =>
   Effect.gen(function* () {
     const json = yield* JSONL.parseSafe(raw)
     if (json === undefined) return
@@ -120,7 +120,7 @@ export const streamSynthesis =
         const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg, request, slug), {
           closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
         })
-        const queue = yield* Queue.bounded<AudioChunk>(64)
+        const queue = yield* Queue.bounded<AudioChunk, Cause.Done>(64)
         const write = yield* socket.writer
 
         // Writer fiber: BOS → drain text stream → EOS. Socket-side
@@ -139,10 +139,13 @@ export const streamSynthesis =
         // underlying Deferred is failed inside the close handler before the
         // filter runs — siblings sharing the FiberSet can see that fail. We
         // catchCause defensively so this fiber NEVER propagates failure;
-        // queue shutdown signals end-of-stream cleanly to the audio consumer.
+        // `Queue.end` flushes pending chunks and then fails the next take
+        // with `Done`, which `Stream.fromQueue` treats as a clean end.
+        // (`Queue.shutdown` would CLEAR queued items and interrupt pending
+        // takes — wrong for graceful teardown.)
         yield* socket.runString(handleServerFrame(queue)).pipe(
           Effect.catchCause(() => Effect.void),
-          Effect.ensuring(Queue.shutdown(queue)),
+          Effect.ensuring(Queue.end(queue)),
           Effect.forkScoped,
         )
 

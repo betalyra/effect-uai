@@ -19,7 +19,7 @@
  * Multi-context (`contextId`) is not surfaced here — one logical
  * utterance per call.
  */
-import { Effect, Queue, Redacted, Schema, Stream } from "effect"
+import { Cause, Effect, Queue, Redacted, Schema, Stream } from "effect"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
@@ -106,7 +106,7 @@ const ServerFrame = Schema.Struct({
 })
 const decodeServerFrame = Schema.decodeUnknownEffect(ServerFrame)
 
-const handleServerFrame = (queue: Queue.Queue<AudioChunk>) => (raw: string) =>
+const handleServerFrame = (queue: Queue.Queue<AudioChunk, Cause.Done>) => (raw: string) =>
   Effect.gen(function* () {
     const json = yield* JSONL.parseSafe(raw)
     if (json === undefined) return
@@ -141,7 +141,7 @@ export const streamSynthesis =
           // whitelist standard clean-close codes (1000 / 1001 / 1005).
           closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
         }).pipe(Effect.provideService(Socket.WebSocketConstructor, authedWsConstructor(cfg.apiKey)))
-        const queue = yield* Queue.bounded<AudioChunk>(64)
+        const queue = yield* Queue.bounded<AudioChunk, Cause.Done>(64)
         const write = yield* socket.writer
 
         // Writer: BOS `create` → drain text as `send_text` → `close_context`.
@@ -155,9 +155,12 @@ export const streamSynthesis =
           yield* write(closeContextFrame)
         }).pipe(Effect.ignore, Effect.forkScoped)
 
+        // `Queue.end` flushes pending chunks then fails the next take with
+        // `Done` — clean stream end. `Queue.shutdown` would CLEAR queued items
+        // and interrupt pending takes (wrong for graceful teardown).
         yield* socket
           .runString(handleServerFrame(queue))
-          .pipe(Effect.ensuring(Queue.shutdown(queue)), Effect.forkScoped)
+          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
 
         return Stream.fromQueue(queue)
       }),

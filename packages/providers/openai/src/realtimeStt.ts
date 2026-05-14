@@ -7,7 +7,7 @@
  * via `OpenAIRealtimeTranscriber`; `OpenAITranscriber` (sync) stays free of
  * it.
  */
-import { Effect, Encoding, Match, Queue, Redacted, Schema, Stream } from "effect"
+import { Cause, Effect, Encoding, Match, Queue, Redacted, Schema, Stream } from "effect"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
@@ -158,7 +158,7 @@ export const wireToEvent: (msg: typeof ServerEvent.Type) => TranscriptEvent | un
     Match.exhaustive,
   )
 
-const handleServerMessage = (queue: Queue.Queue<TranscriptEvent>) => (raw: string) =>
+const handleServerMessage = (queue: Queue.Queue<TranscriptEvent, Cause.Done>) => (raw: string) =>
   Effect.gen(function* () {
     const json = yield* JSONL.parseSafe(raw)
     if (json === undefined) return
@@ -200,7 +200,7 @@ export const streamTranscription =
           // whitelist standard clean-close codes (1000 / 1001 / 1005).
           closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
         }).pipe(Effect.provideService(Socket.WebSocketConstructor, authedWsConstructor(cfg)))
-        const queue = yield* Queue.bounded<TranscriptEvent>(64)
+        const queue = yield* Queue.bounded<TranscriptEvent, Cause.Done>(64)
         const write = yield* socket.writer
 
         // session.update first, then drain audio. Both fork-scoped so the
@@ -210,9 +210,12 @@ export const streamTranscription =
           yield* Stream.runForEach(audioIn, (bytes) => write(encodeAudioFrame(bytes)))
         }).pipe(Effect.ignore, Effect.forkScoped)
 
+        // `Queue.end` flushes pending events then fails the next take with
+        // `Done` — clean stream end. `Queue.shutdown` would CLEAR queued
+        // items and interrupt pending takes (wrong for graceful teardown).
         yield* socket
           .runString(handleServerMessage(queue))
-          .pipe(Effect.ensuring(Queue.shutdown(queue)), Effect.forkScoped)
+          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
 
         return Stream.fromQueue(queue)
       }),

@@ -1,31 +1,45 @@
 ---
 title: Streaming transcription
-description: "Live mic → transcript over WebSocket. Switch providers with `--provider openai|elevenlabs`. Bun server bridges a browser AudioWorklet to the chosen provider's realtime endpoint."
+description: Live captions while the user is still speaking. Browser mic to provider WebSocket, partials and finals.
 ---
 
-Live transcription from the browser microphone, end-to-end:
+Live captions arrive as the user speaks, not after they finish.
 
+This recipe connects a browser microphone to a realtime transcription
+provider. The browser sends small PCM frames to a Bun server; the
+server turns those frames into a `Stream<Uint8Array>` and gets
+transcript events back.
+
+**Scenario.** You're building a captioning UI, a voice-search box, or
+the front half of a voice assistant. You want partial guesses to
+appear dimmed while the user is mid-sentence and finals to commit
+once they pause.
+
+## The Shape
+
+`streamTranscriptionFrom` is live STT as a stream transformation:
+
+```ts
+import { Stream } from "effect"
+import * as Transcriber from "@effect-uai/core/Transcriber"
+
+const transcripts = micFrames.pipe(
+  Transcriber.streamTranscriptionFrom({
+    model: "scribe_v2_realtime",
+    inputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 16000, channels: 1 },
+    interimResults: true,
+  }),
+)
+
+// transcripts : Stream<TranscriptEvent, AiError>
+// each event is "partial" | "final" | "speech-started" | ...
 ```
-[Browser]  getUserMedia → AudioWorklet (PCM s16le, provider-specific rate) → WebSocket
-   ↕
-[Bun server]  Effect pipeline:
-   1. accept WS, wrap inbound mic frames as Stream<Uint8Array>
-   2. Transcriber.streamTranscriptionFrom — opens the provider's realtime WS upstream
-   3. push each TranscriptEvent back as JSON
-[Browser]  renders partial / final transcripts live
-```
 
-The server owns the Effect Layer and the upstream provider connection; the browser is just a mic→WS adapter. To swap providers, pass `--provider <name>` — the recipe Effect in `index.ts` is generic over `Provider` and `layerFor` in `run-bun.ts` does the matching.
+The recipe UI renders `partial` events as tentative text and `final`
+events as committed transcript lines. `index.ts` is provider-agnostic;
+`run-bun.ts` chooses OpenAI Realtime or ElevenLabs.
 
-Sample rates differ per provider (OpenAI Realtime wants 24 kHz, ElevenLabs Scribe v2 Realtime wants 16 kHz). The client fetches `/config` on start and configures the worklet's decimator target accordingly.
-
-## Stack
-
-- **Server**: Bun + Effect (`ManagedRuntime`). One fiber per WS connection. Provider Layers: `@effect-uai/openai/OpenAIRealtimeTranscriber` or `@effect-uai/elevenlabs/ElevenLabsTranscriber`.
-- **Client**: imperative TS (`client/main.ts`), bundled by `Bun.build` at server startup and served as `/client.js` (no Vite, no extra build step).
-- **AudioWorklet**: `public/audio-worklet.js`, plain JS (worklets can't import ES modules). Converts Float32 input → Int16 little-endian and posts ~50 ms frames over `port.postMessage`.
-
-## Run
+## Run it
 
 ```sh
 # Default: OpenAI Realtime (24 kHz pcm16)
@@ -35,22 +49,45 @@ OPENAI_API_KEY=sk-... bun recipes/streaming-transcription/run-bun.ts
 ELEVENLABS_API_KEY=... bun recipes/streaming-transcription/run-bun.ts --provider elevenlabs
 ```
 
-Then open <http://localhost:3000>, click **Start**, and allow microphone access. Partial transcripts appear dimmed; final segments are bold.
+Open <http://localhost:3000>, click **Start**, allow mic access, and
+talk. Partial transcripts appear dimmed; finals commit and stay bold.
 
-> **Important**: run with **`bun`**, not `pnpm tsx` — the runner uses `Bun.serve` and `Bun.build` globals that don't exist in Node.
+> Run with **`bun`**, not `pnpm tsx` — the runner uses `Bun.serve` and
+> `Bun.build` globals.
 
-Env vars:
+Env vars: `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` depending on
+provider; `PORT` optional (defaults to 3000).
 
-- `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` — required (depending on `--provider`). For OpenAI the key authorizes the WS upgrade header directly; for ElevenLabs it fetches a single-use token first.
-- `PORT` — optional, defaults to `3000`.
+## How The Demo Flows
 
-## Provider markers in action
+```
+[Browser]  getUserMedia → AudioWorklet → WebSocket
+   ↕
+[Bun server]  Stream<Uint8Array> → Transcriber.streamTranscriptionFrom
+             → TranscriptEvent JSON
+[Browser]  renders partial / final transcripts live
+```
 
-`Transcriber.streamTranscriptionFrom` is gated by the `SttStreaming` capability marker on the R channel. Both `@effect-uai/openai/OpenAIRealtimeTranscriber` and `@effect-uai/elevenlabs/ElevenLabsTranscriber` register the marker, so the recipe compiles against either. Swapping to a Layer that does **not** register it — e.g. `@effect-uai/openai/OpenAITranscriber` (sync) or `@effect-uai/google/GeminiTranscriber` — turns the call into a compile-time error, not a runtime one.
+The server owns the Effect Layer and the provider connection; the
+browser is just a mic-to-WS adapter. Sample rates differ per provider
+(OpenAI wants 24 kHz, ElevenLabs wants 16 kHz), so the client fetches
+`/config` before it starts recording.
 
-## Auth: header vs query token
+## Provider Fit
 
-The two providers handle WS auth differently and both bend around the browser `WebSocket` API's inability to set headers:
+Use a provider layer that registers the `SttStreaming` marker. That is
+what keeps a sync-only provider from accidentally being used in a live
+mic pipeline.
 
-- **OpenAI Realtime** requires `Authorization: Bearer …` and `OpenAI-Beta: realtime=v1` on the upgrade. The `OpenAIRealtimeTranscriber` Layer uses the `ws` peer dep (Node/Bun only) to set them. That's why this transcriber lives at a separate subpath — `OpenAITranscriber` (sync-only) doesn't pull in `ws`.
-- **ElevenLabs Scribe v2 Realtime** mints a single-use token via REST (`POST /v1/single-use-token/realtime_scribe`) and carries it as a `?token=…` query param. No headers needed, so `globalThis.WebSocket` is enough.
+OpenAI Realtime and ElevenLabs both work here. Gemini's transcription
+is sync-only, so it belongs in [Basic transcription](/recipes/basic-transcription/),
+not this recipe.
+
+## What This Generalizes To
+
+Live transcription is usually the first half of a larger flow. Pipe
+`final` events into search, commands, meeting notes, or an LLM. For the
+full STT → LLM → TTS composition, see [Voice loop](/recipes/voice-loop/).
+
+The full source lives next to this README at
+[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-transcription/index.ts).

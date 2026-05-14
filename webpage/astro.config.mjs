@@ -118,6 +118,49 @@ export default defineConfig({
           ],
         },
         {
+          label: "Speech",
+          items: [
+            { label: "Overview", slug: "speech" },
+            { label: "Transcription", slug: "speech/transcription" },
+            { label: "Synthesis", slug: "speech/synthesis" },
+            {
+              label: "Providers",
+              items: [
+                { label: "OpenAI", slug: "speech/providers/openai" },
+                { label: "ElevenLabs", slug: "speech/providers/elevenlabs" },
+                { label: "Google Gemini", slug: "speech/providers/gemini" },
+                { label: "Inworld", slug: "speech/providers/inworld" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Basic transcription", slug: "recipes/basic-transcription" },
+                { label: "Basic speech synthesis", slug: "recipes/basic-speech-synthesis" },
+                { label: "Streaming transcription", slug: "recipes/streaming-transcription" },
+                { label: "Streaming synthesis", slug: "recipes/streaming-synthesis" },
+                { label: "Voice loop", slug: "recipes/voice-loop" },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Music generation",
+          items: [
+            { label: "Overview", slug: "music-generation" },
+            {
+              label: "Providers",
+              items: [{ label: "Google Lyria", slug: "music-generation/providers/gemini" }],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Basic music generation", slug: "recipes/basic-music-generation" }],
+            },
+          ],
+        },
+        {
           label: "Migrations",
           collapsed: true,
           items: [
@@ -130,10 +173,9 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Reranking", slug: "reranking", badge: { text: "Soon", variant: "note" } },
-            { label: "Speech", slug: "speech", badge: { text: "Soon", variant: "note" } },
             {
-              label: "Realtime audio",
-              slug: "realtime-audio",
+              label: "Realtime",
+              slug: "realtime",
               badge: { text: "Soon", variant: "note" },
             },
             {
@@ -144,11 +186,6 @@ export default defineConfig({
             {
               label: "Video generation",
               slug: "video-generation",
-              badge: { text: "Soon", variant: "note" },
-            },
-            {
-              label: "Music generation",
-              slug: "music-generation",
               badge: { text: "Soon", variant: "note" },
             },
           ],

@@ -1,61 +1,6 @@
 import { Effect, Schedule, Stream } from "effect"
 import { describe, expect, it } from "vitest"
-import { next, value } from "@effect-uai/core/Loop"
-import { loopFrom, settleBurst } from "./streamOps.js"
-
-// ---------------------------------------------------------------------------
-// loopFrom
-// ---------------------------------------------------------------------------
-
-describe("loopFrom", () => {
-  it("emits body values for each input, threading state", async () => {
-    const result = await Effect.runPromise(
-      Stream.fromIterable([1, 2, 3]).pipe(
-        loopFrom(0, (state, input) =>
-          Stream.fromIterable([value(state + input), next(state + input)]),
-        ),
-        Stream.runCollect,
-      ),
-    )
-
-    // input=1, state=0 → emit 1, transition to 1
-    // input=2, state=1 → emit 3, transition to 3
-    // input=3, state=3 → emit 6, transition to 6
-    expect(result).toEqual([1, 3, 6])
-  })
-
-  it("ends when input stream ends", async () => {
-    const result = await Effect.runPromise(
-      Stream.fromIterable(["a"]).pipe(
-        loopFrom("init", (state, input) =>
-          Stream.fromIterable([value(`${state}-${input}`), next(`${state}-${input}`)]),
-        ),
-        Stream.runCollect,
-      ),
-    )
-
-    expect(result).toEqual(["init-a"])
-  })
-
-  it("body emitting multiple values per input", async () => {
-    const result = await Effect.runPromise(
-      Stream.fromIterable([1, 2]).pipe(
-        loopFrom(0, (state, input) =>
-          Stream.fromIterable([
-            value(state * 10 + input),
-            value(state * 10 + input + 100),
-            next(state + input),
-          ]),
-        ),
-        Stream.runCollect,
-      ),
-    )
-
-    // input=1, state=0 → emit 1, 101, → state=1
-    // input=2, state=1 → emit 12, 112, → state=3
-    expect(result).toEqual([1, 101, 12, 112])
-  })
-})
+import { settleBurst } from "./streamOps.js"
 
 // ---------------------------------------------------------------------------
 // settleBurst — resetting-window debounce semantics
@@ -127,3 +72,4 @@ describe("settleBurst", () => {
     expect(result).toEqual([[1, 2, 3, 4, 5]])
   })
 })
+

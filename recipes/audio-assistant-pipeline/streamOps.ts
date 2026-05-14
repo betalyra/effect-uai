@@ -1,9 +1,6 @@
 /**
- * Recipe-local stream primitives. If the patterns prove out we'll lift them
- * to `@effect-uai/core` — for now they live next to the only consumer.
+ * Recipe-local stream primitives:
  *
- * - `loopFrom`: input-driven stateful flatMap — runs the body once per
- *   pulled input item, threading state via the `Next<S>` event.
  * - `settleBurst`: resetting-window debounce. Each new arrival resets the
  *   timer; when the timer expires with no more arrivals, the buffered
  *   batch is emitted. Differs from `Stream.groupedWithin` (fixed window).
@@ -14,59 +11,7 @@
  * pending items drain first, then `take` fails with `Done`, which `Stream`
  * treats as a clean end-of-stream.
  */
-import { Cause, type Duration, Effect, Function, Queue, Ref, Stream } from "effect"
-import { type Event } from "@effect-uai/core/Loop"
-
-// ---------------------------------------------------------------------------
-// loopFrom
-// ---------------------------------------------------------------------------
-
-export const loopFrom: {
-  <S, I, A, E, R>(
-    initial: S,
-    body: (state: S, input: I) => Stream.Stream<Event<A, S>, E, R>,
-  ): <EI, RI>(input: Stream.Stream<I, EI, RI>) => Stream.Stream<A, E | EI, R | RI>
-  <S, I, A, E, R, EI, RI>(
-    input: Stream.Stream<I, EI, RI>,
-    initial: S,
-    body: (state: S, input: I) => Stream.Stream<Event<A, S>, E, R>,
-  ): Stream.Stream<A, E | EI, R | RI>
-} = Function.dual(
-  3,
-  <S, I, A, E, R, EI, RI>(
-    input: Stream.Stream<I, EI, RI>,
-    initial: S,
-    body: (state: S, input: I) => Stream.Stream<Event<A, S>, E, R>,
-  ): Stream.Stream<A, E | EI, R | RI> =>
-    Stream.unwrap(
-      Effect.gen(function* () {
-        const stateRef = yield* Ref.make<S>(initial)
-        const stoppedRef = yield* Ref.make(false)
-        return input.pipe(
-          Stream.takeUntilEffect(() => Ref.get(stoppedRef)),
-          Stream.flatMap((item) =>
-            Stream.unwrap(
-              Effect.gen(function* () {
-                const state = yield* Ref.get(stateRef)
-                return body(state, item).pipe(
-                  Stream.tap((event) => {
-                    if (event._tag === "Next") return Ref.set(stateRef, event.state)
-                    if (event._tag === "Stop") return Ref.set(stoppedRef, true)
-                    return Effect.void
-                  }),
-                  Stream.filter(
-                    (event): event is Event<A, S> & { _tag: "Value" } =>
-                      event._tag === "Value",
-                  ),
-                  Stream.map((event) => event.value),
-                )
-              }),
-            ),
-          ),
-        )
-      }),
-    ),
-)
+import { Cause, type Duration, Effect, Function, Queue, Stream } from "effect"
 
 // ---------------------------------------------------------------------------
 // settleBurst — resetting-window debounce as a Stream operator.
@@ -138,3 +83,4 @@ export const settleBurst: {
       }),
     ),
 )
+

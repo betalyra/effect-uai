@@ -24,6 +24,15 @@ class PlaybackWorklet extends AudioWorkletProcessor {
         this.queue.push(e.data)
         this.bufferedSamples += e.data.length
         if (!this.started && this.bufferedSamples >= WARMUP_SAMPLES) this.started = true
+        return
+      }
+      // Barge-in / cancel: drop everything still buffered so the user hears
+      // silence immediately, and re-arm the warmup gate for the next turn.
+      if (e.data && e.data.type === "clear") {
+        this.queue.length = 0
+        this.headOffset = 0
+        this.bufferedSamples = 0
+        this.started = false
       }
     }
   }

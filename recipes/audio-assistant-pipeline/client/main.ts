@@ -14,6 +14,7 @@ type StatusEvent =
   | { readonly type: "assistant-thinking" }
   | { readonly type: "assistant-delta"; readonly text: string }
   | { readonly type: "assistant-done"; readonly text: string }
+  | { readonly type: "assistant-cancelled"; readonly text: string }
   | { readonly type: "error"; readonly message: string }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +113,15 @@ const handleStatus = (event: StatusEvent): void => {
       appendAssistantDelta(event.text)
       break
     case "assistant-done":
+      setStatus("listening")
+      finishAssistant(event.text)
+      break
+    case "assistant-cancelled":
+      // Drop everything queued in the playback worklet so the user stops
+      // hearing the assistant immediately — otherwise the ring-buffer tail
+      // (up to ~200 ms of pre-roll plus anything else queued) would still
+      // play out before silence.
+      if (active !== undefined) active.playbackNode.port.postMessage({ type: "clear" })
       setStatus("listening")
       finishAssistant(event.text)
       break

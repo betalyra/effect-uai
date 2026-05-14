@@ -16,6 +16,7 @@ import { FetchHttpClient } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsSynthesizer"
 import { layer as geminiLayer } from "@effect-uai/google/GeminiSynthesizer"
+import { layer as inworldLayer } from "@effect-uai/inworld/InworldSynthesizer"
 import { layer as openaiLayer } from "@effect-uai/openai/OpenAISynthesizer"
 import { outputExtFor, synthesizeOneShot, synthesizeStreaming, type Provider } from "./index.js"
 
@@ -25,7 +26,7 @@ const outDir = path.dirname(new URL(import.meta.url).pathname)
 
 const usage = (): never => {
   console.error(
-    `Usage: pnpm tsx recipes/basic-speech-synthesis/run-node.ts [--provider openai|gemini|elevenlabs] [--mode one-shot|streaming|both]`,
+    `Usage: pnpm tsx recipes/basic-speech-synthesis/run-node.ts [--provider openai|gemini|elevenlabs|inworld] [--mode one-shot|streaming|both]`,
   )
   process.exit(1)
 }
@@ -37,7 +38,7 @@ const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefine
 
 const parseProvider = (argv: ReadonlyArray<string>): Provider =>
   Match.value(flagValue(argv, "--provider") ?? "openai").pipe(
-    Match.whenOr("openai", "gemini", "elevenlabs", (p): Provider => p),
+    Match.whenOr("openai", "gemini", "elevenlabs", "inworld", (p): Provider => p),
     Match.orElse(usage),
   )
 
@@ -69,6 +70,14 @@ const layerFor = Match.type<Provider>().pipe(
       Effect.gen(function* () {
         const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
         return elevenlabsLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.when("inworld", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("INWORLD_API_KEY")
+        return inworldLayer({ apiKey })
       }),
     ),
   ),

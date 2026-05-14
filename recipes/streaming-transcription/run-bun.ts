@@ -16,6 +16,7 @@ import { Cause, Config, Effect, Layer, ManagedRuntime, Match, Queue, Stream } fr
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsTranscriber"
+import { layer as inworldLayer } from "@effect-uai/inworld/InworldRealtimeTranscriber"
 import { layer as openaiLayer } from "@effect-uai/openai/OpenAIRealtimeTranscriber"
 import { providerConfig, transcribeMicStream, type Provider } from "./index.js"
 
@@ -30,9 +31,9 @@ const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefine
 
 const parseProvider = (argv: ReadonlyArray<string>): Provider =>
   Match.value(flagValue(argv, "--provider") ?? "openai").pipe(
-    Match.whenOr("openai", "elevenlabs", (p): Provider => p),
+    Match.whenOr("openai", "elevenlabs", "inworld", (p): Provider => p),
     Match.orElse(() => {
-      console.error("Usage: bun run-bun.ts [--provider openai|elevenlabs]")
+      console.error("Usage: bun run-bun.ts [--provider openai|elevenlabs|inworld]")
       process.exit(1)
     }),
   )
@@ -58,6 +59,14 @@ const layerFor = Match.type<Provider>().pipe(
       Effect.gen(function* () {
         const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
         return elevenlabsLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.when("inworld", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("INWORLD_API_KEY")
+        return inworldLayer({ apiKey })
       }),
     ),
   ),

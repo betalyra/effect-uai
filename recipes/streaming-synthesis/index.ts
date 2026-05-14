@@ -1,13 +1,14 @@
 /**
  * Pipe a Stream of text deltas through the generic
- * `SpeechSynthesizer.streamSynthesisFrom` capability. The recipe stays
- * provider-agnostic — currently only `elevenlabs` provides the
- * `TtsIncrementalText` marker, but new providers slot in via the same
- * Match-based dispatch we use in basic-speech-synthesis.
+ * `SpeechSynthesizer.streamSynthesisFrom` capability. Provider-agnostic
+ * at the call site — the runner picks the Layer and matching request shape.
+ * Adding a provider is one `Match.when` here + one in the runner.
  */
+import { Match } from "effect"
+import type { AudioFormat } from "@effect-uai/core/Audio"
 import * as SpeechSynthesizer from "@effect-uai/core/SpeechSynthesizer"
 
-export type Provider = "elevenlabs"
+export type Provider = "elevenlabs" | "inworld"
 
 /**
  * PCM s16le @ 48 kHz mono — matches the native rate of most browser
@@ -18,10 +19,26 @@ const outputFormat = {
   encoding: "pcm_s16le",
   sampleRate: 48000,
   channels: 1,
-} as const
+} satisfies AudioFormat
 
-export const synthesizeText = SpeechSynthesizer.streamSynthesisFrom({
-  model: "eleven_flash_v2_5",
-  voiceId: "JBFqnCBsd6RMkjVDRZzb",
-  outputFormat,
-})
+/** Per-provider model + voice. */
+export const providerConfig: (provider: Provider) => {
+  readonly model: string
+  readonly voiceId: string
+} = Match.type<Provider>().pipe(
+  Match.when("elevenlabs", () => ({
+    model: "eleven_flash_v2_5",
+    voiceId: "JBFqnCBsd6RMkjVDRZzb",
+  })),
+  Match.when("inworld", () => ({
+    model: "inworld-tts-2",
+    voiceId: "Sarah",
+  })),
+  Match.exhaustive,
+)
+
+export const synthesizeText = (provider: Provider) =>
+  SpeechSynthesizer.streamSynthesisFrom({
+    ...providerConfig(provider),
+    outputFormat,
+  })

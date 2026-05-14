@@ -67,7 +67,7 @@ const assistantTurn = (text: string): Turn => ({
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("audio-assistant-pipeline", () => {
+describe("voice-loop", () => {
   it("one utterance: stt final → llm → tts → audio + status events", async () => {
     const result = await Effect.runPromise(
       runRecipe({

@@ -1,8 +1,8 @@
 /**
- * Bun runner for the audio-assistant-pipeline recipe.
+ * Bun runner for the voice-loop recipe.
  *
  *   ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... \
- *     bun recipes/audio-assistant-pipeline/run-bun.ts
+ *     bun recipes/voice-loop/run-bun.ts
  *
  * Wire format on the browser ↔ server WebSocket:
  *   browser → server : binary frames = PCM s16le 16 kHz mono mic audio
@@ -210,6 +210,6 @@ Bun.serve<WsData>({
 })
 
 console.log(
-  `audio-assistant-pipeline (elevenlabs STT/TTS + gemini-2.5-flash) → http://localhost:${port}`,
+  `voice-loop (elevenlabs STT/TTS + gemini-2.5-flash) → http://localhost:${port}`,
 )
 console.log(`log level: ${minLevel} (set PIPELINE_DEBUG=1 for verbose STT partials)`)

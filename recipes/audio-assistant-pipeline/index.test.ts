@@ -1,4 +1,4 @@
-import { Chunk, Effect, Layer, Ref, Stream } from "effect"
+import { Effect, Layer, Ref, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import type { AudioChunk } from "@effect-uai/core/Audio"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
@@ -140,7 +140,7 @@ describe("audio-assistant-pipeline", () => {
     // Two STT scripted streams: the second only fires after the first one's
     // audio drains, simulating "user speaks, assistant talks, user speaks again".
     // In the mock, all scripted events arrive within one stream — but the
-    // recipe's settle-burst gating + serial loopFrom processes them in turn.
+    // recipe's settle-burst gating + sequential per-turn fiber model processes them in turn.
     const result = await Effect.runPromise(
       runRecipe({
         audioInBytes: [new Uint8Array([0])],

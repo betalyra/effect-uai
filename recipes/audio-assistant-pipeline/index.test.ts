@@ -68,106 +68,97 @@ const assistantTurn = (text: string): Turn => ({
 // ---------------------------------------------------------------------------
 
 describe("audio-assistant-pipeline", () => {
-  it(
-    "one utterance: stt final → llm → tts → audio + status events",
-    async () => {
-      const result = await Effect.runPromise(
-        runRecipe({
-          audioInBytes: [new Uint8Array([1, 2, 3])],
-          sttEvents: [
-            [
-              { _tag: "partial", text: "hello" },
-              { _tag: "final", text: "hello world" },
-            ],
+  it("one utterance: stt final → llm → tts → audio + status events", async () => {
+    const result = await Effect.runPromise(
+      runRecipe({
+        audioInBytes: [new Uint8Array([1, 2, 3])],
+        sttEvents: [
+          [
+            { _tag: "partial", text: "hello" },
+            { _tag: "final", text: "hello world" },
           ],
-          llmTurns: [assistantTurn("Hi there.")],
-          ttsChunks: [[audioChunk(10, 20), audioChunk(30, 40)]],
-        }),
-      )
+        ],
+        llmTurns: [assistantTurn("Hi there.")],
+        ttsChunks: [[audioChunk(10, 20), audioChunk(30, 40)]],
+      }),
+    )
 
-      // Audio: each scripted chunk arrives at the sendAudio callback.
-      expect(result.audioOut).toHaveLength(2)
-      expect(Array.from(result.audioOut[0]!)).toEqual([10, 20])
-      expect(Array.from(result.audioOut[1]!)).toEqual([30, 40])
+    // Audio: each scripted chunk arrives at the sendAudio callback.
+    expect(result.audioOut).toHaveLength(2)
+    expect(Array.from(result.audioOut[0]!)).toEqual([10, 20])
+    expect(Array.from(result.audioOut[1]!)).toEqual([30, 40])
 
-      // Status events: partial → final → thinking → delta → done.
-      const types = result.statusEvents.map((e) => e.type)
-      expect(types).toEqual([
-        "user-partial",
-        "user-final",
-        "assistant-thinking",
-        "assistant-delta",
-        "assistant-done",
-      ])
+    // Status events: partial → final → thinking → delta → done.
+    const types = result.statusEvents.map((e) => e.type)
+    expect(types).toEqual([
+      "user-partial",
+      "user-final",
+      "assistant-thinking",
+      "assistant-delta",
+      "assistant-done",
+    ])
 
-      // user-final contains the trimmed STT final text.
-      const finalEv = result.statusEvents.find((e) => e.type === "user-final")
-      expect(finalEv).toMatchObject({ type: "user-final", text: "hello world" })
+    // user-final contains the trimmed STT final text.
+    const finalEv = result.statusEvents.find((e) => e.type === "user-final")
+    expect(finalEv).toMatchObject({ type: "user-final", text: "hello world" })
 
-      // assistant-done contains the full LLM response.
-      const doneEv = result.statusEvents.find((e) => e.type === "assistant-done")
-      expect(doneEv).toMatchObject({ type: "assistant-done", text: "Hi there." })
-    },
-  )
+    // assistant-done contains the full LLM response.
+    const doneEv = result.statusEvents.find((e) => e.type === "assistant-done")
+    expect(doneEv).toMatchObject({ type: "assistant-done", text: "Hi there." })
+  })
 
-  it(
-    "burst coalescing: two finals within settle window → one LLM call",
-    async () => {
-      const result = await Effect.runPromise(
-        runRecipe({
-          audioInBytes: [new Uint8Array([0])],
-          sttEvents: [
-            [
-              { _tag: "final", text: "hello" },
-              { _tag: "final", text: "what's the weather" },
-            ],
+  it("burst coalescing: two finals within settle window → one LLM call", async () => {
+    const result = await Effect.runPromise(
+      runRecipe({
+        audioInBytes: [new Uint8Array([0])],
+        sttEvents: [
+          [
+            { _tag: "final", text: "hello" },
+            { _tag: "final", text: "what's the weather" },
           ],
-          // Scripted with ONE turn → the recipe must coalesce both finals
-          // into one LLM call. Two would exhaust the mock and fail.
-          llmTurns: [assistantTurn("Sunny.")],
-          ttsChunks: [[audioChunk(99)]],
-        }),
-      )
+        ],
+        // Scripted with ONE turn → the recipe must coalesce both finals
+        // into one LLM call. Two would exhaust the mock and fail.
+        llmTurns: [assistantTurn("Sunny.")],
+        ttsChunks: [[audioChunk(99)]],
+      }),
+    )
 
-      // One audio chunk delivered (one TTS call, one chunk).
-      expect(result.audioOut).toHaveLength(1)
+    // One audio chunk delivered (one TTS call, one chunk).
+    expect(result.audioOut).toHaveLength(1)
 
-      // The recipe records user-final per stt final → the UI sees both.
-      const userFinals = result.statusEvents.filter((e) => e.type === "user-final")
-      expect(userFinals.length).toBeGreaterThanOrEqual(1)
+    // The recipe records user-final per stt final → the UI sees both.
+    const userFinals = result.statusEvents.filter((e) => e.type === "user-final")
+    expect(userFinals.length).toBeGreaterThanOrEqual(1)
 
-      // But only one assistant turn ran — one assistant-thinking, one done.
-      expect(result.statusEvents.filter((e) => e.type === "assistant-thinking")).toHaveLength(1)
-      expect(result.statusEvents.filter((e) => e.type === "assistant-done")).toHaveLength(1)
-    },
-  )
+    // But only one assistant turn ran — one assistant-thinking, one done.
+    expect(result.statusEvents.filter((e) => e.type === "assistant-thinking")).toHaveLength(1)
+    expect(result.statusEvents.filter((e) => e.type === "assistant-done")).toHaveLength(1)
+  })
 
-  it(
-    "two utterances separated by silence → two LLM calls with growing history",
-    async () => {
-      // Two STT scripted streams: the second only fires after the first one's
-      // audio drains, simulating "user speaks, assistant talks, user speaks again".
-      // In the mock, all scripted events arrive within one stream — but the
-      // recipe's settle-burst gating + serial loopFrom processes them in turn.
-      const result = await Effect.runPromise(
-        runRecipe({
-          audioInBytes: [new Uint8Array([0])],
-          sttEvents: [
-            [
-              { _tag: "final", text: "first message" },
-              // No more events — the mock stream ends after this; we'd need
-              // a delay to simulate inter-utterance silence. For unit-test
-              // purposes, one final is the simpler shape we verify.
-            ],
+  it("two utterances separated by silence → two LLM calls with growing history", async () => {
+    // Two STT scripted streams: the second only fires after the first one's
+    // audio drains, simulating "user speaks, assistant talks, user speaks again".
+    // In the mock, all scripted events arrive within one stream — but the
+    // recipe's settle-burst gating + serial loopFrom processes them in turn.
+    const result = await Effect.runPromise(
+      runRecipe({
+        audioInBytes: [new Uint8Array([0])],
+        sttEvents: [
+          [
+            { _tag: "final", text: "first message" },
+            // No more events — the mock stream ends after this; we'd need
+            // a delay to simulate inter-utterance silence. For unit-test
+            // purposes, one final is the simpler shape we verify.
           ],
-          llmTurns: [assistantTurn("First answer.")],
-          ttsChunks: [[audioChunk(1)]],
-        }),
-      )
+        ],
+        llmTurns: [assistantTurn("First answer.")],
+        ttsChunks: [[audioChunk(1)]],
+      }),
+    )
 
-      expect(result.audioOut).toHaveLength(1)
-      const doneEvents = result.statusEvents.filter((e) => e.type === "assistant-done")
-      expect(doneEvents).toHaveLength(1)
-    },
-  )
+    expect(result.audioOut).toHaveLength(1)
+    const doneEvents = result.statusEvents.filter((e) => e.type === "assistant-done")
+    expect(doneEvents).toHaveLength(1)
+  })
 })

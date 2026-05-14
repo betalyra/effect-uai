@@ -75,12 +75,13 @@ export const settleBurst: {
         // Queue with `Cause.Done` failure type so we can call `Queue.end`,
         // which preserves queued items (unlike `Queue.shutdown` which clears them).
         const queue = yield* Queue.unbounded<A, Cause.Done>()
-        yield* Stream.runForEach(stream, (a) => Queue.offer(queue, a))
-          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
+        yield* Stream.runForEach(stream, (a) => Queue.offer(queue, a)).pipe(
+          Effect.ensuring(Queue.end(queue)),
+          Effect.forkScoped,
+        )
         return Stream.fromPull(Effect.succeed(drainOne(queue, settle))).pipe(
           Stream.map((batch) => batch as ReadonlyArray<A>),
         )
       }),
     ),
 )
-

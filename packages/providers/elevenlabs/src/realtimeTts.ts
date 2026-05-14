@@ -113,7 +113,13 @@ export const streamSynthesis =
     Stream.unwrap(
       Effect.gen(function* () {
         const slug = yield* formatToOutputSlug(request.outputFormat ?? defaultFormat)
-        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg, request, slug))
+        // ElevenLabs closes `/stream-input` with code 1000 after delivering the
+        // final audio chunk. Effect's default treats all close codes as errors,
+        // which would surface as a stream failure right after the last audio
+        // arrives. Whitelist standard clean-close codes.
+        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg, request, slug), {
+          closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
+        })
         const queue = yield* Queue.bounded<AudioChunk>(64)
         const write = yield* socket.writer
 
@@ -128,9 +134,17 @@ export const streamSynthesis =
           yield* write(eosFrame)
         }).pipe(Effect.ignore, Effect.forkScoped)
 
-        yield* socket
-          .runString(handleServerFrame(queue))
-          .pipe(Effect.ensuring(Queue.shutdown(queue)), Effect.forkScoped)
+        // Reader fiber: read JSON frames, decode to AudioChunk, push to queue.
+        // Even with `closeCodeIsError` whitelisting normal closes, the
+        // underlying Deferred is failed inside the close handler before the
+        // filter runs — siblings sharing the FiberSet can see that fail. We
+        // catchCause defensively so this fiber NEVER propagates failure;
+        // queue shutdown signals end-of-stream cleanly to the audio consumer.
+        yield* socket.runString(handleServerFrame(queue)).pipe(
+          Effect.catchCause(() => Effect.void),
+          Effect.ensuring(Queue.shutdown(queue)),
+          Effect.forkScoped,
+        )
 
         return Stream.fromQueue(queue)
       }),

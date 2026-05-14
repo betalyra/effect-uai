@@ -112,38 +112,54 @@ const wireToWordTimestamp = (w: typeof RealtimeWord.Type): WordTimestamp => ({
   ...(w.logprob !== undefined && { confidence: Math.exp(w.logprob) }),
 })
 
-export const wireToEvent: (msg: typeof ServerMessage.Type) => TranscriptEvent | undefined =
-  Match.type<typeof ServerMessage.Type>().pipe(
-    Match.when({ message_type: "session_started" }, () => undefined),
-    Match.when(
-      { message_type: "partial_transcript" },
-      (m): TranscriptEvent => ({ _tag: "partial", text: m.text }),
-    ),
-    // The realtime endpoint emits both `committed_transcript` and
-    // `committed_transcript_with_timestamps` for the same segment — the
-    // latter is always a superset. Suppress the text-only variant so the
-    // consumer sees one `final` per utterance instead of two.
-    Match.when({ message_type: "committed_transcript" }, () => undefined),
-    Match.when({ message_type: "committed_transcript_with_timestamps" }, (m): TranscriptEvent => {
-      const words = m.words == null ? undefined : m.words.map(wireToWordTimestamp)
-      return {
-        _tag: "final",
-        text: m.text,
-        ...(m.language_code != null && { languageCode: m.language_code }),
-        ...(words !== undefined && words.length > 0 && { words }),
-      }
-    }),
-    Match.orElse(
-      (m): TranscriptEvent => ({
-        _tag: "error",
-        code: m.message_type,
-        message:
-          typeof m.error === "string"
-            ? m.error
-            : JSON.stringify(m.error ?? `ElevenLabs ${m.message_type}`),
+/**
+ * Map a server frame to a `TranscriptEvent`. The two `committed_*` variants
+ * need disambiguation:
+ *
+ *   - When `include_timestamps=true` on the URL, the server emits BOTH
+ *     `committed_transcript` and `committed_transcript_with_timestamps` for
+ *     each segment — same text, the latter is a strict superset. The bare
+ *     variant must be suppressed or callers see two finals per utterance.
+ *   - When `include_timestamps=false`, the server emits ONLY
+ *     `committed_transcript`. Suppressing it loses every final.
+ *
+ * So suppression must be conditional on `includeTimestamps`, which is what
+ * `wordTimestamps` resolves to on the URL.
+ */
+export const wireToEvent =
+  (includeTimestamps: boolean) =>
+  (msg: typeof ServerMessage.Type): TranscriptEvent | undefined =>
+    Match.value(msg).pipe(
+      Match.when({ message_type: "session_started" }, () => undefined),
+      Match.when(
+        { message_type: "partial_transcript" },
+        (m): TranscriptEvent => ({ _tag: "partial", text: m.text }),
+      ),
+      Match.when({ message_type: "committed_transcript" }, (m): TranscriptEvent | undefined =>
+        includeTimestamps
+          ? undefined // superseded by the `_with_timestamps` variant
+          : { _tag: "final", text: m.text },
+      ),
+      Match.when({ message_type: "committed_transcript_with_timestamps" }, (m): TranscriptEvent => {
+        const words = m.words == null ? undefined : m.words.map(wireToWordTimestamp)
+        return {
+          _tag: "final",
+          text: m.text,
+          ...(m.language_code != null && { languageCode: m.language_code }),
+          ...(words !== undefined && words.length > 0 && { words }),
+        }
       }),
-    ),
-  )
+      Match.orElse(
+        (m): TranscriptEvent => ({
+          _tag: "error",
+          code: m.message_type,
+          message:
+            typeof m.error === "string"
+              ? m.error
+              : JSON.stringify(m.error ?? `ElevenLabs ${m.message_type}`),
+        }),
+      ),
+    )
 
 // ---------------------------------------------------------------------------
 // URL + frame builders
@@ -187,15 +203,20 @@ export const encodeAudioFrame = (bytes: Uint8Array, sampleRate: number) =>
 // the connection stays open and we keep streaming subsequent messages.
 // ---------------------------------------------------------------------------
 
-const handleServerMessage = (queue: Queue.Queue<TranscriptEvent>) => (raw: string) =>
-  Effect.gen(function* () {
-    const json = yield* JSONL.parseSafe(raw)
-    if (json === undefined) return
-    const decoded = yield* decodeServerMessage(json).pipe(Effect.option)
-    if (decoded._tag === "None") return
-    const event = wireToEvent(decoded.value)
-    if (event !== undefined) yield* Queue.offer(queue, event)
-  })
+const handleServerMessage =
+  (
+    queue: Queue.Queue<TranscriptEvent>,
+    mapEvent: (msg: typeof ServerMessage.Type) => TranscriptEvent | undefined,
+  ) =>
+  (raw: string) =>
+    Effect.gen(function* () {
+      const json = yield* JSONL.parseSafe(raw)
+      if (json === undefined) return
+      const decoded = yield* decodeServerMessage(json).pipe(Effect.option)
+      if (decoded._tag === "None") return
+      const event = mapEvent(decoded.value)
+      if (event !== undefined) yield* Queue.offer(queue, event)
+    })
 
 // ---------------------------------------------------------------------------
 // Stream<Uint8Array> → Stream<TranscriptEvent>
@@ -220,12 +241,18 @@ export const streamTranscription =
       Effect.gen(function* () {
         const slug = yield* inputFormatToSlug(request.inputFormat)
         const token = yield* fetchSingleUseToken(cfg)
+        const includeTimestamps = request.wordTimestamps === true
         const url = buildWsUrl(cfg, token, slug, {
           ...(request.model !== undefined && { model: request.model }),
           ...(request.language !== undefined && { languageCode: request.language }),
-          includeTimestamps: request.wordTimestamps === true,
+          includeTimestamps,
         })
-        const socket = yield* Socket.makeWebSocket(url)
+        const socket = yield* Socket.makeWebSocket(url, {
+          // Effect's Socket treats all close codes as errors by default — that
+          // surfaces a clean server-side close as a stream failure. Whitelist
+          // standard clean-close codes (1000 / 1001 / 1005).
+          closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
+        })
         const queue = yield* Queue.bounded<TranscriptEvent>(64)
         const sampleRate = request.inputFormat.sampleRate
 
@@ -235,7 +262,7 @@ export const streamTranscription =
         ).pipe(Effect.ignore, Effect.forkScoped)
 
         yield* socket
-          .runString(handleServerMessage(queue))
+          .runString(handleServerMessage(queue, wireToEvent(includeTimestamps)))
           .pipe(Effect.ensuring(Queue.shutdown(queue)), Effect.forkScoped)
 
         return Stream.fromQueue(queue)

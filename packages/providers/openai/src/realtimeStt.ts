@@ -195,9 +195,11 @@ export const streamTranscription =
     Stream.unwrap(
       Effect.gen(function* () {
         const wireFormat = yield* inputFormatToWire(request.inputFormat)
-        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg)).pipe(
-          Effect.provideService(Socket.WebSocketConstructor, authedWsConstructor(cfg)),
-        )
+        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg), {
+          // Effect's Socket treats all close codes as errors by default —
+          // whitelist standard clean-close codes (1000 / 1001 / 1005).
+          closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
+        }).pipe(Effect.provideService(Socket.WebSocketConstructor, authedWsConstructor(cfg)))
         const queue = yield* Queue.bounded<TranscriptEvent>(64)
         const write = yield* socket.writer
 

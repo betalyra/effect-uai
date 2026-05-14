@@ -1,44 +1,80 @@
 ---
 title: Basic music generation
-description: "Generate a short music clip with Google Lyria 3: `generateSimple` for a single prompt, `generateWeighted` for blended influences with lyrics and structural hints. Accepts an optional `.txt` or `.json` file for a custom prompt."
+description: A short prompt is enough. Lyria 3 turns it into a 30-second clip.
 ---
 
-Generate a short music clip with Google's Lyria 3 music-generation models via the Gemini REST API.
+A short prompt is enough to get useful background music.
 
-Two variants:
+Give the model a vibe, a tempo hint, or a rough song structure and it
+returns audio bytes you can write to disk. The recipe shows the small
+path first, then a richer prompt with weighted influences and lyrics.
 
-- `generateSimple` — `lyria-3-clip-preview`, single text prompt.
-- `generateWeighted` — `lyria-3-clip-preview`, blended `WeightedPrompt[]` with optional `[Verse]` / `[Chorus]` lyrics and `bpm` / `scale` hints (flattened into the prompt text — Lyria 3 sync has no structured weighted-prompt field; that's Lyria RealTime).
+**Scenario.** You need background audio for a video, a song draft for
+a demo, or a quick musical sketch. You want a 30-second clip from a
+prompt, not a local model or a new provider SDK.
 
-`lyria-3-clip-preview` is fixed at 30 s of MP3 output. For longer clips or WAV, switch to `lyria-3-pro-preview` inside `index.ts`.
+## Simple Or Directed
 
-Lyria 3 RealTime (live bidirectional sessions with mid-stream prompt updates) is **not** demonstrated here — that ships in a follow-up phase over a `BidiGenerateMusic` WebSocket. The `@effect-uai/google` `LyriaGenerator` Layer therefore omits the `MusicInteractiveSession` capability marker, so calling `MusicGenerator.streamGenerationFrom` against it is a compile-time error.
+```ts
+import { generate } from "@effect-uai/core/MusicGenerator"
 
-Every output carries a SynthID watermark — surfaced as `result.watermark` on the returned `MusicResult`.
+// Simple
+const simple = yield* generate({
+  model: "lyria-3-clip-preview",
+  prompts: "Lo-fi piano with brushed drums, 70 bpm",
+})
+yield* writeFile("out-simple.mp3", simple.bytes)
 
-## Run
+// Weighted
+const weighted = yield* generate({
+  model: "lyria-3-clip-preview",
+  prompts: [
+    { text: "minimal techno", weight: 0.7 },
+    { text: "ambient pad",   weight: 0.3 },
+  ],
+  bpm: 124,
+  scale: "A_MINOR",
+  lyrics: "[Verse]\nA late train hums beneath the city\n",
+})
+yield* writeFile("out-weighted.mp3", weighted.bytes)
+```
 
-No arguments → runs both built-in variants:
+Both calls use the same `MusicGenerator.generate` boundary: prompt in,
+`MusicResult` out. The simple prompt is enough for most demos. The
+weighted prompt is useful when you want to blend influences, preserve a
+song section shape, or carry musical hints like `bpm` and `scale`.
+
+`lyria-3-clip-preview` returns a fixed 30-second MP3. Use
+`lyria-3-pro-preview` in `index.ts` when you want longer clips or WAV
+output.
+
+Lyria adds a SynthID watermark. The adapter surfaces that as
+`result.watermark`, so downstream code can preserve provenance.
+
+## Run it
 
 ```sh
+# Both built-in variants
 GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts
-```
 
-With a `.txt` file → runs only the simple variant, using the file contents as the prompt:
+# Custom simple prompt from a .txt file
+GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts ./my-prompt.txt
 
-```sh
-GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts \
-  recipes/basic-music-generation/prompts/birthday-danielo.txt
-```
-
-With a `.json` file → runs only the weighted variant, parsed as `WeightedConfig` (see `index.ts` for the shape):
-
-```sh
+# Custom weighted prompt from a .json file (see index.ts for the WeightedConfig shape)
 GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts ./my-track.json
 ```
 
 Writes `out-simple.mp3` and/or `out-weighted.mp3` next to the recipe.
 
-## Example prompts
+## What This Generalizes To
 
-- [`prompts/birthday-danielo.txt`](./prompts/birthday-danielo.txt) — a subtle, modern birthday song bridging pagode from Minas Gerais and Movida Madrileña.
+Today this runs on Google's Lyria layer, but the recipe body yields the
+generic `MusicGenerator` service. Future providers can hide job polling,
+streaming, or session setup behind the same boundary.
+
+For the broader model surface and planned interactive sessions, see
+[Music generation](/music-generation/). For spoken audio instead of
+music, see [Basic speech synthesis](/recipes/basic-speech-synthesis/).
+
+The full source lives next to this README at
+[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-music-generation/index.ts).

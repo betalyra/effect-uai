@@ -1,34 +1,77 @@
 ---
 title: Basic transcription
-description: "Transcribe an audio file via the generic Transcriber service. Switch providers with `--provider openai|gemini`. `whisper-1` verbose mode (per-word timestamps) is OpenAI-only."
+description: Drop an audio file in, get text back. Same call, swap the provider.
 ---
 
-Transcribe an audio file via the generic `Transcriber` service. Provider is picked at the runner level via `--provider`; the recipe Effects (`index.ts`) are provider-agnostic.
+A finished audio file should be easy to treat like text.
 
-Two variants:
+This recipe takes a voice note, meeting clip, podcast excerpt, or any
+other file you already have, sends it to a transcription provider, and
+returns the transcript. The same program can run on OpenAI or Gemini;
+the provider choice stays in the runner.
 
-- `transcribeFast(provider, audio)` — each provider's fast text-only model. Works for both providers.
-- `transcribeVerbose(audio)` — `whisper-1` with `wordTimestamps: true`, returning per-word `WordTimestamp[]`. **OpenAI only** — Gemini's prompt-driven transcription has no structured per-word timing, so the runner skips this when `--provider gemini` is set. Attempting it against the Gemini Layer fails with `AiError.Unsupported`.
+**Scenario.** You have `meeting.mp3` and want the text. If you are on
+OpenAI Whisper you can also ask for word timestamps and build a simple
+timeline.
 
-`streamTranscriptionFrom` (live mic → transcript) is **not** demonstrated here — both provider Layers omit the `SttStreaming` capability marker, so calls are a compile-time error. Cloud Speech-to-Text (`@effect-uai/google-cloud-speech`) and OpenAI Realtime will register the marker in their respective phases.
+## The Shape
 
-## Providers
+One call does the work:
 
-| Provider           | Fast model                                          | Verbose model                        |
-| ------------------ | --------------------------------------------------- | ------------------------------------ |
-| `openai` (default) | `gpt-4o-transcribe`                                 | `whisper-1` + `wordTimestamps: true` |
-| `gemini`           | `gemini-2.5-flash` (prompt-driven, plain text only) | —                                    |
+```ts
+import { transcribe } from "@effect-uai/core/Transcriber"
 
-To add a new provider, extend the `Provider` union in [`index.ts`](./index.ts) and add a `Match.when` case in `fastModelFor` (recipe side) and `layerFor` (runner side).
+const result = yield* transcribe({
+  audio: { _tag: "bytes", bytes: audioBytes, mimeType: "audio/mpeg" },
+  model: "gpt-4o-transcribe",
+  language: "en",
+})
+// result.text   : string
+// result.words? : WordTimestamp[]  (only with wordTimestamps + whisper-1)
+```
 
-## Run
+The important part is the boundary: audio bytes in, typed transcript
+data out. `index.ts` only depends on the generic `Transcriber` tag, so
+the runner can provide OpenAI or Gemini without changing the recipe
+body.
+
+## Fast Text Or Timestamps
+
+The recipe includes two paths:
+
+- **Fast** uses the provider's normal text-only model. It works on both
+  OpenAI and Gemini.
+- **Verbose** uses OpenAI `whisper-1` with `wordTimestamps: true`, so
+  you get `result.words` as well as `result.text`.
+
+Gemini's transcription is prompt-driven and text-only, so the runner
+skips the timestamp variant when you choose `--provider gemini`.
+
+| Provider | Fast model | Timestamp path |
+| --- | --- | --- |
+| `openai` | `gpt-4o-transcribe` | `whisper-1` |
+| `gemini` | `gemini-2.5-flash` | not supported |
+
+## Run it
 
 ```sh
-# Default provider: openai
+# Default: OpenAI
 OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-transcription/run-node.ts path/to/audio.wav
 
 # Gemini
 GOOGLE_API_KEY=...   pnpm tsx recipes/basic-transcription/run-node.ts --provider gemini path/to/audio.wav
 ```
 
-Audio formats accepted: `m4a`, `mp3`, `mp4`, `mpeg`, `mpga`, `oga`, `ogg`, `wav`, `webm`, `flac`. Both providers accept the same set; Gemini caps total request size at 20 MB inline.
+Accepted formats: `m4a`, `mp3`, `mp4`, `mpeg`, `mpga`, `oga`, `ogg`,
+`wav`, `webm`, `flac`. Gemini caps total inline request size at 20 MB.
+
+## What This Generalizes To
+
+Use `transcribe` whenever you have the whole audio asset up front:
+uploads, async jobs, podcast processing, meeting notes. For a live mic,
+switch to [Streaming transcription](/recipes/streaming-transcription/);
+the shape is the same service, but the input is a `Stream<Uint8Array>`
+and the output is a stream of partial and final transcript events.
+
+The full source lives next to this README at
+[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-transcription/index.ts).

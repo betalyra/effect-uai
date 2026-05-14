@@ -1,87 +1,128 @@
 ---
 title: Voice loop
-description: "Live voice assistant: streaming STT → LLM (Gemini Flash) → streaming TTS, end-to-end, with stop-word interrupt and turn queueing. ElevenLabs Scribe v2 Realtime + `gemini-2.5-flash` + ElevenLabs Flash TTS, orchestrated as Effect fibers."
+description: Talk to your agent. Streaming STT to LLM to streaming TTS, with stop-word interrupt and follow-up queueing.
 ---
 
-A full voice-loop assistant in one recipe:
+A voice assistant is three streams talking to each other.
 
-```
-[Browser]  getUserMedia → AudioWorklet (PCM s16le 16 kHz) → WebSocket
-   ↕
-[Bun server]  Effect pipeline:
-   shared STT events (Stream.share)
-     ├─► (1) stop-word watcher    ─► Fiber.interrupt(activeTurn) on
-     │                                "stop" / "wait" / "pause" / …
-     └─► (2) utterance loop:
-            settleBurst("350 millis")     ─► coalesce close-together finals
-            forkChild(runAssistantTurn)   ─► one fiber per turn, awaited
-              LanguageModel.streamTurn({ history, model })
-                .pipe(Turn.textDeltas)
-              → SpeechSynthesizer.streamSynthesisFrom (ElevenLabs WS)
-              → PCM s16le 48 kHz chunks sent + paced (one chunk-duration
-                sleep per chunk) so the fiber stays alive while the user
-                is hearing audio
-[Browser]  ring-buffered AudioWorklet → speakers (cleared on cancel)
-```
+Speech-to-text turns the user's mic into committed utterances. The LLM
+answers each utterance. Streaming text-to-speech reads the answer aloud
+as soon as the first deltas arrive.
 
-The recipe exercises **all three streaming abstractions** in `@effect-uai/core` simultaneously: `Transcriber` (`SttStreaming` marker), `LanguageModel`, and `SpeechSynthesizer` (`TtsIncrementalText` marker). The pipeline Effect stays provider-agnostic — switching providers is a Layer swap in `run-bun.ts`.
+**Scenario.** Open a tab, click **Start**, allow mic access, ask a
+question. Ask a follow-up while the assistant is still speaking and it
+queues. Say "stop" mid-answer and playback is cancelled so you can ask
+the next thing.
 
-## Burst coalescing
+## The Pipeline
 
-Each `final` TranscriptEvent is a string. The utterance loop pipes them through `settleBurst` (recipe-local, in `streamOps.ts`) which waits for the first item then keeps collecting while subsequent items arrive within `utteranceSettle` (350 ms default) of the previous one. The window resets on each arrival — so a burst of fast-arriving finals flows together while a final followed by silence ends the burst immediately.
+The recipe composes three provider surfaces without a voice-assistant
+framework:
 
-Why it matters for voice: ElevenLabs Scribe v2 Realtime occasionally splits a single sentence into two finals when the user has a brief mid-sentence pause ("Hello, … what's the weather?"). Without coalescing the recipe would fire two LLM round-trips and play two TTS responses for what the user perceived as one prompt. With it, the perceived utterance becomes one batched call: `"Hello what's the weather?"`.
+- `Transcriber.streamTranscriptionFrom` listens to the mic and emits
+  partial and final transcript events.
+- `LanguageModel.streamTurn` answers each final utterance.
+- `SpeechSynthesizer.streamSynthesisFrom` turns the LLM's text deltas
+  into audio chunks.
 
-## Stack
+The pipeline is still ordinary Effect code. Provider selection lives in
+`run-bun.ts`; the recipe body works against the service tags and
+capability markers.
 
-- **Server**: Bun + Effect (`ManagedRuntime` + `@effect-uai/elevenlabs` + `@effect-uai/google`). One pipeline fiber per WS connection; inside that, one fiber for the stop-word watcher, one for the utterance loop, and one short-lived fiber per turn for `runAssistantTurn`.
-- **Client**: imperative TS in `client/main.ts`, bundled by `Bun.build` at server startup and served as `/client.js`.
-- **Audio worklets**: `public/mic-worklet.js` (PCM s16le 16 kHz averaging decimator) and `public/playback-worklet.js` (ring buffer with 200 ms warmup at 48 kHz; flushed on `assistant-cancelled`).
+## Turn Handling
 
-## Run
+Each committed user utterance becomes one assistant turn. The outer
+stream runs turns sequentially, so a follow-up spoken while the
+assistant is answering waits its turn instead of racing the current
+answer.
 
-```sh
-ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... \
-  bun recipes/voice-loop/run-bun.ts
-```
-
-Open <http://localhost:3000>, click **Start**, allow microphone access, and speak.
-
-> **Important**: run with **`bun`** — the runner uses `Bun.serve` and `Bun.build`.
-
-Env vars:
-
-- `ELEVENLABS_API_KEY` — used for both STT (Scribe v2 Realtime) and TTS (Flash v2.5).
-- `GOOGLE_API_KEY` — used for Gemini 2.5 Flash.
-- `PORT` — optional, defaults to `3000`.
-
-## Wire format
-
-Single bi-directional WebSocket at `/ws`. Discriminated by frame type:
-
-- **Browser → server**: binary frames only. Each frame is ~50 ms of PCM s16le @ 16 kHz mono mic audio, produced by `mic-worklet.js`.
-- **Server → browser**:
-  - **Binary frames**: PCM s16le @ 48 kHz mono TTS audio, played through the ring-buffered worklet.
-  - **Text frames (JSON)**: `StatusEvent` — one of `user-partial` / `user-final` / `assistant-thinking` / `assistant-delta` / `assistant-done` / `assistant-cancelled` / `error`. The browser updates the chat UI from these; `assistant-cancelled` also tells the playback worklet to flush its ring buffer for instant silence.
-
-The browser fetches `/config` at start to learn the mic + playback sample rates.
+Realtime STT can split one human sentence into multiple finals around a
+short pause. The local `settleBurst` helper waits briefly before
+starting the LLM, so "what about Paris ... in winter?" is treated as
+one user turn.
 
 ## Interruption model
 
-Two complementary behaviors:
+The assistant has two behaviors:
 
-- **Follow-up questions queue.** A normal utterance spoken while the assistant is still answering doesn't interrupt — it sits in `settleBurst`'s buffer and runs as the next turn the moment the current one finishes. Nothing is lost. This is what `Stream.runForEach` + sequential `Fiber.await` gives you for free.
-- **Stop words interrupt explicitly.** A final containing `stop` / `wait` / `pause` / `hold on` / `shut up` / `be quiet` cuts the active turn via `Fiber.interrupt`. The fiber's `Effect.onInterrupt` handler commits whatever was spoken so far to history; the browser flushes its playback ring buffer on `assistant-cancelled` so the user hears silence within ~200 ms.
+- **Follow-up questions queue.** A normal utterance spoken while the
+  assistant is still answering runs after the current turn completes.
+  Nothing is lost.
+- **Stop words interrupt explicitly.** A final containing a stop
+  word cuts the active turn via `Fiber.interrupt`. The interrupt
+  handler commits whatever was spoken so far, and the browser flushes
+  playback on `assistant-cancelled`.
 
-We tried partial-based barge-in first (interrupt on the first "real-looking" STT partial) but it was too eager — STT speculates as you speak, and brief acknowledgments ("um", "okay") would cut the response. Finals-only + explicit stop words is unambiguous: the only way to interrupt is to deliberately say a stop word, and any other utterance is preserved as the next turn.
+The recipe intentionally interrupts on final transcripts, not partials.
+Partials are speculative; a half-heard "okay" should not cancel the
+assistant. A final like `"Stop. Tell me about chemistry"` both cancels
+the current audio and queues the chemistry question as the next turn.
 
-A final like `"Stop. Tell me about chemistry"` does both: stop watcher fires (cuts the audio), the utterance loop sees the whole string isn't a *bare* stop word, so it still runs the chemistry question as the next turn.
+## Run it
 
-## Capability markers in action
+```sh
+ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... bun recipes/voice-loop/run-bun.ts
+```
 
-The recipe relies on **both** streaming markers at once:
+Open <http://localhost:3000>, click **Start**, allow mic access,
+speak.
 
-- `Transcriber.streamTranscriptionFrom` — gated by `SttStreaming`.
-- `SpeechSynthesizer.streamSynthesisFrom` — gated by `TtsIncrementalText`.
+> Run with **`bun`** — the runner uses `Bun.serve` and `Bun.build`.
 
-Both are registered by `@effect-uai/elevenlabs/Eleven*` Layers, so `runPipeline` typechecks against ElevenLabs out of the box. Swap to a Layer that doesn't register either marker (e.g. `@effect-uai/openai/OpenAITranscriber` sync-only, or `@effect-uai/google/GeminiSynthesizer` sync-only) and the call becomes a **compile-time error**, not a runtime one.
+Env vars:
+
+- `ELEVENLABS_API_KEY` — used for both STT (Scribe v2 Realtime) and
+  TTS (Flash v2.5).
+- `GOOGLE_API_KEY` — used for Gemini 2.5 Flash.
+- `PORT` — optional, defaults to `3000`.
+
+## Architecture
+
+```
+[Browser]  getUserMedia → AudioWorklet → WebSocket
+   ↕
+[Bun server]  Effect pipeline (one per WS connection):
+   shared STT events (Stream.share)
+     ├─► stop-word watcher    ─► Fiber.interrupt(activeTurn) on "stop" / …
+     └─► utterance loop:
+            settleBurst("350 millis")     ─► coalesce close-together finals
+            forkChild(runAssistantTurn)   ─► one fiber per turn, awaited
+              LanguageModel.streamTurn(...) → Turn.textDeltas
+              → SpeechSynthesizer.streamSynthesisFrom (ElevenLabs WS)
+              → PCM s16le 48 kHz chunks sent + paced
+[Browser]  ring-buffered AudioWorklet → speakers (cleared on cancel)
+```
+
+One WebSocket carries the demo traffic:
+
+- **Browser → server**: binary frames only. Each is ~50 ms of PCM
+  s16le @ 16 kHz mono mic audio from `mic-worklet.js`.
+- **Server → browser**:
+  - **Binary frames** — PCM s16le @ 48 kHz mono TTS audio.
+  - **Text frames (JSON)** — `StatusEvent`: `user-partial` /
+    `user-final` / `assistant-thinking` / `assistant-delta` /
+    `assistant-done` / `assistant-cancelled` / `error`. The browser
+    updates the chat UI from these; `assistant-cancelled` also tells
+    the playback worklet to flush its ring buffer for instant
+    silence.
+
+The browser fetches `/config` at start to learn the mic + playback
+sample rates.
+
+## What This Generalizes To
+
+The recipe is a worked example of three primitives composed with
+ordinary Effect concurrency. The same shape applies whenever you
+have:
+
+- A long-lived input stream that occasionally emits a *commit*
+  (transcription finals; chat messages; sensor thresholds);
+- Work per commit that should run one-at-a-time;
+- An interrupt signal that needs to cut the active work cleanly.
+
+Swap STT for a Kafka topic, the LLM for any per-message Effect, and
+TTS for a downstream service — the fiber-per-turn + `Stream.share` +
+stop-word watcher structure carries over without changes.
+
+The full source lives next to this README at
+[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/voice-loop/index.ts).

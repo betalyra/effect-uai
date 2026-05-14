@@ -13,7 +13,7 @@
  *
  * Run with:
  *   `GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts`
- *   `GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts prompts/birthday-danielo.txt`
+ *   `GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts my-prompt.txt`
  *
  * Cost note: `lyria-3-clip-preview` is fixed at 30 s of MP3 output.
  */

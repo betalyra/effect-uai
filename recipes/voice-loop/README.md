@@ -1,6 +1,6 @@
 ---
-title: Audio assistant pipeline
-description: "Live voice assistant: streaming STT → queued LLM (Gemini Flash) → streaming TTS, end-to-end. ElevenLabs Scribe v2 Realtime + `gemini-2.5-flash` + ElevenLabs Flash TTS, wired together as one Effect."
+title: Voice loop
+description: "Live voice assistant: streaming STT → LLM (Gemini Flash) → streaming TTS, end-to-end, with stop-word interrupt and turn queueing. ElevenLabs Scribe v2 Realtime + `gemini-2.5-flash` + ElevenLabs Flash TTS, orchestrated as Effect fibers."
 ---
 
 A full voice-loop assistant in one recipe:
@@ -42,7 +42,7 @@ Why it matters for voice: ElevenLabs Scribe v2 Realtime occasionally splits a si
 
 ```sh
 ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... \
-  bun recipes/audio-assistant-pipeline/run-bun.ts
+  bun recipes/voice-loop/run-bun.ts
 ```
 
 Open <http://localhost:3000>, click **Start**, allow microphone access, and speak.

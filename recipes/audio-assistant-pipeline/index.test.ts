@@ -36,7 +36,9 @@ const runRecipe = (script: {
       (bytes) => Ref.update(audioOut, (xs) => [...xs, bytes]),
     )
 
-    yield* program.pipe(Effect.provide(Layer.mergeAll(stt.layer, lm, tts.layer)))
+    // `runPipeline` requires `Scope` (Stream.share). The runner wraps with
+    // `Effect.scoped`; the test harness does the same here.
+    yield* program.pipe(Effect.scoped, Effect.provide(Layer.mergeAll(stt.layer, lm, tts.layer)))
 
     return {
       statusEvents: yield* Ref.get(statusEvents),

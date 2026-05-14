@@ -1,4 +1,4 @@
-import { Effect, Encoding, Match, Queue, Redacted, Schema, Stream } from "effect"
+import { Cause, Effect, Encoding, Match, Queue, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
@@ -205,7 +205,7 @@ export const encodeAudioFrame = (bytes: Uint8Array, sampleRate: number) =>
 
 const handleServerMessage =
   (
-    queue: Queue.Queue<TranscriptEvent>,
+    queue: Queue.Queue<TranscriptEvent, Cause.Done>,
     mapEvent: (msg: typeof ServerMessage.Type) => TranscriptEvent | undefined,
   ) =>
   (raw: string) =>
@@ -253,7 +253,7 @@ export const streamTranscription =
           // standard clean-close codes (1000 / 1001 / 1005).
           closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
         })
-        const queue = yield* Queue.bounded<TranscriptEvent>(64)
+        const queue = yield* Queue.bounded<TranscriptEvent, Cause.Done>(64)
         const sampleRate = request.inputFormat.sampleRate
 
         const write = yield* socket.writer
@@ -261,9 +261,12 @@ export const streamTranscription =
           write(encodeAudioFrame(bytes, sampleRate)),
         ).pipe(Effect.ignore, Effect.forkScoped)
 
+        // `Queue.end` flushes pending events then fails the next take with
+        // `Done` — clean stream end. `Queue.shutdown` would CLEAR queued
+        // items and interrupt pending takes (wrong for graceful teardown).
         yield* socket
           .runString(handleServerMessage(queue, wireToEvent(includeTimestamps)))
-          .pipe(Effect.ensuring(Queue.shutdown(queue)), Effect.forkScoped)
+          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
 
         return Stream.fromQueue(queue)
       }),

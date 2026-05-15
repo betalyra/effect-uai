@@ -4,6 +4,12 @@
 
 ### Minor Changes
 
+- 70c8522: Add STT and TTS
+
+## 0.4.0
+
+### Minor Changes
+
 - Initial release. Inworld speech provider package.
 - `@effect-uai/inworld/InworldSynthesizer` — TTS layer for the generic
   `SpeechSynthesizer` service. Sync `synthesize` for finished text.

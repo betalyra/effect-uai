@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/jina",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Jina AI provider for @effect-uai/core (embeddings, rerank).",
   "keywords": [
     "ai",

@@ -4,6 +4,12 @@
 
 ### Minor Changes
 
+- 70c8522: Add STT and TTS
+
+## 0.4.0
+
+### Minor Changes
+
 - New speech services — `Transcriber` (STT), `SpeechSynthesizer` (TTS), and
   `MusicGenerator` siblings of `LanguageModel` / `EmbeddingModel`. Each
   exposes sync (`transcribe` / `synthesize` / `generate`) and stream

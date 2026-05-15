@@ -4,6 +4,12 @@
 
 ### Minor Changes
 
+- 70c8522: Add STT and TTS
+
+## 0.4.0
+
+### Minor Changes
+
 - Initial release. OpenAI speech provider package, separate from the
   Responses API package (`@effect-uai/responses`).
 - `@effect-uai/openai/OpenAISynthesizer` — TTS layer for the generic

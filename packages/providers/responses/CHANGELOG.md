@@ -4,6 +4,12 @@
 
 ### Minor Changes
 
+- 70c8522: Add STT and TTS
+
+## 0.4.0
+
+### Minor Changes
+
 - New `@effect-uai/responses/OpenAIEmbedding` sub-path: `OpenAIEmbedding`
   service tag, `layer`, `OpenAIEmbedRequest`, and `OpenAIEmbeddingModel`
   literal union. Text-only; Matryoshka via `dimensions`; `task` is omitted

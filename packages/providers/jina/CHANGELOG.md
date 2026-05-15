@@ -1,5 +1,11 @@
 # @effect-uai/jina
 
+## 0.4.0
+
+### Minor Changes
+
+- 70c8522: Add STT and TTS
+
 ## 0.3.0
 
 ### Minor Changes

@@ -5,8 +5,8 @@ description: Drop-in skills that teach your AI coding agent the effect-uai primi
 
 `effect-uai` ships a bundle of [agent skills](https://agentskills.io)
 for AI coding agents (Claude Code, Cursor, Continue, …). One main
-skill covers the philosophy, primitives, and provider wiring; fourteen
-recipe sub-skills each carry one loop-body pattern. The agent only
+skill covers the philosophy, primitives, and provider wiring; focused
+sub-skills carry each recipe or capability pattern. The agent only
 loads a skill when its description matches your prompt.
 
 ## Install
@@ -45,6 +45,13 @@ scenarios:
 | Compare answers from multiple models side-by-side | `effect-uai-multi-model-compare`         |
 | Models judge each other and pick a winner         | `effect-uai-model-council`               |
 | Stream the output as SSE / JSONL                  | `effect-uai-modify-output-stream`        |
+| Embed text or images for retrieval / RAG          | `effect-uai-embedding`                   |
+| Transcribe a finished audio file                  | `effect-uai-basic-transcription`         |
+| Build live captions from mic audio                | `effect-uai-streaming-transcription`     |
+| Turn finished text into an audio file             | `effect-uai-basic-speech-synthesis`      |
+| Read LLM deltas aloud as they stream              | `effect-uai-streaming-synthesis`         |
+| Build a voice assistant: STT → LLM → TTS          | `effect-uai-voice-loop`                  |
+| Generate music from a prompt                      | `effect-uai-basic-music-generation`      |
 
 Source and per-skill bodies live in
 [`skills/`](https://github.com/betalyra/effect-uai/tree/main/skills).

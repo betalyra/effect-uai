@@ -24,13 +24,19 @@ skills/
 ├── effect-uai-multi-model-compare/          # fan one prompt to N providers; tag each delta
 ├── effect-uai-model-council/                # cross-evaluation; emit a winner
 ├── effect-uai-modify-output-stream/         # project the loop output as SSE / JSONL
-└── effect-uai-embedding/                    # text + image embeddings, cross-modal & multivector
+├── effect-uai-embedding/                    # text + image embeddings, cross-modal & multivector
+├── effect-uai-basic-transcription/          # finished audio file -> transcript
+├── effect-uai-streaming-transcription/      # live mic audio -> partial/final transcripts
+├── effect-uai-basic-speech-synthesis/       # finished text -> audio file or chunks
+├── effect-uai-streaming-synthesis/          # incremental text / LLM deltas -> TTS chunks
+├── effect-uai-voice-loop/                   # live STT -> LLM -> streaming TTS
+└── effect-uai-basic-music-generation/       # prompt -> music clip
 ```
 
 Each folder has one `SKILL.md` with frontmatter (`name`,
 `description`) and a body. Skills load lazily — the agent reads only
 the descriptions until one matches the user's intent — so installing
-all 16 has no token cost until something triggers.
+the bundle has no token cost until something triggers.
 
 ## Installation
 
@@ -68,7 +74,7 @@ The frontmatter follows the
 
 ## How to use these
 
-1. **Install all 16** if you're a regular `effect-uai` user. Skills
+1. **Install all skills** if you're a regular `effect-uai` user. Skills
    only load when their description matches; the surface stays clean.
 2. **Install only the main skill** if you want a generic primer for
    when you build agents in Effect — Claude will know the philosophy
@@ -103,6 +109,12 @@ by the user; the skill's description is the trigger.
 | "Have models judge each other and pick a winner"                       | `effect-uai-model-council`               |
 | "Stream the output as SSE / JSONL"                                     | `effect-uai-modify-output-stream`        |
 | "Embed text or images / semantic search / RAG retrieval / multivector" | `effect-uai-embedding`                   |
+| "Transcribe a finished audio file"                                     | `effect-uai-basic-transcription`         |
+| "Build live captions from mic audio"                                   | `effect-uai-streaming-transcription`     |
+| "Turn finished text into an audio file"                                | `effect-uai-basic-speech-synthesis`      |
+| "Read LLM deltas aloud as they stream"                                 | `effect-uai-streaming-synthesis`         |
+| "Build a voice assistant: live STT to LLM to streaming TTS"            | `effect-uai-voice-loop`                  |
+| "Generate music from a prompt"                                         | `effect-uai-basic-music-generation`      |
 
 ## Authoring conventions
 

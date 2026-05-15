@@ -1,6 +1,8 @@
 ---
 title: Agentic loop with input queue
 description: A long-lived loop that pulls user messages from a queue, debounces bursts into a single batch, and only checks for new input between cleanly-finished turns.
+source: recipes/agentic-loop
+icon: PiChatCircleDots
 ---
 
 Most demos start with a single prompt. Real chat agents are long-lived: they

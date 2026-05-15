@@ -1,6 +1,8 @@
 ---
 title: Streaming structured output
 description: Decode JSONL one object at a time as the model streams. Typed per-object Stream, errors in the failure channel.
+source: recipes/streaming-structured-output
+icon: PiListBullets
 ---
 
 Streaming structured output is local validation over a text stream.

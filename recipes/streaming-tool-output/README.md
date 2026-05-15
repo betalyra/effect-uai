@@ -1,6 +1,8 @@
 ---
 title: Streaming tool output
 description: Two flavors of `Tool.streaming` - sub-agent text streaming and progress + terminal result.
+source: recipes/streaming-tool-output
+icon: PiPulse
 ---
 
 Streaming tools let the user see inner work without leaking the whole event

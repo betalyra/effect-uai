@@ -1,6 +1,8 @@
 ---
 title: Auto-compaction
 description: Summarize history when turn count or token budget is exceeded.
+source: recipes/auto-compaction
+icon: PiArrowsInLineHorizontal
 ---
 
 History is just state, so compaction is just a state transition.

@@ -1,6 +1,7 @@
 ---
 title: Basic embedding
 description: Embed a query and a corpus, rank by cosine — the RAG retrieval primitive in one file.
+source: recipes/basic-embedding
 ---
 
 This is the smallest end-to-end shape: one query, a list of documents,

@@ -1,6 +1,8 @@
 ---
 title: Mid-stream abort
 description: Cancel an in-flight streamTurn cleanly via Stream.interruptWhen, tearing down the upstream HTTP request.
+source: recipes/mid-stream-abort
+icon: PiHandPalm
 ---
 
 Cancellation follows the stream scope.

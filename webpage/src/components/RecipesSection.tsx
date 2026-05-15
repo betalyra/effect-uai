@@ -10,6 +10,7 @@ import {
   PiGitFork,
   PiHandPalm,
   PiListBullets,
+  PiMicrophone,
   PiPause,
   PiPulse,
   PiShieldCheck,
@@ -108,6 +109,13 @@ const recipes: ReadonlyArray<Recipe> = [
     description: "**Get the best answer.** Models judge each other, the winner streams back.",
     href: "/recipes/model-council/",
     Icon: PiGavel,
+  },
+  {
+    title: "Voice loop",
+    description:
+      "**Talk to your agent.** Streaming STT, LLM, and TTS composed as Effect fibers; stop-words interrupt mid-sentence.",
+    href: "/recipes/voice-loop/",
+    Icon: PiMicrophone,
   },
 ]
 

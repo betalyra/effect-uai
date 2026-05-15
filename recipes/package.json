@@ -9,8 +9,11 @@
   "dependencies": {
     "@effect-uai/anthropic": "workspace:*",
     "@effect-uai/core": "workspace:*",
+    "@effect-uai/elevenlabs": "workspace:*",
     "@effect-uai/google": "workspace:*",
+    "@effect-uai/inworld": "workspace:*",
     "@effect-uai/jina": "workspace:*",
+    "@effect-uai/openai": "workspace:*",
     "@effect-uai/responses": "workspace:*",
     "effect": "4.0.0-beta.57"
   },

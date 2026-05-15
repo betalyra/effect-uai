@@ -67,12 +67,16 @@ cross-provider fallback, see the [docs](#docs--learn).
 
 ## Packages
 
-| Package                                                   | What it is                                                                                                                       |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| [`@effect-uai/core`](./packages/core)                     | The primitives: `Loop`, `LanguageModel`, `Tool`, `Toolkit`, `Items`, `Turn`, JSONL/SSE codecs, `MockProvider`. No provider deps. |
-| [`@effect-uai/responses`](./packages/providers/responses) | OpenAI Responses provider. Implements `LanguageModel` over OpenAI's `/v1/responses` endpoint.                                    |
-| [`@effect-uai/anthropic`](./packages/providers/anthropic) | Anthropic Messages provider, including extended thinking.                                                                        |
-| [`@effect-uai/google`](./packages/providers/google)       | Google Gemini provider.                                                                                                          |
+| Package                                                       | What it is                                                                                                                       |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| [`@effect-uai/core`](./packages/core)                         | The primitives: `Loop`, `LanguageModel`, `Tool`, `Toolkit`, `Items`, `Turn`, `Transcriber`, `SpeechSynthesizer`, `EmbeddingModel`, `MusicGenerator`. No provider deps. |
+| [`@effect-uai/responses`](./packages/providers/responses)     | OpenAI Responses provider. Implements `LanguageModel` over OpenAI's `/v1/responses` endpoint.                                    |
+| [`@effect-uai/anthropic`](./packages/providers/anthropic)     | Anthropic Messages provider, including extended thinking.                                                                        |
+| [`@effect-uai/google`](./packages/providers/google)           | Google Gemini — language model, embeddings, speech (sync STT + TTS), and Lyria music generation.                                 |
+| [`@effect-uai/openai`](./packages/providers/openai)           | OpenAI speech — `Transcriber` (sync + realtime WS) and `Synthesizer` (sync + chunked HTTP).                                      |
+| [`@effect-uai/elevenlabs`](./packages/providers/elevenlabs)   | ElevenLabs speech — Scribe v2 Realtime STT and Flash v2.5 TTS with incremental-text-in WS.                                       |
+| [`@effect-uai/inworld`](./packages/providers/inworld)         | Inworld speech — first-party STT/TTS plus router-style passthroughs (AssemblyAI / Soniox / Groq Whisper).                        |
+| [`@effect-uai/jina`](./packages/providers/jina)               | Jina embeddings — dense, sparse (ELSER), and multivector (ColBERT-style) variants.                                               |
 
 Each provider is its own package - edge / browser builds only pull in
 what you actually use.
@@ -84,9 +88,13 @@ what you actually use.
 ├── packages/
 │   ├── core/                  # @effect-uai/core - primitives, no provider deps
 │   └── providers/
-│       ├── responses/         # @effect-uai/responses - OpenAI
+│       ├── responses/         # @effect-uai/responses - OpenAI Responses
 │       ├── anthropic/         # @effect-uai/anthropic
-│       └── google/            # @effect-uai/google
+│       ├── google/            # @effect-uai/google - Gemini + speech + Lyria
+│       ├── openai/            # @effect-uai/openai - speech (STT/TTS)
+│       ├── elevenlabs/        # @effect-uai/elevenlabs - speech
+│       ├── inworld/           # @effect-uai/inworld - speech
+│       └── jina/              # @effect-uai/jina - embeddings
 ├── recipes/                   # Working examples (type-checked, tested)
 │   ├── basic-usage/           # Smallest end-to-end shape with one tool + one continuation
 │   ├── tool-call-approval/    # HITL gating with HTTP- and queue-driven verdicts
@@ -97,7 +105,13 @@ what you actually use.
 │   ├── model-council/         # Models judge each other; winner streams back
 │   ├── auto-compaction/       # Summarize history when token budget exceeded
 │   ├── pause-resume/          # Checkpoint after each turn; resume via previousResponseId
-│   └── mid-stream-abort/      # Cancel the loop and the upstream HTTP request
+│   ├── mid-stream-abort/      # Cancel the loop and the upstream HTTP request
+│   ├── voice-loop/            # Streaming STT → LLM → TTS with stop-word interrupt
+│   ├── basic-transcription/   # Sync STT across providers
+│   ├── basic-speech-synthesis/ # Sync + chunked TTS across providers
+│   ├── streaming-transcription/ # Live mic → transcript over WS
+│   ├── streaming-synthesis/   # Incremental text-in TTS over WS
+│   └── basic-music-generation/ # Lyria 3 with simple + weighted prompts
 ├── docs/                      # Source for the docs site (concepts, recipes, providers)
 ├── webpage/                   # Astro/Starlight site that renders docs/
 └── experiments/               # Spikes and prototypes; not part of the published surface

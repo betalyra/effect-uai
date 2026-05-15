@@ -79,6 +79,18 @@ export const parse =
       ),
     )
 
+/**
+ * Best-effort parse of a single JSON frame. Returns the parsed value or
+ * `undefined` on malformed input. Realtime WS adapters use this to skip
+ * non-JSON or partially-received frames silently rather than fail the
+ * entire session over one bad frame.
+ */
+export const parseSafe = (raw: string) =>
+  Effect.try({
+    try: () => JSON.parse(raw) as unknown,
+    catch: () => undefined,
+  }).pipe(Effect.orElseSucceed(() => undefined))
+
 const encoder = new TextEncoder()
 
 /**

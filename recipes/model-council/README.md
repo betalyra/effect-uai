@@ -1,6 +1,8 @@
 ---
 title: Model council
 description: Three models answer the same question, score each other's answers (no self-judging), and the highest-rated answer is streamed as the winner.
+source: recipes/model-council
+icon: PiGavel
 ---
 
 A model council is a stream graph.

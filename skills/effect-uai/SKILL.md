@@ -1,6 +1,6 @@
 ---
 name: effect-uai
-description: Use when building AI agents with effect-uai (Effect-based primitives for agent loops, items/turns, tools, streaming, structured output, multi-provider). Covers the design philosophy, the core primitives, provider wiring (OpenAI Responses, Anthropic, Google Gemini), and a catalog of recipe patterns (retry, multi-model fallback, tool approval, auto-compaction, streaming SSE/JSONL, etc.) the user can compose into their own agent.
+description: Use when building AI agents and AI media workflows with effect-uai (Effect-based primitives for agent loops, tools, streaming, structured output, embeddings, speech, and music generation). Covers design philosophy, core primitives, provider wiring, and recipe skills for retry, fallback, tool approval, embeddings, transcription, speech synthesis, voice loops, music generation, SSE/JSONL, and more.
 license: MIT
 ---
 
@@ -48,6 +48,7 @@ pnpm add @effect-uai/responses   # OpenAI Responses + embeddings
 pnpm add @effect-uai/anthropic   # Anthropic Claude
 pnpm add @effect-uai/google      # Google Gemini language + embeddings
 pnpm add @effect-uai/jina        # Jina embeddings (text + image, sparse, multivector)
+pnpm add @effect-uai/elevenlabs  # ElevenLabs speech
 ```
 
 The core package has no provider dependencies. Edge / browser builds
@@ -58,6 +59,11 @@ retrieval primitive), reach for the `effect-uai-embedding` sub-skill —
 `EmbeddingModel` is a parallel service to `LanguageModel`, with its
 own provider layers and `embed` / `embedMany` helpers.
 
+For speech and music, reach for the focused sub-skills:
+`effect-uai-basic-transcription`, `effect-uai-streaming-transcription`,
+`effect-uai-basic-speech-synthesis`, `effect-uai-streaming-synthesis`,
+`effect-uai-voice-loop`, and `effect-uai-basic-music-generation`.
+
 ## Core modules (cheat sheet)
 
 | Module                                  | What it gives you                                                                                                                                                                                                                          |
@@ -65,6 +71,9 @@ own provider layers and `embed` / `embedMany` helpers.
 | `@effect-uai/core/Items`                | `Item` types (user/assistant messages, function calls, function call outputs, reasoning), helpers like `Items.userText`.                                                                                                                   |
 | `@effect-uai/core/Turn`                 | `Turn`, `TurnEvent`, `Turn.functionCalls(turn)`, `Turn.assistantMessages(turn)`, `Turn.appendTurn(state, turn, items?)`, `Turn.toStructured(turn, format)`, `Turn.textDeltas`, `Turn.toSSE`, `Turn.toJSONL`, `Turn.asSSE`, `Turn.asJSONL`. |
 | `@effect-uai/core/LanguageModel`        | `LanguageModel` service tag, `streamTurn(request)`, `turn(request)`, `CommonRequest` type.                                                                                                                                                 |
+| `@effect-uai/core/Transcriber`          | `Transcriber` service tag, `transcribe(request)`, `streamTranscriptionFrom(request)`, sync file STT and streaming mic STT.                                                                                                                  |
+| `@effect-uai/core/SpeechSynthesizer`    | `SpeechSynthesizer` service tag, `synthesize`, `streamSynthesis`, `streamSynthesisFrom` for finished-text and incremental-text TTS.                                                                                                         |
+| `@effect-uai/core/MusicGenerator`       | `MusicGenerator` service tag, `generate`, `streamGeneration`, `streamGenerationFrom` for prompt-to-music workflows.                                                                                                                        |
 | `@effect-uai/core/Loop`                 | `loop`, `nextAfter`, `nextAfterFold`, `stop`, `stopAfter`, `onTurnComplete`.                                                                                                                                                               |
 | `@effect-uai/core/Tool`                 | `Tool.make`, `Tool.streaming`, `Tool.fromEffectSchema`, `Tool.toDescriptors`, `Tool.AnyKindTool`.                                                                                                                                          |
 | `@effect-uai/core/Toolkit`              | `Toolkit.make`, `Toolkit.executeAll`, `Toolkit.outputEvents`, `Toolkit.outputEvent`, `Toolkit.continueWith`.                                                                                                                               |
@@ -247,6 +256,12 @@ matching skill when the user describes the scenario:
 | Have models judge each other and emit a winner                                          | `effect-uai-model-council`               |
 | Project the loop's output as Server-Sent Events or JSONL on the wire                    | `effect-uai-modify-output-stream`        |
 | Embed text or images, semantic / cross-modal / multivector retrieval, RAG primitive     | `effect-uai-embedding`                   |
+| Transcribe finished audio files, optionally with word timestamps                        | `effect-uai-basic-transcription`         |
+| Build live captions from a browser mic or realtime STT stream                           | `effect-uai-streaming-transcription`     |
+| Turn finished text into an audio file or chunked playback                               | `effect-uai-basic-speech-synthesis`      |
+| Pipe incremental text / LLM deltas into low-latency TTS                                 | `effect-uai-streaming-synthesis`         |
+| Compose live STT -> LLM -> streaming TTS with turn queueing and stop-word interrupt     | `effect-uai-voice-loop`                  |
+| Generate music clips from simple or weighted prompts                                    | `effect-uai-basic-music-generation`      |
 
 When more than one applies (e.g. "agentic chat that retries on rate
 limits and falls back to another provider"), compose them: the loop

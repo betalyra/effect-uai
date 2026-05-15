@@ -1,6 +1,8 @@
 ---
 title: Model retry
 description: Retry rate-limited and transport failures with exponential backoff; let everything else propagate.
+source: recipes/model-retry
+icon: PiClockCounterClockwise
 ---
 
 Retries are not an agent framework feature. They are error policy around one

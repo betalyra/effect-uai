@@ -1,16 +1,6 @@
 # @effect-uai/core
 
-## 0.3.0
-
-### Minor Changes
-
-- 1d33c63: Embeddings and simplifications
-  - Adds embeddings
-  - Rename core primitives to simplify DX
-  - Add loopWithState
-  - General improvements
-
-## Unreleased
+## 0.4.0
 
 ### Minor Changes
 
@@ -72,6 +62,16 @@
   inspection after `Stream.runDrain`, live observation via
   `SubscriptionRef.changes`, or mid-iteration peeks. Doesn't pollute the
   value stream.
+
+## 0.3.0
+
+### Minor Changes
+
+- 1d33c63: Embeddings and simplifications
+  - Adds embeddings
+  - Rename core primitives to simplify DX
+  - Add loopWithState
+  - General improvements
 
 ## 0.2.0
 

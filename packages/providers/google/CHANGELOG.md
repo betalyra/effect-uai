@@ -1,16 +1,6 @@
 # @effect-uai/google
 
-## 0.3.0
-
-### Minor Changes
-
-- 1d33c63: Embeddings and simplifications
-  - Adds embeddings
-  - Rename core primitives to simplify DX
-  - Add loopWithState
-  - General improvements
-
-## Unreleased
+## 0.4.0
 
 ### Minor Changes
 
@@ -34,6 +24,16 @@
   `Match` module / `matchType` helper removed; `Loop.streamUntilComplete`
   renamed to `Loop.onTurnComplete`; `Toolkit.nextStateFrom` renamed to
   `Toolkit.continueWith` and now pipe-friendly — see core changelog).
+
+## 0.3.0
+
+### Minor Changes
+
+- 1d33c63: Embeddings and simplifications
+  - Adds embeddings
+  - Rename core primitives to simplify DX
+  - Add loopWithState
+  - General improvements
 
 ## 0.2.0
 

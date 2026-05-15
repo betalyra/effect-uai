@@ -14,6 +14,13 @@
 
 ### Minor Changes
 
+- New `@effect-uai/google/GeminiSynthesizer` and
+  `@effect-uai/google/GeminiTranscriber` sub-paths — TTS and STT layers
+  for the generic `SpeechSynthesizer` / `Transcriber` services. Both are
+  sync-only; transcription is prompt-driven and text-only (no word
+  timestamps), with 20 MB inline request cap.
+- New `@effect-uai/google/LyriaGenerator` sub-path — music generation
+  via Lyria, registered against the generic `MusicGenerator` service.
 - New `@effect-uai/google/GeminiEmbedding` sub-path: `GeminiEmbedding`
   service tag, `layer`, `GeminiEmbedRequest`, `GoogleEmbeddingModel`
   (`gemini-embedding-2`, `gemini-embedding-001`), `GoogleEmbeddingTask`

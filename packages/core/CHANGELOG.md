@@ -14,6 +14,23 @@
 
 ### Minor Changes
 
+- New speech services — `Transcriber` (STT), `SpeechSynthesizer` (TTS), and
+  `MusicGenerator` siblings of `LanguageModel` / `EmbeddingModel`. Each
+  exposes sync (`transcribe` / `synthesize` / `generate`) and stream
+  (`streamTranscriptionFrom` / `streamSynthesisFrom`) shapes. Streaming
+  variants take a `Stream<Uint8Array>` (mic frames) or `Stream<string>`
+  (incremental text) and return a `Stream` of typed events, so live audio
+  composes with the rest of Effect (`Stream.run*`, `Stream.merge`, scoped
+  resources).
+- New shared media domain — `@effect-uai/core/Audio` (PCM / container
+  formats, `AudioChunk`, `AudioSource`), `@effect-uai/core/Transcript`
+  (`TranscriptEvent` tagged union: `partial` / `final` /
+  `speech-started` / `speech-stopped` / `usage`), and
+  `@effect-uai/core/Music` (`MusicChunk`, generation request shape).
+- Provider-fit markers — `SttStreaming` and `TtsIncrementalText` tags
+  let callers (and recipes like Voice Loop, Streaming transcription)
+  refuse a sync-only provider at the type level instead of failing at
+  runtime.
 - New `EmbeddingModel` service — parallel of `LanguageModel` for vectorization.
   Adds `@effect-uai/core/EmbeddingModel` (service tag, `embed` / `embedMany`,
   `CommonEmbedRequest`, cross-provider `Encoding` union) and

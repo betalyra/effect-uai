@@ -20,12 +20,14 @@ audio and save it, send it, or play it.
 import { synthesize, streamSynthesis } from "@effect-uai/core/SpeechSynthesizer"
 
 // One-shot
-const blob = yield* synthesize({
-  text: "Effect-uai. Effectful building blocks for agentic AI.",
-  model: "gpt-4o-mini-tts",
-  voiceId: "alloy",
-})
-yield* writeFile("out.mp3", blob.bytes)
+const blob =
+  yield *
+  synthesize({
+    text: "Effect-uai. Effectful building blocks for agentic AI.",
+    model: "gpt-4o-mini-tts",
+    voiceId: "alloy",
+  })
+yield * writeFile("out.mp3", blob.bytes)
 
 // Chunked
 const chunks = streamSynthesis({ text, model, voiceId })

@@ -39,6 +39,7 @@ scenarios:
 | Long-lived chat agent with a queue                | `effect-uai-agentic-loop`                |
 | Retry rate limits / 5xx with exponential backoff  | `effect-uai-model-retry`                 |
 | Fall back from one provider to another            | `effect-uai-multi-model-fallback`        |
+| Let a cheap model escalate hard questions         | `effect-uai-model-escalation`            |
 | Summarize history when it gets too long           | `effect-uai-auto-compaction`             |
 | Pause the loop between turns and resume later     | `effect-uai-pause-resume`                |
 | Stop button / abort the current response          | `effect-uai-mid-stream-abort`            |

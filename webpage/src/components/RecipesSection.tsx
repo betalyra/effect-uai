@@ -14,6 +14,7 @@ import {
   PiPause,
   PiPulse,
   PiShieldCheck,
+  PiStairs,
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
 
@@ -54,6 +55,13 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Stay online** when a provider fails. Switch automatically on rate limits or outages.",
     href: "/recipes/multi-model-fallback/",
     Icon: PiArrowsClockwise,
+  },
+  {
+    title: "Model escalation",
+    description:
+      "**Pay only when needed.** The cheap model handles easy questions and escalates hard ones via a tool call.",
+    href: "/recipes/model-escalation/",
+    Icon: PiStairs,
   },
   {
     title: "Auto-compaction",

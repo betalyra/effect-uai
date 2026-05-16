@@ -18,6 +18,7 @@ skills/
 ├── effect-uai-agentic-loop/                 # long-lived chat with a debounced input queue
 ├── effect-uai-model-retry/                  # retry transient failures with exponential backoff
 ├── effect-uai-multi-model-fallback/         # tier list — fall back on retryable errors
+├── effect-uai-model-escalation/             # cheap model escalates hard questions via tool call
 ├── effect-uai-auto-compaction/              # summarize history when it exceeds a budget
 ├── effect-uai-pause-resume/                 # soft pause between turns via a Latch
 ├── effect-uai-mid-stream-abort/             # cancel an in-flight turn cleanly
@@ -102,6 +103,7 @@ by the user; the skill's description is the trigger.
 | "Long-lived chat agent with a queue"                                   | `effect-uai-agentic-loop`                |
 | "Retry on rate limits / 5xx with exponential backoff"                  | `effect-uai-model-retry`                 |
 | "Fall back from one provider to another"                               | `effect-uai-multi-model-fallback`        |
+| "Let a cheap model escalate hard questions to a stronger model"        | `effect-uai-model-escalation`            |
 | "Summarize history when it gets too long"                              | `effect-uai-auto-compaction`             |
 | "Pause the loop between turns and resume later"                        | `effect-uai-pause-resume`                |
 | "Stop button / abort the current model response"                       | `effect-uai-mid-stream-abort`            |

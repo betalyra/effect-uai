@@ -103,8 +103,8 @@ runtime.
 
 ## Provider matrix
 
-| Provider | Sync | Chunked stream | Bidi session |
-| --- | --- | --- | --- |
+| Provider     | Sync           | Chunked stream         | Bidi session                |
+| ------------ | -------------- | ---------------------- | --------------------------- |
 | Google Lyria | ✓ (clip + pro) | ✓ (single-chunk emul.) | — (planned: Lyria RealTime) |
 
 The matrix is small today. Suno, Udio, Mureka, MiniMax, and Stable

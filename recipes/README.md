@@ -33,6 +33,8 @@ that double as living regression tests for the primitive surface.
   transport-agnostic; project typed turn events into SSE or JSONL at the edge.
 - [`model-retry/`](./model-retry/) - add retry policy around one model stream;
   only transient provider failures get another try.
+- [`model-escalation/`](./model-escalation/) - start on a fast cheap model;
+  let it escalate hard questions to a stronger tier via a tool call.
 - [`multi-model-compare/`](./multi-model-compare/) - fan one prompt out to
   multiple providers and isolate per-member failures.
 - [`model-council/`](./model-council/) - stream candidate answers, judge them

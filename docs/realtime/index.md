@@ -30,7 +30,7 @@ duplex API will improve on:
 - **Sub-200 ms turn-taking.** The pipeline pays for every boundary
   (STT-final, LLM TTFT, TTS first-byte). A native session amortizes
   some of that overhead by keeping a single WebSocket open.
-- **Camera-in streams.** When a provider ships realtime *vision*,
+- **Camera-in streams.** When a provider ships realtime _vision_,
   pointing a phone camera at something and getting a spoken answer
   becomes one session — not a pipeline of "snapshot every N seconds →
   multimodal LM → TTS."

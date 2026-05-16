@@ -296,17 +296,15 @@ const generateImpl =
         // (named-artist references, copyrighted lyrics, etc.). Surface the
         // full response body — text parts, finish reasons, prompt-feedback
         // blocks — so the caller can see why.
-        return yield* Effect.fail(
-          new AiError.GenerationFailed({
-            provider: "lyria",
-            raw: {
-              message: "Lyria response had no inlineData audio part.",
-              hint: "Likely a prompt-filter rejection. Lyria filters references to real artists / copyrighted song lyrics. Rephrase with descriptive style language instead of artist names.",
-              textParts: text,
-              response: json,
-            },
-          }),
-        )
+        return yield* new AiError.GenerationFailed({
+          provider: "lyria",
+          raw: {
+            message: "Lyria response had no inlineData audio part.",
+            hint: "Likely a prompt-filter rejection. Lyria filters references to real artists / copyrighted song lyrics. Rephrase with descriptive style language instead of artist names.",
+            textParts: text,
+            response: json,
+          },
+        })
       }
       const bytes = yield* decodeBase64ToBytes(inline.data)
       return {

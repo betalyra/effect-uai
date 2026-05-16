@@ -149,22 +149,20 @@ const conversation = pipe(
 // Run
 // ---------------------------------------------------------------------------
 
-const program = Effect.gen(function* () {
-  yield* Stream.runForEach(conversation, (event) =>
-    Match.value(event).pipe(
-      Match.discriminators("type")({
-        turn_complete: ({ turn }) =>
-          Effect.logInfo("turn complete", {
-            stop_reason: turn.stop_reason,
-            input_tokens: turn.usage.input_tokens,
-            output_tokens: turn.usage.output_tokens,
-            assistant: Turn.assistantTexts(turn).join(" "),
-          }),
-      }),
-      Match.orElse(() => Effect.void),
-    ),
-  )
-})
+const program = Stream.runForEach(conversation, (event) =>
+  Match.value(event).pipe(
+    Match.discriminators("type")({
+      turn_complete: ({ turn }) =>
+        Effect.logInfo("turn complete", {
+          stop_reason: turn.stop_reason,
+          input_tokens: turn.usage.input_tokens,
+          output_tokens: turn.usage.output_tokens,
+          assistant: Turn.assistantTexts(turn).join(" "),
+        }),
+    }),
+    Match.orElse(() => Effect.void),
+  ),
+)
 
 const apiKeyLayer = Layer.unwrap(
   Effect.gen(function* () {

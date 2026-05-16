@@ -1,6 +1,6 @@
 import { Context, Effect } from "effect"
 import * as AiError from "../domain/AiError.js"
-import type { Embedding, EmbedInput, Usage } from "./Embedding.js"
+import type { EmbeddingFor, EmbedInput, Usage } from "./Embedding.js"
 
 /**
  * Output representation requested from the provider.
@@ -18,12 +18,12 @@ import type { Embedding, EmbedInput, Usage } from "./Embedding.js"
  *   style) scoring via `Vector.maxSim`. Currently Jina v4 only.
  *
  * Each provider's typed request narrows this to its supported set at
- * compile time (e.g. `JinaEncoding = "float32" | "binary" | "sparse" |
+ * compile time (e.g. `JinaEmbedEncoding = "float32" | "binary" | "sparse" |
  * "multivector"`). On the generic `EmbeddingModel` path, callers can
- * pass any `Encoding` and the provider's API will reject mismatches at
+ * pass any `EmbedEncoding` and the provider's API will reject mismatches at
  * runtime.
  */
-export type Encoding = "float32" | "int8" | "binary" | "sparse" | "multivector"
+export type EmbedEncoding = "float32" | "int8" | "binary" | "sparse" | "multivector"
 
 /**
  * Cross-provider single-embed request. Mirrors the shape of
@@ -57,11 +57,11 @@ export type CommonEmbedRequest = {
    */
   readonly dimensions?: number
   /**
-   * Output representation - see {@link Encoding}. Dense float32 is the
+   * Output representation - see {@link EmbedEncoding}. Dense float32 is the
    * default; provider layers reject unsupported values up front with
    * `InvalidRequest`.
    */
-  readonly encoding?: Encoding
+  readonly encoding?: EmbedEncoding
 }
 
 /**
@@ -73,21 +73,31 @@ export type CommonEmbedManyRequest = Omit<CommonEmbedRequest, "input"> & {
   readonly inputs: ReadonlyArray<EmbedInput>
 }
 
-export type EmbedResponse = {
-  readonly embedding: Embedding
+/**
+ * Single-embed response. The `embedding` type is determined by the
+ * request's `encoding` field via `EmbeddingFor<E>` — callers that don't
+ * specify an encoding get a `Float32Embedding` directly with no runtime
+ * narrowing. Defaults to `undefined` for back-compat with consumers that
+ * use the bare `EmbedResponse` name.
+ */
+export type EmbedResponse<E extends EmbedEncoding | undefined = undefined> = {
+  readonly embedding: EmbeddingFor<E>
   readonly usage: Usage
 }
 
-export type EmbedManyResponse = {
-  readonly embeddings: ReadonlyArray<Embedding>
+/** Batch-embed response. Same encoding rule as {@link EmbedResponse}. */
+export type EmbedManyResponse<E extends EmbedEncoding | undefined = undefined> = {
+  readonly embeddings: ReadonlyArray<EmbeddingFor<E>>
   readonly usage: Usage
 }
 
 export type EmbeddingModelService = {
-  readonly embed: (request: CommonEmbedRequest) => Effect.Effect<EmbedResponse, AiError.AiError>
-  readonly embedMany: (
-    request: CommonEmbedManyRequest,
-  ) => Effect.Effect<EmbedManyResponse, AiError.AiError>
+  readonly embed: <E extends EmbedEncoding | undefined = undefined>(
+    request: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
+  ) => Effect.Effect<EmbedResponse<E>, AiError.AiError>
+  readonly embedMany: <E extends EmbedEncoding | undefined = undefined>(
+    request: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+  ) => Effect.Effect<EmbedManyResponse<E>, AiError.AiError>
 }
 
 export class EmbeddingModel extends Context.Service<EmbeddingModel, EmbeddingModelService>()(
@@ -95,13 +105,13 @@ export class EmbeddingModel extends Context.Service<EmbeddingModel, EmbeddingMod
 ) {}
 
 /** Embed a single input. */
-export const embed = (
-  request: CommonEmbedRequest,
-): Effect.Effect<EmbedResponse, AiError.AiError, EmbeddingModel> =>
+export const embed = <E extends EmbedEncoding | undefined = undefined>(
+  request: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
+): Effect.Effect<EmbedResponse<E>, AiError.AiError, EmbeddingModel> =>
   Effect.flatMap(EmbeddingModel.asEffect(), (m) => m.embed(request))
 
 /** Embed a batch in one provider call. Same `task` for every input. */
-export const embedMany = (
-  request: CommonEmbedManyRequest,
-): Effect.Effect<EmbedManyResponse, AiError.AiError, EmbeddingModel> =>
+export const embedMany = <E extends EmbedEncoding | undefined = undefined>(
+  request: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+): Effect.Effect<EmbedManyResponse<E>, AiError.AiError, EmbeddingModel> =>
   Effect.flatMap(EmbeddingModel.asEffect(), (m) => m.embedMany(request))

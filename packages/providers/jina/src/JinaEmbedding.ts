@@ -2,9 +2,15 @@ import { Context, Effect, Encoding, Layer, Match, Redacted, Result, Schema } fro
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { Embedding, EmbedContentPart, EmbedInput, Usage } from "@effect-uai/core/Embedding"
+
+// Internal open-union response shape — impls return this; the typed
+// `make()` wrapper casts to the narrowed `EmbedResponse<E>`.
+type AnyEmbedResponse = { readonly embedding: Embedding; readonly usage: Usage }
+type AnyEmbedManyResponse = { readonly embeddings: ReadonlyArray<Embedding>; readonly usage: Usage }
 import {
   type CommonEmbedManyRequest,
   type CommonEmbedRequest,
+  type EmbedEncoding,
   EmbeddingModel,
   type EmbeddingModelService,
   type EmbedManyResponse,
@@ -40,7 +46,7 @@ export type JinaTask =
 
 /**
  * Jina's supported `encoding` values. Provider-narrowed from the cross-
- * provider `Encoding` union.
+ * provider `EmbedEncoding` union.
  *
  * Compatibility with models is checked at the response level rather than
  * pre-flight: if you ask for `multivector` against a model that doesn't
@@ -77,10 +83,12 @@ export type JinaEmbedManyRequest = Omit<JinaEmbedRequest, "input"> & {
 }
 
 export type JinaEmbeddingService = {
-  readonly embed: (request: JinaEmbedRequest) => Effect.Effect<EmbedResponse, AiError.AiError>
-  readonly embedMany: (
-    request: JinaEmbedManyRequest,
-  ) => Effect.Effect<EmbedManyResponse, AiError.AiError>
+  readonly embed: <E extends JinaEncoding | undefined = undefined>(
+    request: Omit<JinaEmbedRequest, "encoding"> & { readonly encoding?: E },
+  ) => Effect.Effect<EmbedResponse<E>, AiError.AiError>
+  readonly embedMany: <E extends JinaEncoding | undefined = undefined>(
+    request: Omit<JinaEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+  ) => Effect.Effect<EmbedManyResponse<E>, AiError.AiError>
 }
 
 /**
@@ -410,7 +418,7 @@ const embedImpl =
   (cfg: Config) =>
   (
     request: JinaEmbedRequest,
-  ): Effect.Effect<EmbedResponse, AiError.AiError, HttpClient.HttpClient> =>
+  ): Effect.Effect<AnyEmbedResponse, AiError.AiError, HttpClient.HttpClient> =>
     inputToItem(request.input).pipe(
       Effect.flatMap((item) =>
         postEmbed(
@@ -430,7 +438,9 @@ const embedImpl =
           return Effect.fail(transportFailure("Jina returned empty `data` array"))
         }
         return payloadToEmbedding(first, request.encoding).pipe(
-          Effect.map((embedding): EmbedResponse => ({ embedding, usage: usageOf(decoded.usage) })),
+          Effect.map(
+            (embedding): AnyEmbedResponse => ({ embedding, usage: usageOf(decoded.usage) }),
+          ),
         )
       }),
     )
@@ -439,7 +449,7 @@ const embedManyImpl =
   (cfg: Config) =>
   (
     request: JinaEmbedManyRequest,
-  ): Effect.Effect<EmbedManyResponse, AiError.AiError, HttpClient.HttpClient> =>
+  ): Effect.Effect<AnyEmbedManyResponse, AiError.AiError, HttpClient.HttpClient> =>
     Effect.forEach(request.inputs, inputToItem).pipe(
       Effect.flatMap((items) =>
         postEmbed(
@@ -456,7 +466,10 @@ const embedManyImpl =
       Effect.flatMap((decoded) =>
         orderedEmbeddings(decoded.data, request.encoding).pipe(
           Effect.map(
-            (embeddings): EmbedManyResponse => ({ embeddings, usage: usageOf(decoded.usage) }),
+            (embeddings): AnyEmbedManyResponse => ({
+              embeddings,
+              usage: usageOf(decoded.usage),
+            }),
           ),
         ),
       ),
@@ -486,10 +499,18 @@ export const make = (
   cfg: Config,
 ): Effect.Effect<JinaEmbeddingService, never, HttpClient.HttpClient> =>
   Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
-    embed: (request) =>
-      embedImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
-    embedMany: (request) =>
-      embedManyImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
+    embed: <E extends JinaEncoding | undefined = undefined>(
+      request: Omit<JinaEmbedRequest, "encoding"> & { readonly encoding?: E },
+    ) =>
+      embedImpl(cfg)(request as JinaEmbedRequest).pipe(
+        Effect.provideService(HttpClient.HttpClient, client),
+      ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
+    embedMany: <E extends JinaEncoding | undefined = undefined>(
+      request: Omit<JinaEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+    ) =>
+      embedManyImpl(cfg)(request as JinaEmbedManyRequest).pipe(
+        Effect.provideService(HttpClient.HttpClient, client),
+      ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>,
   }))
 
 /**
@@ -508,21 +529,25 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): EmbeddingModelService => ({
-        embed: (req: CommonEmbedRequest) => {
+        embed: <E extends EmbedEncoding | undefined = undefined>(
+          req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
+        ) => {
           const task = mapGenericTask(req.task)
           return s.embed({
             ...req,
             model: req.model as JinaEmbeddingModel,
             ...(task !== undefined && { task }),
-          } as JinaEmbedRequest)
+          } as JinaEmbedRequest) as Effect.Effect<EmbedResponse<E>, AiError.AiError>
         },
-        embedMany: (req: CommonEmbedManyRequest) => {
+        embedMany: <E extends EmbedEncoding | undefined = undefined>(
+          req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+        ) => {
           const task = mapGenericTask(req.task)
           return s.embedMany({
             ...req,
             model: req.model as JinaEmbeddingModel,
             ...(task !== undefined && { task }),
-          } as JinaEmbedManyRequest)
+          } as JinaEmbedManyRequest) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>
         },
       }),
     ),

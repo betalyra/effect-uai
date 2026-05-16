@@ -1,10 +1,16 @@
 import { Context, Effect, Encoding, Layer, Match, Redacted, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
-import type { Embedding, EmbedContentPart, EmbedInput, Usage } from "@effect-uai/core/Embedding"
+import type {
+  EmbedContentPart,
+  EmbedInput,
+  Float32Embedding,
+  Usage,
+} from "@effect-uai/core/Embedding"
 import {
   type CommonEmbedManyRequest,
   type CommonEmbedRequest,
+  type EmbedEncoding,
   EmbeddingModel,
   type EmbeddingModelService,
   type EmbedManyResponse,
@@ -209,7 +215,7 @@ const WireBatchResponse = Schema.Struct({
   embeddings: Schema.Array(WireEmbedding),
 })
 
-const valuesToEmbedding = (values: ReadonlyArray<number>): Embedding => ({
+const valuesToEmbedding = (values: ReadonlyArray<number>): Float32Embedding => ({
   _tag: "float32",
   vector: Float32Array.from(values),
 })
@@ -342,8 +348,20 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): EmbeddingModelService => ({
-        embed: (req: CommonEmbedRequest) => s.embed(req as GeminiEmbedRequest),
-        embedMany: (req: CommonEmbedManyRequest) => s.embedMany(req as GeminiEmbedManyRequest),
+        // Gemini's endpoints only emit float32; the cast is sound for the
+        // 99% case. A caller who asks for `encoding: "int8"` via the
+        // generic tag gets the type they requested but the runtime returns
+        // float32 (Gemini ignores the field).
+        embed: <E extends EmbedEncoding | undefined = undefined>(
+          req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
+        ) => s.embed(req as GeminiEmbedRequest) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
+        embedMany: <E extends EmbedEncoding | undefined = undefined>(
+          req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+        ) =>
+          s.embedMany(req as GeminiEmbedManyRequest) as Effect.Effect<
+            EmbedManyResponse<E>,
+            AiError.AiError
+          >,
       }),
     ),
   )

@@ -108,6 +108,29 @@ export const isSparse = (e: Embedding): e is SparseEmbedding => e._tag === "spar
 export const isMultivector = (e: Embedding): e is MultivectorEmbedding => e._tag === "multivector"
 
 /**
+ * Maps an `encoding` request field to the corresponding response embedding
+ * variant. `undefined` (no encoding requested) defaults to `Float32Embedding`,
+ * which is what every provider returns when the caller doesn't ask for
+ * anything else. Widened `E` falls back to the full `Embedding` union — the
+ * caller has to narrow at use site, which honestly reflects what they know
+ * at compile time.
+ *
+ * Used by `EmbedResponse<E>` / `EmbedManyResponse<E>` to give callers a
+ * precise embedding type without a runtime narrowing helper.
+ */
+export type EmbeddingFor<E> = [E] extends [undefined | "float32"]
+  ? Float32Embedding
+  : [E] extends ["int8"]
+    ? Int8Embedding
+    : [E] extends ["binary"]
+      ? BinaryEmbedding
+      : [E] extends ["sparse"]
+        ? SparseEmbedding
+        : [E] extends ["multivector"]
+          ? MultivectorEmbedding
+          : Embedding
+
+/**
  * Token usage for one embed / embedMany call. One value per HTTP request,
  * not per input vector. Most providers populate `inputTokens`; the field
  * is optional for those that don't (or for mock layers in tests).

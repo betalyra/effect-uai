@@ -4,6 +4,12 @@
 
 ### Minor Changes
 
+- 70c8522: Add STT and TTS
+
+## 0.4.0
+
+### Minor Changes
+
 - New `@effect-uai/google/GeminiSynthesizer` and
   `@effect-uai/google/GeminiTranscriber` sub-paths — TTS and STT layers
   for the generic `SpeechSynthesizer` / `Transcriber` services. Both are

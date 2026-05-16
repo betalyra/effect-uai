@@ -87,6 +87,7 @@ export default defineConfig({
                   label: "Multi-model fallback",
                   slug: "recipes/multi-model-fallback",
                 },
+                { label: "Model escalation", slug: "recipes/model-escalation" },
                 { label: "Auto-compaction", slug: "recipes/auto-compaction" },
                 { label: "Pause and resume", slug: "recipes/pause-resume" },
                 { label: "Mid-stream abort", slug: "recipes/mid-stream-abort" },

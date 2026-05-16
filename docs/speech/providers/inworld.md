@@ -16,12 +16,12 @@ pnpm add @effect-uai/core @effect-uai/inworld effect
 
 ## Layers
 
-| Layer | Registers | Capability markers |
-| --- | --- | --- |
-| `@effect-uai/inworld/InworldTranscriber` | `InworldTranscriber` + `Transcriber` | — (sync) |
-| `@effect-uai/inworld/InworldRealtimeTranscriber` | `InworldRealtimeTranscriber` + `Transcriber` | `SttStreaming` |
-| `@effect-uai/inworld/InworldSynthesizer` | `InworldSynthesizer` + `SpeechSynthesizer` | — (sync + chunked NDJSON) |
-| `@effect-uai/inworld/InworldRealtimeSynthesizer` | `InworldRealtimeSynthesizer` + `SpeechSynthesizer` | `TtsIncrementalText` |
+| Layer                                            | Registers                                          | Capability markers        |
+| ------------------------------------------------ | -------------------------------------------------- | ------------------------- |
+| `@effect-uai/inworld/InworldTranscriber`         | `InworldTranscriber` + `Transcriber`               | — (sync)                  |
+| `@effect-uai/inworld/InworldRealtimeTranscriber` | `InworldRealtimeTranscriber` + `Transcriber`       | `SttStreaming`            |
+| `@effect-uai/inworld/InworldSynthesizer`         | `InworldSynthesizer` + `SpeechSynthesizer`         | — (sync + chunked NDJSON) |
+| `@effect-uai/inworld/InworldRealtimeSynthesizer` | `InworldRealtimeSynthesizer` + `SpeechSynthesizer` | `TtsIncrementalText`      |
 
 The sync and realtime layers are separate so you can pull only what
 you need — the realtime paths add WS / JWT plumbing.
@@ -50,15 +50,15 @@ const mainLayer = inworld.pipe(
 
 ### STT
 
-| Model | Native | Streaming WS |
-| --- | --- | --- |
-| `inworld/inworld-stt-1` | First-party (experimental) | ✓ |
-| `assemblyai/universal-streaming-english` | AssemblyAI passthrough | ✓ |
-| `assemblyai/universal-streaming-multilingual` | AssemblyAI | ✓ |
-| `assemblyai/u3-rt-pro` | AssemblyAI | ✓ |
-| `assemblyai/whisper-rt` | AssemblyAI | ✓ |
-| `soniox/stt-rt-v4` | Soniox | ✓ |
-| `groq/whisper-large-v3` | Groq | — (sync only) |
+| Model                                         | Native                     | Streaming WS  |
+| --------------------------------------------- | -------------------------- | ------------- |
+| `inworld/inworld-stt-1`                       | First-party (experimental) | ✓             |
+| `assemblyai/universal-streaming-english`      | AssemblyAI passthrough     | ✓             |
+| `assemblyai/universal-streaming-multilingual` | AssemblyAI                 | ✓             |
+| `assemblyai/u3-rt-pro`                        | AssemblyAI                 | ✓             |
+| `assemblyai/whisper-rt`                       | AssemblyAI                 | ✓             |
+| `soniox/stt-rt-v4`                            | Soniox                     | ✓             |
+| `groq/whisper-large-v3`                       | Groq                       | — (sync only) |
 
 Passthrough models are billed against your Inworld key — no separate
 contracts. Sync STT works for all; streaming WS is supported by
@@ -66,11 +66,11 @@ everything except `groq/whisper-large-v3`.
 
 ### TTS
 
-| Model | Latency (P50) | Languages | Notes |
-| --- | --- | --- | --- |
-| `inworld-tts-2` | ~200 ms | 100+ | Flagship; honors `deliveryMode` |
-| `inworld-tts-1.5-max` | ~200 ms | 15 | |
-| `inworld-tts-1.5-mini` | ~120 ms | 15 | Lowest latency |
+| Model                  | Latency (P50) | Languages | Notes                           |
+| ---------------------- | ------------- | --------- | ------------------------------- |
+| `inworld-tts-2`        | ~200 ms       | 100+      | Flagship; honors `deliveryMode` |
+| `inworld-tts-1.5-max`  | ~200 ms       | 15        |                                 |
+| `inworld-tts-1.5-mini` | ~120 ms       | 15        | Lowest latency                  |
 
 Voice IDs are human-readable names ("Sarah", "Edward", …) but Inworld
 doesn't publish a list-voices REST endpoint — browse via the Inworld

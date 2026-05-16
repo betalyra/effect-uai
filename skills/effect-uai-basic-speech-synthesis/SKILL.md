@@ -65,7 +65,11 @@ export type Provider = "openai" | "gemini" | "elevenlabs" | "inworld"
 const requestFor = Match.type<Provider>().pipe(
   Match.when("openai", () => ({ text, model: "gpt-4o-mini-tts", voiceId: "alloy" })),
   Match.when("gemini", () => ({ text, model: "gemini-2.5-flash-preview-tts", voiceId: "Kore" })),
-  Match.when("elevenlabs", () => ({ text, model: "eleven_multilingual_v2", voiceId: "JBFqnCBsd6RMkjVDRZzb" })),
+  Match.when("elevenlabs", () => ({
+    text,
+    model: "eleven_multilingual_v2",
+    voiceId: "JBFqnCBsd6RMkjVDRZzb",
+  })),
   Match.when("inworld", () => ({ text, model: "inworld-tts-2", voiceId: "Sarah" })),
   Match.exhaustive,
 )

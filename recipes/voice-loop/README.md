@@ -117,7 +117,7 @@ The recipe is a worked example of three primitives composed with
 ordinary Effect concurrency. The same shape applies whenever you
 have:
 
-- A long-lived input stream that occasionally emits a *commit*
+- A long-lived input stream that occasionally emits a _commit_
   (transcription finals; chat messages; sensor thresholds);
 - Work per commit that should run one-at-a-time;
 - An interrupt signal that needs to cut the active work cleanly.

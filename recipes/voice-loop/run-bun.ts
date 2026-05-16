@@ -209,7 +209,5 @@ Bun.serve<WsData>({
   },
 })
 
-console.log(
-  `voice-loop (elevenlabs STT/TTS + gemini-2.5-flash) → http://localhost:${port}`,
-)
+console.log(`voice-loop (elevenlabs STT/TTS + gemini-2.5-flash) → http://localhost:${port}`)
 console.log(`log level: ${minLevel} (set PIPELINE_DEBUG=1 for verbose STT partials)`)

@@ -10,6 +10,7 @@ import { JsonParseError } from "@effect-uai/core/JSONL"
 import * as SSE from "@effect-uai/core/SSE"
 import type { TurnEvent } from "@effect-uai/core/Turn"
 import {
+  type ChunkPart,
   type GenerationConfig,
   WireChunk,
   accumulatorToTurn,
@@ -17,6 +18,7 @@ import {
   emptyAccumulator,
   ingestChunk,
 } from "./codec.js"
+import { Match } from "effect"
 import type { GoogleModel } from "./models.js"
 
 /**
@@ -152,7 +154,7 @@ const buildNativeStream = (cfg: Config) => {
         const client = yield* HttpClient.HttpClient
         const url = `${baseUrl}/models/${request.model}:streamGenerateContent?alt=sse`
         const generationConfig = buildGenerationConfig(request)
-        const body = buildRequestBody(request.history, generationConfig)
+        const body = buildRequestBody(request.history, generationConfig, request.tools ?? [])
         const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.setHeader("x-goog-api-key", Redacted.value(cfg.apiKey)),
           HttpClientRequest.bodyJsonUnsafe(body),
@@ -194,6 +196,33 @@ const buildNativeStream = (cfg: Config) => {
  * Threads a fresh `Accumulator` so chunk-level text/usage merging works
  * across the run.
  */
+/**
+ * Map one `ChunkPart` to the `TurnEvent`(s) it produces. Function calls
+ * emit two events back-to-back since Gemini delivers args whole: a
+ * `tool_call_start` immediately followed by a `tool_call_args_delta` with
+ * the full JSON-encoded args. The `call_id` is the synthesized id from
+ * the accumulator (Gemini-3 wire id when present, `<name>_<index>` otherwise).
+ */
+const partToTurnEvents = (
+  part: ChunkPart,
+  callIdAt: (name: string, indexFromTail: number) => string,
+): ReadonlyArray<TurnEvent> =>
+  Match.value(part).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      text: (p): ReadonlyArray<TurnEvent> => [{ type: "text_delta", text: p.text }],
+      reasoning: (p): ReadonlyArray<TurnEvent> => [
+        { type: "reasoning_delta", text: p.text, kind: "trace" },
+      ],
+      function_call: (p): ReadonlyArray<TurnEvent> => {
+        const call_id = callIdAt(p.name, 0)
+        return [
+          { type: "tool_call_start", call_id, name: p.name },
+          { type: "tool_call_args_delta", call_id, delta: JSON.stringify(p.args ?? {}) },
+        ]
+      },
+    }),
+  )
+
 export const toCanonical = <E, R>(
   s: Stream.Stream<ProviderEvent, E, R>,
 ): Stream.Stream<TurnEvent, E, R> =>
@@ -202,19 +231,23 @@ export const toCanonical = <E, R>(
       () => emptyAccumulator,
       (acc, chunk) => {
         const result = ingestChunk(acc, chunk)
-        const partDeltas = result.parts.map((p) =>
-          p.kind === "text"
-            ? { type: "text_delta" as const, text: p.text }
-            : { type: "reasoning_delta" as const, text: p.text, kind: "trace" as const },
+        // The accumulator already contains the synthesized call_ids for any
+        // function_call parts in *this* chunk - they are the tail. Walk back
+        // by chunk-local function-call index to recover them.
+        const newCalls = result.parts.filter((p) => p.kind === "function_call")
+        const tailCalls = result.accumulator.functionCalls.slice(
+          result.accumulator.functionCalls.length - newCalls.length,
         )
-        const deltas = result.finished
-          ? [
-              ...partDeltas,
-              {
-                type: "turn_complete" as const,
-                turn: accumulatorToTurn(result.accumulator),
-              },
-            ]
+        let consumedCalls = 0
+        const partDeltas: ReadonlyArray<TurnEvent> = result.parts.flatMap((p) =>
+          partToTurnEvents(p, () => {
+            const id = tailCalls[consumedCalls]?.callId ?? p.kind
+            consumedCalls += 1
+            return id
+          }),
+        )
+        const deltas: ReadonlyArray<TurnEvent> = result.finished
+          ? [...partDeltas, { type: "turn_complete", turn: accumulatorToTurn(result.accumulator) }]
           : partDeltas
         return [result.accumulator, deltas] as const
       },

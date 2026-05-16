@@ -25,11 +25,11 @@ require it — edge / browser builds stay slim.
 
 ## Layers
 
-| Layer | Registers | Capability markers |
-| --- | --- | --- |
-| `@effect-uai/openai/OpenAITranscriber` | `OpenAITranscriber` + `Transcriber` | — |
-| `@effect-uai/openai/OpenAIRealtimeTranscriber` | `OpenAIRealtimeTranscriber` + `Transcriber` | `SttStreaming` |
-| `@effect-uai/openai/OpenAISynthesizer` | `OpenAISynthesizer` + `SpeechSynthesizer` | — (no `TtsIncrementalText` — OpenAI has no `/stream-input` endpoint) |
+| Layer                                          | Registers                                   | Capability markers                                                   |
+| ---------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------- |
+| `@effect-uai/openai/OpenAITranscriber`         | `OpenAITranscriber` + `Transcriber`         | —                                                                    |
+| `@effect-uai/openai/OpenAIRealtimeTranscriber` | `OpenAIRealtimeTranscriber` + `Transcriber` | `SttStreaming`                                                       |
+| `@effect-uai/openai/OpenAISynthesizer`         | `OpenAISynthesizer` + `SpeechSynthesizer`   | — (no `TtsIncrementalText` — OpenAI has no `/stream-input` endpoint) |
 
 ```ts
 import { Config, Effect, Layer } from "effect"
@@ -56,11 +56,11 @@ const mainLayer = openai.pipe(Layer.provide(FetchHttpClient.layer))
 
 ### STT
 
-| Model | Sync | Streaming | Notes |
-| --- | --- | --- | --- |
-| `gpt-4o-transcribe` | ✓ | ✓ (`?intent=transcription`) | Plain text only |
-| `gpt-4o-mini-transcribe` | ✓ | ✓ | Plain text only, cheaper |
-| `whisper-1` | ✓ | — | **Only model supporting `wordTimestamps: true`** |
+| Model                    | Sync | Streaming                   | Notes                                            |
+| ------------------------ | ---- | --------------------------- | ------------------------------------------------ |
+| `gpt-4o-transcribe`      | ✓    | ✓ (`?intent=transcription`) | Plain text only                                  |
+| `gpt-4o-mini-transcribe` | ✓    | ✓                           | Plain text only, cheaper                         |
+| `whisper-1`              | ✓    | —                           | **Only model supporting `wordTimestamps: true`** |
 
 `wordTimestamps: true` requires `whisper-1`. Passing it with a GPT-4o
 model fails with `AiError.Unsupported`. `diarization` isn't offered on
@@ -68,10 +68,10 @@ the OpenAI transcription endpoint at all.
 
 ### TTS
 
-| Model | Streaming | Notes |
-| --- | --- | --- |
-| `gpt-4o-mini-tts` | chunked HTTP | Current steerable model; honors `instructions` |
-| `tts-1` / `tts-1-hd` | chunked HTTP | Legacy; ignore `instructions` silently |
+| Model                | Streaming    | Notes                                          |
+| -------------------- | ------------ | ---------------------------------------------- |
+| `gpt-4o-mini-tts`    | chunked HTTP | Current steerable model; honors `instructions` |
+| `tts-1` / `tts-1-hd` | chunked HTTP | Legacy; ignore `instructions` silently         |
 
 Stock voices (no custom-voice path): `alloy`, `ash`, `ballad`, `coral`,
 `echo`, `fable`, `onyx`, `nova`, `sage`, `shimmer`, `verse`. `ballad`,
@@ -133,13 +133,13 @@ playback.
 
 Standard HTTP → `AiError` mapping applies:
 
-| Status | Error |
-| --- | --- |
-| `429` | `AiError.RateLimited` |
-| `408`/`504` | `AiError.Timeout` |
-| `401` | `AiError.AuthFailed` (`auth`) |
-| `>= 500` | `AiError.Unavailable` |
-| other 4xx | `AiError.InvalidRequest` |
+| Status      | Error                         |
+| ----------- | ----------------------------- |
+| `429`       | `AiError.RateLimited`         |
+| `408`/`504` | `AiError.Timeout`             |
+| `401`       | `AiError.AuthFailed` (`auth`) |
+| `>= 500`    | `AiError.Unavailable`         |
+| other 4xx   | `AiError.InvalidRequest`      |
 
 `wordTimestamps: true` against a non-`whisper-1` model →
 `AiError.Unsupported` at request time.

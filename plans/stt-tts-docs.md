@@ -10,18 +10,18 @@ Style brief (matches existing docs): one-liner frontmatter description that name
 
 User-perspective mapping — what shelf they look at when they have a use case:
 
-| User question | Section |
-| --- | --- |
-| "Chat with an LLM, use tools, vision input" | Language models |
-| "Search / cluster / classify by meaning" | Embeddings |
-| "Transcribe a file or a live mic" | Speech → Transcription |
-| "Read text aloud, low latency" | Speech → Synthesis |
-| "Build a voice assistant" | Speech → Voice loop (flagship recipe) |
-| "Generate a song from a prompt" | Music generation |
-| "Generate an image" | Image generation (Soon) |
-| "Generate a video" | Video generation (Soon) |
-| "Re-rank top-K hits" | Reranking (Soon) |
-| "Duplex session: model-native barge-in, camera-in, voice-out" | Realtime (Soon) |
+| User question                                                 | Section                               |
+| ------------------------------------------------------------- | ------------------------------------- |
+| "Chat with an LLM, use tools, vision input"                   | Language models                       |
+| "Search / cluster / classify by meaning"                      | Embeddings                            |
+| "Transcribe a file or a live mic"                             | Speech → Transcription                |
+| "Read text aloud, low latency"                                | Speech → Synthesis                    |
+| "Build a voice assistant"                                     | Speech → Voice loop (flagship recipe) |
+| "Generate a song from a prompt"                               | Music generation                      |
+| "Generate an image"                                           | Image generation (Soon)               |
+| "Generate a video"                                            | Video generation (Soon)               |
+| "Re-rank top-K hits"                                          | Reranking (Soon)                      |
+| "Duplex session: model-native barge-in, camera-in, voice-out" | Realtime (Soon)                       |
 
 The split that matters: **Speech for "one direction at a time"** (one-shot or streaming, but each call is in→out or out→in — including composed pipelines like voice-loop), **Realtime for "one session, both directions live"** with the future shape covering voice + camera in / voice + text out.
 
@@ -76,6 +76,7 @@ Each outline is the **finished page structure** — what sections it has and wha
 ### 3.1 `docs/speech/index.md` (REWRITE)
 
 Frontmatter:
+
 ```
 title: Speech
 description: Two service tags — Transcriber and SpeechSynthesizer — that cross the audio boundary in either direction.
@@ -84,18 +85,19 @@ description: Two service tags — Transcriber and SpeechSynthesizer — that cro
 Opening: "Voice notes, captions, and read-aloud answers all cross the same boundary." (Problem-first.)
 
 Sections:
-- **Voice assistants** — pinned callout right under the H1: "Most users land here looking to build a voice assistant. The composed STT → LLM → TTS pipeline ships as the [Voice loop](/recipes/voice-loop/) recipe — stop-word interrupt, follow-up queueing, one fiber per turn." This is the *first* substantive section.
+
+- **Voice assistants** — pinned callout right under the H1: "Most users land here looking to build a voice assistant. The composed STT → LLM → TTS pipeline ships as the [Voice loop](/recipes/voice-loop/) recipe — stop-word interrupt, follow-up queueing, one fiber per turn." This is the _first_ substantive section.
 - **Two tags, one seam** — `Transcriber` for audio → text, `SpeechSynthesizer` for text → audio. Same portable-vs-typed-tag pattern as [`LanguageModel`](/concepts/language-model/). Switching providers is swapping a Layer.
 - **The shape** — show the two service interfaces side-by-side abbreviated. Link out to the narrower pages.
-- **Capability markers** — `SttStreaming` and `TtsIncrementalText` in one paragraph each. Phantom-marker pattern. Calling a streaming helper against a Layer that doesn't ship the marker is a *compile-time* error.
+- **Capability markers** — `SttStreaming` and `TtsIncrementalText` in one paragraph each. Phantom-marker pattern. Calling a streaming helper against a Layer that doesn't ship the marker is a _compile-time_ error.
 - **Provider matrix**:
 
-  | Provider | STT sync | STT streaming | TTS sync | TTS chunked | TTS incremental-text |
-  | --- | --- | --- | --- | --- | --- |
-  | OpenAI | ✓ | ✓ (`OpenAIRealtimeTranscriber`) | ✓ | ✓ | — |
-  | ElevenLabs | — | ✓ (Scribe v2 Realtime) | ✓ | ✓ | ✓ |
-  | Gemini | ✓ (prompt-driven) | — | ✓ | — | — |
-  | Inworld | ✓ | ✓ | ✓ | ✓ | ✓ |
+  | Provider   | STT sync          | STT streaming                   | TTS sync | TTS chunked | TTS incremental-text |
+  | ---------- | ----------------- | ------------------------------- | -------- | ----------- | -------------------- |
+  | OpenAI     | ✓                 | ✓ (`OpenAIRealtimeTranscriber`) | ✓        | ✓           | —                    |
+  | ElevenLabs | —                 | ✓ (Scribe v2 Realtime)          | ✓        | ✓           | ✓                    |
+  | Gemini     | ✓ (prompt-driven) | —                               | ✓        | —           | —                    |
+  | Inworld    | ✓                 | ✓                               | ✓        | ✓           | ✓                    |
 
 - **Next step** — point at [Voice loop](/recipes/voice-loop/) first, then `basic-transcription` / `basic-speech-synthesis` for the primitives in isolation.
 - **See also** — Transcription, Synthesis, providers, Realtime (planned).
@@ -105,6 +107,7 @@ Target length: ~120 lines.
 ### 3.2 `docs/speech/transcription.md` (NEW)
 
 Frontmatter:
+
 ```
 title: Transcription
 description: Audio in, text out — one-shot for finished files, streaming for live mics.
@@ -113,6 +116,7 @@ description: Audio in, text out — one-shot for finished files, streaming for l
 Opening: "Caption a podcast, transcribe a meeting, or stream a live mic — they're the same call with different inputs."
 
 Sections:
+
 - **The shape** — `transcribe` (Effect<TranscriptResult>) and `streamTranscriptionFrom` (Stream<TranscriptEvent>). Show `CommonTranscribeRequest` and `CommonStreamTranscribeRequest`.
 - **Sync — `transcribe`** — `audio: AudioSource` (URL / base64 / bytes), full text + optional word timestamps out. Short snippet.
 - **Streaming — `streamTranscriptionFrom`** — `Stream<Uint8Array>` in (mic frames at declared `inputFormat`), `Stream<TranscriptEvent>` out. Mention `SttStreaming` required in R. Dual-arity (pipeable + data-first). 6-line snippet.
@@ -123,6 +127,7 @@ Sections:
 ### 3.3 `docs/speech/synthesis.md` (NEW)
 
 Frontmatter:
+
 ```
 title: Synthesis
 description: Text in, audio out — one-shot, chunked, or token-streaming for low-latency TTS.
@@ -131,6 +136,7 @@ description: Text in, audio out — one-shot, chunked, or token-streaming for lo
 Opening: "Reading an answer aloud and starting playback before the model has finished writing are the same call with different inputs."
 
 Sections:
+
 - **Three modes** — `synthesize` (Effect<AudioBlob>), `streamSynthesis` (Stream<AudioChunk>, full text in / chunked audio out), `streamSynthesisFrom` (Stream<AudioChunk>, incremental text-in, gated by `TtsIncrementalText`). One short paragraph each.
 - **The shape** — `CommonSynthesizeRequest` + `CommonStreamSynthesizeRequest`. Note `voiceId: string` here; each provider's typed request narrows to a literal union plus a `(string & {})` escape for custom cloned voices (or stock-only where there's no clone path, e.g. OpenAI).
 - **Output format** — `outputFormat` on the request; falls back to provider default. Most streaming TTS is PCM s16le at 24 / 48 kHz; ElevenLabs additionally supports MP3.
@@ -143,9 +149,9 @@ Same shape as [docs/providers/gemini.md](../docs/providers/gemini.md). Each page
 
 Notes that must appear:
 
-- **`openai.md`** — sync STT via `OpenAITranscriber` (`whisper-1` is the *only* model that supports `wordTimestamps: true`). Streaming STT lives at `OpenAIRealtimeTranscriber` subpath because it uses the `ws` peer dep to set `Authorization` + `OpenAI-Beta: realtime=v1` headers (browser-WebSocket can't set headers). TTS via `OpenAISynthesizer` — sync + chunked HTTP; **no `TtsIncrementalText` marker** (OpenAI has no incremental-text-in TTS).
+- **`openai.md`** — sync STT via `OpenAITranscriber` (`whisper-1` is the _only_ model that supports `wordTimestamps: true`). Streaming STT lives at `OpenAIRealtimeTranscriber` subpath because it uses the `ws` peer dep to set `Authorization` + `OpenAI-Beta: realtime=v1` headers (browser-WebSocket can't set headers). TTS via `OpenAISynthesizer` — sync + chunked HTTP; **no `TtsIncrementalText` marker** (OpenAI has no incremental-text-in TTS).
 - **`elevenlabs.md`** — streaming STT (Scribe v2 Realtime, 16 kHz pcm s16le, browser-friendly via single-use token in `?token=…` query param — no special peer deps). Full TTS pipeline incl. `streamSynthesisFrom` (Flash v2.5 model = sub-100 ms first-byte). Voice IDs are 20-char opaque slugs; same shape for stock + cloned.
-- **`gemini.md` (speech)** — sync STT is **prompt-driven** on top of multimodal Gemini models, *not* a dedicated endpoint: `wordTimestamps: true` / `diarization: true` fail with `AiError.Unsupported`. TTS is sync-only (no `TtsIncrementalText` marker, no `streamSynthesis` either) with ~30 prebuilt voices (`Kore`, `Puck`, …); no SSML, no speed/pitch knobs — prosody via natural-language prompt tags. Notes that this page is the **speech** Gemini page — language-model Gemini lives at [/providers/gemini/](/providers/gemini/).
+- **`gemini.md` (speech)** — sync STT is **prompt-driven** on top of multimodal Gemini models, _not_ a dedicated endpoint: `wordTimestamps: true` / `diarization: true` fail with `AiError.Unsupported`. TTS is sync-only (no `TtsIncrementalText` marker, no `streamSynthesis` either) with ~30 prebuilt voices (`Kore`, `Puck`, …); no SSML, no speed/pitch knobs — prosody via natural-language prompt tags. Notes that this page is the **speech** Gemini page — language-model Gemini lives at [/providers/gemini/](/providers/gemini/).
 - **`inworld.md`** — first-party `inworld/inworld-stt-1` plus router-style passthroughs to AssemblyAI / Soniox / Groq Whisper through the same Inworld key. Both streaming markers shipped. TTS `inworld-tts-2` adds `deliveryMode` (`STABLE` / `BALANCED` / `CREATIVE`) — ignored silently by older models. WS auth via short-lived JWT (`wsAuth.ts`).
 
 Target length: ~100 lines per page.
@@ -153,6 +159,7 @@ Target length: ~100 lines per page.
 ### 3.5 `docs/music-generation/index.md` (REWRITE)
 
 Frontmatter:
+
 ```
 title: Music generation
 description: Prompt → music. Sync, chunked, or bidirectional interactive sessions (with the right provider).
@@ -161,12 +168,13 @@ description: Prompt → music. Sync, chunked, or bidirectional interactive sessi
 Opening: "A short text prompt, a 30-second clip, no fixture audio." (Problem-first.)
 
 Sections:
+
 - **The shape** — `MusicGenerator` service tag with three methods: `generate` (sync, Effect<MusicResult>), `streamGeneration` (Stream<AudioChunk> — async/poll-based providers like Lyria 3 sync emit a single chunk; bidi-capable providers stream natively), `streamGenerationFrom` (bidi: Stream<MusicSessionInput> in, Stream<AudioChunk> out — gated by `MusicInteractiveSession`).
 - **Capability marker** — `MusicInteractiveSession` for bidirectional updates (Lyria RealTime via the `BidiGenerateMusic` WebSocket). Today no provider Layer ships it; calling `streamGenerationFrom` is a compile-time error until that lands.
 - **Provider matrix** (small — just Google today):
 
-  | Provider | Sync | Chunked stream | Bidi session |
-  | --- | --- | --- | --- |
+  | Provider     | Sync           | Chunked stream         | Bidi session                |
+  | ------------ | -------------- | ---------------------- | --------------------------- |
   | Google Lyria | ✓ (clip + pro) | ✓ (single-chunk emul.) | — (planned: Lyria RealTime) |
 
 - **Next step** — [basic-music-generation](/recipes/basic-music-generation/).

@@ -97,7 +97,7 @@ export const conversation = pipe(
       const lm = yield* LanguageModel
       return lm
         .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
-        .pipe(onTurnComplete<State, never>(() => Effect.sync(() => stop)))
+        .pipe(onTurnComplete(() => Effect.sync(() => stop)))
     }),
   ),
 )

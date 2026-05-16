@@ -1,13 +1,19 @@
-import { Deferred, Effect, Fiber, Latch, Ref, Stream, SubscriptionRef } from "effect"
-import { describe, expect, it } from "vitest"
+import { Deferred, Effect, Fiber, Latch, pipe, Ref, Stream, SubscriptionRef } from "effect"
+import { describe, expect, expectTypeOf, it } from "vitest"
+import * as AiError from "../domain/AiError.js"
+import type { TurnEvent } from "../domain/Turn.js"
 import {
   type Event,
   loop,
+  loopFrom,
   loopWithState,
   next,
   nextAfter,
-  stopEvent,
+  onTurnComplete,
+  stop,
   stopAfter,
+  stopEvent,
+  stopWith,
   value,
 } from "./Loop.js"
 
@@ -99,6 +105,81 @@ describe("Loop.loop", () => {
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
     expect(result).toEqual([0, 1, 2])
+  })
+
+  it("type: data-last (pipe) form preserves the body's E channel", () => {
+    // Regression for the prior inference bug: when used as
+    // `pipe(initial, loop(body))`, the body's E must propagate to the outer
+    // stream instead of collapsing to `never`. Generics live on the outer
+    // return of each overload, so neither calling form can erase them.
+    const result = pipe(
+      { count: 0 },
+      loop((_state) => Stream.fail(new AiError.RateLimited({ provider: "test", raw: null }))),
+    )
+    type E = typeof result extends Stream.Stream<unknown, infer X, unknown> ? X : never
+    expectTypeOf<E>().toEqualTypeOf<AiError.RateLimited>()
+  })
+
+  it("type: data-first form preserves the body's E channel", () => {
+    const result = loop({ count: 0 }, (_state) =>
+      Stream.fail(new AiError.RateLimited({ provider: "test", raw: null })),
+    )
+    type E = typeof result extends Stream.Stream<unknown, infer X, unknown> ? X : never
+    expectTypeOf<E>().toEqualTypeOf<AiError.RateLimited>()
+  })
+
+  it("type: onTurnComplete inside loop infers S and A from the handler without annotation", () => {
+    // Regression: when piped through loop, onTurnComplete's handler return
+    // type (Stream<Event<A, S>>) is the single source of truth for the loop
+    // body's element type. The previous workaround required explicit
+    // <S, A> at the call site. Now the loop's outer-return generics pull
+    // them through automatically.
+    type LoopState = { readonly turns: number }
+    type ToolEvent = { readonly _tag: "tool"; readonly name: string }
+
+    const result = pipe(
+      { turns: 0 } as LoopState,
+      loop((state) =>
+        Effect.gen(function* () {
+          const deltas: Stream.Stream<TurnEvent> = Stream.empty
+          return deltas.pipe(
+            onTurnComplete(() =>
+              Effect.sync(() =>
+                state.turns >= 1
+                  ? stop
+                  : nextAfter(Stream.succeed<ToolEvent>({ _tag: "tool", name: "x" }), {
+                      turns: state.turns + 1,
+                    }),
+              ),
+            ),
+          )
+        }),
+      ),
+    )
+
+    type Element = typeof result extends Stream.Stream<infer X, unknown, unknown> ? X : never
+    expectTypeOf<Element>().toEqualTypeOf<TurnEvent | ToolEvent>()
+  })
+
+  it("onTurnComplete: data-first form (Function.dual) works at runtime", async () => {
+    // Pin both calling forms: deltas.pipe(onTurnComplete(handler)) and
+    // onTurnComplete(deltas, handler). Same dispatch as loop's dual.
+    const turnComplete: TurnEvent = {
+      type: "turn_complete",
+      turn: { items: [], usage: { input_tokens: 0, output_tokens: 0 }, stop_reason: "stop" },
+    }
+    const textDelta: TurnEvent = { type: "text_delta", text: "hi" }
+    const deltas: Stream.Stream<TurnEvent> = Stream.fromIterable([textDelta, turnComplete])
+
+    const dataFirst = onTurnComplete(deltas, () => Effect.sync(() => stop))
+    const dataLast = deltas.pipe(onTurnComplete(() => Effect.sync(() => stop)))
+
+    const a = await Effect.runPromise(Stream.runCollect(dataFirst))
+    const b = await Effect.runPromise(Stream.runCollect(dataLast))
+
+    // Two value(delta) wraps + one stop sentinel from the handler.
+    expect(a.length).toBe(3)
+    expect(b.length).toBe(3)
   })
 
   it("is stack-safe and linear-time across many iterations", async () => {
@@ -439,7 +520,7 @@ describe("Loop.loopWithState", () => {
 
   it("the state ref starts at `initial` and stays there if the loop stops without advancing", async () => {
     const program = Effect.gen(function* () {
-      const { stream, state } = yield* loopWithState({ count: 7 }, () =>
+      const { stream, state } = yield* loopWithState({ count: 7 }, (_: { count: number }) =>
         Stream.fromIterable([stopEvent]),
       )
       yield* Stream.runDrain(stream)
@@ -520,5 +601,178 @@ describe("Loop.loopWithState", () => {
     })
 
     expect(await Effect.runPromise(program)).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3])
+  })
+})
+
+describe("Loop.loopFrom", () => {
+  it("runs a multi-turn inner loop per input until the body emits stop", async () => {
+    // Per input: emit (input + turnsSoFar) twice, then stop. State counts
+    // total turns ACROSS inputs. Demonstrates that `next(s)` continues with
+    // the SAME input, multiple times per input — not one body call per item.
+    const result = await Effect.runPromise(
+      Stream.fromIterable(["a", "b"]).pipe(
+        loopFrom(0, (turns: number, input: string) => {
+          if (turns >= 2 * (input === "a" ? 1 : 2)) return Stream.fromIterable([stopEvent])
+          return Stream.fromIterable([value(`${input}:${turns}`), next(turns + 1)])
+        }),
+        Stream.runCollect,
+      ),
+    )
+
+    // input="a": turns 0,1 → emit "a:0","a:1"; turns=2 → stop. State threads.
+    // input="b": turns 2,3 → emit "b:2","b:3"; turns=4 → stop.
+    expect(result).toEqual(["a:0", "a:1", "b:2", "b:3"])
+  })
+
+  it("threads state across inputs (audio-pipeline shape)", async () => {
+    // History accumulates across inputs. Each input emits its joined view of
+    // history+input, then `stopWith` ends the inner loop AND carries the
+    // updated history to the next input.
+    const result = await Effect.runPromise(
+      Stream.fromIterable(["x", "y", "z"]).pipe(
+        loopFrom([] as ReadonlyArray<string>, (history: ReadonlyArray<string>, input: string) =>
+          Stream.fromIterable([
+            value([...history, input].join(",")),
+            stopWith([...history, input]),
+          ]),
+        ),
+        Stream.runCollect,
+      ),
+    )
+
+    expect(result).toEqual(["x", "x,y", "x,y,z"])
+  })
+
+  it("simulates a stream of documents with multi-turn tool calls per document", async () => {
+    // Document arrives → model "thinks" (one text turn) → calls a tool
+    // (one tool turn) → emits final text (one text turn) → done.
+    // Three turns per document, two documents.
+    type Turn =
+      | { readonly kind: "text"; readonly doc: string; readonly text: string }
+      | { readonly kind: "tool"; readonly doc: string; readonly tool: string }
+    type State = { readonly turn: number; readonly totalTurns: number }
+
+    const result = await Effect.runPromise(
+      Stream.fromIterable(["doc1", "doc2"]).pipe(
+        loopFrom({ turn: 0, totalTurns: 0 } as State, (state, doc: string) => {
+          // Each document runs three turns then stops.
+          if (state.turn === 0) {
+            return Stream.fromIterable([
+              value<Turn>({ kind: "text", doc, text: "thinking" }),
+              next({ turn: 1, totalTurns: state.totalTurns + 1 }),
+            ])
+          }
+          if (state.turn === 1) {
+            return Stream.fromIterable([
+              value<Turn>({ kind: "tool", doc, tool: "search" }),
+              next({ turn: 2, totalTurns: state.totalTurns + 1 }),
+            ])
+          }
+          // Final turn — `stopWith` emits the final value, advances state
+          // (reset turn to 0 for the next document, bump totalTurns), and
+          // ends this document's inner loop in one shot.
+          return Stream.fromIterable([
+            value<Turn>({ kind: "text", doc, text: "final" }),
+            stopWith({ turn: 0, totalTurns: state.totalTurns + 1 }),
+          ])
+        }),
+        Stream.runCollect,
+      ),
+    )
+
+    expect(result).toEqual([
+      { kind: "text", doc: "doc1", text: "thinking" },
+      { kind: "tool", doc: "doc1", tool: "search" },
+      { kind: "text", doc: "doc1", text: "final" },
+      { kind: "text", doc: "doc2", text: "thinking" },
+      { kind: "tool", doc: "doc2", tool: "search" },
+      { kind: "text", doc: "doc2", text: "final" },
+    ])
+  })
+
+  it("ends cleanly when the input stream ends mid-conversation", async () => {
+    // Single-input case: body advances via `next` then stops cleanly.
+    const result = await Effect.runPromise(
+      Stream.fromIterable(["only"]).pipe(
+        loopFrom(0, (turns: number, input: string) =>
+          turns >= 2
+            ? Stream.fromIterable([stopEvent])
+            : Stream.fromIterable([value(`${input}:${turns}`), next(turns + 1)]),
+        ),
+        Stream.runCollect,
+      ),
+    )
+
+    expect(result).toEqual(["only:0", "only:1"])
+  })
+
+  it("body's `stop` advances to the next input (does NOT halt the whole stream)", async () => {
+    // Three inputs, body always stops on its first emission. All three
+    // are processed — `stop` is per-input, not global. To halt the whole
+    // stream, end the INPUT stream upstream.
+    const result = await Effect.runPromise(
+      Stream.fromIterable([1, 2, 3]).pipe(
+        loopFrom(0, (_state: number, input: number) =>
+          Stream.fromIterable([value(input * 10), stopEvent]),
+        ),
+        Stream.runCollect,
+      ),
+    )
+
+    expect(result).toEqual([10, 20, 30])
+  })
+
+  it("data-first form (Function.dual) runs identically to data-last", async () => {
+    const inputs = Stream.fromIterable([1, 2])
+    const result = await Effect.runPromise(
+      Stream.runCollect(
+        loopFrom(inputs, 0, (state: number, input: number) =>
+          state >= input
+            ? Stream.fromIterable([stopEvent])
+            : Stream.fromIterable([value(state + input), next(state + 1)]),
+        ),
+      ),
+    )
+
+    // input=1: state=0 → emit 1, state→1; state=1≥1 → stop.
+    // input=2: state=1 → emit 3, state→2; state=2≥2 → stop.
+    expect(result).toEqual([1, 3])
+  })
+
+  it("supports Effect-returning bodies (parity with loop)", async () => {
+    const result = await Effect.runPromise(
+      Stream.fromIterable(["a"]).pipe(
+        loopFrom(0, (turns: number, input: string) =>
+          Effect.gen(function* () {
+            const cur = yield* Effect.succeed(turns)
+            if (cur >= 2) return Stream.fromIterable([stopEvent])
+            return Stream.fromIterable([value(`${input}:${cur}`), next(cur + 1)])
+          }),
+        ),
+        Stream.runCollect,
+      ),
+    )
+
+    expect(result).toEqual(["a:0", "a:1"])
+  })
+
+  it("type: data-last (pipe) form preserves the body's E channel", () => {
+    const result = pipe(
+      Stream.fromIterable([1]),
+      loopFrom(0, (_state: number, _input: number) =>
+        Stream.fail(new AiError.RateLimited({ provider: "test", raw: null })),
+      ),
+    )
+    type E = typeof result extends Stream.Stream<unknown, infer X, unknown> ? X : never
+    expectTypeOf<E>().toEqualTypeOf<AiError.RateLimited>()
+  })
+
+  it("type: data-first form preserves the body's E channel and unifies with input's E", () => {
+    const input: Stream.Stream<number, Error> = Stream.fail(new Error("boom"))
+    const result = loopFrom(input, 0, (_state: number, _i: number) =>
+      Stream.fail(new AiError.RateLimited({ provider: "test", raw: null })),
+    )
+    type E = typeof result extends Stream.Stream<unknown, infer X, unknown> ? X : never
+    expectTypeOf<E>().toEqualTypeOf<AiError.RateLimited | Error>()
   })
 })

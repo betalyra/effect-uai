@@ -71,7 +71,7 @@ describe("basic-usage", () => {
               tools: Toolkit.toDescriptors(toolkit),
             })
             .pipe(
-              onTurnComplete<State, ToolEvent>((turn) =>
+              onTurnComplete((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop

@@ -101,7 +101,7 @@ export const conversation = pipe(
         Stream.flatMap((item) =>
           item._tag === "Event" ? Stream.succeed(item.event) : Stream.fail(item.cause),
         ),
-        onTurnComplete<State, never>(() => Effect.sync(() => stop)),
+        onTurnComplete(() => Effect.sync(() => stop)),
       )
     }),
   ),

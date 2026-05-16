@@ -153,7 +153,7 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
             ...(current.tier === 0 ? { tools: escalateDescriptors } : {}),
           })
           .pipe(
-            onTurnComplete<State, EscalationEvent>((turn) =>
+            onTurnComplete((turn) =>
               Effect.sync(() =>
                 current.tier === 1
                   ? stop

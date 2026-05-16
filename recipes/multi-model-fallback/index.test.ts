@@ -88,11 +88,7 @@ describe("multi-model-fallback", () => {
     const completion = events.find((e) => e.type === "turn_complete")
     expect(completion).toBeDefined()
     if (completion?.type === "turn_complete") {
-      const text = Turn.assistantMessages(completion.turn)
-        .flatMap((m) => m.content)
-        .filter(Items.isOutputText)
-        .map((c) => c.text)
-        .join("")
+      const text = Turn.assistantText(completion.turn)
       expect(text).toBe("from-secondary")
     }
   })

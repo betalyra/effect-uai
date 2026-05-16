@@ -112,11 +112,7 @@ describe("auto-compaction", () => {
               .pipe(
                 onTurnComplete((turn) =>
                   Effect.sync(() => {
-                    const summary = Turn.assistantMessages(turn)
-                      .flatMap((m) => m.content)
-                      .filter(Items.isOutputText)
-                      .map((c) => c.text)
-                      .join(" ")
+                    const summary = Turn.assistantTexts(turn).join(" ")
                     return nextAfter(Stream.empty, withSummary(state, summary))
                   }),
                 ),

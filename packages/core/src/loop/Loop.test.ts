@@ -520,7 +520,7 @@ describe("Loop.loopWithState", () => {
 
   it("the state ref starts at `initial` and stays there if the loop stops without advancing", async () => {
     const program = Effect.gen(function* () {
-      const { stream, state } = yield* loopWithState({ count: 7 }, (_: { count: number }) =>
+      const { stream, state } = yield* loopWithState({ count: 7 }, () =>
         Stream.fromIterable([stopEvent]),
       )
       yield* Stream.runDrain(stream)

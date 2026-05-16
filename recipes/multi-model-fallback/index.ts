@@ -102,11 +102,7 @@ const program = Effect.gen(function* () {
       Match.when({ type: "turn_complete" }, ({ turn }) =>
         Effect.logInfo("turn complete", {
           stop_reason: turn.stop_reason,
-          assistant: Turn.assistantMessages(turn)
-            .flatMap((m) => m.content)
-            .filter(Items.isOutputText)
-            .map((c) => c.text)
-            .join(" "),
+          assistant: Turn.assistantTexts(turn).join(" "),
         }),
       ),
       Match.orElse(() => Effect.void),

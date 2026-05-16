@@ -86,6 +86,26 @@ export const assistantMessages = (turn: Turn): ReadonlyArray<Message> =>
   turn.items.filter((i): i is Message => i.type === "message" && i.role === "assistant")
 
 /**
+ * Every `output_text` payload across every assistant message in the turn,
+ * preserving order. Refusals and other content blocks are dropped — use
+ * `assistantMessages` if you need to inspect them. The primitive for
+ * "give me the assistant's text"; callers decide how to combine
+ * (typically `.join("")` for prose or `.join(" ")` for log strings).
+ */
+export const assistantTexts = (turn: Turn): ReadonlyArray<string> =>
+  assistantMessages(turn)
+    .flatMap((m) => m.content)
+    .filter(isOutputText)
+    .map((b) => b.text)
+
+/**
+ * Sugar over `assistantTexts(turn).join("")` — the common case for
+ * summarizers, classifiers, judge calls, and structured-output backstops
+ * that want one concatenated string.
+ */
+export const assistantText = (turn: Turn): string => assistantTexts(turn).join("")
+
+/**
  * Append a completed turn and optional follow-up items to a state record's
  * history. Recipes use this at the point where structured tool results are
  * converted to model-facing `FunctionCallOutput`s.

@@ -43,15 +43,22 @@ import { isTurnComplete, type Turn, type TurnEvent } from "../domain/Turn.js"
 /**
  * The tagged union a body emits per pull. `Value` carries a payload that
  * flows downstream. `Next` ends the current iteration and continues with a
- * new state. `Stop` ends the loop entirely; it optionally carries a final
- * state that `loopFrom` will thread to the next input and `loopWithState`
- * will write to its `SubscriptionRef` before the loop ends. Plain `loop`
- * has no next iteration to apply it to and ignores the state.
+ * new state. `Stop` ends the loop entirely with no carried state.
+ * `StopWith` also ends the loop but carries a final state that `loopFrom`
+ * will thread to the next input and `loopWithState` will write to its
+ * `SubscriptionRef` before the loop ends. Plain `loop` has no next
+ * iteration to apply it to and treats `StopWith` like `Stop`.
+ *
+ * `Stop` is intentionally `{}` so the bare `stopEvent` / `stop` helpers
+ * don't constrain `S` from a body's stream type — every body has a `Stop`
+ * variant in its union, and forcing `S` to flow through it would break
+ * inference whenever the body never uses `next` / `stopWith`.
  */
 export type Event<A, S> = Data.TaggedEnum<{
   Value: { readonly value: A }
   Next: { readonly state: S }
-  Stop: { readonly state: Option.Option<S> }
+  Stop: {}
+  StopWith: { readonly state: S }
 }>
 
 interface EventDef extends Data.TaggedEnum.WithGenerics<2> {
@@ -70,15 +77,16 @@ export const next = <S>(state: S): Event<never, S> => Event.Next({ state })
  * The terminal `Stop` event with no carried state. Use `stop` (the Stream)
  * to end a loop body without communicating a final state.
  */
-export const stopEvent: Event<never, never> = Event.Stop({ state: Option.none() })
+export const stopEvent: Event<never, never> = Event.Stop()
 
 /**
- * Terminal `Stop` event that also carries a final state. For `loopFrom`
- * this is the natural "this input is done, here's the state to carry
- * forward to the next input" signal — symmetric with `next(s)` but ending
- * the inner loop instead of continuing it.
+ * Terminal event that ends the loop AND carries a final state. For
+ * `loopFrom` this is the natural "this input is done, here's the state to
+ * carry forward to the next input" signal — symmetric with `next(s)` but
+ * ending the inner loop instead of continuing it. For `loopWithState` the
+ * carried state is written to the `SubscriptionRef` before the loop ends.
  */
-export const stopWith = <S>(state: S): Event<never, S> => Event.Stop({ state: Option.some(state) })
+export const stopWith = <S>(state: S): Event<never, S> => Event.StopWith({ state })
 
 /**
  * A single-element stream that ends the loop. Return this from a body when
@@ -359,7 +367,10 @@ export const loop: {
 
               if (Option.isSome(decision)) {
                 yield* closeActive(active, Exit.void)
-                if (decision.value._tag === "Stop") {
+                if (decision.value._tag === "Stop" || decision.value._tag === "StopWith") {
+                  // `loop` has no next iteration to apply StopWith's state to;
+                  // the state lands in `loopFrom`'s outer ref or
+                  // `loopWithState`'s SubscriptionRef via their taps.
                   done = true
                 } else if (decision.value._tag === "Next") {
                   state = decision.value.state
@@ -447,13 +458,10 @@ export const loopFrom: {
                   return stream.pipe(
                     Stream.tap((event) =>
                       Match.value(event).pipe(
-                        Match.tag("Next", (e) => Ref.set(stateRef, e.state)),
-                        Match.tag("Stop", (e) =>
-                          Option.match(e.state, {
-                            onSome: (s) => Ref.set(stateRef, s),
-                            onNone: () => Effect.void,
-                          }),
-                        ),
+                        Match.tags({
+                          Next: (e) => Ref.set(stateRef, e.state),
+                          StopWith: (e) => Ref.set(stateRef, e.state),
+                        }),
                         Match.orElse(() => Effect.void),
                       ),
                     ),
@@ -506,13 +514,10 @@ export const loopWithState = <S, A, E, R>(
       stream.pipe(
         Stream.tap((event) =>
           Match.value(event).pipe(
-            Match.tag("Next", (e) => SubscriptionRef.set(stateRef, e.state)),
-            Match.tag("Stop", (e) =>
-              Option.match(e.state, {
-                onSome: (s) => SubscriptionRef.set(stateRef, s),
-                onNone: () => Effect.void,
-              }),
-            ),
+            Match.tags({
+              Next: (e) => SubscriptionRef.set(stateRef, e.state),
+              StopWith: (e) => SubscriptionRef.set(stateRef, e.state),
+            }),
             Match.orElse(() => Effect.void),
           ),
         ),

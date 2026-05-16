@@ -87,10 +87,14 @@ const makeTiers = Match.type<Provider>().pipe(
       const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
       const service = yield* makeGemini({ apiKey })
       return [
-        { name: "google/gemini-2.5-flash", model: "gemini-2.5-flash", service },
         {
           name: "google/gemini-3-flash-preview",
           model: "gemini-3-flash-preview",
+          service,
+        },
+        {
+          name: "google/gemini-3.1-pro-preview",
+          model: "gemini-3.1-pro-preview",
           service,
         },
       ] as const satisfies readonly [Tier, Tier]

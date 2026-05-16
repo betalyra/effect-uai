@@ -153,7 +153,7 @@ const program = (cheap: Tier, strong: Tier) =>
     const convo = conversation(cheap, strong)
     const historyRef = yield* Ref.make<ReadonlyArray<Items.Item>>([])
 
-    yield* Effect.forever(
+    return yield* Effect.forever(
       Effect.gen(function* () {
         const message = yield* Queue.take(queue)
         const prior = yield* Ref.get(historyRef)
@@ -181,7 +181,7 @@ const provider = parseProvider(process.argv)
 const main = Effect.gen(function* () {
   yield* Effect.logInfo("provider", { provider })
   const [cheap, strong] = yield* makeTiers(provider)
-  yield* program(cheap, strong)
+  return yield* program(cheap, strong)
 })
 
 const mainLayer = Layer.mergeAll(FetchHttpClient.layer, Logger.layer([Logger.consolePretty()]))

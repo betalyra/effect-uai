@@ -249,7 +249,7 @@ matching skill when the user describes the scenario:
 | Drive a long-lived chat from a queue; debounce typing bursts; check input between turns | `effect-uai-agentic-loop`                |
 | Retry rate-limited / transient provider failures with exponential backoff               | `effect-uai-model-retry`                 |
 | Fall back to another provider when the primary is rate-limited or unavailable           | `effect-uai-multi-model-fallback`        |
-| Let a cheap model escalate hard questions to a stronger model via a tool call          | `effect-uai-model-escalation`            |
+| Let a cheap model escalate hard questions to a stronger model via a tool call           | `effect-uai-model-escalation`            |
 | Summarize history when it gets too long; keep going                                     | `effect-uai-auto-compaction`             |
 | Pause the loop between turns and resume later (no provider call held open)              | `effect-uai-pause-resume`                |
 | Cancel an in-flight turn through stream interruption + scope cleanup                    | `effect-uai-mid-stream-abort`            |

@@ -192,26 +192,30 @@ const allMessages = (history: ReadonlyArray<Item>): ReadonlyArray<Message> =>
 // ---------------------------------------------------------------------------
 // Function-call round-trip
 //
-// `FunctionCall` items carry JSON-encoded `arguments`; Gemini expects a
-// parsed object. We decode via Schema, falling back to `{}` for malformed
-// payloads so a single bad arg-string doesn't kill the request.
+// `FunctionCall.arguments` and `FunctionCallOutput.output` are JSON-encoded
+// strings; Gemini's `functionCall.args` and `functionResponse.response`
+// expect parsed JSON *objects*. Decode via Schema:
+//   - object payload → use as-is
+//   - scalar / array / malformed → wrap as `{ output: <raw string> }` so the
+//     model still sees *some* response without crashing the request.
 // ---------------------------------------------------------------------------
 
-const parsedArgs = (encoded: string): unknown =>
-  pipe(
-    Schema.decodeResult(Schema.fromJsonString(Schema.Unknown))(encoded),
-    Result.match({
-      onSuccess: (v) => v,
-      onFailure: () => ({}),
-    }),
-  )
+const JsonObject = Schema.Record(Schema.String, Schema.Unknown)
+const decodeJsonObject = Schema.decodeResult(Schema.fromJsonString(JsonObject))
 
-const parsedResponse = (encoded: string): Record<string, unknown> => {
-  const decoded = parsedArgs(encoded)
-  return decoded !== null && typeof decoded === "object" && !Array.isArray(decoded)
-    ? (decoded as Record<string, unknown>)
-    : { output: encoded }
-}
+const parsedJsonObject =
+  (fallback: (raw: string) => Record<string, unknown>) =>
+  (encoded: string): Record<string, unknown> =>
+    pipe(
+      decodeJsonObject(encoded),
+      Result.match({
+        onSuccess: (v) => v,
+        onFailure: () => fallback(encoded),
+      }),
+    )
+
+const parsedArgs = parsedJsonObject(() => ({}))
+const parsedResponse = parsedJsonObject((raw) => ({ output: raw }))
 
 /**
  * `FunctionCallOutput` only carries `call_id`; Gemini's `functionResponse`
@@ -220,23 +224,34 @@ const parsedResponse = (encoded: string): Record<string, unknown> => {
  * cannot resolve, fall back to `call_id` as the name - imperfect but
  * preserves stream shape so the model sees *some* response.
  */
+const isFunctionCallItem = (item: Item): item is FunctionCall => item.type === "function_call"
+
 const nameForCallId = (history: ReadonlyArray<Item>, call_id: string): Option.Option<string> =>
   pipe(
     history,
-    Arr.findFirst((item) => item.type === "function_call" && item.call_id === call_id),
-    Option.flatMap((item) =>
-      item.type === "function_call" ? Option.some(item.name) : Option.none(),
+    Arr.findFirst(
+      (item): item is FunctionCall => isFunctionCallItem(item) && item.call_id === call_id,
     ),
+    Option.map((f) => f.name),
   )
 
-const providerIdFor = (item: FunctionCall): Option.Option<string> => {
-  const data = item.providerData
-  if (data === undefined || typeof data !== "object") return Option.none()
-  const gemini = (data as Record<string, unknown>)["gemini"]
-  if (gemini === undefined || typeof gemini !== "object" || gemini === null) return Option.none()
-  const id = (gemini as Record<string, unknown>)["id"]
-  return typeof id === "string" ? Option.some(id) : Option.none()
-}
+/**
+ * Extract the Gemini-3 wire id we stashed in `providerData` on the way out.
+ * Schema-driven so the shape lives in one place; failure → `Option.none()`.
+ */
+const ProviderDataWithGeminiId = Schema.Struct({
+  gemini: Schema.Struct({ id: Schema.String }),
+})
+const decodeProviderId = Schema.decodeUnknownResult(ProviderDataWithGeminiId)
+
+const providerIdFor = (item: FunctionCall): Option.Option<string> =>
+  pipe(
+    decodeProviderId(item.providerData),
+    Result.match({
+      onSuccess: (d) => Option.some(d.gemini.id),
+      onFailure: () => Option.none<string>(),
+    }),
+  )
 
 const itemToContent =
   (history: ReadonlyArray<Item>) =>
@@ -432,11 +447,7 @@ const chunkParts = (chunk: WireChunk): ReadonlyArray<ChunkPart> =>
 const sumStrings = (parts: ReadonlyArray<ChunkPart>, kind: "text" | "reasoning"): string =>
   pipe(
     parts,
-    Arr.filterMap((p) =>
-      (p.kind === "text" || p.kind === "reasoning") && p.kind === kind
-        ? Result.succeed(p.text)
-        : Result.failVoid,
-    ),
+    Arr.filterMap((p) => (p.kind === kind ? Result.succeed(p.text) : Result.failVoid)),
   ).join("")
 
 const collectFunctionCalls = (
@@ -489,7 +500,9 @@ const chunkCallToAccumulated = (
   callId: synthesizeCallId(call, prior),
   name: call.name,
   providerId: call.id,
-  arguments: JSON.stringify(call.args ?? {}),
+  // `functionCallToChunkParts` already replaced null/undefined with `{}`,
+  // so `call.args` is always a JSON-encodable value here.
+  arguments: JSON.stringify(call.args),
 })
 
 const appendFunctionCalls = (

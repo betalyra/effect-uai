@@ -1,4 +1,4 @@
-import { Array as Arr, Effect, Function, Ref, Stream } from "effect"
+import { Array as Arr, Effect, Function, Ref, Schema, Stream } from "effect"
 import * as Loop from "../loop/Loop.js"
 import type { FunctionCall } from "../domain/Items.js"
 import {
@@ -107,16 +107,17 @@ const runOne = <R>(
   return runPlain(tool, call)
 }
 
+const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
+
 const runPlain = <R>(
   tool: AnyPlainTool<R>,
   call: FunctionCall,
 ): Stream.Stream<ToolEvent, never, R> =>
   Stream.fromEffect(
     Effect.gen(function* () {
-      const parsed = yield* Effect.try({
-        try: () => JSON.parse(call.arguments) as unknown,
-        catch: () => "json_parse_error" as const,
-      })
+      const parsed = yield* parseJsonUnknown(call.arguments).pipe(
+        Effect.mapError(() => "json_parse_error" as const),
+      )
       const validated = yield* Effect.tryPromise({
         try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
         catch: () => "validation_threw" as const,
@@ -138,10 +139,9 @@ const runStreaming = <R>(
 ): Stream.Stream<ToolEvent, never, R> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const parsed = yield* Effect.try({
-        try: () => JSON.parse(call.arguments) as unknown,
-        catch: () => "json_parse_error" as const,
-      })
+      const parsed = yield* parseJsonUnknown(call.arguments).pipe(
+        Effect.mapError(() => "json_parse_error" as const),
+      )
       const validated = yield* Effect.tryPromise({
         try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
         catch: () => "validation_threw" as const,

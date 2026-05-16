@@ -238,7 +238,7 @@ export const onTurnComplete: {
         const continuation = Stream.unwrap(
           Effect.gen(function* () {
             const opt = yield* Ref.get(turnRef)
-            if (Option.isNone(opt)) return yield* Effect.fail(new IncompleteTurn({}))
+            if (Option.isNone(opt)) return yield* new IncompleteTurn({})
             return yield* then(opt.value)
           }),
         )

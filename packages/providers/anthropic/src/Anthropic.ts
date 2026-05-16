@@ -153,6 +153,7 @@ const toolChoiceWire = (request: AnthropicRequest): Option.Option<Record<string,
 // ---------------------------------------------------------------------------
 
 const decodeKnown = Schema.decodeUnknownEffect(KnownProviderEvent)
+const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
 
 const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
 
@@ -160,13 +161,12 @@ const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
  * Parse one SSE event's `data` payload into a typed `ProviderEvent`. Never
  * fails: JSON-parse and schema-decode failures both produce a synthesized
  * `_unknown` event so consumers of `streamNative` never silently miss a
- * wire event we didn't model.
+ * wire event we didn't model. When the payload IS valid JSON but doesn't
+ * match the known-event schema, `_unknown.raw` carries the parsed value;
+ * when JSON parsing fails outright, it carries the raw string.
  */
 const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
-  Effect.try({
-    try: () => JSON.parse(ev.data) as unknown,
-    catch: () => ev.data,
-  }).pipe(
+  parseJsonUnknown(ev.data).pipe(
     Effect.flatMap((parsed) =>
       decodeKnown(parsed).pipe(Effect.orElseSucceed(() => makeUnknown(parsed))),
     ),

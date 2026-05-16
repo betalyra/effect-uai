@@ -47,12 +47,10 @@ const makeService = (
           const i = yield* Ref.getAndUpdate(gCursor, (n) => n + 1)
           const scripted = script.results ?? []
           if (i >= scripted.length) {
-            return yield* Effect.fail(
-              new AiError.InvalidRequest({
-                provider: "mock",
-                raw: `MockMusicGenerator exhausted: ${scripted.length} results scripted, but call ${i + 1} was made`,
-              }),
-            )
+            return yield* new AiError.InvalidRequest({
+              provider: "mock",
+              raw: `MockMusicGenerator exhausted: ${scripted.length} results scripted, but call ${i + 1} was made`,
+            })
           }
           return scripted[i]!
         }),

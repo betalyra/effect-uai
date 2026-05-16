@@ -121,11 +121,13 @@ const decodeChunk = Schema.decodeUnknownEffect(WireChunk)
  * an `_unknown` variant, so JSON parse / schema decode failures flow
  * through as transport errors rather than being silently dropped.
  */
+const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
+
 const sseEventToChunk = (ev: SSE.Event) =>
-  Effect.try({
-    try: () => JSON.parse(ev.data) as unknown,
-    catch: (cause) => new JsonParseError({ line: ev.data, cause }),
-  }).pipe(Effect.flatMap(decodeChunk))
+  parseJsonUnknown(ev.data).pipe(
+    Effect.mapError((cause) => new JsonParseError({ line: ev.data, cause })),
+    Effect.flatMap(decodeChunk),
+  )
 
 // ---------------------------------------------------------------------------
 // Service implementation

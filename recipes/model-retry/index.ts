@@ -31,6 +31,12 @@
  * `Effect<Turn>`) inside `Effect.retry`, then materialize as a
  * synthetic stream.
  *
+ * Pre-packaged. `LanguageModel.retry(schedule)` ships exactly this
+ * lift / `Stream.retry` / unlift dance scoped to the `Retryable` subset
+ * of `AiError`. Reach for that when you don't need to customize the
+ * lifted-item shape; this recipe spells the pattern out for
+ * explainability.
+ *
  * `index.ts` exports the `conversation`; the runner lives in `run.ts`.
  */
 import { Data, Effect, Schedule, Stream, pipe } from "effect"

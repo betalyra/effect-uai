@@ -15,6 +15,12 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.5](/migrations/v0-5/) — `TurnEvent` migrated to
+  `Data.TaggedEnum` (`type` → `_tag`, snake_case → PascalCase),
+  `Encoding` → `EmbedEncoding`, generic `EmbedResponse<E>`,
+  `Toolkit.outputEvent` / `outputEvents` removed, Gemini tool calling,
+  new `Loop.stopWith` / `loopFrom`, `LanguageModel.turn` / `retry`,
+  `Tool.fromStandardSchema`.
 - [Migrating to 0.3](/migrations/v0-3/) — `streamUntilComplete` → `onTurnComplete`,
   `nextStateFrom` → `continueWith` (now pipe-friendly), `Match` module
   removed, tool requirements flow through `R`, new `loopWithState`,

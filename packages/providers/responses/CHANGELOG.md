@@ -1,5 +1,24 @@
 # @effect-uai/responses
 
+## 0.5.0
+
+### Minor Changes
+
+- `OpenAIEmbedding` returns the precise `EmbeddingFor<E>` variant on the
+  generic `EmbeddingModel` path. OpenAI only emits `float32` at runtime;
+  callers asking for another encoding via the generic tag get the type they
+  requested but the runtime value is still float32.
+- Provider emitters now use `TurnEvent.TextDelta({...})` / `TurnEvent.ToolCallStart({...})`
+  / etc. constructors. No wire-shape change for downstream consumers.
+
+### Patch Changes
+
+- Updated dependencies for `@effect-uai/core@0.5.0` — see core changelog
+  for `TurnEvent` tagged-enum migration, `Encoding` → `EmbedEncoding`
+  rename, generic `EmbedResponse<E>`, removed `Toolkit.outputEvent` /
+  `outputEvents`, new `Loop.stopWith` / `loopFrom`, `LanguageModel.turn` /
+  `retry`, `Tool.fromStandardSchema`.
+
 ## 0.4.0
 
 ### Minor Changes

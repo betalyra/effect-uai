@@ -1,5 +1,20 @@
 # @effect-uai/anthropic
 
+## 0.5.0
+
+### Minor Changes
+
+- Provider emitters now use `TurnEvent.TextDelta({...})` / `TurnEvent.ToolCallStart({...})`
+  / etc. constructors. No wire-shape change for downstream consumers.
+
+### Patch Changes
+
+- Updated dependencies for `@effect-uai/core@0.5.0` — see core changelog
+  for `TurnEvent` tagged-enum migration, `Encoding` → `EmbedEncoding`
+  rename, removed `Toolkit.outputEvent` / `outputEvents`, new
+  `Loop.stopWith` / `loopFrom`, `LanguageModel.turn` / `retry`,
+  `Tool.fromStandardSchema`. No embedding API in this package.
+
 ## 0.4.0
 
 ### Minor Changes

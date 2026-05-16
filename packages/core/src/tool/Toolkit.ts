@@ -10,7 +10,7 @@ import {
   type Tool,
   type ToolDescriptor,
 } from "./Tool.js";
-import { type ToolResult, executionError, rejected } from "./Outcome.js";
+import { ToolResult, executionError, rejected } from "./Outcome.js";
 import { ToolEvent } from "./ToolEvent.js";
 import { isOutput } from "./ToolEvent.js";
 
@@ -85,25 +85,16 @@ export const executeAll = <Tools extends ReadonlyArray<AnyKindTool<any>>>(
     }),
   );
 
-export const outputEvent = (result: ToolResult): ToolEvent => ({
-  _tag: "Output",
-  result,
-});
-
-export const outputEvents = (
-  results: ReadonlyArray<ToolResult>,
-): Stream.Stream<ToolEvent> => Stream.fromIterable(results.map(outputEvent));
-
 const valueResult = (
   call: FunctionCall,
   tool: string,
   value: unknown,
-): ToolResult => ({
-  _tag: "Value",
-  call_id: call.call_id,
-  tool,
-  value,
-});
+): ToolResult =>
+  ToolResult.Value({
+    call_id: call.call_id,
+    tool,
+    value,
+  });
 
 const runOne = <R>(
   tools: ReadonlyArray<AnyKindTool<R>>,
@@ -113,14 +104,15 @@ const runOne = <R>(
   if (tool === undefined) {
     // Graceful: emit a synthetic Failure so OTHER calls in this turn
     // still execute. LLMs hallucinate tool names; MCP tools come and go.
-    return Stream.succeed<ToolEvent>({
-      _tag: "Output",
-      result: rejected(
-        call,
-        "unknown_tool",
-        `No tool registered with name "${call.name}"`,
-      ),
-    });
+    return Stream.succeed(
+      ToolEvent.Output({
+        result: rejected(
+          call,
+          "unknown_tool",
+          `No tool registered with name "${call.name}"`,
+        ),
+      }),
+    );
   }
   if (isStreamingTool(tool)) return runStreaming(tool, call);
   return runPlain(tool, call);
@@ -153,7 +145,7 @@ const runPlain = <R>(
       Effect.catchCause(() =>
         Effect.succeed(executionError(call, "Tool execution failed")),
       ),
-      Effect.map((result) => ({ _tag: "Output", result }) satisfies ToolEvent),
+      Effect.map((result) => ToolEvent.Output({ result })),
     ),
   );
 
@@ -185,24 +177,20 @@ const runStreaming = <R>(
       const ref = yield* Ref.make<Array<unknown>>([]);
       const intermediates = tool.run(validated.value).pipe(
         Stream.tap((event) => Ref.update(ref, Arr.append(event))),
-        Stream.map(
-          (data) =>
-            ({
-              _tag: "Intermediate",
-              call_id: call.call_id,
-              tool: tool.name,
-              data,
-            }) satisfies ToolEvent,
+        Stream.map((data) =>
+          ToolEvent.Intermediate({
+            call_id: call.call_id,
+            tool: tool.name,
+            data,
+          }),
         ),
       );
       const output = Stream.fromEffect(
         Ref.get(ref).pipe(
-          Effect.map(
-            (events) =>
-              ({
-                _tag: "Output",
-                result: valueResult(call, tool.name, tool.finalize(events)),
-              }) satisfies ToolEvent,
+          Effect.map((events) =>
+            ToolEvent.Output({
+              result: valueResult(call, tool.name, tool.finalize(events)),
+            }),
           ),
         ),
       );
@@ -210,10 +198,11 @@ const runStreaming = <R>(
     }),
   ).pipe(
     Stream.catchCause(() =>
-      Stream.succeed<ToolEvent>({
-        _tag: "Output",
-        result: executionError(call, "Tool execution failed"),
-      }),
+      Stream.succeed(
+        ToolEvent.Output({
+          result: executionError(call, "Tool execution failed"),
+        }),
+      ),
     ),
   );
 

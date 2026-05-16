@@ -24,12 +24,7 @@ import * as Turn from "@effect-uai/core/Turn"
 // Local transport projections
 // ---------------------------------------------------------------------------
 
-const finalText = (turn: Turn.Turn): string =>
-  Turn.assistantMessages(turn)
-    .flatMap((m) => m.content)
-    .filter(Items.isOutputText)
-    .map((c) => c.text)
-    .join("")
+const finalText = (turn: Turn.Turn): string => Turn.assistantText(turn)
 
 export const toSSE = (event: Turn.TurnEvent): Result.Result<SSE.Event, void> => {
   if (event.type === "text_delta") {

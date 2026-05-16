@@ -108,11 +108,7 @@ const conversation = pipe(
           .pipe(
             onTurnComplete((turn) =>
               Effect.sync(() => {
-                const summary = Turn.assistantMessages(turn)
-                  .flatMap((m) => m.content)
-                  .filter(Items.isOutputText)
-                  .map((c) => c.text)
-                  .join(" ")
+                const summary = Turn.assistantTexts(turn).join(" ")
                 return nextAfter(Stream.empty, withSummary(state, summary))
               }),
             ),
@@ -162,11 +158,7 @@ const program = Effect.gen(function* () {
             stop_reason: turn.stop_reason,
             input_tokens: turn.usage.input_tokens,
             output_tokens: turn.usage.output_tokens,
-            assistant: Turn.assistantMessages(turn)
-              .flatMap((m) => m.content)
-              .filter(Items.isOutputText)
-              .map((c) => c.text)
-              .join(" "),
+            assistant: Turn.assistantTexts(turn).join(" "),
           }),
       }),
       Match.orElse(() => Effect.void),

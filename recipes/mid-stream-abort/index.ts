@@ -80,11 +80,7 @@ const program = Effect.gen(function* () {
           turn_complete: ({ turn }) =>
             Effect.logInfo("turn complete (not expected if abort fires first)", {
               stop_reason: turn.stop_reason,
-              assistant: Turn.assistantMessages(turn)
-                .flatMap((m) => m.content)
-                .filter(Items.isOutputText)
-                .map((c) => c.text)
-                .join(" "),
+              assistant: Turn.assistantTexts(turn).join(" "),
             }),
         }),
         Match.orElse(() => Effect.void),

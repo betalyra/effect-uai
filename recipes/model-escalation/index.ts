@@ -218,12 +218,6 @@ export const lastTurn = (events: ReadonlyArray<ConversationEvent>): Option.Optio
 export const lastAssistantText = (events: ReadonlyArray<ConversationEvent>): string =>
   pipe(
     lastTurn(events),
-    Option.map((turn) =>
-      Turn.assistantMessages(turn)
-        .flatMap((m) => m.content)
-        .filter(Items.isOutputText)
-        .map((c) => c.text)
-        .join(""),
-    ),
+    Option.map((turn) => Turn.assistantText(turn)),
     Option.getOrElse(() => ""),
   )

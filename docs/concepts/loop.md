@@ -50,8 +50,10 @@ over building events by hand.
 Loop.value(a) // wrap a value
 Loop.next(state) // signal continuation
 Loop.stop // a single-element stream that ends the loop
+Loop.stopWith(state) // end the loop AND surface a final state
 Loop.nextAfter(stream, s) // emit values from `stream`, then continue with state `s`
 Loop.stopAfter(stream) // emit values from `stream`, then end the loop
+Loop.stopWithAfter(stream, s) // emit values from `stream`, then end with final state `s`
 Loop.nextAfterFold(stream, b, fold, build) // drain stream, fold to acc, then continue with build(acc)
 ```
 
@@ -60,6 +62,11 @@ is the general primitive — drain a stream, fold its elements into an
 accumulator, then advance with state derived from the fold. The
 streaming-tool helper [`Toolkit.continueWith`](/concepts/tools/) is
 built on top.
+
+Reach for `stopWith` / `stopWithAfter` when the loop ending _is_ the
+result you care about — a summarised state, a tallied result, a
+final checkpoint. `loopWithState` exposes that final state to the
+caller; with plain `stop` it's discarded.
 
 ## `onTurnComplete`
 

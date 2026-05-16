@@ -68,8 +68,14 @@ Helpers project specific item kinds:
 ```ts
 Turn.functionCalls(turn) // FunctionCall[] - the tool requests
 Turn.assistantMessages(turn) // Message[] with role: "assistant"
+Turn.assistantTexts(turn) // string[] - one per assistant output_text block
+Turn.assistantText(turn) // string - joined assistant text, for logging / display
 Turn.reasonings(turn) // Reasoning[]
 ```
+
+`assistantText` covers the common case ("just give me what the model
+said as a string"); reach for `assistantTexts` only when you need to
+keep block boundaries.
 
 `Turn.toStructured(turn, format)` decodes the assembled assistant text
 against an Effect Schema and surfaces `RefusalRejected`,

@@ -58,6 +58,34 @@ completion and pulls the assembled `Turn` from the terminal
 `turn_complete` event. Both yield `LanguageModel`, so they work under
 any provider's layer.
 
+## Retrying transient failures
+
+Provider streams fail mid-flight: connection drops, 429s, transient
+5xxs. `LanguageModel.retry(schedule)` wraps any `Stream<TurnEvent>`
+and re-subscribes from scratch on retryable `AiError`s (rate limited,
+timeout, unavailable). Non-retryable failures (auth, invalid request,
+context length) pass straight through.
+
+```ts
+import { Schedule } from "effect"
+import { streamTurn, retry } from "@effect-uai/core/LanguageModel"
+
+const backoff = Schedule.exponential("200 millis", 2).pipe(
+  Schedule.both(Schedule.recurs(3)),
+  Schedule.jittered,
+)
+
+streamTurn(req).pipe(retry(backoff))
+```
+
+The retry boundary is the **whole request**, not "resume from byte N" -
+each attempt is a fresh model call. Pick a schedule with a low cap;
+unbounded retries on a flaky upstream cost real money.
+
+For finer control (different policies per error kind, retry-with-jitter,
+etc.) the [model-retry recipe](/recipes/model-retry/) walks through the
+lift / `Stream.retry` / unlift pattern this helper is built on.
+
 ## Portable vs. provider-specific
 
 Yield `LanguageModel` when your code should work under any provider:

@@ -80,6 +80,15 @@ terminal — sit side-by-side in the
 Valibot, and ArkType implement both directly; Effect Schema needs
 `Tool.fromEffectSchema` to attach the two extensions.
 
+Two adapters cover the two cases:
+
+- `Tool.fromEffectSchema(schema)` — wrap an Effect Schema so it
+  carries the JSON Schema renderer.
+- `Tool.fromStandardSchema(schema)` — type-narrowing identity for
+  schemas that already implement both Standard interfaces (Zod 4+,
+  Valibot, ArkType). Use this so TypeScript pins the inferred input
+  type at the tool boundary instead of falling back to `unknown`.
+
 The same schema serves two purposes:
 
 - **Wire rendering** — `Tool.toDescriptors` calls

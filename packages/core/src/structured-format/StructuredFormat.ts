@@ -1,5 +1,5 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
-import { Data, Effect, Match, Schema, Stream, pipe } from "effect"
+import { Data, Effect, Match, Result, Schema, Stream, pipe } from "effect"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -158,3 +158,16 @@ export const decodeJsonLines =
     self: Stream.Stream<string, E, R>,
   ): Stream.Stream<A, E | JsonParseError | StructuredDecodeError, R> =>
     self.pipe(Stream.mapEffect(parseJson(format)))
+
+/**
+ * Like {@link decodeJsonLines}, but each line yields a `Result` instead of
+ * failing the stream. Use when one bad line shouldn't abort the rest —
+ * log-and-continue, or partial-recovery with a corrective re-prompt.
+ * Upstream errors (the input stream's own `E`) still propagate normally.
+ */
+export const decodeJsonLinesRecoverable =
+  <A>(format: StructuredFormat<A>) =>
+  <E, R>(
+    self: Stream.Stream<string, E, R>,
+  ): Stream.Stream<Result.Result<A, JsonParseError | StructuredDecodeError>, E, R> =>
+    self.pipe(Stream.mapEffect((line) => Effect.result(parseJson(format)(line))))

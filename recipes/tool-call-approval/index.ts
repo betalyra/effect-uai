@@ -149,7 +149,7 @@ export const httpConversation = (
             reasoning: { effort: "low" },
           })
           .pipe(
-            onTurnComplete<State, ToolEvent>((turn) =>
+            onTurnComplete((turn) =>
               Effect.sync(() => {
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop
@@ -192,7 +192,7 @@ export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State =
             reasoning: { effort: "low" },
           })
           .pipe(
-            onTurnComplete<State, ToolEvent>((turn) =>
+            onTurnComplete((turn) =>
               Effect.sync(() => {
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop

@@ -77,7 +77,7 @@ describe("tool-call-approval", () => {
               tools: Tool.toDescriptors(allTools),
             })
             .pipe(
-              onTurnComplete<State, ToolEvent>((turn) =>
+              onTurnComplete((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
@@ -335,7 +335,7 @@ describe("tool-call-approval (HTTP variant)", () => {
               tools: Tool.toDescriptors(allTools),
             })
             .pipe(
-              onTurnComplete<State, ToolEvent>((turn) =>
+              onTurnComplete((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop

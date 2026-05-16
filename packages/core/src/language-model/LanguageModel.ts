@@ -1,4 +1,4 @@
-import { Context, Effect, Stream } from "effect"
+import { Array as Arr, Context, Effect, Option, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { Item } from "../domain/Items.js"
 import type * as StructuredFormat from "../structured-format/StructuredFormat.js"
@@ -51,3 +51,33 @@ export const streamTurn = (
   request: CommonRequest,
 ): Stream.Stream<TurnEvent, AiError.AiError, LanguageModel> =>
   Stream.unwrap(Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(request)))
+
+/**
+ * Non-streaming convenience: drain `streamTurn` to completion and return
+ * the assembled `Turn` from the terminal `turn_complete` event. The
+ * one-call shape every classifier, summarizer, judge, and structured-output
+ * consumer wants.
+ *
+ * Derived from `streamTurn`, so every provider gets it for free — no need
+ * to implement a non-streaming path twice. Intermediate deltas are
+ * collected and discarded; only the final `Turn` (carrying all assistant
+ * messages, function calls, usage, and stop_reason) crosses the boundary.
+ *
+ * Fails with `IncompleteTurn` if the provider's stream ends without a
+ * terminal `turn_complete` (misbehaving provider, dropped connection, or
+ * the stream was truncated upstream).
+ */
+export const turn = (
+  request: CommonRequest,
+): Effect.Effect<Turn, AiError.AiError | AiError.IncompleteTurn, LanguageModel> =>
+  streamTurn(request).pipe(
+    Stream.runCollect,
+    Effect.flatMap((events) =>
+      Arr.findLast(events, isTurnComplete).pipe(
+        Option.match({
+          onNone: () => Effect.fail(new AiError.IncompleteTurn({})),
+          onSome: (e) => Effect.succeed(e.turn),
+        }),
+      ),
+    ),
+  )

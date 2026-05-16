@@ -48,9 +48,7 @@ export const makeSubAgent = (
     run: ({ question }) => runInner(question),
     finalize: (events): SubAgentOutput => ({
       answer: events
-        .filter(
-          (e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> => e.type === "text_delta",
-        )
+        .filter((e): e is Extract<Turn.TurnEvent, { _tag: "TextDelta" }> => e._tag === "TextDelta")
         .map((e) => e.text)
         .join(""),
     }),

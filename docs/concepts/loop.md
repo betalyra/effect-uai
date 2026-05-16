@@ -72,7 +72,7 @@ caller; with plain `stop` it's discarded.
 
 Most loop bodies wrap a provider's `Stream<TurnEvent>`. The pattern is
 always the same: forward events to the consumer, wait for the terminal
-`turn_complete`, then decide what to do with the assembled `Turn`.
+`TurnComplete`, then decide what to do with the assembled `Turn`.
 `Loop.onTurnComplete` packages exactly that:
 
 ```ts
@@ -122,7 +122,7 @@ pipe(
 What it does:
 
 - Each `TurnEvent` passes through as `Loop.value(event)` — including
-  the terminal `turn_complete`, so the consumer sees turn boundaries.
+  the terminal `TurnComplete`, so the consumer sees turn boundaries.
 - Once the terminal arrives, the callback runs with the assembled
   `Turn` and its returned event-stream is concatenated. Typically that
   stream comes from `Toolkit.executeAll` threaded through `continueWith`
@@ -133,7 +133,7 @@ What it does:
   `Stream.filter` to drop events you don't care about, `Stream.map` to
   reshape them.
 
-If the upstream ends without a `turn_complete`, the resulting stream
+If the upstream ends without a `TurnComplete`, the resulting stream
 fails with `AiError.IncompleteTurn`. Catch it with `Stream.catchTag` if
 you want to recover.
 

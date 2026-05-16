@@ -54,7 +54,7 @@ export const streamTurn = (
 
 /**
  * Drain `streamTurn` and return the assembled `Turn` from the terminal
- * `turn_complete` event. Fails with `IncompleteTurn` if the stream ends
+ * `TurnComplete` event. Fails with `IncompleteTurn` if the stream ends
  * without one. Derived from `streamTurn`; providers get it for free.
  */
 export const turn = (

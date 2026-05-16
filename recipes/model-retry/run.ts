@@ -12,8 +12,8 @@ import { conversation } from "./index.js"
 
 const program = Stream.runForEach(conversation, (event) =>
   Match.value(event).pipe(
-    Match.discriminators("type")({
-      turn_complete: ({ turn }) =>
+    Match.discriminators("_tag")({
+      TurnComplete: ({ turn }) =>
         Effect.logInfo("turn complete", {
           stop_reason: turn.stop_reason,
           assistant: Turn.assistantTexts(turn).join(" "),

@@ -82,7 +82,7 @@ export type OutputText = typeof OutputText.Type
  * Model-emitted refusal. Distinct from `output_text`: the model declined
  * to answer rather than producing normal output. Pair with
  * `stop_reason: "refusal"` on the surrounding `Turn`. Streamed via the
- * `refusal_delta` `TurnEvent`.
+ * `RefusalDelta` `TurnEvent`.
  */
 export const Refusal = Schema.Struct({
   type: Schema.Literal("refusal"),

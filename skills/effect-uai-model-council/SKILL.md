@@ -48,9 +48,9 @@ const candidatePipeline = (member, judges, history) =>
     Stream.mapAccum(
       () => "",
       (acc, delta) => {
-        if (delta.type === "text_delta")
+        if (delta._tag === "TextDelta")
           return [acc + delta.text, [{ type: "candidate_delta", member: member.name, delta }]]
-        if (delta.type === "turn_complete")
+        if (delta._tag === "TurnComplete")
           return [acc, [{ type: "candidate_complete", member: member.name, answer: acc }]]
         return [acc, [{ type: "candidate_delta", member: member.name, delta }]]
       },
@@ -92,8 +92,8 @@ const judgeStream = (judge, subject, subjectAnswer, history) =>
       Stream.mapAccum(
         () => "",
         (acc, delta) => {
-          if (delta.type === "text_delta") return [acc + delta.text, []]
-          if (delta.type !== "turn_complete") return [acc, []]
+          if (delta._tag === "TextDelta") return [acc + delta.text, []]
+          if (delta._tag !== "TurnComplete") return [acc, []]
           return Result.match(decodeScore(acc.trim()), {
             onSuccess: (s) => [acc, [{ type: "score", judge: judge.name, subject, ...s }]],
             onFailure: (issue) => [

@@ -9,7 +9,7 @@ import * as Items from "@effect-uai/core/Items"
 import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
-import { type ToolEvent, isIntermediate, isOutput } from "@effect-uai/core/ToolEvent"
+import { isIntermediate, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Turn from "@effect-uai/core/Turn"
 import {
   type DownloadEvent,
@@ -43,11 +43,10 @@ describe("streaming-tool-output: sub-agent pattern", () => {
   it("inner deltas flow through; outer model sees joined answer", async () => {
     const mockedInner = (question: string): Stream.Stream<Turn.TurnEvent> =>
       Stream.fromIterable<Turn.TurnEvent>([
-        { type: "text_delta", text: `Hmm, "${question}"... ` },
-        { type: "text_delta", text: "let me reason... " },
-        { type: "text_delta", text: "the answer is 42." },
-        {
-          type: "turn_complete",
+        Turn.TurnEvent.TextDelta({ text: `Hmm, "${question}"... ` }),
+        Turn.TurnEvent.TextDelta({ text: "let me reason... " }),
+        Turn.TurnEvent.TextDelta({ text: "the answer is 42." }),
+        Turn.TurnEvent.TurnComplete({
           turn: {
             stop_reason: "stop",
             usage: { input_tokens: 5, output_tokens: 8, total_tokens: 13 },
@@ -64,7 +63,7 @@ describe("streaming-tool-output: sub-agent pattern", () => {
               },
             ],
           },
-        },
+        }),
       ])
 
     const subAgent = makeSubAgent(mockedInner)
@@ -88,19 +87,14 @@ describe("streaming-tool-output: sub-agent pattern", () => {
     )
 
     // 4 inner-stream events flow through as Intermediates.
-    const intermediates = collected
-      .filter((e): e is ToolEvent => "_tag" in e)
-      .filter(isIntermediate)
+    const intermediates = collected.filter(isIntermediate)
     expect(intermediates).toHaveLength(4)
 
-    const textDeltas = intermediates.filter((e) => (e.data as Turn.TurnEvent).type === "text_delta")
+    const textDeltas = intermediates.filter((e) => (e.data as Turn.TurnEvent)._tag === "TextDelta")
     expect(textDeltas).toHaveLength(3)
 
     // One Output carrying the joined SubAgentOutput.
-    const outputs: ReadonlyArray<ToolResult> = collected
-      .filter((e): e is ToolEvent => "_tag" in e)
-      .filter(isOutput)
-      .map((e) => e.result)
+    const outputs: ReadonlyArray<ToolResult> = collected.filter(isOutput).map((e) => e.result)
     expect(outputs).toHaveLength(1)
     expect(outputs[0]).toMatchObject({
       _tag: "Value",
@@ -136,9 +130,7 @@ describe("streaming-tool-output: progress + result pattern", () => {
     )
 
     // Intermediates: 3 progress + 1 result = 4.
-    const intermediates = collected
-      .filter((e): e is ToolEvent => "_tag" in e)
-      .filter(isIntermediate)
+    const intermediates = collected.filter(isIntermediate)
     expect(intermediates).toHaveLength(4)
 
     const progressEvents = intermediates.filter(
@@ -150,10 +142,7 @@ describe("streaming-tool-output: progress + result pattern", () => {
     ).toEqual([33, 67, 100])
 
     // One Output carrying the structured DownloadOutput.
-    const outputs: ReadonlyArray<ToolResult> = collected
-      .filter((e): e is ToolEvent => "_tag" in e)
-      .filter(isOutput)
-      .map((e) => e.result)
+    const outputs: ReadonlyArray<ToolResult> = collected.filter(isOutput).map((e) => e.result)
     expect(outputs).toHaveLength(1)
     expect(outputs[0]).toMatchObject({
       _tag: "Value",

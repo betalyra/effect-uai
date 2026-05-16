@@ -60,8 +60,8 @@ approval flow, retry policy, or long-lived queue-driven chat.
 
 | `TurnEvent`                 | SSE                                      | JSONL                                   |
 | --------------------------- | ---------------------------------------- | --------------------------------------- |
-| `text_delta`                | `event: text\ndata: {"text":"..."}`      | `{"type":"text","text":"..."}`          |
-| `turn_complete`             | `event: done\ndata: {"stop_reason",...}` | `{"type":"done","stop_reason":...,...}` |
+| `TextDelta`                 | `event: text\ndata: {"text":"..."}`      | `{"type":"text","text":"..."}`          |
+| `TurnComplete`              | `event: done\ndata: {"stop_reason",...}` | `{"type":"done","stop_reason":...,...}` |
 | reasoning, tool-call deltas | dropped                                  | dropped                                 |
 
 These local `toSSE` and `toJSONL` helpers are intentionally conservative. They

@@ -8,7 +8,7 @@ import * as Turn from "@effect-uai/core/Turn"
 describe("mid-stream-abort", () => {
   /**
    * A `LanguageModelService` whose stream emits five text deltas, each
-   * spaced by 20ms, then a `turn_complete`. The stream registers a
+   * spaced by 20ms, then a `TurnComplete`. The stream registers a
    * finalizer that flips `cleanedUp` so the test can verify the cleanup
    * chain ran when the consumer interrupted.
    */
@@ -19,13 +19,12 @@ describe("mid-stream-abort", () => {
     streamTurn: () =>
       pipe(
         Stream.fromIterable<Turn.TurnEvent>([
-          { type: "text_delta", text: "one " },
-          { type: "text_delta", text: "two " },
-          { type: "text_delta", text: "three " },
-          { type: "text_delta", text: "four " },
-          { type: "text_delta", text: "five " },
-          {
-            type: "turn_complete",
+          Turn.TurnEvent.TextDelta({ text: "one " }),
+          Turn.TurnEvent.TextDelta({ text: "two " }),
+          Turn.TurnEvent.TextDelta({ text: "three " }),
+          Turn.TurnEvent.TextDelta({ text: "four " }),
+          Turn.TurnEvent.TextDelta({ text: "five " }),
+          Turn.TurnEvent.TurnComplete({
             turn: {
               stop_reason: "stop",
               usage: { input_tokens: 1, output_tokens: 5, total_tokens: 6 },
@@ -37,7 +36,7 @@ describe("mid-stream-abort", () => {
                 },
               ],
             },
-          },
+          }),
         ]),
         Stream.tap(() => Ref.update(deltasEmitted, (n) => n + 1)),
         Stream.schedule(Schedule.spaced("20 millis")),
@@ -79,7 +78,7 @@ describe("mid-stream-abort", () => {
         cleanedUp: yield* Ref.get(cleanedUp),
         deltasEmitted: yield* Ref.get(deltasEmitted),
         collectedCount: collected.length,
-        sawTurnComplete: collected.some((e) => e.type === "turn_complete"),
+        sawTurnComplete: collected.some((e) => e._tag === "TurnComplete"),
       }
     })
 
@@ -115,7 +114,7 @@ describe("mid-stream-abort", () => {
 
       return {
         cleanedUp: yield* Ref.get(cleanedUp),
-        sawTurnComplete: collected.some((e) => e.type === "turn_complete"),
+        sawTurnComplete: collected.some((e) => e._tag === "TurnComplete"),
       }
     })
 

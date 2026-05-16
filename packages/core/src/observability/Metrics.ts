@@ -52,7 +52,7 @@ export type RatePoint<A> = {
  * The weight is the unit you care about - bytes, tokens, error count, etc.
  * For tokens-per-second on `TurnEvent`, pass:
  *
- *   `(d) => d.type === "text_delta" ? countTokens(d.text) : 0`
+ *   `(d) => d._tag === "TextDelta" ? countTokens(d.text) : 0`
  *
  * Use any tokenizer you like; the library does not ship one.
  */

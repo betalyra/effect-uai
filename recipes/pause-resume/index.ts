@@ -143,8 +143,8 @@ const program = Effect.gen(function* () {
 
   yield* Stream.runForEach(conversation(pauseLatch, turnsCompleted), (event) =>
     Match.value(event).pipe(
-      Match.discriminators("type")({
-        turn_complete: ({ turn }) =>
+      Match.discriminators("_tag")({
+        TurnComplete: ({ turn }) =>
           Effect.logInfo("turn complete", {
             assistant: Turn.assistantTexts(turn).join(" "),
           }),

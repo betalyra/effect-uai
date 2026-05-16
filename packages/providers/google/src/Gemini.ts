@@ -8,7 +8,7 @@ import {
 } from "@effect-uai/core/LanguageModel"
 import { JsonParseError } from "@effect-uai/core/JSONL"
 import * as SSE from "@effect-uai/core/SSE"
-import type { TurnEvent } from "@effect-uai/core/Turn"
+import { TurnEvent } from "@effect-uai/core/Turn"
 import {
   type ChunkPart,
   type GenerationConfig,
@@ -211,15 +211,15 @@ const partToTurnEvents = (
 ): ReadonlyArray<TurnEvent> =>
   Match.value(part).pipe(
     Match.discriminatorsExhaustive("kind")({
-      text: (p): ReadonlyArray<TurnEvent> => [{ type: "text_delta", text: p.text }],
+      text: (p): ReadonlyArray<TurnEvent> => [TurnEvent.TextDelta({ text: p.text })],
       reasoning: (p): ReadonlyArray<TurnEvent> => [
-        { type: "reasoning_delta", text: p.text, kind: "trace" },
+        TurnEvent.ReasoningDelta({ text: p.text, kind: "trace" }),
       ],
       function_call: (p): ReadonlyArray<TurnEvent> => {
         const call_id = callIdAt(p.name, 0)
         return [
-          { type: "tool_call_start", call_id, name: p.name },
-          { type: "tool_call_args_delta", call_id, delta: JSON.stringify(p.args ?? {}) },
+          TurnEvent.ToolCallStart({ call_id, name: p.name }),
+          TurnEvent.ToolCallArgsDelta({ call_id, delta: JSON.stringify(p.args ?? {}) }),
         ]
       },
     }),
@@ -249,7 +249,7 @@ export const toCanonical = <E, R>(
           }),
         )
         const deltas: ReadonlyArray<TurnEvent> = result.finished
-          ? [...partDeltas, { type: "turn_complete", turn: accumulatorToTurn(result.accumulator) }]
+          ? [...partDeltas, TurnEvent.TurnComplete({ turn: accumulatorToTurn(result.accumulator) })]
           : partDeltas
         return [result.accumulator, deltas] as const
       },

@@ -2,7 +2,7 @@ import { Duration, Effect, Layer, Ref, Schedule, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { Item } from "../domain/Items.js"
 import { LanguageModel, type LanguageModelService } from "../language-model/LanguageModel.js"
-import type { Turn, TurnEvent } from "../domain/Turn.js"
+import { type Turn, TurnEvent } from "../domain/Turn.js"
 
 export type MockOptions = {
   /**
@@ -16,7 +16,7 @@ export type MockOptions = {
 /**
  * A scripted mock provider. Pre-canned `Turn` outputs are returned in order,
  * one per call to `streamTurn`. Each scripted turn is split into synthetic
- * deltas (text → tool_call_start → tool_call_args_delta → ... → turn_complete)
+ * deltas (text → ToolCallStart → ToolCallArgsDelta → ... → TurnComplete)
  * so streaming consumers can see realistic delta shapes.
  */
 export type MockRecorder = {
@@ -32,25 +32,17 @@ const turnToDeltas = (turn: Turn): ReadonlyArray<TurnEvent> => {
     if (item.type === "message" && item.role === "assistant") {
       for (const block of item.content) {
         if (block.type === "output_text") {
-          deltas.push({ type: "text_delta", text: block.text })
+          deltas.push(TurnEvent.TextDelta({ text: block.text }))
         }
       }
     } else if (item.type === "function_call") {
-      deltas.push({
-        type: "tool_call_start",
-        call_id: item.call_id,
-        name: item.name,
-      })
-      deltas.push({
-        type: "tool_call_args_delta",
-        call_id: item.call_id,
-        delta: item.arguments,
-      })
+      deltas.push(TurnEvent.ToolCallStart({ call_id: item.call_id, name: item.name }))
+      deltas.push(TurnEvent.ToolCallArgsDelta({ call_id: item.call_id, delta: item.arguments }))
     } else if (item.type === "reasoning" && item.summary !== undefined) {
-      deltas.push({ type: "reasoning_delta", text: item.summary, kind: "summary" })
+      deltas.push(TurnEvent.ReasoningDelta({ text: item.summary, kind: "summary" }))
     }
   }
-  deltas.push({ type: "turn_complete", turn })
+  deltas.push(TurnEvent.TurnComplete({ turn }))
   return deltas
 }
 

@@ -7,7 +7,7 @@
  *
  * The recipe asks for a long answer, then triggers abort after 1 second.
  * Watch the partial text deltas arrive in the log before the stream
- * stops; no `turn_complete` is emitted because the turn never finished.
+ * stops; no `TurnComplete` is emitted because the turn never finished.
  *
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/mid-stream-abort/index.ts`
  */
@@ -75,9 +75,9 @@ const program = Effect.gen(function* () {
     conversation.pipe(Stream.interruptWhen(Deferred.await(abort))),
     (event) =>
       Match.value(event).pipe(
-        Match.discriminators("type")({
-          text_delta: ({ text }) => Effect.logInfo("delta", { text }),
-          turn_complete: ({ turn }) =>
+        Match.discriminators("_tag")({
+          TextDelta: ({ text }) => Effect.logInfo("delta", { text }),
+          TurnComplete: ({ turn }) =>
             Effect.logInfo("turn complete (not expected if abort fires first)", {
               stop_reason: turn.stop_reason,
               assistant: Turn.assistantTexts(turn).join(" "),

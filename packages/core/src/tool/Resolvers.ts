@@ -22,8 +22,7 @@ export type ToolCallDecision = Data.TaggedEnum<{
 
 export const ToolCallDecision = Data.taggedEnum<ToolCallDecision>()
 
-export const approve = (call: FunctionCall): ToolCallDecision =>
-  ToolCallDecision.Approved({ call })
+export const approve = (call: FunctionCall): ToolCallDecision => ToolCallDecision.Approved({ call })
 
 export const reject = (result: ToolResult): ToolCallDecision =>
   ToolCallDecision.Rejected({ result })

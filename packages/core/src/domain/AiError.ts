@@ -72,7 +72,7 @@ export class GenerationFailed extends Data.TaggedError("GenerationFailed")<{
 }> {}
 
 /**
- * The provider's delta stream ended without a terminal `turn_complete`.
+ * The provider's delta stream ended without a terminal `TurnComplete`.
  * Indicates a misbehaving provider or a connection that dropped mid-flight.
  * Non-terminal deltas seen so far have already been emitted downstream.
  */

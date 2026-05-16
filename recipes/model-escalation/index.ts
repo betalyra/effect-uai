@@ -10,13 +10,13 @@
  *
  * Shape:
  *   tier 0 (cheap)  : streamTurn with `tools: [escalate]` + system prompt.
- *                     On `turn_complete`:
+ *                     On `TurnComplete`:
  *                       - escalate call present → advance to tier 1, fresh
  *                         history `[userText(question)]`.
  *                       - otherwise → `stop`.
  *
  *   tier 1 (strong) : streamTurn with no tools. Terminal; on
- *                     `turn_complete` → `stop`.
+ *                     `TurnComplete` → `stop`.
  *
  * The strong tier does not see the cheap tier's chain-of-thought or the
  * `escalate` function call. It gets a fresh, clean history with the restated
@@ -205,12 +205,9 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
 // Handy for tests / one-shot runners that just want the final answer.
 // ---------------------------------------------------------------------------
 
-const isTurnEvent = (e: ConversationEvent): e is Turn.TurnEvent => "type" in e
-
 export const lastTurn = (events: ReadonlyArray<ConversationEvent>): Option.Option<Turn.Turn> =>
   pipe(
     events,
-    Arr.filter(isTurnEvent),
     Arr.findLast(Turn.isTurnComplete),
     Option.map((e) => e.turn),
   )

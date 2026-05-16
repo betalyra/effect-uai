@@ -100,7 +100,7 @@ before the first delta) that's a non-issue.
 For mid-stream failures with at-most-once delta forwarding, retry at
 the request boundary instead: use `LanguageModel.turn` (which returns
 `Effect<Turn>`) inside `Effect.retry({ schedule, while })`, then
-materialize the result as a synthetic `[turn_complete]` stream. You
+materialize the result as a synthetic `[TurnComplete]` stream. You
 lose live streaming inside an attempt, but you don't replay partial
 output.
 

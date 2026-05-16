@@ -89,7 +89,7 @@ Without `Stream.catch`, a single provider's `RateLimited` or
 `Unavailable` would terminate the merged stream and lose the answers
 the other two had already produced. The error wrapper turns failures
 into ordinary stream values, so the council always emits one event
-per member - either a `turn_complete` or an `error`.
+per member - either a `TurnComplete` or an `error`.
 
 If you want strict consensus (cancel everyone the moment one fails),
 drop the `Stream.catch` and let the failure propagate out of

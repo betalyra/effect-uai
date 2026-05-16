@@ -27,10 +27,10 @@ import * as Turn from "@effect-uai/core/Turn"
 const finalText = (turn: Turn.Turn): string => Turn.assistantText(turn)
 
 export const toSSE = (event: Turn.TurnEvent): Result.Result<SSE.Event, void> => {
-  if (event.type === "text_delta") {
+  if (event._tag === "TextDelta") {
     return Result.succeed({ event: "text", data: JSON.stringify({ text: event.text }) })
   }
-  if (event.type === "turn_complete") {
+  if (event._tag === "TurnComplete") {
     return Result.succeed({
       event: "done",
       data: JSON.stringify({
@@ -44,10 +44,10 @@ export const toSSE = (event: Turn.TurnEvent): Result.Result<SSE.Event, void> => 
 }
 
 export const toJSONL = (event: Turn.TurnEvent): Result.Result<string, void> => {
-  if (event.type === "text_delta") {
+  if (event._tag === "TextDelta") {
     return Result.succeed(JSON.stringify({ type: "text", text: event.text }) + "\n")
   }
-  if (event.type === "turn_complete") {
+  if (event._tag === "TurnComplete") {
     return Result.succeed(
       JSON.stringify({
         type: "done",

@@ -32,7 +32,7 @@ import {
   fromVerdictQueue,
 } from "@effect-uai/core/Resolvers"
 import * as Tool from "@effect-uai/core/Tool"
-import type { ToolEvent } from "@effect-uai/core/ToolEvent"
+import { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses } from "@effect-uai/responses/Responses"
@@ -87,7 +87,7 @@ const tools = Tool.toDescriptors(allTools)
 const decisionEvents = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
   decision._tag === "Approved"
     ? Toolkit.executeAll(allTools, [decision.call])
-    : Stream.succeed(Toolkit.outputEvent(decision.result))
+    : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
 // ---------------------------------------------------------------------------
 // Approval policy. Sensitivity is just a predicate - swap in anything:
@@ -157,7 +157,9 @@ export const httpConversation = (
                 const plan = fromApprovalMap(isSensitive, approvals)(calls)
                 return Stream.merge(
                   Toolkit.executeAll(allTools, plan.approved),
-                  Toolkit.outputEvents(plan.rejected),
+                  Stream.fromIterable(
+                    plan.rejected.map((result) => ToolEvent.Output({ result })),
+                  ),
                 ).pipe(
                   Toolkit.continueWith((results) =>
                     Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),

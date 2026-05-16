@@ -5,29 +5,28 @@
  * results must be returned to the model. Tool execution stays explicit at
  * the recipe boundary via `Toolkit.executeAll`.
  */
-import { Deferred, Effect, Queue, Scope, Stream } from "effect"
+import { Data, Deferred, Effect, Queue, Scope, Stream } from "effect"
 import type { FunctionCall } from "../domain/Items.js"
 import { type ToolResult, cancelled, denied } from "./Outcome.js"
-import type { ToolEvent } from "./ToolEvent.js"
+import { ToolEvent } from "./ToolEvent.js"
 
 export type ToolCallPlan = {
   readonly approved: ReadonlyArray<FunctionCall>
   readonly rejected: ReadonlyArray<ToolResult>
 }
 
-export type ToolCallDecision =
-  | { readonly _tag: "Approved"; readonly call: FunctionCall }
-  | { readonly _tag: "Rejected"; readonly result: ToolResult }
+export type ToolCallDecision = Data.TaggedEnum<{
+  Approved: { readonly call: FunctionCall }
+  Rejected: { readonly result: ToolResult }
+}>
 
-export const approve = (call: FunctionCall): ToolCallDecision => ({
-  _tag: "Approved",
-  call,
-})
+export const ToolCallDecision = Data.taggedEnum<ToolCallDecision>()
 
-export const reject = (result: ToolResult): ToolCallDecision => ({
-  _tag: "Rejected",
-  result,
-})
+export const approve = (call: FunctionCall): ToolCallDecision =>
+  ToolCallDecision.Approved({ call })
+
+export const reject = (result: ToolResult): ToolCallDecision =>
+  ToolCallDecision.Rejected({ result })
 
 export const splitToolCallDecisions = (decisions: ReadonlyArray<ToolCallDecision>): ToolCallPlan =>
   decisions.reduce<ToolCallPlan>(
@@ -38,12 +37,12 @@ export const splitToolCallDecisions = (decisions: ReadonlyArray<ToolCallDecision
     { approved: [], rejected: [] },
   )
 
-export const approvalRequested = (call: FunctionCall): ToolEvent => ({
-  _tag: "ApprovalRequested",
-  call_id: call.call_id,
-  tool: call.name,
-  arguments: call.arguments,
-})
+export const approvalRequested = (call: FunctionCall): ToolEvent =>
+  ToolEvent.ApprovalRequested({
+    call_id: call.call_id,
+    tool: call.name,
+    arguments: call.arguments,
+  })
 
 // ---------------------------------------------------------------------------
 // Verdict queue (WebSocket-style transport).

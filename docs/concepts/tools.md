@@ -265,7 +265,7 @@ which splits calls into approved and rejected up front:
 const plan = fromApprovalMap(isSensitive, approvals)(calls)
 const events = Stream.merge(
   Toolkit.executeAll(allTools, plan.approved),
-  Toolkit.outputEvents(plan.rejected),
+  Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
 )
 ```
 

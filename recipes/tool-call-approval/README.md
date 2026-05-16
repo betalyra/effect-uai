@@ -50,7 +50,7 @@ onTurnComplete<State, ToolEvent>((turn) =>
     return Stream.merge(
       // Approved calls run; denied/missing approvals still become outputs.
       Toolkit.executeAll(allTools, plan.approved),
-      Toolkit.outputEvents(plan.rejected),
+      Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
     ).pipe(
       Toolkit.continueWith((results) =>
         Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
@@ -63,9 +63,10 @@ onTurnComplete<State, ToolEvent>((turn) =>
 `approvals` is a `ReadonlyMap<string, ApprovalMapEntry>` keyed by
 `call_id`. Entries are either `{ decision: "approve" }` or
 `{ decision: "deny", reason?: string }`. A gated call without an entry
-is placed in `plan.rejected` as a `cancelled` result. `Toolkit.outputEvents`
-turns those results into `Output` events, and `continueWith` keeps them
-in history so the next provider request stays well-formed.
+is placed in `plan.rejected` as a `cancelled` result. The
+`Stream.fromIterable(...ToolEvent.Output(...))` line turns those
+results into `Output` events, and `continueWith` keeps them in history
+so the next provider request stays well-formed.
 
 ### Reconciling history before the next request
 
@@ -125,7 +126,7 @@ onTurnComplete<State, ToolEvent>((turn) =>
               Stream.flatMap((decision) =>
                 decision._tag === "Approved"
                   ? Toolkit.executeAll(allTools, [decision.call])
-                  : Stream.succeed(Toolkit.outputEvent(decision.result)),
+                  : Stream.succeed(ToolEvent.Output({ result: decision.result })),
               ),
             ),
           ),

@@ -22,8 +22,6 @@
  */
 import { Config, Effect, Layer, Logger, Match, References } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import * as AiError from "@effect-uai/core/AiError"
-import * as Embedding from "@effect-uai/core/Embedding"
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
 import * as Vector from "@effect-uai/core/Vector"
 import { layer as geminiEmbeddingLayer } from "@effect-uai/google/GeminiEmbedding"
@@ -45,21 +43,6 @@ const documents = [
 ]
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const asFloat32 = (e: Embedding.Embedding): Effect.Effect<Float32Array, AiError.AiError> =>
-  Embedding.isFloat32(e)
-    ? Effect.succeed(e.vector)
-    : Effect.fail(
-        new AiError.InvalidRequest({
-          provider: "embedding",
-          param: "encoding",
-          raw: `expected float32 embedding, got "${e._tag}"`,
-        }),
-      )
-
-// ---------------------------------------------------------------------------
 // Program - provider-agnostic. Picks the model name as a parameter; the
 // layer below decides which provider answers.
 // ---------------------------------------------------------------------------
@@ -67,13 +50,16 @@ const asFloat32 = (e: Embedding.Embedding): Effect.Effect<Float32Array, AiError.
 const program = (model: string) =>
   Effect.gen(function* () {
     // Query and documents are independent HTTP calls; run them in parallel.
+    // No `encoding` field → response is typed as `Float32Embedding`
+    // (`EmbedResponse<undefined>`); `.vector` is a `Float32Array` directly,
+    // no narrowing helper needed.
     const [queryResult, docsResult] = yield* Effect.all(
       [embed({ model, input: query }), embedMany({ model, inputs: documents })],
       { concurrency: "unbounded" },
     )
 
-    const qVec = yield* asFloat32(queryResult.embedding)
-    const docVecs = yield* Effect.forEach(docsResult.embeddings, asFloat32)
+    const qVec = queryResult.embedding.vector
+    const docVecs = docsResult.embeddings.map((e) => e.vector)
 
     const ranked = documents
       .map((doc, i) => ({ doc, score: Vector.cosine(qVec, docVecs[i]!) }))
@@ -91,18 +77,18 @@ const program = (model: string) =>
 
 type Provider = "gemini" | "openai" | "jina"
 
-const parseProvider = (argv: ReadonlyArray<string>): Provider => {
-  const flag =
-    argv.find((a) => a.startsWith("--provider="))?.slice("--provider=".length) ?? "gemini"
-  return Match.value(flag).pipe(
-    Match.when("gemini", () => "gemini" as const),
-    Match.when("openai", () => "openai" as const),
-    Match.when("jina", () => "jina" as const),
-    Match.orElse(() => {
-      throw new Error(`unknown provider: ${flag} (expected gemini|openai|jina)`)
+const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefined => {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : undefined
+}
+
+const parseProvider = (argv: ReadonlyArray<string>): Provider =>
+  Match.value(flagValue(argv, "--provider") ?? "gemini").pipe(
+    Match.whenOr("gemini", "openai", "jina", (p): Provider => p),
+    Match.orElse((raw) => {
+      throw new Error(`unknown provider: ${raw} (expected gemini|openai|jina)`)
     }),
   )
-}
 
 const modelFor = (provider: Provider): string =>
   Match.value(provider).pipe(

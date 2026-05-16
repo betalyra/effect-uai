@@ -41,12 +41,10 @@ const makeService = (
           const i = yield* Ref.getAndUpdate(tCursor, (n) => n + 1)
           const scripted = script.transcripts ?? []
           if (i >= scripted.length) {
-            return yield* Effect.fail(
-              new AiError.InvalidRequest({
-                provider: "mock",
-                raw: `MockTranscriber exhausted: ${scripted.length} transcripts scripted, but call ${i + 1} was made`,
-              }),
-            )
+            return yield* new AiError.InvalidRequest({
+              provider: "mock",
+              raw: `MockTranscriber exhausted: ${scripted.length} transcripts scripted, but call ${i + 1} was made`,
+            })
           }
           return scripted[i]!
         }),

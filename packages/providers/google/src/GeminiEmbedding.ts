@@ -262,7 +262,7 @@ const postJson = (
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
     if (response.status >= 400) {
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-      return yield* Effect.fail(httpStatusError(response.status, text))
+      return yield* httpStatusError(response.status, text)
     }
     return yield* response.json.pipe(Effect.mapError(transportFailure))
   })

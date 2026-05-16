@@ -187,11 +187,10 @@ const eventToError = Match.type<ProviderEvent>().pipe(
   Match.option,
 )
 
+const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
+
 const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
-  Effect.try({
-    try: () => JSON.parse(ev.data) as unknown,
-    catch: () => ev.data,
-  }).pipe(
+  parseJsonUnknown(ev.data).pipe(
     Effect.flatMap((parsed) =>
       decodeKnown(parsed).pipe(Effect.orElseSucceed(() => makeUnknown(parsed))),
     ),

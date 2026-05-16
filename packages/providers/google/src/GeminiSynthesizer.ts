@@ -135,7 +135,7 @@ const synthesizeImpl = (cfg: Config) => (request: GeminiSynthesizeRequest) =>
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
     if (response.status >= 400) {
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-      return yield* Effect.fail(httpStatusError(response.status, text))
+      return yield* httpStatusError(response.status, text)
     }
     const json = yield* response.json.pipe(Effect.mapError(transportFailure))
     const inline = yield* decodeWire(json).pipe(

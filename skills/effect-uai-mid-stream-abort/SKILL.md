@@ -65,7 +65,7 @@ const program = Effect.gen(function* () {
 
 ## State and partial completions
 
-The body's `onTurnComplete` callback never sees `turn_complete`
+The body's `onTurnComplete` callback never sees `TurnComplete`
 when abort fires — `state` stays at its pre-turn value. If you need
 the partial assistant text to survive abort:
 
@@ -73,7 +73,7 @@ the partial assistant text to survive abort:
   `Ref` outside the loop. The interrupted stream still emitted them,
   so they land in the buffer before the abort.
 - **Synthesize a partial `Turn`** in the consumer when the stream
-  ends without `turn_complete`. The deltas you saw are enough to
+  ends without `TurnComplete`. The deltas you saw are enough to
   construct an assistant message; treat it as if the turn had
   finished with `stop_reason: "stop"`.
 

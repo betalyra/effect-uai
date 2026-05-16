@@ -58,7 +58,7 @@ const haiku = Stream.runForEach(
     model: "gpt-5.4-mini",
   }),
   (event) =>
-    event.type === "text_delta" ? Effect.sync(() => process.stdout.write(event.text)) : Effect.void,
+    event._tag === "TextDelta" ? Effect.sync(() => process.stdout.write(event.text)) : Effect.void,
 )
 ```
 

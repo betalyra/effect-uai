@@ -85,9 +85,9 @@ describe("multi-model-fallback", () => {
     expect(primaryCalls).toBe(1)
     const calls = (await Effect.runPromise(recorder)).calls
     expect(calls).toHaveLength(1)
-    const completion = events.find((e) => e.type === "turn_complete")
+    const completion = events.find((e) => e._tag === "TurnComplete")
     expect(completion).toBeDefined()
-    if (completion?.type === "turn_complete") {
+    if (completion?._tag === "TurnComplete") {
       const text = Turn.assistantText(completion.turn)
       expect(text).toBe("from-secondary")
     }
@@ -111,7 +111,7 @@ describe("multi-model-fallback", () => {
     const events = await Effect.runPromise(Stream.runCollect(conversation))
 
     expect(primaryCalls).toBe(1)
-    expect(events.some((e) => e.type === "turn_complete")).toBe(true)
+    expect(events.some((e) => e._tag === "TurnComplete")).toBe(true)
   })
 
   it("propagates ContentFiltered without falling back", async () => {
@@ -129,7 +129,7 @@ describe("multi-model-fallback", () => {
           Effect.sync(() => {
             secondaryCalls++
             return Stream.fromIterable<Turn.TurnEvent>([
-              { type: "turn_complete", turn: finalTurn("should-not-run") },
+              Turn.TurnEvent.TurnComplete({ turn: finalTurn("should-not-run") }),
             ])
           }),
         ),
@@ -172,6 +172,6 @@ describe("multi-model-fallback", () => {
 
     expect(primaryCalls).toBe(1)
     expect(secondaryCalls).toBe(1)
-    expect(events.some((e) => e.type === "turn_complete")).toBe(false)
+    expect(events.some((e) => e._tag === "TurnComplete")).toBe(false)
   })
 })

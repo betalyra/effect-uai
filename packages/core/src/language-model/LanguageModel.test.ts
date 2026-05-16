@@ -2,7 +2,7 @@ import { Cause, Effect, Exit, Layer, Option, Ref, Schedule, Stream } from "effec
 import { describe, expect, it } from "vitest"
 import * as AiError from "../domain/AiError.js"
 import * as Items from "../domain/Items.js"
-import type { Turn, TurnEvent } from "../domain/Turn.js"
+import { type Turn, TurnEvent } from "../domain/Turn.js"
 import { LanguageModel, retry, turn } from "./LanguageModel.js"
 import * as MockProvider from "../testing/MockProvider.js"
 
@@ -13,7 +13,7 @@ const oneTextTurn = (text: string): Turn => ({
 })
 
 describe("LanguageModel.turn", () => {
-  it("returns the assembled Turn from the terminal turn_complete event", async () => {
+  it("returns the assembled Turn from the terminal TurnComplete event", async () => {
     const expected = oneTextTurn("hello world")
     const program = turn({ history: [Items.userText("hi")], model: "mock" })
 
@@ -24,10 +24,10 @@ describe("LanguageModel.turn", () => {
     expect(result).toEqual(expected)
   })
 
-  it("fails with IncompleteTurn when the stream ends without turn_complete", async () => {
-    // Custom service whose stream emits a single text_delta and then ends.
+  it("fails with IncompleteTurn when the stream ends without TurnComplete", async () => {
+    // Custom service whose stream emits a single TextDelta and then ends.
     const broken = Layer.succeed(LanguageModel, {
-      streamTurn: () => Stream.fromIterable<TurnEvent>([{ type: "text_delta", text: "partial" }]),
+      streamTurn: () => Stream.fromIterable<TurnEvent>([TurnEvent.TextDelta({ text: "partial" })]),
     })
 
     const program = turn({ history: [Items.userText("hi")], model: "mock" })
@@ -58,16 +58,16 @@ describe("LanguageModel.turn", () => {
     }
   })
 
-  it("returns the LAST turn_complete when the stream contains multiple (defensive)", async () => {
-    // A misbehaving provider might emit two turn_complete events; turn
+  it("returns the LAST TurnComplete when the stream contains multiple (defensive)", async () => {
+    // A misbehaving provider might emit two TurnComplete events; turn
     // should pick the last one (the most recent assembled Turn).
     const first = oneTextTurn("first")
     const second = oneTextTurn("second")
     const weird = Layer.succeed(LanguageModel, {
       streamTurn: () =>
         Stream.fromIterable<TurnEvent>([
-          { type: "turn_complete", turn: first },
-          { type: "turn_complete", turn: second },
+          TurnEvent.TurnComplete({ turn: first }),
+          TurnEvent.TurnComplete({ turn: second }),
         ]),
     })
 
@@ -79,16 +79,14 @@ describe("LanguageModel.turn", () => {
 })
 
 describe("LanguageModel.retry", () => {
-  const textDelta = (text: string): TurnEvent => ({ type: "text_delta", text })
+  const textDelta = (text: string): TurnEvent => TurnEvent.TextDelta({ text })
   const textTurn = (text: string): Turn => ({
     items: [Items.assistantText(text)],
     usage: { input_tokens: 0, output_tokens: 0 },
     stop_reason: "stop",
   })
-  const completeEvent = (text: string): TurnEvent => ({
-    type: "turn_complete",
-    turn: textTurn(text),
-  })
+  const completeEvent = (text: string): TurnEvent =>
+    TurnEvent.TurnComplete({ turn: textTurn(text) })
 
   // Builds a stream that emits a failure or success based on attempt counter.
   // Each call to the returned Effect produces a fresh attempt stream.
@@ -116,7 +114,7 @@ describe("LanguageModel.retry", () => {
 
     const { events, count } = await Effect.runPromise(program)
     expect(count).toBe(2)
-    expect(events.map((e) => e.type)).toEqual(["text_delta", "turn_complete"])
+    expect(events.map((e) => e._tag)).toEqual(["TextDelta", "TurnComplete"])
   })
 
   it("surfaces the underlying retryable failure when retries are exhausted", async () => {
@@ -167,6 +165,6 @@ describe("LanguageModel.retry", () => {
     })
 
     const events = await Effect.runPromise(program)
-    expect(events.map((e) => e.type)).toEqual(["text_delta", "text_delta", "turn_complete"])
+    expect(events.map((e) => e._tag)).toEqual(["TextDelta", "TextDelta", "TurnComplete"])
   })
 })

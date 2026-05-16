@@ -27,8 +27,8 @@ const program = Stream.runForEach(buildConversation(allTools, initial), (event) 
       Effect.logInfo("download progress", { call_id: e.call_id, data: e.data }),
     ),
     Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("download result", { result })),
-    Match.discriminators("type")({
-      turn_complete: ({ turn }) =>
+    Match.discriminators("_tag")({
+      TurnComplete: ({ turn }) =>
         Effect.logInfo("turn complete", {
           stop_reason: turn.stop_reason,
           usage: turn.usage,

@@ -60,9 +60,9 @@ const program = Effect.gen(function* () {
       Match.discriminatorsExhaustive("type")({
         delta: ({ member, delta }) =>
           Match.value(delta).pipe(
-            Match.discriminators("type")({
-              text_delta: ({ text }) => Effect.logDebug(`${member} | ${text}`),
-              turn_complete: ({ turn }) =>
+            Match.discriminators("_tag")({
+              TextDelta: ({ text }) => Effect.logDebug(`${member} | ${text}`),
+              TurnComplete: ({ turn }) =>
                 Effect.logInfo(`${member} verdict`, {
                   stop_reason: turn.stop_reason,
                   usage: turn.usage,

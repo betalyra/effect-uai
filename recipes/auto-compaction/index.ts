@@ -151,8 +151,8 @@ const conversation = pipe(
 
 const program = Stream.runForEach(conversation, (event) =>
   Match.value(event).pipe(
-    Match.discriminators("type")({
-      turn_complete: ({ turn }) =>
+    Match.discriminators("_tag")({
+      TurnComplete: ({ turn }) =>
         Effect.logInfo("turn complete", {
           stop_reason: turn.stop_reason,
           input_tokens: turn.usage.input_tokens,

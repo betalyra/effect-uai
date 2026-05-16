@@ -68,8 +68,8 @@ const flakyService = (
         const n = yield* Ref.getAndUpdate(callsRef, (x) => x + 1)
         if (n < failuresBefore) return Stream.fail(failure)
         return Stream.fromIterable<Turn.TurnEvent>([
-          { type: "text_delta", text: "ok" },
-          { type: "turn_complete", turn: finalTurn },
+          Turn.TurnEvent.TextDelta({ text: "ok" }),
+          Turn.TurnEvent.TurnComplete({ turn: finalTurn }),
         ])
       }),
     ),

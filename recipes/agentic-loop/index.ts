@@ -11,7 +11,7 @@
  *      immediately. Otherwise, drain the queue (block on the first
  *      message, then collect the burst).
  *   2. Stream the turn. Forward deltas downstream.
- *   3. On `turn_complete`: if the model called tools, execute them and
+ *   3. On `TurnComplete`: if the model called tools, execute them and
  *      append outputs (next iteration runs the model again, no queue
  *      check). If not, the next iteration will block on the queue.
  *

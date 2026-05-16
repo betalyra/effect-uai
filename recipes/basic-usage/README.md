@@ -77,7 +77,7 @@ errors around the turn stream. Want approval? Split tool calls before
 `executeAll`. Want compaction? Transform `state.history` before the next
 iteration.
 
-If the upstream ends without a `turn_complete`, the resulting stream
+If the upstream ends without a `TurnComplete`, the resulting stream
 fails with `AiError.IncompleteTurn` - catch it via `Stream.catchTag`
 if you want to recover.
 

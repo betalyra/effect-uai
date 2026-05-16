@@ -39,8 +39,8 @@ const program = Stream.runForEach(
   }),
   (event) =>
     Match.value(event).pipe(
-      Match.discriminators("type")({
-        text_delta: ({ text }) => Effect.sync(() => process.stdout.write(text)),
+      Match.discriminators("_tag")({
+        TextDelta: ({ text }) => Effect.sync(() => process.stdout.write(text)),
       }),
       Match.orElse(() => Effect.void),
     ),
@@ -69,13 +69,13 @@ process exits.
 
 - **The provider does not own your control flow.** You receive a normal
   Effect stream and decide how to consume it.
-- **Events are typed data.** `Match.discriminators("type")({ text_delta, ... })`
+- **Events are typed data.** `Match.discriminators("_tag")({ TextDelta, ... })`
   narrows the union; add cases when you want reasoning, usage, or
   tool-call events.
 - **Provider choice is runtime wiring.** `responsesLayer({ apiKey })`
   implements the generic `LanguageModel` service. The program shape stays
   the same when you provide Anthropic or Gemini instead.
-- **The final turn is still available.** The terminal `turn_complete` event
+- **The final turn is still available.** The terminal `TurnComplete` event
   carries the assembled `Turn`, which is what loops and structured-output
   validation build on.
 

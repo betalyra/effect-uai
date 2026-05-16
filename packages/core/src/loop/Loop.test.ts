@@ -1,7 +1,7 @@
 import { Deferred, Effect, Fiber, Latch, pipe, Ref, Stream, SubscriptionRef } from "effect"
 import { describe, expect, expectTypeOf, it } from "vitest"
 import * as AiError from "../domain/AiError.js"
-import type { TurnEvent } from "../domain/Turn.js"
+import { TurnEvent } from "../domain/Turn.js"
 import {
   type Event,
   loop,
@@ -164,11 +164,10 @@ describe("Loop.loop", () => {
   it("onTurnComplete: data-first form (Function.dual) works at runtime", async () => {
     // Pin both calling forms: deltas.pipe(onTurnComplete(handler)) and
     // onTurnComplete(deltas, handler). Same dispatch as loop's dual.
-    const turnComplete: TurnEvent = {
-      type: "turn_complete",
+    const turnComplete: TurnEvent = TurnEvent.TurnComplete({
       turn: { items: [], usage: { input_tokens: 0, output_tokens: 0 }, stop_reason: "stop" },
-    }
-    const textDelta: TurnEvent = { type: "text_delta", text: "hi" }
+    })
+    const textDelta: TurnEvent = TurnEvent.TextDelta({ text: "hi" })
     const deltas: Stream.Stream<TurnEvent> = Stream.fromIterable([textDelta, turnComplete])
 
     const dataFirst = onTurnComplete(deltas, () => Effect.sync(() => stop))

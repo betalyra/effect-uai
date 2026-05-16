@@ -207,10 +207,7 @@ describe("tool-call-approval", () => {
     })
 
     // Loop ran all three turns.
-    const turnCompletes = events.filter(
-      (e): e is Extract<Turn.TurnEvent, { type: "turn_complete" }> =>
-        "type" in e && e.type === "turn_complete",
-    )
+    const turnCompletes = events.filter(Turn.isTurnComplete)
     expect(turnCompletes).toHaveLength(3)
     expect(turnCompletes[2]!.turn.stop_reason).toBe("stop")
   })

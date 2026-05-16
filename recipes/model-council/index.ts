@@ -28,7 +28,7 @@ const logEvent = (event: CouncilEvent): Effect.Effect<void> =>
   Match.value(event).pipe(
     Match.discriminatorsExhaustive("type")({
       candidate_delta: ({ member, delta }) =>
-        delta.type === "text_delta" ? Effect.logDebug(`${member} | ${delta.text}`) : Effect.void,
+        delta._tag === "TextDelta" ? Effect.logDebug(`${member} | ${delta.text}`) : Effect.void,
       candidate_complete: ({ member, answer }) =>
         Effect.logInfo(`candidate complete: ${member}`, { answer }),
       score: ({ judge, subject, score, rationale }) =>

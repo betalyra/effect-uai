@@ -1,5 +1,5 @@
 import { Match, Schema } from "effect"
-import type { TurnEvent } from "@effect-uai/core/Turn"
+import { TurnEvent } from "@effect-uai/core/Turn"
 import { WireOutputItem, WireResponseCompleted, turnFromCompleted } from "./codec.js"
 
 // ---------------------------------------------------------------------------
@@ -148,40 +148,32 @@ export const eventToDeltas = (
       "response.output_item.added": ({ item }) => {
         if (item.type !== "function_call") return []
         if (item.id !== undefined) lookup.remember(item.id, item.call_id)
-        return [
-          {
-            type: "tool_call_start" as const,
-            call_id: item.call_id,
-            name: item.name,
-          },
-        ]
+        return [TurnEvent.ToolCallStart({ call_id: item.call_id, name: item.name })]
       },
-      "response.output_text.delta": ({ delta }) => [{ type: "text_delta" as const, text: delta }],
+      "response.output_text.delta": ({ delta }) => [TurnEvent.TextDelta({ text: delta })],
       "response.function_call_arguments.delta": ({ item_id, delta }) => {
         const call_id = lookup.resolve(item_id)
-        return call_id === undefined
-          ? []
-          : [{ type: "tool_call_args_delta" as const, call_id, delta }]
+        return call_id === undefined ? [] : [TurnEvent.ToolCallArgsDelta({ call_id, delta })]
       },
       "response.reasoning_text.delta": ({ delta }) => [
-        { type: "reasoning_delta" as const, text: delta, kind: "trace" as const },
+        TurnEvent.ReasoningDelta({ text: delta, kind: "trace" }),
       ],
       "response.reasoning_summary_text.delta": ({ delta }) => [
-        { type: "reasoning_delta" as const, text: delta, kind: "summary" as const },
+        TurnEvent.ReasoningDelta({ text: delta, kind: "summary" }),
       ],
-      "response.refusal.delta": ({ delta }) => [{ type: "refusal_delta" as const, text: delta }],
+      "response.refusal.delta": ({ delta }) => [TurnEvent.RefusalDelta({ text: delta })],
       // Terminal marker for the refusal stream; the deltas already covered
       // the text, so no canonical event is emitted here.
       "response.refusal.done": () => [],
       "response.completed": ({ response }) => [
-        { type: "turn_complete" as const, turn: turnFromCompleted(response) },
+        TurnEvent.TurnComplete({ turn: turnFromCompleted(response) }),
       ],
       // Incomplete = the model stopped early but produced a usable partial
       // turn (max_tokens, content_filter, max_tool_calls, refusal). Same
       // payload shape as `response.completed`; the stop_reason carries the
       // reason.
       "response.incomplete": ({ response }) => [
-        { type: "turn_complete" as const, turn: turnFromCompleted(response) },
+        TurnEvent.TurnComplete({ turn: turnFromCompleted(response) }),
       ],
       // Failed and error are surfaced separately as `AiError` by the stream
       // pipeline, not as canonical events.

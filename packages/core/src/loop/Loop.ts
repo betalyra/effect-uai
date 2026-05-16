@@ -193,7 +193,7 @@ export const nextAfterFold: {
 /**
  * Lift a provider's `Stream<TurnEvent>` into a loop body's `Stream<Event<TurnEvent | A, S>>`.
  * Each delta passes through as `value(delta)` (including the terminal
- * `turn_complete`, so the consumer sees turn boundaries naturally). Once
+ * `TurnComplete`, so the consumer sees turn boundaries naturally). Once
  * the terminal arrives, `then(turn)` runs and its returned stream of loop
  * events (typically tool outputs followed by `next(state)` or `stop`) is
  * concatenated.
@@ -201,7 +201,7 @@ export const nextAfterFold: {
  * Pre-pipe transforms (`Stream.tap` / `Stream.map` / `Stream.filter`) on
  * the raw delta stream cover anything an `emit`-style callback would do.
  *
- * If the upstream ends without a `turn_complete`, the resulting stream
+ * If the upstream ends without a `TurnComplete`, the resulting stream
  * fails with `AiError.IncompleteTurn`. Catch it via `Stream.catchTag` if
  * you want to recover.
  *

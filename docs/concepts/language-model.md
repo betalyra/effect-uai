@@ -55,7 +55,7 @@ turn(request) // Effect<Turn, AiError, LanguageModel>
 
 `streamTurn` is the streaming primitive; `turn` runs the stream to
 completion and pulls the assembled `Turn` from the terminal
-`turn_complete` event. Both yield `LanguageModel`, so they work under
+`TurnComplete` event. Both yield `LanguageModel`, so they work under
 any provider's layer.
 
 ## Retrying transient failures

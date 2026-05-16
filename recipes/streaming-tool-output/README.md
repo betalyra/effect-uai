@@ -28,7 +28,7 @@ collect events into a list.
 ## Pattern 1: sub-agent
 
 The outer model calls `ask_subagent`; an inner agent runs (its own
-conversation), streaming `text_delta`s back through the executor as
+conversation), streaming `TextDelta`s back through the executor as
 `ToolEvent.Intermediate`s. The user sees the sub-agent reasoning unfold
 live; the outer model receives the joined answer.
 
@@ -41,9 +41,7 @@ export const makeSubAgent = (runInner: (question: string) => Stream.Stream<Turn.
     run: ({ question }) => runInner(question),
     finalize: (events): SubAgentOutput => ({
       answer: events
-        .filter(
-          (e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> => e.type === "text_delta",
-        )
+        .filter((e): e is Extract<Turn.TurnEvent, { _tag: "TextDelta" }> => e._tag === "TextDelta")
         .map((e) => e.text)
         .join(""),
     }),
@@ -118,7 +116,7 @@ Intermediate { ...                              data: { type: "result",   bytes:
 Output       { result: ToolResult.Value(call_id, "download_artifact", { status: "completed", ... }) }
 ```
 
-For the sub-agent: one `Intermediate` per inner `text_delta` followed by
+For the sub-agent: one `Intermediate` per inner `TextDelta` followed by
 the final `Output` carrying the joined answer.
 
 ## Run it

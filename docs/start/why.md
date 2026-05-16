@@ -30,7 +30,7 @@ application. Think of it as shadcn, but for your AI application.
 
 - **One turn is one `Stream<TurnEvent>`.** No hidden state machine.
   You see every text delta, reasoning chunk, tool call, and the
-  terminal `turn_complete` event. Pattern-match the events you care
+  terminal `TurnComplete` event. Pattern-match the events you care
   about, ignore the rest.
 - **The loop is a function you call.** `loop` runs a turn, hands you
   the events, and lets _you_ decide whether to continue, stop, swap

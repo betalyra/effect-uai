@@ -18,7 +18,7 @@ Use this mental model when writing or recommending code:
    Add whatever else your app needs (turn index, budget, tenant id,
    pendingPrompts, ...). The library never inspects it.
 2. **One turn is a `Stream<TurnEvent>`.** Text deltas, reasoning, tool
-   calls, usage updates, and the terminal `turn_complete` (carrying the
+   calls, usage updates, and the terminal `TurnComplete` (carrying the
    assembled `Turn`) all flow through one typed stream.
 3. **The loop is a pull-based combinator.** `loop((state) => Stream<Event<A, S>>)`
    threads state across iterations. Each body returns a stream that
@@ -66,27 +66,27 @@ For speech and music, reach for the focused sub-skills:
 
 ## Core modules (cheat sheet)
 
-| Module                                  | What it gives you                                                                                                                                                                                                                          |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@effect-uai/core/Items`                | `Item` types (user/assistant messages, function calls, function call outputs, reasoning), helpers like `Items.userText`.                                                                                                                   |
+| Module                                  | What it gives you                                                                                                                                                                                                                                                                                   |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@effect-uai/core/Items`                | `Item` types (user/assistant messages, function calls, function call outputs, reasoning), helpers like `Items.userText`.                                                                                                                                                                            |
 | `@effect-uai/core/Turn`                 | `Turn`, `TurnEvent`, `Turn.functionCalls(turn)`, `Turn.assistantMessages(turn)`, `Turn.assistantText(turn)`, `Turn.assistantTexts(turn)`, `Turn.appendTurn(state, turn, items?)`, `Turn.toStructured(turn, format)`, `Turn.textDeltas`, `Turn.toSSE`, `Turn.toJSONL`, `Turn.asSSE`, `Turn.asJSONL`. |
-| `@effect-uai/core/LanguageModel`        | `LanguageModel` service tag, `streamTurn(request)`, `turn(request)`, `retry(schedule)`, `Retryable`, `CommonRequest` type.                                                                                                                                                                        |
-| `@effect-uai/core/Transcriber`          | `Transcriber` service tag, `transcribe(request)`, `streamTranscriptionFrom(request)`, sync file STT and streaming mic STT.                                                                                                                 |
-| `@effect-uai/core/SpeechSynthesizer`    | `SpeechSynthesizer` service tag, `synthesize`, `streamSynthesis`, `streamSynthesisFrom` for finished-text and incremental-text TTS.                                                                                                        |
-| `@effect-uai/core/MusicGenerator`       | `MusicGenerator` service tag, `generate`, `streamGeneration`, `streamGenerationFrom` for prompt-to-music workflows.                                                                                                                        |
-| `@effect-uai/core/Loop`                 | `loop`, `loopWithState`, `nextAfter`, `nextAfterFold`, `stop`, `stopWith`, `stopAfter`, `stopWithAfter`, `onTurnComplete`.                                                                                                                 |
-| `@effect-uai/core/Tool`                 | `Tool.make`, `Tool.streaming`, `Tool.fromEffectSchema`, `Tool.fromStandardSchema`, `Tool.toDescriptors`, `Tool.AnyKindTool`.                                                                                                               |
-| `@effect-uai/core/Toolkit`              | `Toolkit.make`, `Toolkit.executeAll`, `Toolkit.continueWith`.                                                                                                                                                                              |
-| `@effect-uai/core/Outcome`              | `ToolResult` (`Value` / `Failure`), `toFunctionCallOutput`, `denied`, `cancelled`, `executionError`.                                                                                                                                       |
-| `@effect-uai/core/ToolEvent`            | `ToolEvent` union (`ApprovalRequested` / `Intermediate` / `Output`), `isOutput`, `isIntermediate`, `isApprovalRequested`.                                                                                                                  |
-| `@effect-uai/core/Resolvers`            | `fromApprovalMap`, `fromVerdictQueue` for human-in-the-loop tool approval.                                                                                                                                                                 |
-| `@effect-uai/core/HistoryCheck`         | `findUnansweredCalls`, `cancelAllPending` for reconciling orphan tool calls between sessions.                                                                                                                                              |
-| `@effect-uai/core/StructuredFormat`     | `StructuredFormat.fromEffectSchema(schema)`, `StructuredFormat.parseJson`, `StructuredFormat.decodeJsonLines`.                                                                                                                             |
-| `@effect-uai/core/SSE`                  | Server-Sent Events codec: `SSE.fromBytes`, `SSE.toBytes`, `SSE.Event`.                                                                                                                                                                     |
-| `@effect-uai/core/JSONL`                | JSONL codec: `JSONL.fromBytes`, `JSONL.parse(schema)`, `JSONL.toBytes(schema)`.                                                                                                                                                            |
-| `@effect-uai/core/Lines`                | `Lines.lines` for re-framing a string stream as newline-terminated lines.                                                                                                                                                                  |
-| `effect/Match`                          | Use `Match.discriminators("type")({ text_delta, ... })` (or `discriminatorsExhaustive`) to narrow `TurnEvent` and other `type`-tagged unions; standard Effect `Match` API.                                                                 |
-| `@effect-uai/core/testing/MockProvider` | `MockProvider.layer(scriptedTurns)`, `MockProvider.layerWithRecorder`, `MockProvider.make` — for tests.                                                                                                                                    |
+| `@effect-uai/core/LanguageModel`        | `LanguageModel` service tag, `streamTurn(request)`, `turn(request)`, `retry(schedule)`, `Retryable`, `CommonRequest` type.                                                                                                                                                                          |
+| `@effect-uai/core/Transcriber`          | `Transcriber` service tag, `transcribe(request)`, `streamTranscriptionFrom(request)`, sync file STT and streaming mic STT.                                                                                                                                                                          |
+| `@effect-uai/core/SpeechSynthesizer`    | `SpeechSynthesizer` service tag, `synthesize`, `streamSynthesis`, `streamSynthesisFrom` for finished-text and incremental-text TTS.                                                                                                                                                                 |
+| `@effect-uai/core/MusicGenerator`       | `MusicGenerator` service tag, `generate`, `streamGeneration`, `streamGenerationFrom` for prompt-to-music workflows.                                                                                                                                                                                 |
+| `@effect-uai/core/Loop`                 | `loop`, `loopWithState`, `nextAfter`, `nextAfterFold`, `stop`, `stopWith`, `stopAfter`, `stopWithAfter`, `onTurnComplete`.                                                                                                                                                                          |
+| `@effect-uai/core/Tool`                 | `Tool.make`, `Tool.streaming`, `Tool.fromEffectSchema`, `Tool.fromStandardSchema`, `Tool.toDescriptors`, `Tool.AnyKindTool`.                                                                                                                                                                        |
+| `@effect-uai/core/Toolkit`              | `Toolkit.make`, `Toolkit.executeAll`, `Toolkit.continueWith`.                                                                                                                                                                                                                                       |
+| `@effect-uai/core/Outcome`              | `ToolResult` (`Value` / `Failure`), `toFunctionCallOutput`, `denied`, `cancelled`, `executionError`.                                                                                                                                                                                                |
+| `@effect-uai/core/ToolEvent`            | `ToolEvent` union (`ApprovalRequested` / `Intermediate` / `Output`), `isOutput`, `isIntermediate`, `isApprovalRequested`.                                                                                                                                                                           |
+| `@effect-uai/core/Resolvers`            | `fromApprovalMap`, `fromVerdictQueue` for human-in-the-loop tool approval.                                                                                                                                                                                                                          |
+| `@effect-uai/core/HistoryCheck`         | `findUnansweredCalls`, `cancelAllPending` for reconciling orphan tool calls between sessions.                                                                                                                                                                                                       |
+| `@effect-uai/core/StructuredFormat`     | `StructuredFormat.fromEffectSchema(schema)`, `StructuredFormat.parseJson`, `StructuredFormat.decodeJsonLines`.                                                                                                                                                                                      |
+| `@effect-uai/core/SSE`                  | Server-Sent Events codec: `SSE.fromBytes`, `SSE.toBytes`, `SSE.Event`.                                                                                                                                                                                                                              |
+| `@effect-uai/core/JSONL`                | JSONL codec: `JSONL.fromBytes`, `JSONL.parse(schema)`, `JSONL.toBytes(schema)`.                                                                                                                                                                                                                     |
+| `@effect-uai/core/Lines`                | `Lines.lines` for re-framing a string stream as newline-terminated lines.                                                                                                                                                                                                                           |
+| `effect/Match`                          | Use `Match.discriminators("_tag")({ TextDelta, ... })` for `TurnEvent`/`ToolEvent` (both `_tag`-tagged via `Data.taggedEnum`); `discriminators("type")` for domain `Item` types and provider wire shapes.                                                                                           |
+| `@effect-uai/core/testing/MockProvider` | `MockProvider.layer(scriptedTurns)`, `MockProvider.layerWithRecorder`, `MockProvider.make` — for tests.                                                                                                                                                                                             |
 
 ## Provider wiring
 
@@ -134,15 +134,15 @@ const program = Stream.runForEach(
   }),
   (event) =>
     Match.value(event).pipe(
-      Match.discriminators("type")({
-        text_delta: ({ text }) => Effect.sync(() => process.stdout.write(text)),
+      Match.discriminators("_tag")({
+        TextDelta: ({ text }) => Effect.sync(() => process.stdout.write(text)),
       }),
       Match.orElse(() => Effect.void),
     ),
 )
 ```
 
-The terminal `turn_complete` event carries the assembled `Turn`, which
+The terminal `TurnComplete` event carries the assembled `Turn`, which
 is what tool-using loops, structured-output validation, and history
 appends are built on.
 
@@ -272,7 +272,7 @@ mechanism.
 ## Common gotchas
 
 1. **Stream events vs. Turn items.** `TurnEvent` is the streaming
-   delta union; `Turn.items` is the assembled list on `turn_complete`.
+   delta union; `Turn.items` is the assembled list on `TurnComplete`.
    Function calls live on `Turn.items`, not as standalone events. Use
    `Turn.functionCalls(turn)` once the turn completes.
 2. **Function call outputs must be appended.** Every `function_call` the

@@ -132,9 +132,9 @@ const renderEvent = (event: ConversationEvent): Effect.Effect<void> =>
       write(tier === "cheap" ? `\n[cheap: ${model}] ` : `\n[strong: ${model}] `),
     ),
     Match.when({ _tag: "escalated" }, ({ reason }) => write(`\n  ↳ escalating: ${reason}\n`)),
-    Match.discriminators("type")({
-      text_delta: ({ text }) => write(text),
-      turn_complete: () => Effect.void,
+    Match.discriminators("_tag")({
+      TextDelta: ({ text }) => write(text),
+      TurnComplete: () => Effect.void,
     }),
     Match.orElse(() => Effect.void),
   )

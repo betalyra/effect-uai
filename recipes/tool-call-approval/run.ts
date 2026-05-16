@@ -35,8 +35,8 @@ const program = Effect.gen(function* () {
         }),
       ),
       Match.when({ _tag: "Intermediate" }, () => Effect.void),
-      Match.discriminators("type")({
-        turn_complete: ({ turn }) =>
+      Match.discriminators("_tag")({
+        TurnComplete: ({ turn }) =>
           Effect.logInfo("turn complete", { stop_reason: turn.stop_reason }),
       }),
       Match.orElse(() => Effect.void),

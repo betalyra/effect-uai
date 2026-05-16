@@ -57,7 +57,7 @@ const askSubagent = Tool.streaming({
   run: ({ question }) => runInner(question), // Stream<TurnEvent>
   finalize: (events): SubAgentOutput => ({
     answer: events
-      .filter((e) => e.type === "text_delta")
+      .filter((e) => e._tag === "TextDelta")
       .map((e) => e.text)
       .join(""),
   }),

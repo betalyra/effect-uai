@@ -117,22 +117,22 @@ pnpm tsx recipes/model-escalation/run-node.ts --provider anthropic  # ANTHROPIC_
 
 Default is `--provider openai`. Cheap / strong pairs:
 
-| Provider  | Cheap              | Strong                   |
-| --------- | ------------------ | ------------------------ |
-| openai    | `gpt-5.4-mini`     | `gpt-5.4`                |
-| google    | `gemini-2.5-flash` | `gemini-3-flash-preview` |
-| anthropic | `claude-haiku-4-5` | `claude-sonnet-4-6`      |
+| Provider  | Cheap                    | Strong                   |
+| --------- | ------------------------ | ------------------------ |
+| openai    | `gpt-5.4-mini`           | `gpt-5.4`                |
+| google    | `gemini-3-flash-preview` | `gemini-3.1-pro-preview` |
+| anthropic | `claude-haiku-4-5`       | `claude-sonnet-4-6`      |
 
 Try one easy question and one hard one in the same session:
 
 ```
 you> What's the capital of Portugal?
-[cheap: gemini-2.5-flash] Lisbon.
+[cheap: gemini-3-flash-preview] Lisbon.
 
 you> Why does a quantum harmonic oscillator have non-zero ground-state energy?
-[cheap: gemini-2.5-flash]
+[cheap: gemini-3-flash-preview]
   ↳ escalating (advanced quantum mechanics requires deeper expertise)
-[strong: gemini-3-flash-preview] Because of the Heisenberg uncertainty principle...
+[strong: gemini-3.1-pro-preview] Because of the Heisenberg uncertainty principle...
 ```
 
 The full source lives next to this README at

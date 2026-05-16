@@ -51,6 +51,7 @@ export default defineConfig({
             { label: "Basic usage", slug: "recipes/basic-usage" },
             { label: "Structured output", slug: "recipes/structured-output" },
             { label: "Basic embedding", slug: "recipes/basic-embedding" },
+            { label: "Recipes", slug: "recipes" },
             { label: "Skills", slug: "skills" },
           ],
         },
@@ -76,7 +77,6 @@ export default defineConfig({
               label: "Recipes",
               collapsed: true,
               items: [
-                { label: "Overview", slug: "recipes" },
                 { label: "Tool call approval", slug: "recipes/tool-call-approval" },
                 { label: "Streaming tool output", slug: "recipes/streaming-tool-output" },
                 {

@@ -36,6 +36,26 @@ export const fromEffectSchema = <S extends Schema.Codec<any, any, never, any>>(
   Schema.toStandardJSONSchemaV1(Schema.toStandardSchemaV1(schema)) as unknown as S &
     ToolInputSchema<S["Type"]>
 
+/**
+ * Use any schema library that implements both Standard Schema (validation)
+ * and Standard JSON Schema (JSON Schema generation) as a `Tool.inputSchema`.
+ * Covers Zod 4.2+, Valibot 1.2+, and ArkType 2.1.28+ in one helper.
+ *
+ * Effect Schema doesn't implement Standard JSON Schema natively — use
+ * `fromEffectSchema` for those.
+ *
+ * The intersection constraint catches missing interfaces at compile time:
+ * a Zod v3 schema (no Standard JSON Schema) produces a precise type error
+ * pointing at the missing interface rather than a runtime surprise. The
+ * helper itself is a thin type-narrowing identity — schemas that satisfy
+ * both standards already structurally satisfy `ToolInputSchema`; the
+ * helper makes the input type inference explicit at the call site.
+ */
+export const fromStandardSchema = <S extends StandardSchemaV1 & StandardJSONSchemaV1>(
+  schema: S,
+): S & ToolInputSchema<StandardSchemaV1.InferOutput<S>> =>
+  schema as S & ToolInputSchema<StandardSchemaV1.InferOutput<S>>
+
 export type Tool<Name extends string, Input, Output, R = never> = {
   readonly name: Name
   readonly description: string

@@ -154,39 +154,44 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
           })
           .pipe(
             onTurnComplete<State, EscalationEvent>((turn) =>
-              Effect.sync(() => {
-                if (current.tier === 1) return stop
-
-                const call = Turn.functionCalls(turn).find((c) => c.name === "escalate")
-                if (call === undefined) return stop
-
-                return Result.match(decodeEscalateArgs(call.arguments), {
-                  onFailure: (issue) =>
-                    Stream.unwrap(
-                      Effect.logError("escalate call had invalid arguments", {
-                        call_id: call.call_id,
-                        arguments: call.arguments,
-                        issue: String(issue),
-                      }).pipe(Effect.as(stop)),
-                    ),
-                  onSuccess: (args) =>
-                    nextAfter(
-                      Stream.succeed<EscalationEvent>({
-                        _tag: "escalated",
-                        reason: args.reason,
-                        question: args.question,
+              Effect.sync(() =>
+                current.tier === 1
+                  ? stop
+                  : pipe(
+                      Turn.functionCalls(turn),
+                      Arr.findFirst((c) => c.name === "escalate"),
+                      Option.match({
+                        onNone: () => stop,
+                        onSome: (call) =>
+                          Result.match(decodeEscalateArgs(call.arguments), {
+                            onFailure: (issue) =>
+                              Stream.unwrap(
+                                Effect.logError("escalate call had invalid arguments", {
+                                  call_id: call.call_id,
+                                  arguments: call.arguments,
+                                  issue: String(issue),
+                                }).pipe(Effect.as(stop)),
+                              ),
+                            onSuccess: (args) =>
+                              nextAfter(
+                                Stream.succeed<EscalationEvent>({
+                                  _tag: "escalated",
+                                  reason: args.reason,
+                                  question: args.question,
+                                }),
+                                // Strong tier sees the same accumulated history
+                                // the cheap tier saw - no system prompt, no
+                                // cheap-tier turn, no escalate function call.
+                                {
+                                  history: current.history,
+                                  tier: 1,
+                                  escalation: args,
+                                } satisfies State,
+                              ),
+                          }),
                       }),
-                      // Hand the strong tier the same accumulated history
-                      // the cheap tier saw (no system prompt, no escalate
-                      // function call). The cheap-tier turn is discarded.
-                      {
-                        history: current.history,
-                        tier: 1,
-                        escalation: args,
-                      } satisfies State,
                     ),
-                })
-              }),
+              ),
             ),
           )
 

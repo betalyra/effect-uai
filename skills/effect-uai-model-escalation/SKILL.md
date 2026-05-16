@@ -58,10 +58,11 @@ const deltas = tier.service
         return Result.match(decodeEscalateArgs(call.arguments), {
           onFailure: () => stop,
           onSuccess: (args) =>
-            nextAfter(
-              Stream.succeed<EscalationEvent>({ _tag: "escalated", ...args }),
-              { history: current.history, tier: 1, escalation: args },
-            ),
+            nextAfter(Stream.succeed<EscalationEvent>({ _tag: "escalated", ...args }), {
+              history: current.history,
+              tier: 1,
+              escalation: args,
+            }),
         })
       }),
     ),

@@ -42,11 +42,11 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Multi-model
 
-| Recipe                                               | One-line                                                                                         |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Recipe                                               | One-line                                                                                        |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | [Model escalation](/recipes/model-escalation/)       | Start on a fast cheap model; let it escalate hard questions to a stronger tier via a tool call. |
-| [Multi-model compare](/recipes/multi-model-compare/) | Fan one prompt out to multiple providers; per-member errors stay isolated.                       |
-| [Model council](/recipes/model-council/)             | Build a stream graph where models answer, judge each other, and emit a winner.                   |
+| [Multi-model compare](/recipes/multi-model-compare/) | Fan one prompt out to multiple providers; per-member errors stay isolated.                      |
+| [Model council](/recipes/model-council/)             | Build a stream graph where models answer, judge each other, and emit a winner.                  |
 
 ## Speech
 

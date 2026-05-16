@@ -36,3 +36,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_OTP: ${{ inputs.otp }}
+
+      - name: Push tags
+        run: git push --follow-tags

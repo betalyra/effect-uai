@@ -1,5 +1,69 @@
 # @effect-uai/core
 
+## 0.5.0
+
+### Minor Changes
+
+- `TurnEvent` migrated to `Data.TaggedEnum`. Discriminator renamed from
+  `type` → `_tag`; variants PascalCased (`text_delta` → `TextDelta`,
+  `reasoning_delta` → `ReasoningDelta`, `refusal_delta` → `RefusalDelta`,
+  `tool_call_start` → `ToolCallStart`, `tool_call_args_delta` →
+  `ToolCallArgsDelta`, `usage_update` → `UsageUpdate`, `turn_complete` →
+  `TurnComplete`). Use `TurnEvent.TextDelta({...})` constructors plus
+  `TurnEvent.$is` / `TurnEvent.$match`. `Turn.isTurnComplete` unchanged.
+- `ToolCallDecision` migrated to `Data.TaggedEnum`. `Resolvers.approve` /
+  `reject` helpers unchanged; can also construct via
+  `ToolCallDecision.Approved({...})` / `Rejected({...})`.
+- Removed `Toolkit.outputEvent(result)` / `Toolkit.outputEvents(results)`.
+  Use `ToolEvent.Output({ result })` directly, or
+  `Stream.fromIterable(results.map((result) => ToolEvent.Output({ result })))`
+  for the batch form.
+- Renamed `Encoding` → `EmbedEncoding` on `EmbeddingModel`. Avoids the clash
+  with Effect's own `Encoding` module that bit everyone who imported both.
+- `EmbedResponse` / `EmbedManyResponse` are now generic over the request's
+  `encoding` field via the new `EmbeddingFor<E>` helper.
+  `embed({ encoding: "float32" })` returns `EmbedResponse<"float32">` with
+  `embedding: Float32Embedding` — no runtime narrowing for the common case.
+  The bare `EmbedResponse` name still works (defaults to `Float32Embedding`).
+- New `Loop.stopWith(state)` / `Loop.stopWithAfter(stream, state)` — terminal
+  event that ends the loop AND carries final state. `loopFrom` threads it to
+  the next input; `loopWithState` writes it to the `SubscriptionRef` before
+  ending. Plain `loop` treats it like `stop`. The `Event.StopWith` variant
+  joins `Value` / `Next` / `Stop`.
+- New `Loop.loopFrom(input, initial, body)` — input-driven sibling of `loop`.
+  For each item pulled from `input`, runs an inner seed-driven `loop` with
+  `(s) => body(s, item)`. State threads across input items via `next` /
+  `stopWith`. Outer termination = the input stream ending. The natural shape
+  for "stream of documents, multi-turn conversation per document."
+- `Loop.nextAfter` / `Loop.nextAfterFold` / `Loop.onTurnComplete` are now
+  `Function.dual` — data-first `nextAfter(stream, state)` and data-last
+  `stream.pipe(nextAfter(state))` both work.
+- New `LanguageModel.turn(request)` — drains `streamTurn` and returns the
+  assembled `Turn` from the terminal `TurnComplete` event. Fails with
+  `IncompleteTurn` if absent. Derived; providers get it for free.
+- New `LanguageModel.retry(schedule)` + `LanguageModel.Retryable` — stream
+  combinator that retries only the retryable subset of `AiError`
+  (`RateLimited` / `Unavailable` / `Timeout`); other failures bypass the
+  schedule and propagate unchanged.
+- New `Turn.assistantText(turn)` / `Turn.assistantTexts(turn)` — concatenated
+  string / per-message array of `output_text` payloads. The common shape for
+  summarizers, classifiers, and structured-output backstops.
+- New `Tool.fromStandardSchema(schema)` — adapt any schema library that
+  implements both Standard Schema and Standard JSON Schema (Zod 4.2+,
+  Valibot 1.2+, ArkType 2.1.28+) as a tool input schema. Effect Schema users
+  keep `fromEffectSchema`.
+- New `StructuredFormat.decodeJsonLinesRecoverable(format)` — variant of
+  `decodeJsonLines` that yields `Result<A, JsonParseError | StructuredDecodeError>`
+  per line instead of failing the stream on the first bad frame. Use for
+  log-and-continue or partial-recovery flows.
+- `MockProvider` refactored to a functional pipeline. `layer`,
+  `layerWithRecorder`, and `make` now share one `buildService` and route
+  scripted turns through declarative `Match.discriminators` + `flatMap`.
+  Public API unchanged.
+- Internal: every `JSON.parse` + `Effect.try` site swapped for
+  `Schema.decodeUnknownEffect(Schema.fromJsonString(...))`. No behavior
+  change for callers.
+
 ## 0.4.0
 
 ### Minor Changes

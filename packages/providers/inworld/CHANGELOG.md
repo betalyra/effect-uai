@@ -1,5 +1,12 @@
 # @effect-uai/inworld
 
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies for `@effect-uai/core@0.5.0` — see core changelog.
+  No source changes; speech-only package.
+
 ## 0.4.0
 
 ### Minor Changes

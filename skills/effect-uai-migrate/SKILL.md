@@ -199,6 +199,21 @@ Effect Schema users keep `fromEffectSchema`.
 
 ---
 
+## 0.3 → 0.4
+
+**No rewrites needed.** 0.4 is purely additive: new `Transcriber` /
+`SpeechSynthesizer` / `MusicGenerator` services, shared `Audio` /
+`Transcript` / `Music` domain, provider-fit markers (`SttStreaming`,
+`TtsIncrementalText`), and three new provider packages
+(`@effect-uai/openai`, `@effect-uai/elevenlabs`, `@effect-uai/inworld`).
+Bump dependencies, run typecheck, done.
+
+If the user sees a 0.4-version compile error that looks like a rename
+(`streamUntilComplete`, `nextStateFrom`, `matchType`, etc.), they're
+actually on 0.2 or older — apply the **0.2 → 0.3** rules below.
+
+---
+
 ## 0.2 → 0.3
 
 ### Required rewrites
@@ -339,6 +354,7 @@ ToolResult.$match({ Value: ..., Failure: ... })(result) // matcher
 ## See also
 
 - [Migration guide for 0.5](https://effect-uai.betalyra.com/migrations/v0-5/)
+- [Migration guide for 0.4](https://effect-uai.betalyra.com/migrations/v0-4/)
 - [Migration guide for 0.3](https://effect-uai.betalyra.com/migrations/v0-3/)
 - `packages/core/CHANGELOG.md` for the per-PR record
 - Feature skills under `skills/` for new-code patterns

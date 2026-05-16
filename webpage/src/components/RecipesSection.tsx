@@ -1,4 +1,4 @@
-import type { IconType } from "react-icons"
+import type { IconType } from "react-icons";
 import {
   PiArrowRight,
   PiArrowsClockwise,
@@ -15,16 +15,22 @@ import {
   PiPulse,
   PiShieldCheck,
   PiStairs,
-} from "react-icons/pi"
-import ReactMarkdown, { type Components } from "react-markdown"
+} from "react-icons/pi";
+import ReactMarkdown, { type Components } from "react-markdown";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 interface Recipe {
-  readonly title: string
-  readonly description: string
-  readonly href: string
-  readonly Icon: IconType
+  readonly title: string;
+  readonly description: string;
+  readonly href: string;
+  readonly Icon: IconType;
 }
 
 const recipes: ReadonlyArray<Recipe> = [
@@ -59,7 +65,7 @@ const recipes: ReadonlyArray<Recipe> = [
   {
     title: "Model escalation",
     description:
-      "**Pay only when needed.** The cheap model handles easy questions and escalates hard ones via a tool call.",
+      "**Pay only when needed.** The cheap model handles easy questions and escalates hard ones to a more capable model.",
     href: "/recipes/model-escalation/",
     Icon: PiStairs,
   },
@@ -114,7 +120,8 @@ const recipes: ReadonlyArray<Recipe> = [
   },
   {
     title: "Model council",
-    description: "**Get the best answer.** Models judge each other, the winner streams back.",
+    description:
+      "**Get the best answer.** Models judge each other, the winner streams back.",
     href: "/recipes/model-council/",
     Icon: PiGavel,
   },
@@ -125,22 +132,37 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/voice-loop/",
     Icon: PiMicrophone,
   },
-]
+];
 
 const markdownComponents: Components = {
   p: ({ children }) => <>{children}</>,
-  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-  code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>,
-}
+  strong: ({ children }) => (
+    <strong className="font-semibold text-foreground">{children}</strong>
+  ),
+  code: ({ children }) => (
+    <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>
+  ),
+};
 
 export default function RecipesSection() {
   return (
     <section className="not-content border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12">
-      <div style={{ marginBottom: "2.5rem" }} className="flex items-baseline justify-between gap-4">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
+      <div
+        style={{ marginBottom: "2.5rem" }}
+        className="flex items-baseline justify-between gap-4"
+      >
+        <div className="flex flex-col gap-1.5">
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">
+            Recipes
+          </h2>
+          <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
+            Each recipe shows how to solve a common agent problem with the
+            primitives.
+          </p>
+        </div>
         <a
           href="/recipes/"
-          className="group inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-(--color-mark)"
+          className="group inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-(--color-mark)"
         >
           All recipes
           <PiArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
@@ -161,7 +183,9 @@ export default function RecipesSection() {
                   </CardTitle>
                 </div>
                 <CardDescription className="text-sm leading-relaxed">
-                  <ReactMarkdown components={markdownComponents}>{description}</ReactMarkdown>
+                  <ReactMarkdown components={markdownComponents}>
+                    {description}
+                  </ReactMarkdown>
                 </CardDescription>
               </CardHeader>
               <CardContent className="mt-auto flex items-center gap-1.5 px-7 pt-1 text-sm text-muted-foreground transition-colors group-hover:text-(--color-mark)">
@@ -173,5 +197,5 @@ export default function RecipesSection() {
         ))}
       </div>
     </section>
-  )
+  );
 }

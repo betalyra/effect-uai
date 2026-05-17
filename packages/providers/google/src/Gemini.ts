@@ -5,10 +5,11 @@ import {
   type CommonRequest,
   LanguageModel,
   type LanguageModelService,
+  turnFromStream,
 } from "@effect-uai/core/LanguageModel"
 import { JsonParseError } from "@effect-uai/core/JSONL"
 import * as SSE from "@effect-uai/core/SSE"
-import { TurnEvent } from "@effect-uai/core/Turn"
+import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
 import {
   type ChunkPart,
   type GenerationConfig,
@@ -62,6 +63,13 @@ export type GeminiService = {
    * `streamNative |> toCanonical`.
    */
   readonly streamTurn: (request: GeminiRequest) => Stream.Stream<TurnEvent, AiError.AiError>
+  /**
+   * Drain a single turn and return the assembled `Turn`. Derived from
+   * `streamTurn` — Gemini's non-streaming `generateContent` could
+   * back this directly, but routing through streaming keeps a single
+   * accumulator path.
+   */
+  readonly turn: (request: GeminiRequest) => Effect.Effect<Turn, AiError.AiError>
   /**
    * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
    * Threads a fresh `Accumulator` so chunk-level text/usage merging happens
@@ -267,9 +275,11 @@ export const make = (cfg: Config): Effect.Effect<GeminiService, never, HttpClien
   Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
     const streamNative: GeminiService["streamNative"] = (request) =>
       buildNativeStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
+    const streamTurn: GeminiService["streamTurn"] = (request) => toCanonical(streamNative(request))
     return {
       streamNative,
-      streamTurn: (request) => toCanonical(streamNative(request)),
+      streamTurn,
+      turn: turnFromStream(streamTurn),
       toCanonical,
     }
   })
@@ -291,6 +301,7 @@ export const layer = (
       make(cfg),
       (s): LanguageModelService => ({
         streamTurn: (request) => s.streamTurn(request as GeminiRequest),
+        turn: (request) => s.turn(request as GeminiRequest),
       }),
     ),
   )

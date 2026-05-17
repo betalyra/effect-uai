@@ -7,7 +7,11 @@ import { Data, Effect, Ref, Schedule, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
-import { LanguageModel, type LanguageModelService } from "@effect-uai/core/LanguageModel"
+import {
+  LanguageModel,
+  type LanguageModelService,
+  turnFromStream,
+} from "@effect-uai/core/LanguageModel"
 import * as Turn from "@effect-uai/core/Turn"
 
 // Local copies of the recipe's internals so the test can build the same
@@ -61,8 +65,8 @@ const flakyService = (
   failuresBefore: number,
   failure: AiError.AiError,
   callsRef: Ref.Ref<number>,
-): LanguageModelService => ({
-  streamTurn: () =>
+): LanguageModelService => {
+  const streamTurn: LanguageModelService["streamTurn"] = () =>
     Stream.unwrap(
       Effect.gen(function* () {
         const n = yield* Ref.getAndUpdate(callsRef, (x) => x + 1)
@@ -72,8 +76,9 @@ const flakyService = (
           Turn.TurnEvent.TurnComplete({ turn: finalTurn }),
         ])
       }),
-    ),
-})
+    )
+  return { streamTurn, turn: turnFromStream(streamTurn) }
+}
 
 const runWith = (service: LanguageModelService) =>
   Effect.runPromiseExit(

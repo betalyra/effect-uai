@@ -2,7 +2,7 @@ import { Effect, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
-import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
+import { type LanguageModelService, turnFromStream } from "@effect-uai/core/LanguageModel"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Turn from "@effect-uai/core/Turn"
 import { type CouncilEvent, council } from "./council.js"
@@ -20,9 +20,10 @@ describe("multi-model-compare", () => {
     ],
   })
 
-  const failingService = (error: AiError.AiError): LanguageModelService => ({
-    streamTurn: () => Stream.fail(error),
-  })
+  const failingService = (error: AiError.AiError): LanguageModelService => {
+    const streamTurn: LanguageModelService["streamTurn"] = () => Stream.fail(error)
+    return { streamTurn, turn: turnFromStream(streamTurn) }
+  }
 
   const history: ReadonlyArray<Items.Item> = [Items.userText("ping")]
 

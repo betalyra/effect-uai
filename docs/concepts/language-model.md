@@ -60,23 +60,32 @@ any provider's layer.
 
 ## Retrying transient failures
 
-Provider streams fail mid-flight: connection drops, 429s, transient
-5xxs. `LanguageModel.retry(schedule)` wraps any `Stream<TurnEvent>`
-and re-subscribes from scratch on retryable `AiError`s (rate limited,
-timeout, unavailable). Non-retryable failures (auth, invalid request,
-context length) pass straight through.
+Provider calls fail mid-flight: connection drops, 429s, transient
+5xxs. `Retry.stream(schedule)` and `Retry.effect(schedule)` re-run
+on retryable `AiError`s (rate limited, timeout, unavailable).
+Non-retryable failures (auth, invalid request, context length) pass
+straight through. The two carriers cover every model surface:
+`Retry.stream` for `streamTurn` (and `streamSynthesis`,
+`streamTranscriptionFrom`); `Retry.effect` for `turn` (and `embed`,
+`synthesize`, `transcribe`).
 
 ```ts
 import { Schedule } from "effect"
-import { streamTurn, retry } from "@effect-uai/core/LanguageModel"
+import { streamTurn, turn } from "@effect-uai/core/LanguageModel"
+import * as Retry from "@effect-uai/core/Retry"
 
 const backoff = Schedule.exponential("200 millis", 2).pipe(
   Schedule.both(Schedule.recurs(3)),
   Schedule.jittered,
 )
 
-streamTurn(req).pipe(retry(backoff))
+streamTurn(req).pipe(Retry.stream(backoff))
+turn(req).pipe(Retry.effect(backoff))
 ```
+
+`Retry.stream` and `Retry.effect` deliberately don't shadow Effect's
+own `Stream.retry` / `Effect.retry` — the `Retry` namespace marks
+these as the AI-subset-aware variants.
 
 The retry boundary is the **whole request**, not "resume from byte N" -
 each attempt is a fresh model call. Pick a schedule with a low cap;

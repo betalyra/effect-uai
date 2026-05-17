@@ -1,7 +1,7 @@
 import { Deferred, Effect, Ref, Schedule, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
-import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
+import { type LanguageModelService, turnFromStream } from "@effect-uai/core/LanguageModel"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -15,8 +15,8 @@ describe("mid-stream-abort", () => {
   const slowService = (
     cleanedUp: Ref.Ref<boolean>,
     deltasEmitted: Ref.Ref<number>,
-  ): LanguageModelService => ({
-    streamTurn: () =>
+  ): LanguageModelService => {
+    const streamTurn: LanguageModelService["streamTurn"] = () =>
       pipe(
         Stream.fromIterable<Turn.TurnEvent>([
           Turn.TurnEvent.TextDelta({ text: "one " }),
@@ -41,8 +41,9 @@ describe("mid-stream-abort", () => {
         Stream.tap(() => Ref.update(deltasEmitted, (n) => n + 1)),
         Stream.schedule(Schedule.spaced("20 millis")),
         Stream.ensuring(Ref.set(cleanedUp, true)),
-      ),
-  })
+      )
+    return { streamTurn, turn: turnFromStream(streamTurn) }
+  }
 
   it("interrupts the stream and runs the upstream finalizer when abort fires", async () => {
     const program = Effect.gen(function* () {

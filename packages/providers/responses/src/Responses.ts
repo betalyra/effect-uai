@@ -6,9 +6,10 @@ import {
   type CommonRequest,
   LanguageModel,
   type LanguageModelService,
+  turnFromStream,
 } from "@effect-uai/core/LanguageModel"
 import * as SSE from "@effect-uai/core/SSE"
-import type { TurnEvent } from "@effect-uai/core/Turn"
+import type { Turn, TurnEvent } from "@effect-uai/core/Turn"
 import { itemsToInput } from "./codec.js"
 import type { OpenAIModel } from "./models.js"
 import {
@@ -65,6 +66,12 @@ export type ResponsesService = {
    * `streamNative |> toCanonical`.
    */
   readonly streamTurn: (request: ResponsesRequest) => Stream.Stream<TurnEvent, AiError.AiError>
+  /**
+   * Drain a single turn and return the assembled `Turn`. Derived from
+   * `streamTurn` — Responses doesn't expose a native non-streaming
+   * complete endpoint we'd want to take advantage of.
+   */
+  readonly turn: (request: ResponsesRequest) => Effect.Effect<Turn, AiError.AiError>
   /**
    * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
    * Exposed for cases where consumers want to compose with `streamNative`
@@ -282,9 +289,12 @@ export const make = (cfg: Config): Effect.Effect<ResponsesService, never, HttpCl
   Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
     const streamNative: ResponsesService["streamNative"] = (request) =>
       buildNativeStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
+    const streamTurn: ResponsesService["streamTurn"] = (request) =>
+      toCanonical(streamNative(request))
     return {
       streamNative,
-      streamTurn: (request) => toCanonical(streamNative(request)),
+      streamTurn,
+      turn: turnFromStream(streamTurn),
       toCanonical,
     }
   })
@@ -306,6 +316,7 @@ export const layer = (
       make(cfg),
       (s): LanguageModelService => ({
         streamTurn: (request) => s.streamTurn(request as ResponsesRequest),
+        turn: (request) => s.turn(request as ResponsesRequest),
       }),
     ),
   )

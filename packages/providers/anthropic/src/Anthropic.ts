@@ -16,9 +16,10 @@ import {
   type CommonRequest,
   LanguageModel,
   type LanguageModelService,
+  turnFromStream,
 } from "@effect-uai/core/LanguageModel"
 import * as SSE from "@effect-uai/core/SSE"
-import { TurnEvent } from "@effect-uai/core/Turn"
+import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
 import {
   type Accumulator,
   type ThinkingConfig,
@@ -72,6 +73,14 @@ export type AnthropicService = {
    * `streamNative |> toCanonical`.
    */
   readonly streamTurn: (request: AnthropicRequest) => Stream.Stream<TurnEvent, AiError.AiError>
+  /**
+   * Drain a single turn and return the assembled `Turn`. Derived from
+   * `streamTurn` — Anthropic's non-streaming `/messages` endpoint
+   * differs from the streamed one in subtle ways (no incremental
+   * thinking deltas), so we route everything through streaming for
+   * consistency.
+   */
+  readonly turn: (request: AnthropicRequest) => Effect.Effect<Turn, AiError.AiError>
   /**
    * Project a stream of native `ProviderEvent`s into canonical `TurnEvent`s.
    * Stateful (threads an `Accumulator` for tool-call lookup and
@@ -345,9 +354,12 @@ export const make = (cfg: Config): Effect.Effect<AnthropicService, never, HttpCl
   Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
     const streamNative: AnthropicService["streamNative"] = (request) =>
       buildNativeStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
+    const streamTurn: AnthropicService["streamTurn"] = (request) =>
+      toCanonical(streamNative(request))
     return {
       streamNative,
-      streamTurn: (request) => toCanonical(streamNative(request)),
+      streamTurn,
+      turn: turnFromStream(streamTurn),
       toCanonical,
     }
   })
@@ -369,6 +381,7 @@ export const layer = (
       make(cfg),
       (s): LanguageModelService => ({
         streamTurn: (request) => s.streamTurn(request as AnthropicRequest),
+        turn: (request) => s.turn(request as AnthropicRequest),
       }),
     ),
   )

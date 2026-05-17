@@ -46,18 +46,30 @@ jobs:
       # When merged (no changesets remain) -> runs `pnpm release`, which
       # publishes via OIDC; no NPM_TOKEN, no OTP.
       - name: Create release PR or publish
+        id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm version-packages
           publish: pnpm release
           commit: "chore: release"
           title: "chore: release"
-          # We disable per-package tag/release creation here because (a) we
-          # ship every package at the same version and want a single
+          # Per-package tag/release creation is off because (a) we ship
+          # every package at the same version and want a single
           # `v<version>` tag + one combined GitHub Release, and (b) the
-          # action's post-publish step has been hanging on OIDC publishes.
-          # Tags + the combined release are created by the manual
-          # `tag-and-release.yml` workflow instead.
+          # action's post-publish step has been known to hang on OIDC
+          # publishes. The next step handles tags + release via
+          # `scripts/tag-and-release.sh`.
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Same script the manual `tag-and-release.yml` workflow uses, so
+      # the auto and manual paths produce identical artifacts.
+      - name: Create v<version> tag and combined GitHub Release
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bash scripts/tag-and-release.sh

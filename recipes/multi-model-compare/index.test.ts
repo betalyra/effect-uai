@@ -26,7 +26,7 @@ describe("multi-model-compare", () => {
 
   const history: ReadonlyArray<Items.Item> = [Items.userText("ping")]
 
-  it("tags each member's deltas and surfaces all three turn_completes", async () => {
+  it("tags each member's deltas and surfaces all three TurnCompletes", async () => {
     const { service: openai } = MockProvider.make([finalTurn("from-openai")])
     const { service: google } = MockProvider.make([finalTurn("from-google")])
     const { service: anthropic } = MockProvider.make([finalTurn("from-anthropic")])
@@ -46,7 +46,7 @@ describe("multi-model-compare", () => {
 
     const completions = events.filter(
       (e): e is Extract<CouncilEvent, { type: "delta" }> =>
-        e.type === "delta" && e.delta.type === "turn_complete",
+        e.type === "delta" && e.delta._tag === "TurnComplete",
     )
     expect(completions).toHaveLength(3)
 
@@ -56,7 +56,7 @@ describe("multi-model-compare", () => {
     // Each member's text deltas exist and carry their tag.
     const textDeltasByMember = new Map<string, string>()
     for (const e of events) {
-      if (e.type === "delta" && e.delta.type === "text_delta") {
+      if (e.type === "delta" && e.delta._tag === "TextDelta") {
         textDeltasByMember.set(e.member, (textDeltasByMember.get(e.member) ?? "") + e.delta.text)
       }
     }
@@ -87,7 +87,7 @@ describe("multi-model-compare", () => {
     expect(errors).toHaveLength(1)
     expect(errors[0]!.type === "error" && errors[0]!.member).toBe("google")
 
-    const completions = events.filter((e) => e.type === "delta" && e.delta.type === "turn_complete")
+    const completions = events.filter((e) => e.type === "delta" && e.delta._tag === "TurnComplete")
     expect(completions).toHaveLength(2)
     const completedMembers = new Set(completions.map((e) => (e.type === "delta" ? e.member : "")))
     expect(completedMembers).toEqual(new Set(["openai", "anthropic"]))

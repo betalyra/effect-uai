@@ -87,8 +87,8 @@ const judgeStream = (
       Stream.mapAccum(
         () => "",
         (acc, delta): readonly [string, ReadonlyArray<CouncilEvent>] => {
-          if (delta.type === "text_delta") return [acc + delta.text, []]
-          if (delta.type !== "turn_complete") return [acc, []]
+          if (delta._tag === "TextDelta") return [acc + delta.text, []]
+          if (delta._tag !== "TurnComplete") return [acc, []]
           return Result.match(parseScore(acc), {
             onSuccess: (s) => [
               acc,
@@ -135,10 +135,10 @@ const candidatePipeline = (
     Stream.mapAccum(
       () => "",
       (acc, delta): readonly [string, ReadonlyArray<CouncilEvent>] => {
-        if (delta.type === "text_delta") {
+        if (delta._tag === "TextDelta") {
           return [acc + delta.text, [{ type: "candidate_delta", member: member.name, delta }]]
         }
-        if (delta.type === "turn_complete") {
+        if (delta._tag === "TurnComplete") {
           return [acc, [{ type: "candidate_complete", member: member.name, answer: acc }]]
         }
         return [acc, [{ type: "candidate_delta", member: member.name, delta }]]

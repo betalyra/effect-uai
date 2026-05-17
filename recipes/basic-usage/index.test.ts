@@ -6,7 +6,7 @@ import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
-import { type ToolEvent, isOutput } from "@effect-uai/core/ToolEvent"
+import { isOutput } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -71,7 +71,7 @@ describe("basic-usage", () => {
               tools: Toolkit.toDescriptors(toolkit),
             })
             .pipe(
-              onTurnComplete<State, ToolEvent>((turn) =>
+              onTurnComplete((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
@@ -96,14 +96,8 @@ describe("basic-usage", () => {
       Stream.runCollect(conversation).pipe(Effect.provide(MockProvider.layer([turn1, turn2]))),
     )
 
-    const turnCompletes = events.filter(
-      (e): e is Extract<Turn.TurnEvent, { type: "turn_complete" }> =>
-        "type" in e && e.type === "turn_complete",
-    )
-    const toolResults: ReadonlyArray<ToolResult> = events
-      .filter((e): e is ToolEvent => "_tag" in e)
-      .filter(isOutput)
-      .map((e) => e.result)
+    const turnCompletes = events.filter(Turn.isTurnComplete)
+    const toolResults: ReadonlyArray<ToolResult> = events.filter(isOutput).map((e) => e.result)
 
     expect(turnCompletes).toHaveLength(2)
     expect(turnCompletes[0]!.turn.stop_reason).toBe("tool_calls")

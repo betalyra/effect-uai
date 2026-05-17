@@ -48,10 +48,10 @@ Does **not** register `MusicInteractiveSession` — calling
 
 ## Models
 
-| Model | Duration | Output | Notes |
-| --- | --- | --- | --- |
-| `lyria-3-clip-preview` | Fixed 30 s | MP3 | Default; fastest |
-| `lyria-3-pro-preview` | Up to ~2 min | MP3 or WAV | Slower, higher quality |
+| Model                  | Duration     | Output     | Notes                  |
+| ---------------------- | ------------ | ---------- | ---------------------- |
+| `lyria-3-clip-preview` | Fixed 30 s   | MP3        | Default; fastest       |
+| `lyria-3-pro-preview`  | Up to ~2 min | MP3 or WAV | Slower, higher quality |
 
 `LyriaModel` is a literal union with `(string & {})` tail — pass any
 string for models the SDK hasn't been updated for.
@@ -101,11 +101,11 @@ Same `GOOGLE_API_KEY` as the language-model and speech Gemini layers.
 
 Standard HTTP → `AiError` mapping. Lyria-specific:
 
-| Request shape | Error |
-| --- | --- |
-| `model: "lyria-3-clip-preview"` with `durationSeconds` ≠ 30 | `AiError.InvalidRequest` |
-| WAV requested on `lyria-3-clip-preview` | `AiError.Unsupported` (clip is MP3-only) |
-| `streamGenerationFrom` call | Compile-time error (no marker) |
+| Request shape                                               | Error                                    |
+| ----------------------------------------------------------- | ---------------------------------------- |
+| `model: "lyria-3-clip-preview"` with `durationSeconds` ≠ 30 | `AiError.InvalidRequest`                 |
+| WAV requested on `lyria-3-clip-preview`                     | `AiError.Unsupported` (clip is MP3-only) |
+| `streamGenerationFrom` call                                 | Compile-time error (no marker)           |
 
 ## See also
 

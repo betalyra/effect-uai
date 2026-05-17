@@ -61,23 +61,17 @@ export const fromBytes = <E, R>(
  * decode errors both surface as a `JsonParseError` so callers can `catchTag`
  * uniformly.
  */
-export const parse =
-  <A, I>(schema: Schema.Codec<A, I>) =>
-  <E, R>(self: Stream.Stream<string, E, R>): Stream.Stream<A, JsonParseError | E, R> =>
+export const parse = <A, I>(schema: Schema.Codec<A, I>) => {
+  const decode = Schema.decodeUnknownEffect(Schema.fromJsonString(schema))
+  return <E, R>(self: Stream.Stream<string, E, R>): Stream.Stream<A, JsonParseError | E, R> =>
     self.pipe(
       Stream.mapEffect((line) =>
-        Effect.try({
-          try: () => JSON.parse(line) as unknown,
-          catch: (cause) => new JsonParseError({ line, cause }),
-        }).pipe(
-          Effect.flatMap((value) =>
-            Schema.decodeUnknownEffect(schema)(value).pipe(
-              Effect.mapError((cause) => new JsonParseError({ line, cause })),
-            ),
-          ),
-        ),
+        decode(line).pipe(Effect.mapError((cause) => new JsonParseError({ line, cause }))),
       ),
     )
+}
+
+const decodeUnknownFromJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
 
 /**
  * Best-effort parse of a single JSON frame. Returns the parsed value or
@@ -85,11 +79,8 @@ export const parse =
  * non-JSON or partially-received frames silently rather than fail the
  * entire session over one bad frame.
  */
-export const parseSafe = (raw: string) =>
-  Effect.try({
-    try: () => JSON.parse(raw) as unknown,
-    catch: () => undefined,
-  }).pipe(Effect.orElseSucceed(() => undefined))
+export const parseSafe = (raw: string): Effect.Effect<unknown> =>
+  decodeUnknownFromJson(raw).pipe(Effect.orElseSucceed(() => undefined))
 
 const encoder = new TextEncoder()
 

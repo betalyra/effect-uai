@@ -94,6 +94,21 @@ Tune the constants for your product. If `RateLimited` and `Unavailable` should
 use different policies, split `Retryable` into separate tagged errors and run
 them through different retry layers.
 
+## Pre-packaged: `LanguageModel.retry`
+
+The exact lift / `Stream.retry` / unlift pattern above ships as a one-import
+helper:
+
+```ts
+streamTurn(req).pipe(LanguageModel.retry(backoff))
+```
+
+It does the same thing — scoped to `RateLimited | Unavailable | Timeout`,
+non-retryable errors bypass. Reach for it when you don't need to customize the
+lifted-item shape. This recipe spells the pattern out so you can adapt it
+(e.g. split `RateLimited` and `Unavailable` onto different schedules) without
+having to rediscover the trick.
+
 ## Caveat: stream replay
 
 `Stream.retry` reruns the entire stream. If the provider emitted deltas before

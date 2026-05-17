@@ -9,22 +9,20 @@ import { FetchHttpClient } from "effect/unstable/http"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { conversation } from "./index.js"
 
-const program = Effect.gen(function* () {
-  yield* Stream.runForEach(conversation, (event) =>
-    Match.value(event).pipe(
-      Match.discriminators("type")({
-        turn_complete: ({ turn }) =>
-          Effect.logInfo("turn complete", {
-            stop_reason: turn.stop_reason,
-            usage: turn.usage,
-          }),
-      }),
-      Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("tool result", { result })),
-      Match.when({ _tag: "Intermediate" }, () => Effect.void),
-      Match.orElse(() => Effect.logDebug("delta", { event })),
-    ),
-  )
-})
+const program = Stream.runForEach(conversation, (event) =>
+  Match.value(event).pipe(
+    Match.discriminators("_tag")({
+      TurnComplete: ({ turn }) =>
+        Effect.logInfo("turn complete", {
+          stop_reason: turn.stop_reason,
+          usage: turn.usage,
+        }),
+    }),
+    Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("tool result", { result })),
+    Match.when({ _tag: "Intermediate" }, () => Effect.void),
+    Match.orElse(() => Effect.logDebug("delta", { event })),
+  ),
+)
 
 const apiKeyLayer = Layer.unwrap(
   Effect.gen(function* () {

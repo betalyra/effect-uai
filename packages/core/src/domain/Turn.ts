@@ -27,54 +27,43 @@ export type Turn = typeof Turn.Type
 /**
  * Canonical events emitted while a single turn is being generated. Most
  * variants are streaming deltas (text, reasoning, tool-call args); the
- * terminal `turn_complete` carries the assembled `Turn`. Lifecycle members
+ * terminal `TurnComplete` carries the assembled `Turn`. Lifecycle members
  * aren't deltas, hence the union name.
+ *
+ * `ReasoningDelta.kind`: `trace` is the model's raw chain-of-thought;
+ * `summary` is a model-written summary intended for display. OpenAI
+ * Responses emits both; Anthropic and Gemini only emit `trace`.
+ *
+ * `RefusalDelta`: the model declined to answer. OpenAI Responses emits
+ * this as its own event; Anthropic surfaces refusals via `stop_reason`
+ * and Gemini collapses them into `finishReason: SAFETY` — both go
+ * without a `RefusalDelta`.
+ *
+ * `UsageUpdate`: mid-stream cumulative usage. Anthropic emits this on
+ * `message_start` and `message_delta`; other providers may only deliver
+ * usage via `TurnComplete.turn.usage`.
  */
-export type TurnEvent =
-  | { readonly type: "text_delta"; readonly text: string }
-  | {
-      readonly type: "reasoning_delta"
-      readonly text: string
-      /**
-       * `trace` is the model's raw chain-of-thought; `summary` is a
-       * model-written summary intended for display. OpenAI Responses emits
-       * both as separate wire events; Anthropic and Gemini only emit
-       * `trace`. Consumers who just want any reasoning text match once;
-       * those who want only summaries filter `kind === "summary"`.
-       */
-      readonly kind: "trace" | "summary"
-    }
-  /**
-   * The model declined to answer. `text` is the (streamed) explanation.
-   * Distinct from the failure channel: a refusal is normal model output and
-   * the stream still completes with `turn_complete`. OpenAI Responses emits
-   * this; Anthropic surfaces refusals via `stop_reason`, and Gemini collapses
-   * them into `finishReason: SAFETY` - both go without a `refusal_delta`.
-   */
-  | { readonly type: "refusal_delta"; readonly text: string }
-  | { readonly type: "tool_call_start"; readonly call_id: string; readonly name: string }
-  | { readonly type: "tool_call_args_delta"; readonly call_id: string; readonly delta: string }
-  /**
-   * Mid-stream cumulative usage. Carries the full `Usage` (including cache
-   * token fields when the provider surfaces them) so consumers can drive
-   * live budget / cost tracking without waiting for `turn_complete`.
-   * Anthropic emits this on `message_start` and `message_delta`; other
-   * providers may not emit any `usage_update` and only deliver usage via
-   * `turn_complete.turn.usage`.
-   */
-  | { readonly type: "usage_update"; readonly usage: Usage }
-  | { readonly type: "turn_complete"; readonly turn: Turn }
+export type TurnEvent = Data.TaggedEnum<{
+  TextDelta: { readonly text: string }
+  ReasoningDelta: { readonly text: string; readonly kind: "trace" | "summary" }
+  RefusalDelta: { readonly text: string }
+  ToolCallStart: { readonly call_id: string; readonly name: string }
+  ToolCallArgsDelta: { readonly call_id: string; readonly delta: string }
+  UsageUpdate: { readonly usage: Usage }
+  TurnComplete: { readonly turn: Turn }
+}>
+
+export const TurnEvent = Data.taggedEnum<TurnEvent>()
 
 /**
  * What flows out of an agent loop body to its consumer per turn: every
- * `TurnEvent` the provider emits (including the terminal `turn_complete`
+ * `TurnEvent` the provider emits (including the terminal `TurnComplete`
  * carrying the assembled `Turn`), plus the output of any tool the loop ran.
- * Both variants carry a `type` discriminator.
+ * Both variants carry a `_tag` discriminator.
  */
 export type InteractionEvent = TurnEvent | FunctionCallOutput
 
-export const isTurnComplete = (d: TurnEvent): d is Extract<TurnEvent, { type: "turn_complete" }> =>
-  d.type === "turn_complete"
+export const isTurnComplete = TurnEvent.$is("TurnComplete")
 
 export const functionCalls = (turn: Turn): ReadonlyArray<FunctionCall> =>
   turn.items.filter((i): i is FunctionCall => i.type === "function_call")
@@ -84,6 +73,26 @@ export const reasonings = (turn: Turn): ReadonlyArray<Reasoning> =>
 
 export const assistantMessages = (turn: Turn): ReadonlyArray<Message> =>
   turn.items.filter((i): i is Message => i.type === "message" && i.role === "assistant")
+
+/**
+ * Every `output_text` payload across every assistant message in the turn,
+ * preserving order. Refusals and other content blocks are dropped — use
+ * `assistantMessages` if you need to inspect them. The primitive for
+ * "give me the assistant's text"; callers decide how to combine
+ * (typically `.join("")` for prose or `.join(" ")` for log strings).
+ */
+export const assistantTexts = (turn: Turn): ReadonlyArray<string> =>
+  assistantMessages(turn)
+    .flatMap((m) => m.content)
+    .filter(isOutputText)
+    .map((b) => b.text)
+
+/**
+ * Sugar over `assistantTexts(turn).join("")` — the common case for
+ * summarizers, classifiers, judge calls, and structured-output backstops
+ * that want one concatenated string.
+ */
+export const assistantText = (turn: Turn): string => assistantTexts(turn).join("")
 
 /**
  * Append a completed turn and optional follow-up items to a state record's
@@ -104,7 +113,7 @@ export const appendTurn = <S extends { readonly history: ReadonlyArray<Item> }>(
 // ---------------------------------------------------------------------------
 
 /**
- * Project a `TurnEvent` stream onto its `text_delta` payloads. Other
+ * Project a `TurnEvent` stream onto its `TextDelta` payloads. Other
  * variants are dropped. Composes with `Lines.lines` +
  * `decodeJsonLines` for prompted-JSONL streaming.
  */
@@ -112,9 +121,7 @@ export const textDeltas = <E, R>(
   self: Stream.Stream<TurnEvent, E, R>,
 ): Stream.Stream<string, E, R> =>
   self.pipe(
-    Stream.filterMap((ev) =>
-      ev.type === "text_delta" ? Result.succeed(ev.text) : Result.failVoid,
-    ),
+    Stream.filterMap((ev) => (ev._tag === "TextDelta" ? Result.succeed(ev.text) : Result.failVoid)),
   )
 
 // ---------------------------------------------------------------------------

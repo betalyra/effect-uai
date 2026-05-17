@@ -16,9 +16,9 @@ pnpm add @effect-uai/core @effect-uai/elevenlabs effect
 
 ## Layers
 
-| Layer | Registers | Capability markers |
-| --- | --- | --- |
-| `@effect-uai/elevenlabs/ElevenLabsTranscriber` | `ElevenLabsTranscriber` + `Transcriber` | `SttStreaming` |
+| Layer                                          | Registers                                     | Capability markers   |
+| ---------------------------------------------- | --------------------------------------------- | -------------------- |
+| `@effect-uai/elevenlabs/ElevenLabsTranscriber` | `ElevenLabsTranscriber` + `Transcriber`       | `SttStreaming`       |
 | `@effect-uai/elevenlabs/ElevenLabsSynthesizer` | `ElevenLabsSynthesizer` + `SpeechSynthesizer` | `TtsIncrementalText` |
 
 ```ts
@@ -50,11 +50,11 @@ browsers.
 
 ### STT
 
-| Model | Streaming | Notes |
-| --- | --- | --- |
-| `scribe_v2_realtime` | ✓ (WS) | The realtime variant — used by `streamTranscriptionFrom` |
-| `scribe_v2` | — | Sync variant; not exposed as a separate sync helper today |
-| `scribe_v1` | — | Legacy |
+| Model                | Streaming | Notes                                                     |
+| -------------------- | --------- | --------------------------------------------------------- |
+| `scribe_v2_realtime` | ✓ (WS)    | The realtime variant — used by `streamTranscriptionFrom`  |
+| `scribe_v2`          | —         | Sync variant; not exposed as a separate sync helper today |
+| `scribe_v1`          | —         | Legacy                                                    |
 
 `@effect-uai/elevenlabs/ElevenLabsTranscriber` registers
 `SttStreaming` and is the realtime path; sync transcription via the
@@ -63,12 +63,12 @@ reach for `OpenAITranscriber` or `GeminiTranscriber`.
 
 ### TTS
 
-| Model | Streaming | Incremental-text-in | Notes |
-| --- | --- | --- | --- |
-| `eleven_flash_v2_5` | ✓ | ✓ | **Sub-100 ms first-byte. Default for the voice-loop recipe.** |
-| `eleven_turbo_v2_5` | ✓ | ✓ | Low latency, 32 languages |
-| `eleven_multilingual_v2` | ✓ | ✓ | Production-grade multilingual (29 languages) |
-| `eleven_v3` | ✓ | ✓ | Most expressive; inline audio-tag emotion (`<laugh>`, `<whisper>`, …); 70+ languages |
+| Model                    | Streaming | Incremental-text-in | Notes                                                                                |
+| ------------------------ | --------- | ------------------- | ------------------------------------------------------------------------------------ |
+| `eleven_flash_v2_5`      | ✓         | ✓                   | **Sub-100 ms first-byte. Default for the voice-loop recipe.**                        |
+| `eleven_turbo_v2_5`      | ✓         | ✓                   | Low latency, 32 languages                                                            |
+| `eleven_multilingual_v2` | ✓         | ✓                   | Production-grade multilingual (29 languages)                                         |
+| `eleven_v3`              | ✓         | ✓                   | Most expressive; inline audio-tag emotion (`<laugh>`, `<whisper>`, …); 70+ languages |
 
 Voice IDs are 20-character opaque slugs (e.g. `JBFqnCBsd6RMkjVDRZzb`).
 Same shape for stock and cloned voices — `ElevenLabsVoiceId` is just

@@ -11,17 +11,7 @@
  *   OPENAI_API_KEY=... GOOGLE_API_KEY=... ANTHROPIC_API_KEY=... \
  *     pnpm tsx recipes/multi-model-compare/index.ts
  */
-import {
-  Array as Arr,
-  Config,
-  Effect,
-  Layer,
-  Logger,
-  Match,
-  References,
-  Stream,
-  pipe,
-} from "effect"
+import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
 import * as Turn from "@effect-uai/core/Turn"
@@ -38,13 +28,7 @@ const QUESTION = "In one short sentence, what's the most underrated programming 
 
 const initialHistory: ReadonlyArray<Items.Item> = [Items.userText(QUESTION)]
 
-const finalText = (turn: Turn.Turn): string =>
-  pipe(
-    Turn.assistantMessages(turn),
-    Arr.flatMap((m) => m.content),
-    Arr.filter(Items.isOutputText),
-    Arr.map((c) => c.text),
-  ).join("")
+const finalText = (turn: Turn.Turn): string => Turn.assistantText(turn)
 
 const program = Effect.gen(function* () {
   const openaiKey = yield* Config.redacted("OPENAI_API_KEY")
@@ -76,9 +60,9 @@ const program = Effect.gen(function* () {
       Match.discriminatorsExhaustive("type")({
         delta: ({ member, delta }) =>
           Match.value(delta).pipe(
-            Match.discriminators("type")({
-              text_delta: ({ text }) => Effect.logDebug(`${member} | ${text}`),
-              turn_complete: ({ turn }) =>
+            Match.discriminators("_tag")({
+              TextDelta: ({ text }) => Effect.logDebug(`${member} | ${text}`),
+              TurnComplete: ({ turn }) =>
                 Effect.logInfo(`${member} verdict`, {
                   stop_reason: turn.stop_reason,
                   usage: turn.usage,

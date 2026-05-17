@@ -104,12 +104,12 @@ type error at `Effect.provide`, not a runtime `Unsupported`.
 
 ## Provider matrix
 
-| Provider | STT sync | STT streaming | TTS sync | TTS chunked | TTS incremental-text |
-| -------- | -------- | ------------- | -------- | ----------- | -------------------- |
-| OpenAI | ✓ | ✓ (`OpenAIRealtimeTranscriber`) | ✓ | ✓ | — |
-| ElevenLabs | — | ✓ (Scribe v2 Realtime) | ✓ | ✓ | ✓ |
-| Gemini | ✓ (prompt-driven) | — | ✓ | — | — |
-| Inworld | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Provider   | STT sync          | STT streaming                   | TTS sync | TTS chunked | TTS incremental-text |
+| ---------- | ----------------- | ------------------------------- | -------- | ----------- | -------------------- |
+| OpenAI     | ✓                 | ✓ (`OpenAIRealtimeTranscriber`) | ✓        | ✓           | —                    |
+| ElevenLabs | —                 | ✓ (Scribe v2 Realtime)          | ✓        | ✓           | ✓                    |
+| Gemini     | ✓ (prompt-driven) | —                               | ✓        | —           | —                    |
+| Inworld    | ✓                 | ✓                               | ✓        | ✓           | ✓                    |
 
 Each provider's full surface — models, voice IDs, wire / auth notes —
 lives on its page: [OpenAI](/speech/providers/openai/),

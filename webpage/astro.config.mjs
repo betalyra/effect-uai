@@ -51,6 +51,7 @@ export default defineConfig({
             { label: "Basic usage", slug: "recipes/basic-usage" },
             { label: "Structured output", slug: "recipes/structured-output" },
             { label: "Basic embedding", slug: "recipes/basic-embedding" },
+            { label: "Recipes", slug: "recipes" },
             { label: "Skills", slug: "skills" },
           ],
         },
@@ -76,7 +77,6 @@ export default defineConfig({
               label: "Recipes",
               collapsed: true,
               items: [
-                { label: "Overview", slug: "recipes" },
                 { label: "Tool call approval", slug: "recipes/tool-call-approval" },
                 { label: "Streaming tool output", slug: "recipes/streaming-tool-output" },
                 {
@@ -87,6 +87,7 @@ export default defineConfig({
                   label: "Multi-model fallback",
                   slug: "recipes/multi-model-fallback",
                 },
+                { label: "Model escalation", slug: "recipes/model-escalation" },
                 { label: "Auto-compaction", slug: "recipes/auto-compaction" },
                 { label: "Pause and resume", slug: "recipes/pause-resume" },
                 { label: "Mid-stream abort", slug: "recipes/mid-stream-abort" },
@@ -166,6 +167,8 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.5", slug: "migrations/v0-5" },
+            { label: "Migrating to 0.4", slug: "migrations/v0-4" },
             { label: "Migrating to 0.3", slug: "migrations/v0-3" },
           ],
         },

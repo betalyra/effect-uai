@@ -11,7 +11,7 @@
  *      immediately. Otherwise, drain the queue (block on the first
  *      message, then collect the burst).
  *   2. Stream the turn. Forward deltas downstream.
- *   3. On `turn_complete`: if the model called tools, execute them and
+ *   3. On `TurnComplete`: if the model called tools, execute them and
  *      append outputs (next iteration runs the model again, no queue
  *      check). If not, the next iteration will block on the queue.
  *
@@ -27,7 +27,6 @@ import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, nextAfter, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
-import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -98,7 +97,7 @@ export const conversation = (
 
         const lm = yield* LanguageModel
         return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
-          onTurnComplete<State, ToolEvent>((turn) =>
+          onTurnComplete((turn) =>
             Effect.sync(() => {
               const calls = Turn.functionCalls(turn)
 

@@ -142,7 +142,7 @@ describe("model-council", () => {
 
     const textPerMember = new Map<string, string>()
     for (const e of events) {
-      if (e.type === "candidate_delta" && e.delta.type === "text_delta") {
+      if (e.type === "candidate_delta" && e.delta._tag === "TextDelta") {
         textPerMember.set(e.member, (textPerMember.get(e.member) ?? "") + e.delta.text)
       }
     }

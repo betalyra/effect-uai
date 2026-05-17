@@ -20,9 +20,9 @@ pnpm add @effect-uai/core @effect-uai/google effect
 
 ## Layers
 
-| Layer | Registers | Capability markers |
-| --- | --- | --- |
-| `@effect-uai/google/GeminiTranscriber` | `GeminiTranscriber` + `Transcriber` | — (sync only) |
+| Layer                                  | Registers                                 | Capability markers                         |
+| -------------------------------------- | ----------------------------------------- | ------------------------------------------ |
+| `@effect-uai/google/GeminiTranscriber` | `GeminiTranscriber` + `Transcriber`       | — (sync only)                              |
 | `@effect-uai/google/GeminiSynthesizer` | `GeminiSynthesizer` + `SpeechSynthesizer` | — (sync only; no `streamSynthesis` either) |
 
 ```ts
@@ -57,6 +57,7 @@ verbatim." Any model that accepts the audio modality works:
 `gemini-3.1-flash-lite-preview`, `gemini-2.5-flash`, `gemini-2.5-pro`.
 
 Limits:
+
 - **No word timestamps** — `wordTimestamps: true` fails with
   `AiError.Unsupported`. The model can emit `MM:SS` timestamps inside
   the text if you ask in the prompt, but they're unstructured.
@@ -71,11 +72,11 @@ Audio formats accepted: `audio/wav`, `audio/mp3`, `audio/aiff`,
 
 ### TTS
 
-| Model | Notes |
-| --- | --- |
+| Model                          | Notes                   |
+| ------------------------------ | ----------------------- |
 | `gemini-2.5-flash-preview-tts` | Steerable preview model |
-| `gemini-2.5-pro-preview-tts` | Higher quality, slower |
-| `gemini-3.1-flash-tts-preview` | Newer flash preview |
+| `gemini-2.5-pro-preview-tts`   | Higher quality, slower  |
+| `gemini-3.1-flash-tts-preview` | Newer flash preview     |
 
 30 prebuilt voices — `Kore`, `Puck`, `Zephyr`, `Enceladus`, `Charon`,
 `Aoede`, `Leda`, `Orus`, `Callirrhoe`, etc. (full list in
@@ -125,10 +126,10 @@ for everything.
 
 Standard HTTP → `AiError` mapping. Additionally:
 
-| Request shape | Error |
-| --- | --- |
-| `wordTimestamps: true` | `AiError.Unsupported` |
-| `diarization: true` | `AiError.Unsupported` |
+| Request shape                  | Error                    |
+| ------------------------------ | ------------------------ |
+| `wordTimestamps: true`         | `AiError.Unsupported`    |
+| `diarization: true`            | `AiError.Unsupported`    |
 | Audio larger than 20 MB inline | `AiError.InvalidRequest` |
 
 ## See also

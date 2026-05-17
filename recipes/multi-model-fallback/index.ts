@@ -99,14 +99,10 @@ const program = Effect.gen(function* () {
 
   yield* Stream.runForEach(conversation(tiers), (event) =>
     Match.value(event).pipe(
-      Match.when({ type: "turn_complete" }, ({ turn }) =>
+      Match.when({ _tag: "TurnComplete" }, ({ turn }) =>
         Effect.logInfo("turn complete", {
           stop_reason: turn.stop_reason,
-          assistant: Turn.assistantMessages(turn)
-            .flatMap((m) => m.content)
-            .filter(Items.isOutputText)
-            .map((c) => c.text)
-            .join(" "),
+          assistant: Turn.assistantTexts(turn).join(" "),
         }),
       ),
       Match.orElse(() => Effect.void),

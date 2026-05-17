@@ -1,5 +1,24 @@
 # @effect-uai/jina
 
+## 0.5.0
+
+### Minor Changes
+
+- `JinaEmbedding` returns the precise `EmbeddingFor<E>` variant — both on
+  the typed `JinaEmbedding` tag and the generic `EmbeddingModel` tag.
+  `embed({ encoding: "binary" })` now gives `embedding: BinaryEmbedding`
+  directly; sparse / multivector ditto. No runtime narrowing for the common
+  case. The cross-provider type on `CommonEmbedRequest` is now
+  `EmbedEncoding` (was `Encoding`); the typed `JinaEncoding` is unchanged.
+
+### Patch Changes
+
+- Updated dependencies for `@effect-uai/core@0.5.0` — see core changelog
+  for `TurnEvent` tagged-enum migration, `Encoding` → `EmbedEncoding`
+  rename, generic `EmbedResponse<E>`, removed `Toolkit.outputEvent` /
+  `outputEvents`, new `Loop.stopWith` / `loopFrom`, `LanguageModel.turn` /
+  `retry`, `Tool.fromStandardSchema`.
+
 ## 0.4.0
 
 ### Minor Changes

@@ -18,7 +18,7 @@ import {
   type LanguageModelService,
 } from "@effect-uai/core/LanguageModel"
 import * as SSE from "@effect-uai/core/SSE"
-import type { TurnEvent } from "@effect-uai/core/Turn"
+import { TurnEvent } from "@effect-uai/core/Turn"
 import {
   type Accumulator,
   type ThinkingConfig,
@@ -153,6 +153,7 @@ const toolChoiceWire = (request: AnthropicRequest): Option.Option<Record<string,
 // ---------------------------------------------------------------------------
 
 const decodeKnown = Schema.decodeUnknownEffect(KnownProviderEvent)
+const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
 
 const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
 
@@ -160,13 +161,12 @@ const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
  * Parse one SSE event's `data` payload into a typed `ProviderEvent`. Never
  * fails: JSON-parse and schema-decode failures both produce a synthesized
  * `_unknown` event so consumers of `streamNative` never silently miss a
- * wire event we didn't model.
+ * wire event we didn't model. When the payload IS valid JSON but doesn't
+ * match the known-event schema, `_unknown.raw` carries the parsed value;
+ * when JSON parsing fails outright, it carries the raw string.
  */
 const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
-  Effect.try({
-    try: () => JSON.parse(ev.data) as unknown,
-    catch: () => ev.data,
-  }).pipe(
+  parseJsonUnknown(ev.data).pipe(
     Effect.flatMap((parsed) =>
       decodeKnown(parsed).pipe(Effect.orElseSucceed(() => makeUnknown(parsed))),
     ),
@@ -185,33 +185,24 @@ const deltasFromEvent = (next: Accumulator, event: ProviderEvent): ReadonlyArray
       content_block_start: (e) =>
         e.content_block.type === "tool_use"
           ? [
-              {
-                type: "tool_call_start" as const,
+              TurnEvent.ToolCallStart({
                 call_id: e.content_block.id,
                 name: e.content_block.name,
-              },
+              }),
             ]
           : [],
       content_block_delta: (e) =>
         Match.value(e.delta).pipe(
           Match.discriminatorsExhaustive("type")({
-            text_delta: (d) => [{ type: "text_delta" as const, text: d.text }],
-            thinking_delta: (d) => [
-              { type: "reasoning_delta" as const, text: d.thinking, kind: "trace" as const },
-            ],
+            text_delta: (d) => [TurnEvent.TextDelta({ text: d.text })],
+            thinking_delta: (d) => [TurnEvent.ReasoningDelta({ text: d.thinking, kind: "trace" })],
             input_json_delta: (d) => {
               const block = next.blocks[e.index]
               if (block === undefined) return []
               const callId = Option.getOrElse(block.id, () => "")
               return callId.length === 0
                 ? []
-                : [
-                    {
-                      type: "tool_call_args_delta" as const,
-                      call_id: callId,
-                      delta: d.partial_json,
-                    },
-                  ]
+                : [TurnEvent.ToolCallArgsDelta({ call_id: callId, delta: d.partial_json })]
             },
             // Encrypted reasoning state - flows through `streamNative` but has
             // no canonical representation.
@@ -219,10 +210,10 @@ const deltasFromEvent = (next: Accumulator, event: ProviderEvent): ReadonlyArray
           }),
         ),
       message_start: (e) =>
-        e.message.usage === undefined ? [] : [{ type: "usage_update" as const, usage: next.usage }],
+        e.message.usage === undefined ? [] : [TurnEvent.UsageUpdate({ usage: next.usage })],
       message_delta: (e) =>
-        e.usage === undefined ? [] : [{ type: "usage_update" as const, usage: next.usage }],
-      message_stop: () => [{ type: "turn_complete" as const, turn: accumulatorToTurn(next) }],
+        e.usage === undefined ? [] : [TurnEvent.UsageUpdate({ usage: next.usage })],
+      message_stop: () => [TurnEvent.TurnComplete({ turn: accumulatorToTurn(next) })],
       content_block_stop: () => [],
       ping: () => [],
       error: () => [],

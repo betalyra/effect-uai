@@ -23,7 +23,6 @@ import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
-import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -49,9 +48,7 @@ export const makeSubAgent = (
     run: ({ question }) => runInner(question),
     finalize: (events): SubAgentOutput => ({
       answer: events
-        .filter(
-          (e): e is Extract<Turn.TurnEvent, { type: "text_delta" }> => e.type === "text_delta",
-        )
+        .filter((e): e is Extract<Turn.TurnEvent, { _tag: "TextDelta" }> => e._tag === "TextDelta")
         .map((e) => e.text)
         .join(""),
     }),
@@ -147,7 +144,7 @@ export const buildConversation = (allTools: ReadonlyArray<Tool.AnyKindTool>, ini
             tools: Tool.toDescriptors(allTools),
           })
           .pipe(
-            onTurnComplete<State, ToolEvent>((turn) =>
+            onTurnComplete((turn) =>
               Effect.sync(() => {
                 const calls = Turn.functionCalls(turn)
                 if (calls.length === 0) return stop

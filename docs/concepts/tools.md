@@ -57,7 +57,7 @@ const askSubagent = Tool.streaming({
   run: ({ question }) => runInner(question), // Stream<TurnEvent>
   finalize: (events): SubAgentOutput => ({
     answer: events
-      .filter((e) => e.type === "text_delta")
+      .filter((e) => e._tag === "TextDelta")
       .map((e) => e.text)
       .join(""),
   }),
@@ -79,6 +79,15 @@ terminal — sit side-by-side in the
 `inputSchema` is `StandardSchemaV1 & StandardJSONSchemaV1`. Zod 4+,
 Valibot, and ArkType implement both directly; Effect Schema needs
 `Tool.fromEffectSchema` to attach the two extensions.
+
+Two adapters cover the two cases:
+
+- `Tool.fromEffectSchema(schema)` — wrap an Effect Schema so it
+  carries the JSON Schema renderer.
+- `Tool.fromStandardSchema(schema)` — type-narrowing identity for
+  schemas that already implement both Standard interfaces (Zod 4+,
+  Valibot, ArkType). Use this so TypeScript pins the inferred input
+  type at the tool boundary instead of falling back to `unknown`.
 
 The same schema serves two purposes:
 
@@ -256,7 +265,7 @@ which splits calls into approved and rejected up front:
 const plan = fromApprovalMap(isSensitive, approvals)(calls)
 const events = Stream.merge(
   Toolkit.executeAll(allTools, plan.approved),
-  Toolkit.outputEvents(plan.rejected),
+  Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
 )
 ```
 

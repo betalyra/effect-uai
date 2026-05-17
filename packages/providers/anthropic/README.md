@@ -4,7 +4,7 @@ Anthropic Messages API provider for [`@effect-uai/core`](https://www.npmjs.com/p
 
 Implements the `LanguageModel` contract against Anthropic's Messages
 API with SSE streaming, including extended thinking surfaced as
-`reasoning_delta` events.
+`ReasoningDelta` events.
 
 ## Install
 

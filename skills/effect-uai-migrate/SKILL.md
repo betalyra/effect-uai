@@ -15,8 +15,8 @@ Reach for this when the user says any of:
 
 - "I bumped effect-uai and everything broke"
 - "Update my code to the latest effect-uai"
-- "What changed in 0.3?"
-- "How do I migrate from 0.2 to 0.3?"
+- "What changed in 0.5?"
+- "How do I migrate from 0.4 to 0.5?"
 
 ## How to use this skill
 
@@ -29,6 +29,188 @@ Reach for this when the user says any of:
 
 The full migration prose (with rationale and edge cases) lives in
 `docs/migrations/v{X.Y}.md`. This skill is the operator-mode summary.
+
+---
+
+## 0.4 → 0.5
+
+### Required rewrites
+
+#### Reshape: `TurnEvent` is a `Data.TaggedEnum`
+
+Discriminator renamed `type` → `_tag`; variants snake_case → PascalCase.
+
+| Before                                | After                                                          |
+| ------------------------------------- | -------------------------------------------------------------- |
+| `{ type: "text_delta", text }`        | `TurnEvent.TextDelta({ text })`                                |
+| `{ type: "reasoning_delta", text, kind }` | `TurnEvent.ReasoningDelta({ text, kind })`                 |
+| `{ type: "refusal_delta", text }`     | `TurnEvent.RefusalDelta({ text })`                             |
+| `{ type: "tool_call_start", call_id, name }` | `TurnEvent.ToolCallStart({ call_id, name })`            |
+| `{ type: "tool_call_args_delta", call_id, delta }` | `TurnEvent.ToolCallArgsDelta({ call_id, delta })` |
+| `{ type: "usage_update", usage }`     | `TurnEvent.UsageUpdate({ usage })`                             |
+| `{ type: "turn_complete", turn }`     | `TurnEvent.TurnComplete({ turn })`                             |
+
+```ts
+// Before
+import type { TurnEvent } from "@effect-uai/core/Turn"
+if (event.type === "turn_complete") use(event.turn)
+Match.value(event).pipe(
+  Match.discriminators("type")({ text_delta: ..., turn_complete: ... }),
+  Match.exhaustive,
+)
+
+// After
+import { TurnEvent } from "@effect-uai/core/Turn"   // value, not just type
+if (event._tag === "TurnComplete") use(event.turn)
+Match.value(event).pipe(
+  Match.discriminators("_tag")({ TextDelta: ..., TurnComplete: ... }),
+  Match.exhaustive,
+)
+```
+
+`Turn.isTurnComplete` and `Turn.textDeltas` still work — they were
+updated internally.
+
+#### Reshape: `ToolCallDecision` is a `Data.TaggedEnum`
+
+```ts
+// Before
+const d: ToolCallDecision = { _tag: "Approved", call }
+
+// After
+import { ToolCallDecision } from "@effect-uai/core/Resolvers"
+const d = ToolCallDecision.Approved({ call })
+// or unchanged sugar:
+const d = Resolvers.approve(call)
+```
+
+#### Removed: `Toolkit.outputEvent` / `Toolkit.outputEvents`
+
+```ts
+// Before
+import { outputEvent, outputEvents } from "@effect-uai/core/Toolkit"
+outputEvent(result)
+outputEvents(results)
+
+// After
+import { ToolEvent } from "@effect-uai/core/ToolEvent"
+import { Stream } from "effect"
+ToolEvent.Output({ result })
+Stream.fromIterable(results.map((result) => ToolEvent.Output({ result })))
+```
+
+#### Rename: `Encoding` → `EmbedEncoding`
+
+```ts
+// Before
+import type { Encoding } from "@effect-uai/core/EmbeddingModel"
+
+// After
+import type { EmbedEncoding } from "@effect-uai/core/EmbeddingModel"
+```
+
+Avoids the clash with Effect's `Encoding` module. Provider-typed
+unions (`JinaEncoding`, etc.) are unchanged.
+
+### Optional modernizations
+
+#### `EmbedResponse<E>` is now generic
+
+Type-level reshape — runtime behavior unchanged.
+
+```ts
+// Before — narrow at runtime
+const { embedding } = yield* embed({ model, input, encoding: "float32" })
+if (embedding._tag !== "float32") return
+embedding.vector
+
+// After — narrowed by type
+const { embedding } = yield* embed({ model, input, encoding: "float32" })
+embedding.vector  // Float32Array directly
+```
+
+Bare `EmbedResponse` still works (defaults to `Float32Embedding`).
+
+#### `Loop.stopWith(state)` for `loopFrom` / `loopWithState`
+
+Terminal event that ends the loop AND carries final state. Use it when
+you want a clean "this input is done, here's the state to carry
+forward" signal in `loopFrom`, or to capture the last state in
+`loopWithState`'s `SubscriptionRef`. Plain `loop` treats it like
+`stop`.
+
+#### `Loop.loopFrom(input, initial, body)`
+
+Input-driven sibling of `loop`. For each item from `input`, runs an
+inner seed-driven `loop` with `(s) => body(s, item)`. State threads
+across items via `next` / `stopWith`.
+
+#### `LanguageModel.turn(request)` instead of draining manually
+
+```ts
+// Before
+const events = yield* Stream.runCollect(streamTurn(request))
+const turn = events.findLast(Turn.isTurnComplete)?.turn
+
+// After
+const turn = yield* LanguageModel.turn(request)   // fails with IncompleteTurn if missing
+```
+
+#### `LanguageModel.retry(schedule)` for the retryable subset
+
+```ts
+streamTurn(request).pipe(
+  LanguageModel.retry(Schedule.exponential("200 millis").pipe(Schedule.compose(Schedule.recurs(3)))),
+)
+// Retries RateLimited / Unavailable / Timeout. Other AiErrors propagate.
+```
+
+#### `Turn.assistantText(turn)` for the concatenated reply
+
+```ts
+const text = Turn.assistantText(turn)            // string
+const texts = Turn.assistantTexts(turn)          // ReadonlyArray<string>
+```
+
+#### `Tool.fromStandardSchema(schema)` for Zod / Valibot / ArkType
+
+```ts
+const lookupWeather = Tool.make({
+  name: "lookup_weather",
+  inputSchema: Tool.fromStandardSchema(z.object({ city: z.string() })),
+  run: ({ city }) => ...,
+})
+```
+
+Effect Schema users keep `fromEffectSchema`.
+
+### After-migration checklist
+
+- [ ] No remaining `event.type === "text_delta"` (etc.) discriminations
+- [ ] No remaining `Match.discriminators("type")({ text_delta: ... })`
+- [ ] No remaining `Toolkit.outputEvent` / `outputEvents` imports
+- [ ] `import { TurnEvent }` (value), not `import type { TurnEvent }`,
+      wherever variants are constructed
+- [ ] No remaining `Encoding` imports from `@effect-uai/core/EmbeddingModel`
+- [ ] No remaining `"_tag" in event` hacks to distinguish `TurnEvent`
+      from `ToolEvent` (both now use `_tag`)
+- [ ] `pnpm typecheck` clean
+- [ ] Tests pass
+
+---
+
+## 0.3 → 0.4
+
+**No rewrites needed.** 0.4 is purely additive: new `Transcriber` /
+`SpeechSynthesizer` / `MusicGenerator` services, shared `Audio` /
+`Transcript` / `Music` domain, provider-fit markers (`SttStreaming`,
+`TtsIncrementalText`), and three new provider packages
+(`@effect-uai/openai`, `@effect-uai/elevenlabs`, `@effect-uai/inworld`).
+Bump dependencies, run typecheck, done.
+
+If the user sees a 0.4-version compile error that looks like a rename
+(`streamUntilComplete`, `nextStateFrom`, `matchType`, etc.), they're
+actually on 0.2 or older — apply the **0.2 → 0.3** rules below.
 
 ---
 
@@ -171,6 +353,8 @@ ToolResult.$match({ Value: ..., Failure: ... })(result) // matcher
 
 ## See also
 
+- [Migration guide for 0.5](https://effect-uai.betalyra.com/migrations/v0-5/)
+- [Migration guide for 0.4](https://effect-uai.betalyra.com/migrations/v0-4/)
 - [Migration guide for 0.3](https://effect-uai.betalyra.com/migrations/v0-3/)
 - `packages/core/CHANGELOG.md` for the per-PR record
 - Feature skills under `skills/` for new-code patterns

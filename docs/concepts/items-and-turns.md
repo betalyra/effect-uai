@@ -68,8 +68,14 @@ Helpers project specific item kinds:
 ```ts
 Turn.functionCalls(turn) // FunctionCall[] - the tool requests
 Turn.assistantMessages(turn) // Message[] with role: "assistant"
+Turn.assistantTexts(turn) // string[] - one per assistant output_text block
+Turn.assistantText(turn) // string - joined assistant text, for logging / display
 Turn.reasonings(turn) // Reasoning[]
 ```
+
+`assistantText` covers the common case ("just give me what the model
+said as a string"); reach for `assistantTexts` only when you need to
+keep block boundaries.
 
 `Turn.toStructured(turn, format)` decodes the assembled assistant text
 against an Effect Schema and surfaces `RefusalRejected`,
@@ -104,19 +110,23 @@ return Toolkit.executeAll(allTools, calls).pipe(
 A turn-in-flight is a `Stream.Stream<TurnEvent, AiError, R>`:
 
 ```ts
-type TurnEvent =
-  | { type: "text_delta"; text: string }
-  | { type: "reasoning_delta"; text: string; kind: "trace" | "summary" }
-  | { type: "refusal_delta"; text: string }
-  | { type: "tool_call_start"; call_id: string; name: string }
-  | { type: "tool_call_args_delta"; call_id: string; delta: string }
-  | { type: "usage_update"; usage: Usage }
-  | { type: "turn_complete"; turn: Turn }
+type TurnEvent = Data.TaggedEnum<{
+  TextDelta: { text: string }
+  ReasoningDelta: { text: string; kind: "trace" | "summary" }
+  RefusalDelta: { text: string }
+  ToolCallStart: { call_id: string; name: string }
+  ToolCallArgsDelta: { call_id: string; delta: string }
+  UsageUpdate: { usage: Usage }
+  TurnComplete: { turn: Turn }
+}>
 ```
 
-The terminal event is always `turn_complete`, carrying the assembled
-`Turn`. Providers normalize their wire formats onto this union, so
-`text_delta` from OpenAI Responses, Anthropic, and Gemini are all the
+Constructors and matchers ship as `TurnEvent.TextDelta({...})`,
+`TurnEvent.$is("TurnComplete")`, `TurnEvent.$match({...})` etc.
+
+The terminal event is always `TurnComplete`, carrying the assembled
+`Turn`. Providers normalize their wire formats onto this union, so a
+`TextDelta` from OpenAI Responses, Anthropic, and Gemini all has the
 same shape.
 
 Two operators turn a `TurnEvent` stream into something more useful:

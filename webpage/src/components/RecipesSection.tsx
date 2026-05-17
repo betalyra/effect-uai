@@ -14,6 +14,7 @@ import {
   PiPause,
   PiPulse,
   PiShieldCheck,
+  PiStairs,
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
 
@@ -54,6 +55,13 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Stay online** when a provider fails. Switch automatically on rate limits or outages.",
     href: "/recipes/multi-model-fallback/",
     Icon: PiArrowsClockwise,
+  },
+  {
+    title: "Model escalation",
+    description:
+      "**Pay only when needed.** The cheap model handles easy questions and escalates hard ones to a more capable model.",
+    href: "/recipes/model-escalation/",
+    Icon: PiStairs,
   },
   {
     title: "Auto-compaction",
@@ -129,10 +137,15 @@ export default function RecipesSection() {
   return (
     <section className="not-content border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12">
       <div style={{ marginBottom: "2.5rem" }} className="flex items-baseline justify-between gap-4">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
+        <div className="flex flex-col gap-1.5">
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
+          <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
+            Each recipe shows how to solve a common agent problem with the primitives.
+          </p>
+        </div>
         <a
           href="/recipes/"
-          className="group inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-(--color-mark)"
+          className="group inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-(--color-mark)"
         >
           All recipes
           <PiArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />

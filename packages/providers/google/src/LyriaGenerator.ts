@@ -254,13 +254,11 @@ const generateImpl =
       // Clip is fixed 30 s mp3 — reject wav up front rather than sending
       // a `responseFormat` that the live API ignores or rejects.
       if (isClipModel(request.model) && mimeType === "audio/wav") {
-        return yield* Effect.fail(
-          new AiError.Unsupported({
-            provider: "lyria",
-            capability: "outputFormat",
-            reason: `lyria-3-clip-preview is fixed at audio/mp3. Use lyria-3-pro-preview for audio/wav output.`,
-          }),
-        )
+        return yield* new AiError.Unsupported({
+          provider: "lyria",
+          capability: "outputFormat",
+          reason: `lyria-3-clip-preview is fixed at audio/mp3. Use lyria-3-pro-preview for audio/wav output.`,
+        })
       }
       const promptText = buildPrompt(request)
       const body = isClipModel(request.model)
@@ -281,7 +279,7 @@ const generateImpl =
       const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
       if (response.status >= 400) {
         const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-        return yield* Effect.fail(httpStatusError(response.status, text))
+        return yield* httpStatusError(response.status, text)
       }
       const json = yield* response.json.pipe(Effect.mapError(transportFailure))
       const wire = yield* decodeWire(json).pipe(
@@ -296,17 +294,15 @@ const generateImpl =
         // (named-artist references, copyrighted lyrics, etc.). Surface the
         // full response body — text parts, finish reasons, prompt-feedback
         // blocks — so the caller can see why.
-        return yield* Effect.fail(
-          new AiError.GenerationFailed({
-            provider: "lyria",
-            raw: {
-              message: "Lyria response had no inlineData audio part.",
-              hint: "Likely a prompt-filter rejection. Lyria filters references to real artists / copyrighted song lyrics. Rephrase with descriptive style language instead of artist names.",
-              textParts: text,
-              response: json,
-            },
-          }),
-        )
+        return yield* new AiError.GenerationFailed({
+          provider: "lyria",
+          raw: {
+            message: "Lyria response had no inlineData audio part.",
+            hint: "Likely a prompt-filter rejection. Lyria filters references to real artists / copyrighted song lyrics. Rephrase with descriptive style language instead of artist names.",
+            textParts: text,
+            response: json,
+          },
+        })
       }
       const bytes = yield* decodeBase64ToBytes(inline.data)
       return {

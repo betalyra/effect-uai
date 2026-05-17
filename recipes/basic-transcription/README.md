@@ -22,11 +22,13 @@ One call does the work:
 ```ts
 import { transcribe } from "@effect-uai/core/Transcriber"
 
-const result = yield* transcribe({
-  audio: { _tag: "bytes", bytes: audioBytes, mimeType: "audio/mpeg" },
-  model: "gpt-4o-transcribe",
-  language: "en",
-})
+const result =
+  yield *
+  transcribe({
+    audio: { _tag: "bytes", bytes: audioBytes, mimeType: "audio/mpeg" },
+    model: "gpt-4o-transcribe",
+    language: "en",
+  })
 // result.text   : string
 // result.words? : WordTimestamp[]  (only with wordTimestamps + whisper-1)
 ```
@@ -48,10 +50,10 @@ The recipe includes two paths:
 Gemini's transcription is prompt-driven and text-only, so the runner
 skips the timestamp variant when you choose `--provider gemini`.
 
-| Provider | Fast model | Timestamp path |
-| --- | --- | --- |
-| `openai` | `gpt-4o-transcribe` | `whisper-1` |
-| `gemini` | `gemini-2.5-flash` | not supported |
+| Provider | Fast model          | Timestamp path |
+| -------- | ------------------- | -------------- |
+| `openai` | `gpt-4o-transcribe` | `whisper-1`    |
+| `gemini` | `gemini-2.5-flash`  | not supported  |
 
 ## Run it
 

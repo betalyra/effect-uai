@@ -60,7 +60,7 @@ export const httpConversation = (
               const plan = fromApprovalMap(isSensitive, approvals)(calls)
               return Stream.merge(
                 Toolkit.executeAll(allTools, plan.approved),
-                Toolkit.outputEvents(plan.rejected),
+                Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
               ).pipe(
                 Toolkit.continueWith((results) =>
                   Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
@@ -95,7 +95,7 @@ const events = Stream.unwrap(
           Stream.flatMap((d) =>
             d._tag === "Approved"
               ? Toolkit.executeAll(allTools, [d.call])
-              : Stream.succeed(Toolkit.outputEvent(d.result)),
+              : Stream.succeed(ToolEvent.Output({ result: d.result })),
           ),
         ),
       ),

@@ -42,23 +42,24 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Multi-model
 
-| Recipe                                               | One-line                                                                       |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [Multi-model compare](/recipes/multi-model-compare/) | Fan one prompt out to multiple providers; per-member errors stay isolated.     |
-| [Model council](/recipes/model-council/)             | Build a stream graph where models answer, judge each other, and emit a winner. |
+| Recipe                                               | One-line                                                                                        |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [Model escalation](/recipes/model-escalation/)       | Start on a fast cheap model; let it escalate hard questions to a stronger tier via a tool call. |
+| [Multi-model compare](/recipes/multi-model-compare/) | Fan one prompt out to multiple providers; per-member errors stay isolated.                      |
+| [Model council](/recipes/model-council/)             | Build a stream graph where models answer, judge each other, and emit a winner.                  |
 
 ## Speech
 
-| Recipe                                                       | One-line                                                                                              |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| [Basic transcription](/recipes/basic-transcription/)         | Transcribe a file via the generic Transcriber service; swap providers with `--provider`.              |
-| [Basic speech synthesis](/recipes/basic-speech-synthesis/)   | Synthesize a phrase via the generic SpeechSynthesizer service; sync or chunked-streaming mode.        |
-| [Streaming transcription](/recipes/streaming-transcription/) | Live mic → transcript over WebSocket; Bun server bridges browser AudioWorklet to provider realtime.   |
-| [Streaming synthesis](/recipes/streaming-synthesis/)         | Type text → audio plays as the first chunk arrives; incremental text-in over WS.                      |
-| [Voice loop](/recipes/voice-loop/)                           | Full STT → LLM → TTS pipeline with stop-word interrupt and follow-up queueing; one fiber per turn.    |
+| Recipe                                                       | One-line                                                                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| [Basic transcription](/recipes/basic-transcription/)         | Transcribe a file via the generic Transcriber service; swap providers with `--provider`.            |
+| [Basic speech synthesis](/recipes/basic-speech-synthesis/)   | Synthesize a phrase via the generic SpeechSynthesizer service; sync or chunked-streaming mode.      |
+| [Streaming transcription](/recipes/streaming-transcription/) | Live mic → transcript over WebSocket; Bun server bridges browser AudioWorklet to provider realtime. |
+| [Streaming synthesis](/recipes/streaming-synthesis/)         | Type text → audio plays as the first chunk arrives; incremental text-in over WS.                    |
+| [Voice loop](/recipes/voice-loop/)                           | Full STT → LLM → TTS pipeline with stop-word interrupt and follow-up queueing; one fiber per turn.  |
 
 ## Music
 
-| Recipe                                                     | One-line                                                                                                |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| [Basic music generation](/recipes/basic-music-generation/) | Generate a 30-second clip with Lyria 3; simple prompt or weighted prompts with lyrics and BPM hints.    |
+| Recipe                                                     | One-line                                                                                             |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [Basic music generation](/recipes/basic-music-generation/) | Generate a 30-second clip with Lyria 3; simple prompt or weighted prompts with lyrics and BPM hints. |

@@ -21,24 +21,22 @@ const initial: State = {
   index: 0,
 }
 
-const program = Effect.gen(function* () {
-  yield* Stream.runForEach(buildConversation(allTools, initial), (event) =>
-    Match.value(event).pipe(
-      Match.when({ _tag: "Intermediate" }, (e) =>
-        Effect.logInfo("download progress", { call_id: e.call_id, data: e.data }),
-      ),
-      Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("download result", { result })),
-      Match.discriminators("type")({
-        turn_complete: ({ turn }) =>
-          Effect.logInfo("turn complete", {
-            stop_reason: turn.stop_reason,
-            usage: turn.usage,
-          }),
-      }),
-      Match.orElse(() => Effect.void),
+const program = Stream.runForEach(buildConversation(allTools, initial), (event) =>
+  Match.value(event).pipe(
+    Match.when({ _tag: "Intermediate" }, (e) =>
+      Effect.logInfo("download progress", { call_id: e.call_id, data: e.data }),
     ),
-  )
-})
+    Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("download result", { result })),
+    Match.discriminators("_tag")({
+      TurnComplete: ({ turn }) =>
+        Effect.logInfo("turn complete", {
+          stop_reason: turn.stop_reason,
+          usage: turn.usage,
+        }),
+    }),
+    Match.orElse(() => Effect.void),
+  ),
+)
 
 const apiKeyLayer = Layer.unwrap(
   Effect.gen(function* () {

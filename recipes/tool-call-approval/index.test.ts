@@ -7,7 +7,7 @@ import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import { type ToolCallDecision, type Verdict, fromVerdictQueue } from "@effect-uai/core/Resolvers"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
-import { type ToolEvent, isApprovalRequested, isOutput } from "@effect-uai/core/ToolEvent"
+import { ToolEvent, isApprovalRequested, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -53,7 +53,7 @@ describe("tool-call-approval", () => {
   const decisionEvents = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
     decision._tag === "Approved"
       ? Toolkit.executeAll(allTools, [decision.call])
-      : Stream.succeed(Toolkit.outputEvent(decision.result))
+      : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
   // --- Loop builder (uses LanguageModel for testability) ------------------
   interface State {
@@ -77,7 +77,7 @@ describe("tool-call-approval", () => {
               tools: Tool.toDescriptors(allTools),
             })
             .pipe(
-              onTurnComplete<State, ToolEvent>((turn) =>
+              onTurnComplete((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
@@ -207,10 +207,7 @@ describe("tool-call-approval", () => {
     })
 
     // Loop ran all three turns.
-    const turnCompletes = events.filter(
-      (e): e is Extract<Turn.TurnEvent, { type: "turn_complete" }> =>
-        "type" in e && e.type === "turn_complete",
-    )
+    const turnCompletes = events.filter(Turn.isTurnComplete)
     expect(turnCompletes).toHaveLength(3)
     expect(turnCompletes[2]!.turn.stop_reason).toBe("stop")
   })
@@ -335,7 +332,7 @@ describe("tool-call-approval (HTTP variant)", () => {
               tools: Tool.toDescriptors(allTools),
             })
             .pipe(
-              onTurnComplete<State, ToolEvent>((turn) =>
+              onTurnComplete((turn) =>
                 Effect.sync(() => {
                   const calls = Turn.functionCalls(turn)
                   if (calls.length === 0) return stop
@@ -343,7 +340,9 @@ describe("tool-call-approval (HTTP variant)", () => {
                   const plan = fromApprovalMap(isSensitive, approvals)(calls)
                   return Stream.merge(
                     Toolkit.executeAll(allTools, plan.approved),
-                    Toolkit.outputEvents(plan.rejected),
+                    Stream.fromIterable(
+                      plan.rejected.map((result) => ToolEvent.Output({ result })),
+                    ),
                   ).pipe(
                     Toolkit.continueWith((results) =>
                       Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),

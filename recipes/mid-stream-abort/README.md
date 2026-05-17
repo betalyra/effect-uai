@@ -29,7 +29,7 @@ connection drops.
   In production this is what the HTTP client uses to call
   `AbortController.abort()`.
 - Partial deltas that already crossed the boundary stay with the
-  consumer. No `turn_complete` is emitted because the turn never
+  consumer. No `TurnComplete` is emitted because the turn never
   finished, so the recipe's normal completion path (advance state /
   stop) doesn't run.
 
@@ -68,7 +68,7 @@ into Effect via `Effect.async`.
 
 ## State and partial completions
 
-The recipe's body never sees a `turn_complete` when abort fires, so
+The recipe's body never sees a `TurnComplete` when abort fires, so
 `state` stays at its pre-turn value. If you need the partial assistant
 text to survive abort, two options:
 
@@ -76,7 +76,7 @@ text to survive abort, two options:
   outside the loop. The interrupted stream still emitted them, so they
   land in the buffer before the abort.
 - **Synthesize a partial `Turn`** in the consumer when the stream ends
-  without `turn_complete`. The deltas you saw are enough to construct an
+  without `TurnComplete`. The deltas you saw are enough to construct an
   assistant message; treat it as if the turn had finished with
   `stop_reason: "stop"`.
 
@@ -90,7 +90,7 @@ OPENAI_API_KEY=sk-... pnpm tsx recipes/mid-stream-abort/index.ts
 ```
 
 You'll see a stream of `delta` log lines, then `abort fired after 3
-seconds`, then `loop ended`. No `turn_complete` line.
+seconds`, then `loop ended`. No `TurnComplete` line.
 
 The full source lives next to this README at
 [`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/mid-stream-abort/index.ts).

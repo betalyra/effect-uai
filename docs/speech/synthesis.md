@@ -62,12 +62,14 @@ The "make me a file" path:
 ```ts
 import { synthesize } from "@effect-uai/core/SpeechSynthesizer"
 
-const blob = yield* synthesize({
-  text: "Effect-uai. Effectful building blocks for agentic AI.",
-  model: "gpt-4o-mini-tts",
-  voiceId: "alloy",
-  outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 24000 },
-})
+const blob =
+  yield *
+  synthesize({
+    text: "Effect-uai. Effectful building blocks for agentic AI.",
+    model: "gpt-4o-mini-tts",
+    voiceId: "alloy",
+    outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 24000 },
+  })
 // blob.bytes : Uint8Array, blob.format : AudioFormat
 ```
 

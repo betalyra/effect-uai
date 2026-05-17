@@ -1,4 +1,4 @@
-import { Array as Arr, Effect, Function, Ref, Stream } from "effect"
+import { Array as Arr, Effect, Function, Ref, Schema, Stream } from "effect"
 import * as Loop from "../loop/Loop.js"
 import type { FunctionCall } from "../domain/Items.js"
 import {
@@ -10,8 +10,8 @@ import {
   type Tool,
   type ToolDescriptor,
 } from "./Tool.js"
-import { type ToolResult, executionError, rejected } from "./Outcome.js"
-import type { ToolEvent } from "./ToolEvent.js"
+import { ToolResult, executionError, rejected } from "./Outcome.js"
+import { ToolEvent } from "./ToolEvent.js"
 import { isOutput } from "./ToolEvent.js"
 
 export type AnyTool = Tool<string, any, any, any>
@@ -52,7 +52,12 @@ export const toDescriptors = <Tools extends ReadonlyArray<AnyTool>>(
       target: "draft-2020-12",
     })
     return tool.strict !== undefined
-      ? { name: tool.name, description: tool.description, inputSchema, strict: tool.strict }
+      ? {
+          name: tool.name,
+          description: tool.description,
+          inputSchema,
+          strict: tool.strict,
+        }
       : { name: tool.name, description: tool.description, inputSchema }
   })
 
@@ -78,17 +83,12 @@ export const executeAll = <Tools extends ReadonlyArray<AnyKindTool<any>>>(
     }),
   )
 
-export const outputEvent = (result: ToolResult): ToolEvent => ({ _tag: "Output", result })
-
-export const outputEvents = (results: ReadonlyArray<ToolResult>): Stream.Stream<ToolEvent> =>
-  Stream.fromIterable(results.map(outputEvent))
-
-const valueResult = (call: FunctionCall, tool: string, value: unknown): ToolResult => ({
-  _tag: "Value",
-  call_id: call.call_id,
-  tool,
-  value,
-})
+const valueResult = (call: FunctionCall, tool: string, value: unknown): ToolResult =>
+  ToolResult.Value({
+    call_id: call.call_id,
+    tool,
+    value,
+  })
 
 const runOne = <R>(
   tools: ReadonlyArray<AnyKindTool<R>>,
@@ -98,14 +98,17 @@ const runOne = <R>(
   if (tool === undefined) {
     // Graceful: emit a synthetic Failure so OTHER calls in this turn
     // still execute. LLMs hallucinate tool names; MCP tools come and go.
-    return Stream.succeed<ToolEvent>({
-      _tag: "Output",
-      result: rejected(call, "unknown_tool", `No tool registered with name "${call.name}"`),
-    })
+    return Stream.succeed(
+      ToolEvent.Output({
+        result: rejected(call, "unknown_tool", `No tool registered with name "${call.name}"`),
+      }),
+    )
   }
   if (isStreamingTool(tool)) return runStreaming(tool, call)
   return runPlain(tool, call)
 }
+
+const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
 
 const runPlain = <R>(
   tool: AnyPlainTool<R>,
@@ -113,10 +116,9 @@ const runPlain = <R>(
 ): Stream.Stream<ToolEvent, never, R> =>
   Stream.fromEffect(
     Effect.gen(function* () {
-      const parsed = yield* Effect.try({
-        try: () => JSON.parse(call.arguments) as unknown,
-        catch: () => "json_parse_error" as const,
-      })
+      const parsed = yield* parseJsonUnknown(call.arguments).pipe(
+        Effect.mapError(() => "json_parse_error" as const),
+      )
       const validated = yield* Effect.tryPromise({
         try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
         catch: () => "validation_threw" as const,
@@ -128,7 +130,7 @@ const runPlain = <R>(
       return valueResult(call, tool.name, output)
     }).pipe(
       Effect.catchCause(() => Effect.succeed(executionError(call, "Tool execution failed"))),
-      Effect.map((result) => ({ _tag: "Output", result }) satisfies ToolEvent),
+      Effect.map((result) => ToolEvent.Output({ result })),
     ),
   )
 
@@ -138,19 +140,19 @@ const runStreaming = <R>(
 ): Stream.Stream<ToolEvent, never, R> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const parsed = yield* Effect.try({
-        try: () => JSON.parse(call.arguments) as unknown,
-        catch: () => "json_parse_error" as const,
-      })
+      const parsed = yield* parseJsonUnknown(call.arguments).pipe(
+        Effect.mapError(() => "json_parse_error" as const),
+      )
       const validated = yield* Effect.tryPromise({
         try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
         catch: () => "validation_threw" as const,
       })
       if (validated.issues !== undefined) {
-        return Stream.succeed<ToolEvent>({
-          _tag: "Output",
-          result: executionError(call, "Tool input failed schema validation"),
-        })
+        return Stream.succeed<ToolEvent>(
+          ToolEvent.Output({
+            result: executionError(call, "Tool input failed schema validation"),
+          }),
+        )
       }
 
       // Real-time: tap each event into a Ref as it flows; emit one
@@ -159,24 +161,20 @@ const runStreaming = <R>(
       const ref = yield* Ref.make<Array<unknown>>([])
       const intermediates = tool.run(validated.value).pipe(
         Stream.tap((event) => Ref.update(ref, Arr.append(event))),
-        Stream.map(
-          (data) =>
-            ({
-              _tag: "Intermediate",
-              call_id: call.call_id,
-              tool: tool.name,
-              data,
-            }) satisfies ToolEvent,
+        Stream.map((data) =>
+          ToolEvent.Intermediate({
+            call_id: call.call_id,
+            tool: tool.name,
+            data,
+          }),
         ),
       )
       const output = Stream.fromEffect(
         Ref.get(ref).pipe(
-          Effect.map(
-            (events) =>
-              ({
-                _tag: "Output",
-                result: valueResult(call, tool.name, tool.finalize(events)),
-              }) satisfies ToolEvent,
+          Effect.map((events) =>
+            ToolEvent.Output({
+              result: valueResult(call, tool.name, tool.finalize(events)),
+            }),
           ),
         ),
       )
@@ -184,10 +182,11 @@ const runStreaming = <R>(
     }),
   ).pipe(
     Stream.catchCause(() =>
-      Stream.succeed<ToolEvent>({
-        _tag: "Output",
-        result: executionError(call, "Tool execution failed"),
-      }),
+      Stream.succeed(
+        ToolEvent.Output({
+          result: executionError(call, "Tool execution failed"),
+        }),
+      ),
     ),
   )
 

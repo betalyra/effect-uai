@@ -1,5 +1,6 @@
 import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
-import type { ContentBlock, InputImage, Item, Message } from "@effect-uai/core/Items"
+import type { ContentBlock, FunctionCall, InputImage, Item, Message } from "@effect-uai/core/Items"
+import type { ToolDescriptor } from "@effect-uai/core/Tool"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -17,7 +18,22 @@ const TextPart = Schema.Struct({
   thought: Schema.optional(Schema.Boolean),
 })
 
-const Part = Schema.Union([TextPart])
+/**
+ * Gemini function-call part. Args are delivered as a whole JSON *object*
+ * in a single chunk (Gemini does not stream tool-call args). On Gemini 3
+ * the response also carries an `id` per call, which we echo back on the
+ * corresponding `functionResponse`.
+ */
+const FunctionCallPart = Schema.Struct({
+  functionCall: Schema.Struct({
+    id: Schema.optional(Schema.String),
+    name: Schema.String,
+    args: Schema.optional(Schema.Unknown),
+  }),
+})
+
+const Part = Schema.Union([TextPart, FunctionCallPart])
+type WireFunctionCallPart = typeof FunctionCallPart.Type
 
 const Content = Schema.Struct({
   role: Schema.optional(Schema.String),
@@ -51,6 +67,13 @@ export type WireChunk = typeof WireChunk.Type
 type RequestPart =
   | { readonly text: string }
   | { readonly inlineData: { readonly mimeType: string; readonly data: string } }
+  | { readonly functionCall: { readonly name: string; readonly args: unknown } }
+  | {
+      readonly functionResponse: {
+        readonly name: string
+        readonly response: Record<string, unknown>
+      }
+    }
 
 type RequestContent = {
   readonly role: "user" | "model"
@@ -59,6 +82,22 @@ type RequestContent = {
 
 type RequestSystemInstruction = {
   readonly parts: ReadonlyArray<{ readonly text: string }>
+}
+
+/** Gemini's tool declaration. We translate one `ToolDescriptor` per entry. */
+type RequestTool = {
+  readonly functionDeclarations: ReadonlyArray<{
+    readonly name: string
+    readonly description: string
+    readonly parameters: Record<string, unknown>
+  }>
+}
+
+type RequestToolConfig = {
+  readonly functionCallingConfig: {
+    readonly mode: "AUTO" | "ANY" | "NONE"
+    readonly allowedFunctionNames?: ReadonlyArray<string>
+  }
 }
 
 export type ThinkingConfig = {
@@ -80,6 +119,8 @@ export type RequestBody = {
   readonly contents: ReadonlyArray<RequestContent>
   readonly systemInstruction?: RequestSystemInstruction
   readonly generationConfig?: GenerationConfig
+  readonly tools?: ReadonlyArray<RequestTool>
+  readonly toolConfig?: RequestToolConfig
 }
 
 const blockText = Match.type<ContentBlock>().pipe(
@@ -142,19 +183,165 @@ const systemMessageText = (message: Message): Result.Result<string, void> => {
   return text.length === 0 ? Result.failVoid : Result.succeed(text)
 }
 
-const messages = (history: ReadonlyArray<Item>): ReadonlyArray<Message> =>
+const allMessages = (history: ReadonlyArray<Item>): ReadonlyArray<Message> =>
   pipe(
     history,
     Arr.filterMap((item) => (item.type === "message" ? Result.succeed(item) : Result.failVoid)),
   )
 
+// ---------------------------------------------------------------------------
+// Function-call round-trip
+//
+// `FunctionCall.arguments` and `FunctionCallOutput.output` are JSON-encoded
+// strings; Gemini's `functionCall.args` and `functionResponse.response`
+// expect parsed JSON *objects*. Decode via Schema:
+//   - object payload → use as-is
+//   - scalar / array / malformed → wrap as `{ output: <raw string> }` so the
+//     model still sees *some* response without crashing the request.
+// ---------------------------------------------------------------------------
+
+const JsonObject = Schema.Record(Schema.String, Schema.Unknown)
+const decodeJsonObject = Schema.decodeResult(Schema.fromJsonString(JsonObject))
+
+const parsedJsonObject =
+  (fallback: (raw: string) => Record<string, unknown>) =>
+  (encoded: string): Record<string, unknown> =>
+    pipe(
+      decodeJsonObject(encoded),
+      Result.match({
+        onSuccess: (v) => v,
+        onFailure: () => fallback(encoded),
+      }),
+    )
+
+const parsedArgs = parsedJsonObject(() => ({}))
+const parsedResponse = parsedJsonObject((raw) => ({ output: raw }))
+
+/**
+ * `FunctionCallOutput` only carries `call_id`; Gemini's `functionResponse`
+ * requires the declared function `name`. Resolve the name by scanning prior
+ * `function_call` items in the history for a matching `call_id`. If we
+ * cannot resolve, fall back to `call_id` as the name - imperfect but
+ * preserves stream shape so the model sees *some* response.
+ */
+const isFunctionCallItem = (item: Item): item is FunctionCall => item.type === "function_call"
+
+const nameForCallId = (history: ReadonlyArray<Item>, call_id: string): Option.Option<string> =>
+  pipe(
+    history,
+    Arr.findFirst(
+      (item): item is FunctionCall => isFunctionCallItem(item) && item.call_id === call_id,
+    ),
+    Option.map((f) => f.name),
+  )
+
+/**
+ * Extract the Gemini-3 wire id we stashed in `providerData` on the way out.
+ * Schema-driven so the shape lives in one place; failure → `Option.none()`.
+ */
+const ProviderDataWithGeminiId = Schema.Struct({
+  gemini: Schema.Struct({ id: Schema.String }),
+})
+const decodeProviderId = Schema.decodeUnknownResult(ProviderDataWithGeminiId)
+
+const providerIdFor = (item: FunctionCall): Option.Option<string> =>
+  pipe(
+    decodeProviderId(item.providerData),
+    Result.match({
+      onSuccess: (d) => Option.some(d.gemini.id),
+      onFailure: () => Option.none<string>(),
+    }),
+  )
+
+const itemToContent =
+  (history: ReadonlyArray<Item>) =>
+  (item: Item): Result.Result<RequestContent, void> =>
+    Match.value(item).pipe(
+      Match.discriminatorsExhaustive("type")({
+        message: messageToContent,
+        function_call: (f) =>
+          Result.succeed({
+            role: "model" as const,
+            parts: [
+              {
+                functionCall: {
+                  ...Option.match(providerIdFor(f), {
+                    onSome: (id) => ({ id }),
+                    onNone: () => ({}),
+                  }),
+                  name: f.name,
+                  args: parsedArgs(f.arguments),
+                },
+              },
+            ],
+          }),
+        function_call_output: (o) =>
+          Result.succeed({
+            role: "user" as const,
+            parts: [
+              {
+                functionResponse: {
+                  name: Option.getOrElse(nameForCallId(history, o.call_id), () => o.call_id),
+                  response: parsedResponse(o.output),
+                },
+              },
+            ],
+          }),
+        reasoning: () => Result.failVoid,
+      }),
+    )
+
+// ---------------------------------------------------------------------------
+// Tool descriptors → Gemini `functionDeclarations`. Gemini accepts only a
+// strict OpenAPI 3.0 subset for `parameters`; strip JSON-Schema keys it
+// rejects (`$schema`, `$ref`, `additionalProperties`, `oneOf`,
+// `definitions`).
+// ---------------------------------------------------------------------------
+
+const UNSUPPORTED_SCHEMA_KEYS: ReadonlySet<string> = new Set([
+  "$schema",
+  "$ref",
+  "$defs",
+  "definitions",
+  "additionalProperties",
+  "oneOf",
+])
+
+const sanitizeSchema = (schema: unknown): unknown => {
+  if (Array.isArray(schema)) return schema.map(sanitizeSchema)
+  if (schema === null || typeof schema !== "object") return schema
+  return pipe(
+    Object.entries(schema as Record<string, unknown>),
+    Arr.filterMap(([k, v]) =>
+      UNSUPPORTED_SCHEMA_KEYS.has(k)
+        ? Result.failVoid
+        : Result.succeed([k, sanitizeSchema(v)] as const),
+    ),
+    Object.fromEntries,
+  )
+}
+
+const toolDescriptorsToTools = (tools: ReadonlyArray<ToolDescriptor>): ReadonlyArray<RequestTool> =>
+  tools.length === 0
+    ? []
+    : [
+        {
+          functionDeclarations: tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            parameters: sanitizeSchema(t.inputSchema) as Record<string, unknown>,
+          })),
+        },
+      ]
+
 export const buildRequestBody = (
   history: ReadonlyArray<Item>,
   generationConfig: Option.Option<GenerationConfig>,
+  tools: ReadonlyArray<ToolDescriptor> = [],
 ): RequestBody => {
-  const msgs = messages(history)
-  const systemTexts = pipe(msgs, Arr.filterMap(systemMessageText))
-  const contents = pipe(msgs, Arr.filterMap(messageToContent))
+  const systemTexts = pipe(allMessages(history), Arr.filterMap(systemMessageText))
+  const contents = pipe(history, Arr.filterMap(itemToContent(history)))
+  const requestTools = toolDescriptorsToTools(tools)
   return {
     contents,
     ...(systemTexts.length > 0 && {
@@ -163,6 +350,10 @@ export const buildRequestBody = (
     ...Option.match(generationConfig, {
       onNone: () => ({}),
       onSome: (cfg) => ({ generationConfig: cfg }),
+    }),
+    ...(requestTools.length > 0 && {
+      tools: requestTools,
+      toolConfig: { functionCallingConfig: { mode: "AUTO" as const } },
     }),
   }
 }
@@ -180,9 +371,20 @@ const finishReasonToStop = (reason: Option.Option<string>): Turn["stop_reason"] 
     onSome: (r) => (r === "MAX_TOKENS" ? ("max_tokens" as const) : ("stop" as const)),
   })
 
+export type AccumulatedFunctionCall = {
+  /** Synthesized id-or-name we surface as `call_id` on the canonical item. */
+  readonly callId: string
+  readonly name: string
+  /** Wire id from Gemini 3, when present - echoed back on `functionResponse`. */
+  readonly providerId: Option.Option<string>
+  /** Args as JSON-encoded string, mirroring `Items.FunctionCall.arguments`. */
+  readonly arguments: string
+}
+
 export type Accumulator = {
   readonly text: string
   readonly reasoning: string
+  readonly functionCalls: ReadonlyArray<AccumulatedFunctionCall>
   readonly finishReason: Option.Option<string>
   readonly usage: {
     readonly input_tokens?: number
@@ -196,18 +398,25 @@ export type Accumulator = {
 export const emptyAccumulator: Accumulator = {
   text: "",
   reasoning: "",
+  functionCalls: [],
   finishReason: Option.none(),
   usage: {},
 }
 
 /**
- * One part's worth of streamable text: either the model's answer
- * (`kind: "text"`) or chain-of-thought (`kind: "reasoning"`). Emitted
- * in wire order so consumers can interleave faithfully.
+ * One part's worth of streamable output. `text` and `reasoning` are
+ * incremental string deltas; `function_call` arrives whole-in-one-chunk
+ * (Gemini does not stream tool-call args).
  */
 export type ChunkPart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "reasoning"; readonly text: string }
+  | {
+      readonly kind: "function_call"
+      readonly id: Option.Option<string>
+      readonly name: string
+      readonly args: unknown
+    }
 
 export type ChunkResult = {
   readonly accumulator: Accumulator
@@ -215,24 +424,39 @@ export type ChunkResult = {
   readonly finished: boolean
 }
 
-const chunkParts = (chunk: WireChunk): ReadonlyArray<ChunkPart> =>
-  pipe(
-    chunk.candidates?.[0]?.content?.parts ?? [],
-    Arr.filterMap((p) =>
-      p.text.length === 0
-        ? Result.failVoid
-        : Result.succeed({
-            kind: p.thought === true ? ("reasoning" as const) : ("text" as const),
-            text: p.text,
-          }),
-    ),
-  )
+const isTextPart = (p: typeof Part.Type): p is typeof TextPart.Type => "text" in p
 
-const sumByKind = (parts: ReadonlyArray<ChunkPart>, kind: ChunkPart["kind"]): string =>
+const textToChunkParts = (p: typeof TextPart.Type): ReadonlyArray<ChunkPart> =>
+  p.text.length === 0 ? [] : [{ kind: p.thought === true ? "reasoning" : "text", text: p.text }]
+
+const functionCallToChunkParts = (p: WireFunctionCallPart): ReadonlyArray<ChunkPart> => [
+  {
+    kind: "function_call",
+    id: Option.fromNullishOr(p.functionCall.id),
+    name: p.functionCall.name,
+    args: p.functionCall.args ?? {},
+  },
+]
+
+const partToChunkParts = (p: typeof Part.Type): ReadonlyArray<ChunkPart> =>
+  isTextPart(p) ? textToChunkParts(p) : functionCallToChunkParts(p)
+
+const chunkParts = (chunk: WireChunk): ReadonlyArray<ChunkPart> =>
+  pipe(chunk.candidates?.[0]?.content?.parts ?? [], Arr.flatMap(partToChunkParts))
+
+const sumStrings = (parts: ReadonlyArray<ChunkPart>, kind: "text" | "reasoning"): string =>
   pipe(
     parts,
     Arr.filterMap((p) => (p.kind === kind ? Result.succeed(p.text) : Result.failVoid)),
   ).join("")
+
+const collectFunctionCalls = (
+  parts: ReadonlyArray<ChunkPart>,
+): ReadonlyArray<Extract<ChunkPart, { kind: "function_call" }>> =>
+  pipe(
+    parts,
+    Arr.filterMap((p) => (p.kind === "function_call" ? Result.succeed(p) : Result.failVoid)),
+  )
 
 const mergeUsage = (
   prev: Accumulator["usage"],
@@ -255,6 +479,41 @@ const mergeUsage = (
         }),
       }
 
+/**
+ * Synthesize a stable `call_id` for a function call. Gemini 3 provides one
+ * via `functionCall.id`; older models do not, so we fall back to
+ * `<name>_<index>` based on prior calls' position in the accumulator.
+ */
+const synthesizeCallId = (
+  call: Extract<ChunkPart, { kind: "function_call" }>,
+  priorCalls: ReadonlyArray<AccumulatedFunctionCall>,
+): string =>
+  Option.match(call.id, {
+    onSome: (id) => id,
+    onNone: () => `${call.name}_${priorCalls.length}`,
+  })
+
+const chunkCallToAccumulated = (
+  prior: ReadonlyArray<AccumulatedFunctionCall>,
+  call: Extract<ChunkPart, { kind: "function_call" }>,
+): AccumulatedFunctionCall => ({
+  callId: synthesizeCallId(call, prior),
+  name: call.name,
+  providerId: call.id,
+  // `functionCallToChunkParts` already replaced null/undefined with `{}`,
+  // so `call.args` is always a JSON-encodable value here.
+  arguments: JSON.stringify(call.args),
+})
+
+const appendFunctionCalls = (
+  prior: ReadonlyArray<AccumulatedFunctionCall>,
+  fromChunk: ReadonlyArray<Extract<ChunkPart, { kind: "function_call" }>>,
+): ReadonlyArray<AccumulatedFunctionCall> =>
+  fromChunk.reduce<ReadonlyArray<AccumulatedFunctionCall>>(
+    (acc, call) => [...acc, chunkCallToAccumulated(acc, call)],
+    prior,
+  )
+
 export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => {
   const parts = chunkParts(chunk)
   const finishReason = Option.fromNullishOr(chunk.candidates?.[0]?.finishReason)
@@ -262,27 +521,44 @@ export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => 
     parts,
     finished: Option.isSome(finishReason),
     accumulator: {
-      text: acc.text + sumByKind(parts, "text"),
-      reasoning: acc.reasoning + sumByKind(parts, "reasoning"),
+      text: acc.text + sumStrings(parts, "text"),
+      reasoning: acc.reasoning + sumStrings(parts, "reasoning"),
+      functionCalls: appendFunctionCalls(acc.functionCalls, collectFunctionCalls(parts)),
       finishReason: Option.orElse(finishReason, () => acc.finishReason),
       usage: mergeUsage(acc.usage, chunk.usageMetadata),
     },
   }
 }
 
+const reasoningItems = (acc: Accumulator): ReadonlyArray<Item> =>
+  acc.reasoning.length > 0 ? [{ type: "reasoning", summary: acc.reasoning }] : []
+
+const assistantMessageItems = (acc: Accumulator): ReadonlyArray<Item> =>
+  acc.text.length === 0
+    ? []
+    : [
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: acc.text }],
+        },
+      ]
+
+const functionCallItems = (acc: Accumulator): ReadonlyArray<Item> =>
+  pipe(
+    acc.functionCalls,
+    Arr.map((c) => ({
+      type: "function_call" as const,
+      call_id: c.callId,
+      name: c.name,
+      arguments: c.arguments,
+      ...(Option.isSome(c.providerId) && { providerData: { gemini: { id: c.providerId.value } } }),
+    })),
+  )
+
 export const accumulatorToTurn = (acc: Accumulator): Turn => ({
-  stop_reason: finishReasonToStop(acc.finishReason),
+  stop_reason:
+    acc.functionCalls.length > 0 ? ("tool_calls" as const) : finishReasonToStop(acc.finishReason),
   usage: { ...acc.usage },
-  items: [
-    ...(acc.reasoning.length > 0 ? [{ type: "reasoning" as const, summary: acc.reasoning }] : []),
-    ...(acc.text.length === 0
-      ? []
-      : [
-          {
-            type: "message" as const,
-            role: "assistant" as const,
-            content: [{ type: "output_text" as const, text: acc.text }],
-          },
-        ]),
-  ],
+  items: [...reasoningItems(acc), ...assistantMessageItems(acc), ...functionCallItems(acc)],
 })

@@ -22,8 +22,8 @@ import {
   fromVerdictQueue,
 } from "./Resolvers.js"
 import { fromEffectSchema, make as makeTool, streaming } from "./Tool.js"
-import { executeAll, outputEvent, outputEvents } from "./Toolkit.js"
-import { type ToolEvent, isApprovalRequested, isIntermediate, isOutput } from "./ToolEvent.js"
+import { executeAll } from "./Toolkit.js"
+import { ToolEvent, isApprovalRequested, isIntermediate, isOutput } from "./ToolEvent.js"
 
 // ---------------------------------------------------------------------------
 // Three demo tools covering the matrix:
@@ -91,15 +91,18 @@ const resultsFrom = (collected: ReadonlyArray<ToolEvent>): ReadonlyArray<ToolRes
 
 const byCallId = (results: ReadonlyArray<ToolResult>) => new Map(results.map((r) => [r.call_id, r]))
 
+const rejectedStream = (rejected: ReadonlyArray<ToolResult>) =>
+  Stream.fromIterable(rejected.map((result) => ToolEvent.Output({ result })))
+
 const eventsFromApprovalMap = (approvals: ReadonlyMap<string, ApprovalMapEntry>) => {
   const plan = fromApprovalMap(isSensitive, approvals)(calls)
-  return Stream.merge(executeAll(allTools, plan.approved), outputEvents(plan.rejected))
+  return Stream.merge(executeAll(allTools, plan.approved), rejectedStream(plan.rejected))
 }
 
 const eventsFromDecision = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
   decision._tag === "Approved"
     ? executeAll(allTools, [decision.call])
-    : Stream.succeed(outputEvent(decision.result))
+    : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
 // ---------------------------------------------------------------------------
 // fromApprovalMap: HTTP-style scenarios
@@ -189,7 +192,7 @@ describe("executeAll: graceful degradation", () => {
             isSensitive,
             new Map([["c3", { decision: "approve" }]]),
           )(callsWithBogus)
-          return Stream.merge(executeAll(allTools, plan.approved), outputEvents(plan.rejected))
+          return Stream.merge(executeAll(allTools, plan.approved), rejectedStream(plan.rejected))
         })(),
       ),
     )

@@ -16,7 +16,7 @@
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/agentic-loop/run.ts`
  */
 import * as readline from "node:readline"
-import { Config, DateTime, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect"
+import { Config, DateTime, Effect, Layer, Match, Option, Queue, Ref, Schema, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Tool from "@effect-uai/core/Tool"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
@@ -106,23 +106,23 @@ const write = (s: string) => Effect.sync(() => process.stdout.write(s))
 
 const renderConversation = (queue: Queue.Queue<string>, streaming: Ref.Ref<boolean>) =>
   // The renderer flips `streaming` true on the first event of each
-  // turn and back to false on `turn_complete`, so the stdin handler
+  // turn and back to false on `TurnComplete`, so the stdin handler
   // knows whether incoming lines are landing mid-turn.
-  Stream.runForEach(conversation(queue, tools, "1500 millis"), (event) => {
-    if ("_tag" in event) {
-      if (event._tag === "Output" && event.result._tag === "Value") {
-        return write(`\n  [${event.result.tool} → ${JSON.stringify(event.result.value)}]\n`)
-      }
-      return Effect.void
-    }
-    if (event.type === "text_delta")
-      return Ref.set(streaming, true).pipe(Effect.andThen(write(event.text)))
-    if (event.type === "tool_call_start")
-      return Ref.set(streaming, true).pipe(Effect.andThen(write(`\n  [calling ${event.name}…]`)))
-    if (event.type === "turn_complete")
-      return Ref.set(streaming, false).pipe(Effect.andThen(write("\n\nyou> ")))
-    return Effect.void
-  })
+  Stream.runForEach(conversation(queue, tools, "1500 millis"), (event) =>
+    Match.value(event).pipe(
+      Match.discriminators("_tag")({
+        Output: ({ result }) =>
+          result._tag === "Value"
+            ? write(`\n  [${result.tool} → ${JSON.stringify(result.value)}]\n`)
+            : Effect.void,
+        TextDelta: ({ text }) => Ref.set(streaming, true).pipe(Effect.andThen(write(text))),
+        ToolCallStart: ({ name }) =>
+          Ref.set(streaming, true).pipe(Effect.andThen(write(`\n  [calling ${name}…]`))),
+        TurnComplete: () => Ref.set(streaming, false).pipe(Effect.andThen(write("\n\nyou> "))),
+      }),
+      Match.orElse(() => Effect.void),
+    ),
+  )
 
 // ---------------------------------------------------------------------------
 // Program

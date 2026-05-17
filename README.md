@@ -58,7 +58,7 @@ const haiku = Stream.runForEach(
     model: "gpt-5.4-mini",
   }),
   (event) =>
-    event.type === "text_delta" ? Effect.sync(() => process.stdout.write(event.text)) : Effect.void,
+    event._tag === "TextDelta" ? Effect.sync(() => process.stdout.write(event.text)) : Effect.void,
 )
 ```
 
@@ -67,16 +67,16 @@ cross-provider fallback, see the [docs](#docs--learn).
 
 ## Packages
 
-| Package                                                       | What it is                                                                                                                       |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| [`@effect-uai/core`](./packages/core)                         | The primitives: `Loop`, `LanguageModel`, `Tool`, `Toolkit`, `Items`, `Turn`, `Transcriber`, `SpeechSynthesizer`, `EmbeddingModel`, `MusicGenerator`. No provider deps. |
-| [`@effect-uai/responses`](./packages/providers/responses)     | OpenAI Responses provider. Implements `LanguageModel` over OpenAI's `/v1/responses` endpoint.                                    |
-| [`@effect-uai/anthropic`](./packages/providers/anthropic)     | Anthropic Messages provider, including extended thinking.                                                                        |
-| [`@effect-uai/google`](./packages/providers/google)           | Google Gemini — language model, embeddings, speech (sync STT + TTS), and Lyria music generation.                                 |
-| [`@effect-uai/openai`](./packages/providers/openai)           | OpenAI speech — `Transcriber` (sync + realtime WS) and `Synthesizer` (sync + chunked HTTP).                                      |
-| [`@effect-uai/elevenlabs`](./packages/providers/elevenlabs)   | ElevenLabs speech — Scribe v2 Realtime STT and Flash v2.5 TTS with incremental-text-in WS.                                       |
-| [`@effect-uai/inworld`](./packages/providers/inworld)         | Inworld speech — first-party STT/TTS plus router-style passthroughs (AssemblyAI / Soniox / Groq Whisper).                        |
-| [`@effect-uai/jina`](./packages/providers/jina)               | Jina embeddings — dense, sparse (ELSER), and multivector (ColBERT-style) variants.                                               |
+| Package                                                     | What it is                                                                                                                                                             |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@effect-uai/core`](./packages/core)                       | The primitives: `Loop`, `LanguageModel`, `Tool`, `Toolkit`, `Items`, `Turn`, `Transcriber`, `SpeechSynthesizer`, `EmbeddingModel`, `MusicGenerator`. No provider deps. |
+| [`@effect-uai/responses`](./packages/providers/responses)   | OpenAI Responses provider. Implements `LanguageModel` over OpenAI's `/v1/responses` endpoint.                                                                          |
+| [`@effect-uai/anthropic`](./packages/providers/anthropic)   | Anthropic Messages provider, including extended thinking.                                                                                                              |
+| [`@effect-uai/google`](./packages/providers/google)         | Google Gemini — language model, embeddings, speech (sync STT + TTS), and Lyria music generation.                                                                       |
+| [`@effect-uai/openai`](./packages/providers/openai)         | OpenAI speech — `Transcriber` (sync + realtime WS) and `Synthesizer` (sync + chunked HTTP).                                                                            |
+| [`@effect-uai/elevenlabs`](./packages/providers/elevenlabs) | ElevenLabs speech — Scribe v2 Realtime STT and Flash v2.5 TTS with incremental-text-in WS.                                                                             |
+| [`@effect-uai/inworld`](./packages/providers/inworld)       | Inworld speech — first-party STT/TTS plus router-style passthroughs (AssemblyAI / Soniox / Groq Whisper).                                                              |
+| [`@effect-uai/jina`](./packages/providers/jina)             | Jina embeddings — dense, sparse (ELSER), and multivector (ColBERT-style) variants.                                                                                     |
 
 Each provider is its own package - edge / browser builds only pull in
 what you actually use.

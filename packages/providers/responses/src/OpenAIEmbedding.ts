@@ -1,10 +1,16 @@
 import { Context, Effect, Layer, Redacted, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
-import type { Embedding, EmbedContentPart, EmbedInput, Usage } from "@effect-uai/core/Embedding"
+import type {
+  EmbedContentPart,
+  EmbedInput,
+  Float32Embedding,
+  Usage,
+} from "@effect-uai/core/Embedding"
 import {
   type CommonEmbedManyRequest,
   type CommonEmbedRequest,
+  type EmbedEncoding,
   EmbeddingModel,
   type EmbeddingModelService,
   type EmbedManyResponse,
@@ -22,7 +28,7 @@ import type { OpenAIEmbeddingModel } from "./models.js"
  * error. The generic `EmbeddingModel` registration accepts and silently
  * ignores `task` from `CommonEmbedRequest`.
  */
-export type OpenAIEmbedRequest = Omit<CommonEmbedRequest, "model" | "task"> & {
+export type OpenAIEmbedRequest = Omit<CommonEmbedRequest, "model" | "task" | "encoding"> & {
   /** Narrows `CommonEmbedRequest.model` to the typed OpenAI union. */
   readonly model: OpenAIEmbeddingModel
 }
@@ -134,7 +140,7 @@ const WireResponse = Schema.Struct({
   usage: WireUsage,
 })
 
-const valuesToEmbedding = (values: ReadonlyArray<number>): Embedding => ({
+const valuesToEmbedding = (values: ReadonlyArray<number>): Float32Embedding => ({
   _tag: "float32",
   vector: Float32Array.from(values),
 })
@@ -143,7 +149,7 @@ const valuesToEmbedding = (values: ReadonlyArray<number>): Embedding => ({
 // gets results in the order they passed inputs.
 const orderedEmbeddings = (
   data: ReadonlyArray<{ readonly embedding: ReadonlyArray<number>; readonly index: number }>,
-): ReadonlyArray<Embedding> =>
+): ReadonlyArray<Float32Embedding> =>
   [...data].sort((a, b) => a.index - b.index).map((item) => valuesToEmbedding(item.embedding))
 
 // ---------------------------------------------------------------------------
@@ -185,7 +191,7 @@ const postEmbed = (
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
     if (response.status >= 400) {
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-      return yield* Effect.fail(httpStatusError(response.status, text))
+      return yield* httpStatusError(response.status, text)
     }
     const json = yield* response.json.pipe(Effect.mapError(transportFailure))
     return yield* Schema.decodeUnknownEffect(WireResponse)(json).pipe(
@@ -266,8 +272,19 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): EmbeddingModelService => ({
-        embed: (req: CommonEmbedRequest) => s.embed(req as OpenAIEmbedRequest),
-        embedMany: (req: CommonEmbedManyRequest) => s.embedMany(req as OpenAIEmbedManyRequest),
+        // OpenAI only emits float32; the cast is sound for the 99% case.
+        // A caller asking for a non-float32 encoding via the generic tag
+        // gets the type they requested but the runtime returns float32.
+        embed: <E extends EmbedEncoding | undefined = undefined>(
+          req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
+        ) => s.embed(req as OpenAIEmbedRequest) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
+        embedMany: <E extends EmbedEncoding | undefined = undefined>(
+          req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+        ) =>
+          s.embedMany(req as OpenAIEmbedManyRequest) as Effect.Effect<
+            EmbedManyResponse<E>,
+            AiError.AiError
+          >,
       }),
     ),
   )

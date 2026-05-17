@@ -20,24 +20,28 @@ prompt, not a local model or a new provider SDK.
 import { generate } from "@effect-uai/core/MusicGenerator"
 
 // Simple
-const simple = yield* generate({
-  model: "lyria-3-clip-preview",
-  prompts: "Lo-fi piano with brushed drums, 70 bpm",
-})
-yield* writeFile("out-simple.mp3", simple.bytes)
+const simple =
+  yield *
+  generate({
+    model: "lyria-3-clip-preview",
+    prompts: "Lo-fi piano with brushed drums, 70 bpm",
+  })
+yield * writeFile("out-simple.mp3", simple.bytes)
 
 // Weighted
-const weighted = yield* generate({
-  model: "lyria-3-clip-preview",
-  prompts: [
-    { text: "minimal techno", weight: 0.7 },
-    { text: "ambient pad",   weight: 0.3 },
-  ],
-  bpm: 124,
-  scale: "A_MINOR",
-  lyrics: "[Verse]\nA late train hums beneath the city\n",
-})
-yield* writeFile("out-weighted.mp3", weighted.bytes)
+const weighted =
+  yield *
+  generate({
+    model: "lyria-3-clip-preview",
+    prompts: [
+      { text: "minimal techno", weight: 0.7 },
+      { text: "ambient pad", weight: 0.3 },
+    ],
+    bpm: 124,
+    scale: "A_MINOR",
+    lyrics: "[Verse]\nA late train hums beneath the city\n",
+  })
+yield * writeFile("out-weighted.mp3", weighted.bytes)
 ```
 
 Both calls use the same `MusicGenerator.generate` boundary: prompt in,

@@ -50,8 +50,10 @@ over building events by hand.
 Loop.value(a) // wrap a value
 Loop.next(state) // signal continuation
 Loop.stop // a single-element stream that ends the loop
+Loop.stopWith(state) // end the loop AND surface a final state
 Loop.nextAfter(stream, s) // emit values from `stream`, then continue with state `s`
 Loop.stopAfter(stream) // emit values from `stream`, then end the loop
+Loop.stopWithAfter(stream, s) // emit values from `stream`, then end with final state `s`
 Loop.nextAfterFold(stream, b, fold, build) // drain stream, fold to acc, then continue with build(acc)
 ```
 
@@ -61,11 +63,16 @@ accumulator, then advance with state derived from the fold. The
 streaming-tool helper [`Toolkit.continueWith`](/concepts/tools/) is
 built on top.
 
+Reach for `stopWith` / `stopWithAfter` when the loop ending _is_ the
+result you care about — a summarised state, a tallied result, a
+final checkpoint. `loopWithState` exposes that final state to the
+caller; with plain `stop` it's discarded.
+
 ## `onTurnComplete`
 
 Most loop bodies wrap a provider's `Stream<TurnEvent>`. The pattern is
 always the same: forward events to the consumer, wait for the terminal
-`turn_complete`, then decide what to do with the assembled `Turn`.
+`TurnComplete`, then decide what to do with the assembled `Turn`.
 `Loop.onTurnComplete` packages exactly that:
 
 ```ts
@@ -115,7 +122,7 @@ pipe(
 What it does:
 
 - Each `TurnEvent` passes through as `Loop.value(event)` — including
-  the terminal `turn_complete`, so the consumer sees turn boundaries.
+  the terminal `TurnComplete`, so the consumer sees turn boundaries.
 - Once the terminal arrives, the callback runs with the assembled
   `Turn` and its returned event-stream is concatenated. Typically that
   stream comes from `Toolkit.executeAll` threaded through `continueWith`
@@ -126,7 +133,7 @@ What it does:
   `Stream.filter` to drop events you don't care about, `Stream.map` to
   reshape them.
 
-If the upstream ends without a `turn_complete`, the resulting stream
+If the upstream ends without a `TurnComplete`, the resulting stream
 fails with `AiError.IncompleteTurn`. Catch it with `Stream.catchTag` if
 you want to recover.
 

@@ -52,6 +52,12 @@ jobs:
           publish: pnpm release
           commit: "chore: release"
           title: "chore: release"
-          createGithubReleases: true
+          # We disable per-package tag/release creation here because (a) we
+          # ship every package at the same version and want a single
+          # `v<version>` tag + one combined GitHub Release, and (b) the
+          # action's post-publish step has been hanging on OIDC publishes.
+          # Tags + the combined release are created by the manual
+          # `tag-and-release.yml` workflow instead.
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

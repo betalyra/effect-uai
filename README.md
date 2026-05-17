@@ -1,5 +1,11 @@
 # @effect-uai
 
+[![npm](https://img.shields.io/npm/v/@effect-uai/core?label=%40effect-uai%2Fcore)](https://www.npmjs.com/package/@effect-uai/core)
+[![CI](https://github.com/betalyra/effect-uai/actions/workflows/ci.yml/badge.svg)](https://github.com/betalyra/effect-uai/actions/workflows/ci.yml)
+[![License](https://img.shields.io/npm/l/@effect-uai/core)](./LICENSE)
+[![types](https://img.shields.io/npm/types/@effect-uai/core)](https://www.npmjs.com/package/@effect-uai/core)
+[![status](https://img.shields.io/badge/status-experimental-orange)](#status)
+
 _/ˈi.fɛkt ˈwaj/ — "effect-why"_
 
 > **_Uai_** \\ wai \\ — Mineiro Portuguese, all-purpose interjection.
@@ -17,9 +23,12 @@ loop is your code.
 
 ## Status
 
-⚠️ Early stage. APIs may shift. Use at your own risk.
+While we're in `0.x`, minor releases may include breaking changes.
+Each one ships with a [migration guide](https://effect-uai.betalyra.com/migrations/)
+and the [`effect-uai-migrate` skill](skills/effect-uai-migrate/SKILL.md)
+encodes the rewrites for Claude Code, so upgrades are mechanical.
 
-## Why this exists
+## Why effect-uai
 
 Most agent libraries decide _how_ your loop works - they pick the
 state shape, the retry policy, the tool dispatch, the cancellation

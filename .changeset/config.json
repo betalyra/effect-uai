@@ -4,18 +4,22 @@
   "commit": false,
   "fixed": [
     [
+      "effect-uai",
       "@effect-uai/core",
       "@effect-uai/responses",
       "@effect-uai/anthropic",
       "@effect-uai/google",
-      "@effect-uai/jina"
+      "@effect-uai/jina",
+      "@effect-uai/openai",
+      "@effect-uai/elevenlabs",
+      "@effect-uai/inworld"
     ]
   ],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["effect-uai", "@effect-uai/recipes"],
+  "ignore": ["@effect-uai/recipes"],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
   }

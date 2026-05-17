@@ -1,4 +1,4 @@
-import { Array as Arr, Context, Data, Effect, Option, type Schedule, Stream } from "effect"
+import { Array as Arr, Context, Effect, Option, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { Item } from "../domain/Items.js"
 import type * as StructuredFormat from "../structured-format/StructuredFormat.js"
@@ -38,6 +38,16 @@ export type CommonRequest = {
 
 export type LanguageModelService = {
   readonly streamTurn: (request: CommonRequest) => Stream.Stream<TurnEvent, AiError.AiError>
+  /**
+   * Drain a single turn and return the assembled `Turn` from the
+   * terminal `TurnComplete` event. Fails with `IncompleteTurn` if the
+   * stream ends without one.
+   *
+   * Most providers derive this from `streamTurn` via
+   * {@link turnFromStream}; providers with a native non-streaming
+   * endpoint may override with a cheaper direct call.
+   */
+  readonly turn: (request: CommonRequest) => Effect.Effect<Turn, AiError.AiError>
 }
 
 export class LanguageModel extends Context.Service<LanguageModel, LanguageModelService>()(
@@ -53,64 +63,31 @@ export const streamTurn = (
   Stream.unwrap(Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(request)))
 
 /**
- * Drain `streamTurn` and return the assembled `Turn` from the terminal
- * `TurnComplete` event. Fails with `IncompleteTurn` if the stream ends
- * without one. Derived from `streamTurn`; providers get it for free.
+ * Drain a single turn and return the assembled `Turn`. Delegates to the
+ * service's `turn` method — providers with a native complete endpoint
+ * can override; the rest get the default streamTurn-drain via
+ * {@link turnFromStream}.
  */
-export const turn = (
-  request: CommonRequest,
-): Effect.Effect<Turn, AiError.AiError | AiError.IncompleteTurn, LanguageModel> =>
-  streamTurn(request).pipe(
-    Stream.runCollect,
-    Effect.flatMap((events) =>
-      Arr.findLast(events, isTurnComplete).pipe(
-        Option.match({
-          onNone: () => Effect.fail(new AiError.IncompleteTurn({})),
-          onSome: (e) => Effect.succeed(e.turn),
-        }),
-      ),
-    ),
-  )
-
-// ---------------------------------------------------------------------------
-// retry — retry the retryable subset of AiError, let other failures escape
-// ---------------------------------------------------------------------------
-
-/** Internal wrapper around the retryable subset of `AiError`. */
-export class Retryable extends Data.TaggedError("RetryableAi")<{
-  readonly cause: AiError.RateLimited | AiError.Unavailable | AiError.Timeout
-}> {}
-
-const isRetryable = (
-  e: AiError.AiError,
-): e is AiError.RateLimited | AiError.Unavailable | AiError.Timeout =>
-  e._tag === "RateLimited" || e._tag === "Unavailable" || e._tag === "Timeout"
-
-// Lift events to Items, non-retryable failures to Terminal values (escape
-// retry), retryable failures to wrapped errors (only thing retry sees).
-type Lifted<A> =
-  | { readonly _tag: "Item"; readonly value: A }
-  | { readonly _tag: "Terminal"; readonly cause: AiError.AiError }
+export const turn = (request: CommonRequest): Effect.Effect<Turn, AiError.AiError, LanguageModel> =>
+  Effect.flatMap(LanguageModel.asEffect(), (m) => m.turn(request))
 
 /**
- * Retry a stream of `AiError` on the retryable subset
- * (`RateLimited | Unavailable | Timeout`). Other failures bypass the
- * schedule and propagate unchanged. Like all `Stream.retry`, the entire
- * stream re-runs — deltas before the failure replay on the next attempt.
+ * Build a `turn` implementation from a `streamTurn` implementation.
+ * Providers without a native non-streaming endpoint use this to
+ * populate the service's `turn` field. Generic over the request type so
+ * provider-typed services (with their narrowed request) can reuse it.
  */
-export const retry =
-  <Out>(schedule: Schedule.Schedule<Out, Retryable>) =>
-  <A, R>(stream: Stream.Stream<A, AiError.AiError, R>): Stream.Stream<A, AiError.AiError, R> =>
-    stream.pipe(
-      Stream.map((value): Lifted<A> => ({ _tag: "Item", value })),
-      Stream.catchIf(
-        isRetryable,
-        (cause) => Stream.fail(new Retryable({ cause })),
-        (cause) => Stream.succeed<Lifted<A>>({ _tag: "Terminal", cause }),
-      ),
-      Stream.retry(schedule),
-      Stream.catchTag("RetryableAi", (e) => Stream.fail<AiError.AiError>(e.cause)),
-      Stream.flatMap((item) =>
-        item._tag === "Item" ? Stream.succeed(item.value) : Stream.fail(item.cause),
+export const turnFromStream =
+  <Req>(streamTurn: (request: Req) => Stream.Stream<TurnEvent, AiError.AiError>) =>
+  (request: Req): Effect.Effect<Turn, AiError.AiError> =>
+    streamTurn(request).pipe(
+      Stream.runCollect,
+      Effect.flatMap((events) =>
+        Arr.findLast(events, isTurnComplete).pipe(
+          Option.match({
+            onNone: () => Effect.fail(new AiError.IncompleteTurn({})),
+            onSome: (e) => Effect.succeed(e.turn),
+          }),
+        ),
       ),
     )

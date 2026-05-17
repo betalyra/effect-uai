@@ -94,6 +94,10 @@
       "types": "./dist/loop/Loop.d.mts",
       "import": "./dist/loop/Loop.mjs"
     },
+    "./Retry": {
+      "types": "./dist/retry/Retry.d.mts",
+      "import": "./dist/retry/Retry.mjs"
+    },
     "./Vector": {
       "types": "./dist/math/Vector.d.mts",
       "import": "./dist/math/Vector.mjs"

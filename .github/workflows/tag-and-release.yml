@@ -1,19 +1,13 @@
 name: Tag and release
 
-# Manually-triggered workflow that creates a single repo-wide tag
-# (e.g. `v0.5.0`) and a single combined GitHub Release for the current
-# version of the workspace.
+# Manual-recovery workflow. The release tag + combined GitHub Release
+# are normally created automatically by `release.yml` after a successful
+# publish. Use this workflow only when that automated step was skipped,
+# failed, or you need to re-run it against a specific ref.
 #
-# Assumes every public package in `packages/**` is shipped at the same
-# version (enforced via changesets' `fixed` group). The version is read
-# from `packages/core/package.json` and cross-checked against every
-# other public package; a drift fails the run loudly.
-#
-# Release body concatenates each package's `## <version>` CHANGELOG
-# section under a `## <package-name>` heading.
-#
-# Idempotent — re-running on a version whose tag already exists on
-# origin is a no-op.
+# Behavior matches the auto path exactly because both call the same
+# `scripts/tag-and-release.sh`. Idempotent: no-op if the tag already
+# exists on origin.
 
 on:
   workflow_dispatch:
@@ -39,140 +33,10 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Verify version alignment and resolve tag
-        id: resolve
-        run: |
-          set -euo pipefail
-
-          version=$(jq -r .version packages/core/package.json)
-          tag="v${version}"
-          echo "Canonical version (from packages/core): ${version}"
-          echo "Tag: ${tag}"
-
-          # Packages in changesets' `ignore` list don't move with releases
-          # (e.g. the bare `effect-uai` name-squat permanently at 0.1.0).
-          mapfile -t IGNORED < <(jq -r '.ignore[]?' .changeset/config.json)
-
-          is_ignored() {
-            local name="$1"
-            for i in "${IGNORED[@]}"; do
-              [[ "$i" == "$name" ]] && return 0
-            done
-            return 1
-          }
-
-          mismatched=()
-          while IFS= read -r pkg_json; do
-            private=$(jq -r '.private // false' "$pkg_json")
-            [[ "$private" == "true" ]] && continue
-            name=$(jq -r .name "$pkg_json")
-            is_ignored "$name" && continue
-            v=$(jq -r .version "$pkg_json")
-            if [[ "$v" != "$version" ]]; then
-              mismatched+=("${name}@${v}")
-            fi
-          done < <(find packages -name package.json -not -path '*/node_modules/*')
-
-          if (( ${#mismatched[@]} > 0 )); then
-            echo "::error::Version drift detected. Expected ${version}, but found:"
-            printf '  - %s\n' "${mismatched[@]}"
-            echo "::error::Every public package must share the same version (enforced via .changeset/config.json#fixed)."
-            exit 1
-          fi
-
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-
-      - name: Skip if tag already exists on origin
-        id: precheck
-        run: |
-          set -euo pipefail
-          tag="${{ steps.resolve.outputs.tag }}"
-          git fetch origin --tags --force
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            echo "Tag ${tag} already exists on origin — nothing to do."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build combined release notes
-        if: steps.precheck.outputs.skip != 'true'
-        id: notes
-        run: |
-          set -euo pipefail
-          version="${{ steps.resolve.outputs.version }}"
-          notes_file="$(mktemp)"
-
-          # Stable iteration order: core first, then providers sorted by name.
-          packages=(packages/core)
-          while IFS= read -r dir; do
-            packages+=("$dir")
-          done < <(find packages/providers -maxdepth 1 -mindepth 1 -type d | sort)
-
-          mapfile -t IGNORED < <(jq -r '.ignore[]?' .changeset/config.json)
-          is_ignored() {
-            local name="$1"
-            for i in "${IGNORED[@]}"; do
-              [[ "$i" == "$name" ]] && return 0
-            done
-            return 1
-          }
-
-          for dir in "${packages[@]}"; do
-            pkg_json="${dir}/package.json"
-            [[ -f "$pkg_json" ]] || continue
-            private=$(jq -r '.private // false' "$pkg_json")
-            [[ "$private" == "true" ]] && continue
-
-            name=$(jq -r .name "$pkg_json")
-            is_ignored "$name" && continue
-            changelog="${dir}/CHANGELOG.md"
-
-            section=$(awk -v ver="$version" '
-              /^## / {
-                if (in_section) exit
-                if ($2 == ver) { in_section = 1; next }
-              }
-              in_section { print }
-            ' "$changelog" 2>/dev/null || true)
-
-            # Strip leading/trailing blank lines for tidy concatenation.
-            section=$(printf '%s\n' "$section" | awk 'NF{p=1} p' | tac | awk 'NF{p=1} p' | tac)
-
-            if [[ -n "$section" ]]; then
-              {
-                echo "## ${name}"
-                echo
-                echo "$section"
-                echo
-              } >> "$notes_file"
-            fi
-          done
-
-          if [[ ! -s "$notes_file" ]]; then
-            echo "Release v${version}." > "$notes_file"
-          fi
-
-          echo "file=${notes_file}" >> "$GITHUB_OUTPUT"
-
-      - name: Create tag, push, and create GitHub Release
-        if: steps.precheck.outputs.skip != 'true'
+      - name: Create v<version> tag and combined GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          tag="${{ steps.resolve.outputs.tag }}"
-
-          git tag -a "$tag" -m "Release $tag"
-          git push origin "refs/tags/${tag}"
-
-          gh release create "$tag" \
-            --title "$tag" \
-            --notes-file "${{ steps.notes.outputs.file }}" \
-            --verify-tag
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bash scripts/tag-and-release.sh

@@ -16,17 +16,22 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
+
+      # OIDC trusted publishing requires npm >= 11.5.1. Node 24 ships
+      # npm 11 by default, but pin explicitly so we don't regress if the
+      # Node minor changes underneath us.
+      - run: npm install -g npm@latest
 
       - run: pnpm install --frozen-lockfile
 
@@ -47,6 +52,12 @@ jobs:
           publish: pnpm release
           commit: "chore: release"
           title: "chore: release"
-          createGithubReleases: true
+          # We disable per-package tag/release creation here because (a) we
+          # ship every package at the same version and want a single
+          # `v<version>` tag + one combined GitHub Release, and (b) the
+          # action's post-publish step has been hanging on OIDC publishes.
+          # Tags + the combined release are created by the manual
+          # `tag-and-release.yml` workflow instead.
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

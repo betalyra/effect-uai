@@ -16,17 +16,22 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
+
+      # OIDC trusted publishing requires npm >= 11.5.1. Node 24 ships
+      # npm 11 by default, but pin explicitly so we don't regress if the
+      # Node minor changes underneath us.
+      - run: npm install -g npm@latest
 
       - run: pnpm install --frozen-lockfile
 

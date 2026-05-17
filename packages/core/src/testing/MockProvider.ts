@@ -1,7 +1,11 @@
 import { Array as Arr, Duration, Effect, Layer, Match, Option, Ref, Schedule, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import { type Item, isOutputText } from "../domain/Items.js"
-import { LanguageModel, type LanguageModelService } from "../language-model/LanguageModel.js"
+import {
+  LanguageModel,
+  type LanguageModelService,
+  turnFromStream,
+} from "../language-model/LanguageModel.js"
 import { type Turn, TurnEvent } from "../domain/Turn.js"
 
 export type MockOptions = {
@@ -81,8 +85,8 @@ const buildService = (
   options: MockOptions | undefined,
   cursor: Ref.Ref<number>,
   record: (call: Call) => Effect.Effect<void>,
-): LanguageModelService => ({
-  streamTurn: (request) =>
+): LanguageModelService => {
+  const streamTurn: LanguageModelService["streamTurn"] = (request) =>
     Stream.unwrap(
       Ref.getAndUpdate(cursor, (n) => n + 1).pipe(
         Effect.flatMap(
@@ -96,8 +100,9 @@ const buildService = (
             }),
         ),
       ),
-    ),
-})
+    )
+  return { streamTurn, turn: turnFromStream(streamTurn) }
+}
 
 // ---------------------------------------------------------------------------
 // Recorder handle. Unsafe Ref is local: it backs both the `record` write

@@ -2,7 +2,7 @@ import { Effect, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
-import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
+import { type LanguageModelService, turnFromStream } from "@effect-uai/core/LanguageModel"
 import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Turn from "@effect-uai/core/Turn"
@@ -36,15 +36,16 @@ describe("multi-model-fallback", () => {
     ],
   })
 
-  const failingService = (error: AiError.AiError, onCall: () => void): LanguageModelService => ({
-    streamTurn: () =>
+  const failingService = (error: AiError.AiError, onCall: () => void): LanguageModelService => {
+    const streamTurn: LanguageModelService["streamTurn"] = () =>
       Stream.unwrap(
         Effect.sync(() => {
           onCall()
           return Stream.fail(error)
         }),
-      ),
-  })
+      )
+    return { streamTurn, turn: turnFromStream(streamTurn) }
+  }
 
   const buildConversation = (tiers: ReadonlyArray<Tier>) =>
     pipe(
@@ -123,16 +124,18 @@ describe("multi-model-fallback", () => {
       },
     )
     let secondaryCalls = 0
+    const secondaryStream: LanguageModelService["streamTurn"] = () =>
+      Stream.unwrap(
+        Effect.sync(() => {
+          secondaryCalls++
+          return Stream.fromIterable<Turn.TurnEvent>([
+            Turn.TurnEvent.TurnComplete({ turn: finalTurn("should-not-run") }),
+          ])
+        }),
+      )
     const secondary: LanguageModelService = {
-      streamTurn: () =>
-        Stream.unwrap(
-          Effect.sync(() => {
-            secondaryCalls++
-            return Stream.fromIterable<Turn.TurnEvent>([
-              Turn.TurnEvent.TurnComplete({ turn: finalTurn("should-not-run") }),
-            ])
-          }),
-        ),
+      streamTurn: secondaryStream,
+      turn: turnFromStream(secondaryStream),
     }
 
     const conversation = buildConversation([

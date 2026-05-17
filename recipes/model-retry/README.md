@@ -94,20 +94,31 @@ Tune the constants for your product. If `RateLimited` and `Unavailable` should
 use different policies, split `Retryable` into separate tagged errors and run
 them through different retry layers.
 
-## Pre-packaged: `LanguageModel.retry`
+## Pre-packaged: `Retry.stream` / `Retry.effect`
 
 The exact lift / `Stream.retry` / unlift pattern above ships as a one-import
-helper:
+helper. Two carriers, same subset:
 
 ```ts
-streamTurn(req).pipe(LanguageModel.retry(backoff))
+import * as Retry from "@effect-uai/core/Retry"
+
+// Stream — same shape as this recipe
+streamTurn(req).pipe(Retry.stream(backoff))
+
+// Effect — for `turn`, `embed`, `synthesize`, `transcribe`, …
+turn(req).pipe(Retry.effect(backoff))
+embed(req).pipe(Retry.effect(backoff))
 ```
 
-It does the same thing — scoped to `RateLimited | Unavailable | Timeout`,
-non-retryable errors bypass. Reach for it when you don't need to customize the
-lifted-item shape. This recipe spells the pattern out so you can adapt it
-(e.g. split `RateLimited` and `Unavailable` onto different schedules) without
-having to rediscover the trick.
+Both are scoped to `RateLimited | Unavailable | Timeout`; non-retryable errors
+bypass. Reach for them when you don't need to customize the lifted-item shape.
+This recipe spells the pattern out so you can adapt it (e.g. split `RateLimited`
+and `Unavailable` onto different schedules) without having to rediscover the
+trick.
+
+`Retry.stream` and `Retry.effect` deliberately don't collide with Effect's
+`Stream.retry` and `Effect.retry` — the namespace makes it obvious which one
+is the subset-aware variant.
 
 ## Caveat: stream replay
 
@@ -116,10 +127,10 @@ the failure, those deltas can be replayed on the next attempt.
 
 For rate limits and transport failures that happen before the first delta, this
 is exactly what you want. For mid-stream failures where the UI must never see a
-delta twice, retry at the request boundary instead: use `LanguageModel.turn`
-inside `Effect.retry`, then materialize the completed turn as a synthetic
-stream. You lose live streaming inside an attempt, but you get at-most-once
-forwarding.
+delta twice, retry at the request boundary instead: use
+`turn(req).pipe(Retry.effect(backoff))` and materialize the completed turn as a
+synthetic stream. You lose live streaming inside an attempt, but you get
+at-most-once forwarding.
 
 ## Run it
 

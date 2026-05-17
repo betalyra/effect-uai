@@ -40,15 +40,15 @@ The full migration prose (with rationale and edge cases) lives in
 
 Discriminator renamed `type` → `_tag`; variants snake_case → PascalCase.
 
-| Before                                | After                                                          |
-| ------------------------------------- | -------------------------------------------------------------- |
-| `{ type: "text_delta", text }`        | `TurnEvent.TextDelta({ text })`                                |
-| `{ type: "reasoning_delta", text, kind }` | `TurnEvent.ReasoningDelta({ text, kind })`                 |
-| `{ type: "refusal_delta", text }`     | `TurnEvent.RefusalDelta({ text })`                             |
-| `{ type: "tool_call_start", call_id, name }` | `TurnEvent.ToolCallStart({ call_id, name })`            |
+| Before                                             | After                                             |
+| -------------------------------------------------- | ------------------------------------------------- |
+| `{ type: "text_delta", text }`                     | `TurnEvent.TextDelta({ text })`                   |
+| `{ type: "reasoning_delta", text, kind }`          | `TurnEvent.ReasoningDelta({ text, kind })`        |
+| `{ type: "refusal_delta", text }`                  | `TurnEvent.RefusalDelta({ text })`                |
+| `{ type: "tool_call_start", call_id, name }`       | `TurnEvent.ToolCallStart({ call_id, name })`      |
 | `{ type: "tool_call_args_delta", call_id, delta }` | `TurnEvent.ToolCallArgsDelta({ call_id, delta })` |
-| `{ type: "usage_update", usage }`     | `TurnEvent.UsageUpdate({ usage })`                             |
-| `{ type: "turn_complete", turn }`     | `TurnEvent.TurnComplete({ turn })`                             |
+| `{ type: "usage_update", usage }`                  | `TurnEvent.UsageUpdate({ usage })`                |
+| `{ type: "turn_complete", turn }`                  | `TurnEvent.TurnComplete({ turn })`                |
 
 ```ts
 // Before
@@ -120,13 +120,13 @@ Type-level reshape — runtime behavior unchanged.
 
 ```ts
 // Before — narrow at runtime
-const { embedding } = yield* embed({ model, input, encoding: "float32" })
+const { embedding } = yield * embed({ model, input, encoding: "float32" })
 if (embedding._tag !== "float32") return
 embedding.vector
 
 // After — narrowed by type
-const { embedding } = yield* embed({ model, input, encoding: "float32" })
-embedding.vector  // Float32Array directly
+const { embedding } = yield * embed({ model, input, encoding: "float32" })
+embedding.vector // Float32Array directly
 ```
 
 Bare `EmbedResponse` still works (defaults to `Float32Embedding`).
@@ -149,27 +149,33 @@ across items via `next` / `stopWith`.
 
 ```ts
 // Before
-const events = yield* Stream.runCollect(streamTurn(request))
+const events = yield * Stream.runCollect(streamTurn(request))
 const turn = events.findLast(Turn.isTurnComplete)?.turn
 
 // After
-const turn = yield* LanguageModel.turn(request)   // fails with IncompleteTurn if missing
+const turn = yield * LanguageModel.turn(request) // fails with IncompleteTurn if missing
 ```
 
-#### `LanguageModel.retry(schedule)` for the retryable subset
+#### `Retry.stream(schedule)` / `Retry.effect(schedule)` for the retryable subset
 
 ```ts
-streamTurn(request).pipe(
-  LanguageModel.retry(Schedule.exponential("200 millis").pipe(Schedule.compose(Schedule.recurs(3)))),
-)
+import * as Retry from "@effect-uai/core/Retry"
+
+const schedule = Schedule.exponential("200 millis").pipe(Schedule.compose(Schedule.recurs(3)))
+
+// Stream — streamTurn / streamSynthesis / streamTranscriptionFrom
+streamTurn(request).pipe(Retry.stream(schedule))
+
+// Effect — turn / embed / synthesize / transcribe
+embed(request).pipe(Retry.effect(schedule))
 // Retries RateLimited / Unavailable / Timeout. Other AiErrors propagate.
 ```
 
 #### `Turn.assistantText(turn)` for the concatenated reply
 
 ```ts
-const text = Turn.assistantText(turn)            // string
-const texts = Turn.assistantTexts(turn)          // ReadonlyArray<string>
+const text = Turn.assistantText(turn) // string
+const texts = Turn.assistantTexts(turn) // ReadonlyArray<string>
 ```
 
 #### `Tool.fromStandardSchema(schema)` for Zod / Valibot / ArkType

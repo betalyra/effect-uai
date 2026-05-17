@@ -4,12 +4,6 @@
 
 ### Minor Changes
 
-- 084325a: Refactorings and api improvements.
-
-## 0.5.0
-
-### Minor Changes
-
 - `OpenAIEmbedding` returns the precise `EmbeddingFor<E>` variant on the
   generic `EmbeddingModel` path. OpenAI only emits `float32` at runtime;
   callers asking for another encoding via the generic tag get the type they

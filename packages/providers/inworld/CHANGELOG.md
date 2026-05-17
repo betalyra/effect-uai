@@ -2,12 +2,6 @@
 
 ## 0.5.0
 
-### Minor Changes
-
-- 084325a: Refactorings and api improvements.
-
-## 0.5.0
-
 ### Patch Changes
 
 - Updated dependencies for `@effect-uai/core@0.5.0` — see core changelog.

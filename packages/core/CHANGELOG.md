@@ -4,6 +4,12 @@
 
 ### Minor Changes
 
+- 084325a: Refactorings and api improvements.
+
+## 0.5.0
+
+### Minor Changes
+
 - `TurnEvent` migrated to `Data.TaggedEnum`. Discriminator renamed from
   `type` → `_tag`; variants PascalCased (`text_delta` → `TextDelta`,
   `reasoning_delta` → `ReasoningDelta`, `refusal_delta` → `RefusalDelta`,

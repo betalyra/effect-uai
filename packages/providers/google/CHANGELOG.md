@@ -4,12 +4,6 @@
 
 ### Minor Changes
 
-- 084325a: Refactorings and api improvements.
-
-## 0.5.0
-
-### Minor Changes
-
 - Gemini now supports tool calling. `function_call` / `function_call_output`
   items round-trip via Gemini's `functionDeclarations` + `functionCall` /
   `functionResponse` parts. Gemini 3 wire ids are preserved across the

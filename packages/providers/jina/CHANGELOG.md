@@ -4,12 +4,6 @@
 
 ### Minor Changes
 
-- 084325a: Refactorings and api improvements.
-
-## 0.5.0
-
-### Minor Changes
-
 - `JinaEmbedding` returns the precise `EmbeddingFor<E>` variant — both on
   the typed `JinaEmbedding` tag and the generic `EmbeddingModel` tag.
   `embed({ encoding: "binary" })` now gives `embedding: BinaryEmbedding`

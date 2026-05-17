@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/core",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Low-level primitives (loop, conversation, items, tools, streaming codecs) for building AI agents with Effect.",
   "keywords": [
     "agents",

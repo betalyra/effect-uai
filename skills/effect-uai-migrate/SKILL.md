@@ -71,6 +71,44 @@ Match.value(event).pipe(
 `Turn.isTurnComplete` and `Turn.textDeltas` still work — they were
 updated internally.
 
+### Within 0.5.x: 0.5.0/0.5.1 → 0.5.2
+
+Two breaking renames. Mechanical.
+
+#### `LanguageModel.retry` → `Retry.stream`
+
+```ts
+// Before
+import { retry, Retryable } from "@effect-uai/core/LanguageModel"
+streamTurn(req).pipe(retry(schedule))
+
+// After
+import * as Retry from "@effect-uai/core/Retry"
+streamTurn(req).pipe(Retry.stream(schedule)) // Stream surfaces
+embed(req).pipe(Retry.effect(schedule)) // Effect surfaces
+```
+
+`Retryable` / `isRetryable` move to the same module.
+
+#### Hand-rolled `LanguageModelService` needs a `turn` field
+
+`turn` is now on the service alongside `streamTurn`. Provider layers
+and `MockProvider` are fine; custom test services need both fields:
+
+```ts
+// Before
+const service: LanguageModelService = {
+  streamTurn: () => ...,
+}
+
+// After
+import { turnFromStream } from "@effect-uai/core/LanguageModel"
+const streamTurn: LanguageModelService["streamTurn"] = () => ...
+const service: LanguageModelService = { streamTurn, turn: turnFromStream(streamTurn) }
+```
+
+### Continuing the 0.4 → 0.5 list
+
 #### Reshape: `ToolCallDecision` is a `Data.TaggedEnum`
 
 ```ts

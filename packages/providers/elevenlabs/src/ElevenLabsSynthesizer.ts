@@ -1,11 +1,14 @@
-import { Context, Effect, Layer, Redacted, Stream } from "effect"
+import { Array as Arr, Context, Effect, Layer, Redacted, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import type * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk } from "@effect-uai/core/Audio"
 import {
   type CommonStreamSynthesizeRequest,
+  type CommonSynthesizeDialogueRequest,
   type CommonSynthesizeRequest,
+  type CustomPronunciation,
+  MultiSpeakerTts,
   SpeechSynthesizer,
   type SpeechSynthesizerService,
   TtsIncrementalText,
@@ -47,6 +50,8 @@ export type ElevenLabsSynthesizerService = {
     r: ElevenLabsSynthesizeRequest,
   ) => Stream.Stream<AudioChunk, AiError.AiError>
   readonly streamSynthesisFrom: SpeechSynthesizerService["streamSynthesisFrom"]
+  readonly synthesizeDialogue: SpeechSynthesizerService["synthesizeDialogue"]
+  readonly streamSynthesizeDialogue: SpeechSynthesizerService["streamSynthesizeDialogue"]
 }
 
 export class ElevenLabsSynthesizer extends Context.Service<
@@ -61,11 +66,58 @@ export type Config = {
 }
 
 // ---------------------------------------------------------------------------
+// Pronunciations — SSML <phoneme> rewrite (gated to legacy models)
+// ---------------------------------------------------------------------------
+
+/**
+ * Models that honor inline `<phoneme>` SSML tags. Other models silently
+ * drop the tags server-side, so we don't bother rewriting the text for
+ * them — the pronunciation overrides are silently ignored.
+ *
+ * Reference: https://elevenlabs.io/docs/best-practices/prompting/controls
+ */
+const PHONEME_SUPPORTED_MODELS: ReadonlySet<string> = new Set([
+  "eleven_flash_v2",
+  "eleven_english_v1",
+  "eleven_monolingual_v1",
+])
+
+const wireAlphabet = (encoding: CustomPronunciation["encoding"]): string | undefined =>
+  encoding === "ipa" ? "ipa" : encoding === "cmu-arpabet" ? "cmu-arpabet" : undefined
+
+const phonemeTag = (phrase: string, pronunciation: string, alphabet: string): string =>
+  `<phoneme alphabet="${alphabet}" ph="${pronunciation}">${phrase}</phoneme>`
+
+const escapeForRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+/**
+ * Apply pronunciation overrides to a text string. Only applies for
+ * phoneme-supported models; only IPA and CMU Arpabet are honored
+ * (x-sampa is silently dropped). Whole-word, case-insensitive
+ * replacement.
+ */
+const applyPronunciations = (
+  text: string,
+  model: string,
+  pronunciations: ReadonlyArray<CustomPronunciation> | undefined,
+): string => {
+  if (pronunciations === undefined || !PHONEME_SUPPORTED_MODELS.has(model)) return text
+  return Arr.reduce(pronunciations, text, (acc, p) => {
+    const alphabet = wireAlphabet(p.encoding)
+    if (alphabet === undefined) return acc
+    return acc.replace(
+      new RegExp(`\\b${escapeForRegex(p.phrase)}\\b`, "i"),
+      phonemeTag(p.phrase, p.pronunciation, alphabet),
+    )
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Codec — request → JSON body
 // ---------------------------------------------------------------------------
 
 const buildBody = (r: ElevenLabsSynthesizeRequest) => ({
-  text: r.text,
+  text: applyPronunciations(r.text, r.model, r.pronunciations),
   model_id: r.model,
   ...(r.languageCode !== undefined && { language_code: r.languageCode }),
   ...(r.seed !== undefined && { seed: r.seed }),
@@ -73,6 +125,68 @@ const buildBody = (r: ElevenLabsSynthesizeRequest) => ({
   ...(r.nextText !== undefined && { next_text: r.nextText }),
   ...(r.voiceSettings !== undefined && { voice_settings: wireVoiceSettings(r.voiceSettings) }),
 })
+
+// ---------------------------------------------------------------------------
+// Dialogue — POST /v1/text-to-dialogue (+ /stream variant)
+// ---------------------------------------------------------------------------
+
+const DEFAULT_DIALOGUE_MODEL = "eleven_v3"
+
+const buildDialogueBody = (r: CommonSynthesizeDialogueRequest) => ({
+  inputs: r.turns.map((t) => ({
+    voice_id: t.voiceId,
+    text: applyPronunciations(t.text, r.model, r.pronunciations),
+  })),
+  model_id: r.model ?? DEFAULT_DIALOGUE_MODEL,
+  ...(r.languageCode !== undefined && { language_code: r.languageCode }),
+})
+
+const buildDialogueHttpRequest = (
+  cfg: Config,
+  r: CommonSynthesizeDialogueRequest,
+  path: "" | "/stream",
+) =>
+  Effect.gen(function* () {
+    const format = r.outputFormat ?? defaultFormat
+    const slug = yield* formatToOutputSlug(format)
+    const url = `${resolveHost(cfg)}/text-to-dialogue${path}?output_format=${slug}`
+    const httpRequest = HttpClientRequest.post(url).pipe(
+      HttpClientRequest.setHeader("xi-api-key", Redacted.value(cfg.apiKey)),
+      HttpClientRequest.bodyJsonUnsafe(buildDialogueBody(r)),
+    )
+    return { httpRequest, format }
+  })
+
+const synthesizeDialogueImpl = (cfg: Config) => (request: CommonSynthesizeDialogueRequest) =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+    const { httpRequest, format } = yield* buildDialogueHttpRequest(cfg, request, "")
+    const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
+    if (response.status >= 400) {
+      const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
+      return yield* Effect.fail(httpStatusError(response.status, text))
+    }
+    const bytes = yield* response.arrayBuffer.pipe(Effect.mapError(transportFailure))
+    return { format, bytes: new Uint8Array(bytes) } satisfies AudioBlob
+  })
+
+const streamSynthesizeDialogueImpl =
+  (cfg: Config) => (request: CommonSynthesizeDialogueRequest) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient
+        const { httpRequest } = yield* buildDialogueHttpRequest(cfg, request, "/stream")
+        const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
+        if (response.status >= 400) {
+          const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
+          return Stream.fail(httpStatusError(response.status, text))
+        }
+        return response.stream.pipe(
+          Stream.mapError(transportFailure),
+          Stream.map((bytes): AudioChunk => ({ bytes })),
+        )
+      }),
+    )
 
 // ---------------------------------------------------------------------------
 // HTTP plumbing (sync + chunked-HTTP streaming)
@@ -137,15 +251,25 @@ export const make = (cfg: Config) =>
         realtimeStream(cfg)(textIn, request as ElevenLabsSynthesizeRequest).pipe(
           Stream.provideService(Socket.WebSocketConstructor, ctor),
         ),
+      synthesizeDialogue: (request) =>
+        synthesizeDialogueImpl(cfg)(request).pipe(
+          Effect.provideService(HttpClient.HttpClient, client),
+        ),
+      streamSynthesizeDialogue: (request) =>
+        streamSynthesizeDialogueImpl(cfg)(request).pipe(
+          Stream.provideService(HttpClient.HttpClient, client),
+        ),
     } satisfies ElevenLabsSynthesizerService
   })
 
 /**
  * Layer registers `ElevenLabsSynthesizer`, the generic
- * `SpeechSynthesizer`, **and `TtsIncrementalText`** — incremental
- * text-in is wired to the realtime `/stream-input` WebSocket. Provide
- * `Socket.layerWebSocketConstructorGlobal` and an `HttpClient` Layer at
- * the call site.
+ * `SpeechSynthesizer`, the `TtsIncrementalText` marker (incremental
+ * text-in via `/stream-input` WebSocket), **and `MultiSpeakerTts`** —
+ * multi-speaker dialogue is wired to `POST /v1/text-to-dialogue`
+ * (sync) and `/v1/text-to-dialogue/stream` (chunked). Provide
+ * `Socket.layerWebSocketConstructorGlobal` and an `HttpClient` Layer
+ * at the call site.
  */
 export const layer = (cfg: Config) =>
   Layer.mergeAll(
@@ -161,8 +285,11 @@ export const layer = (cfg: Config) =>
             s.streamSynthesis(req as ElevenLabsSynthesizeRequest),
           streamSynthesisFrom: (textIn, req: CommonStreamSynthesizeRequest) =>
             s.streamSynthesisFrom(textIn, req),
+          synthesizeDialogue: s.synthesizeDialogue,
+          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
         }),
       ),
     ),
     Layer.succeed(TtsIncrementalText, undefined),
+    Layer.succeed(MultiSpeakerTts, undefined),
   )

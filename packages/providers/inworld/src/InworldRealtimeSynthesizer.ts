@@ -19,9 +19,11 @@ import {
 } from "@effect-uai/core/SpeechSynthesizer"
 import {
   type Config,
+  dialogueUnsupportedImpl,
   InworldSynthesizer,
   type InworldSynthesizerService,
   type InworldSynthesizeRequest,
+  streamDialogueUnsupportedImpl,
   streamSynthesisImpl,
   synthesizeImpl,
 } from "./InworldSynthesizer.js"
@@ -45,6 +47,8 @@ export const make = (cfg: Config) =>
           streamSynthesisImpl(cfg)(r).pipe(Stream.provideService(HttpClient.HttpClient, client)),
         streamSynthesisFrom: (textIn, request) =>
           realtimeStream(cfg)(textIn, request as InworldSynthesizeRequest),
+        synthesizeDialogue: dialogueUnsupportedImpl,
+        streamSynthesizeDialogue: streamDialogueUnsupportedImpl,
       }) satisfies InworldSynthesizerService,
   )
 
@@ -69,6 +73,8 @@ export const layer = (cfg: Config) =>
             s.streamSynthesis(req as InworldSynthesizeRequest),
           streamSynthesisFrom: (textIn, req: CommonStreamSynthesizeRequest) =>
             s.streamSynthesisFrom(textIn, req),
+          synthesizeDialogue: s.synthesizeDialogue,
+          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
         }),
       ),
     ),

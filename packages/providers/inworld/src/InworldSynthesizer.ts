@@ -10,7 +10,7 @@
  * `InworldRealtimeSynthesizer` subpath, which adds the WS path and the
  * `TtsIncrementalText` capability marker.
  */
-import { Context, Effect, Layer, Redacted, Schema, Stream } from "effect"
+import { Array as Arr, Context, Effect, Layer, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk } from "@effect-uai/core/Audio"
@@ -18,6 +18,7 @@ import * as JSONL from "@effect-uai/core/JSONL"
 import {
   type CommonStreamSynthesizeRequest,
   type CommonSynthesizeRequest,
+  type CustomPronunciation,
   SpeechSynthesizer,
   type SpeechSynthesizerService,
 } from "@effect-uai/core/SpeechSynthesizer"
@@ -58,6 +59,8 @@ export type InworldSynthesizerService = {
     r: InworldSynthesizeRequest,
   ) => Stream.Stream<AudioChunk, AiError.AiError>
   readonly streamSynthesisFrom: SpeechSynthesizerService["streamSynthesisFrom"]
+  readonly synthesizeDialogue: SpeechSynthesizerService["synthesizeDialogue"]
+  readonly streamSynthesizeDialogue: SpeechSynthesizerService["streamSynthesizeDialogue"]
 }
 
 export class InworldSynthesizer extends Context.Service<
@@ -71,13 +74,33 @@ export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: st
 // Request body
 // ---------------------------------------------------------------------------
 
+/**
+ * Inworld accepts inline phoneme overrides as `/ipa/` tokens directly
+ * in the text — no separate field. Only IPA is supported; entries with
+ * other encodings are silently dropped (audio still renders with the
+ * default pronunciation). Whole-word, case-insensitive replacement.
+ */
+const escapeForRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+const applyPronunciations = (
+  text: string,
+  pronunciations: ReadonlyArray<CustomPronunciation> | undefined,
+): string => {
+  if (pronunciations === undefined) return text
+  return Arr.reduce(pronunciations, text, (acc, p) =>
+    p.encoding === "ipa"
+      ? acc.replace(new RegExp(`\\b${escapeForRegex(p.phrase)}\\b`, "i"), `/${p.pronunciation}/`)
+      : acc,
+  )
+}
+
 /** Exported for reuse by the realtime variant's BOS `create` frame. */
 export const buildBody = (r: InworldSynthesizeRequest) =>
   Effect.gen(function* () {
     const format = r.outputFormat ?? defaultFormat
     const audioConfig = yield* audioConfigFor(format, r.speed)
     const body = {
-      text: r.text,
+      text: applyPronunciations(r.text, r.pronunciations),
       voiceId: r.voiceId,
       modelId: r.model,
       audioConfig,
@@ -194,6 +217,27 @@ const streamUnsupported = <E, R>(
   return fail
 }
 
+/** Exported for reuse by `InworldRealtimeSynthesizer`. */
+export const dialogueUnsupportedImpl: SpeechSynthesizerService["synthesizeDialogue"] = () =>
+  Effect.fail(
+    new AiError.Unsupported({
+      provider: "inworld",
+      capability: "synthesizeDialogue",
+      reason: "Inworld TTS has no multi-speaker endpoint.",
+    }),
+  )
+
+/** Exported for reuse by `InworldRealtimeSynthesizer`. */
+export const streamDialogueUnsupportedImpl: SpeechSynthesizerService["streamSynthesizeDialogue"] =
+  () =>
+    Stream.fail(
+      new AiError.Unsupported({
+        provider: "inworld",
+        capability: "streamSynthesizeDialogue",
+        reason: "Inworld TTS has no multi-speaker endpoint.",
+      }),
+    )
+
 // ---------------------------------------------------------------------------
 // Constructors
 // ---------------------------------------------------------------------------
@@ -207,6 +251,8 @@ export const make = (
     streamSynthesis: (r) =>
       streamSynthesisImpl(cfg)(r).pipe(Stream.provideService(HttpClient.HttpClient, client)),
     streamSynthesisFrom: streamUnsupported,
+    synthesizeDialogue: dialogueUnsupportedImpl,
+    streamSynthesizeDialogue: streamDialogueUnsupportedImpl,
   }))
 
 /**
@@ -229,6 +275,8 @@ export const layer = (
           streamSynthesis: (req: CommonSynthesizeRequest) =>
             s.streamSynthesis(req as InworldSynthesizeRequest),
           streamSynthesisFrom: s.streamSynthesisFrom,
+          synthesizeDialogue: s.synthesizeDialogue,
+          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
         }),
       ),
     ),

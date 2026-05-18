@@ -4,6 +4,12 @@
 
 ### Minor Changes
 
+- `OpenAISynthesizer` implements the new `SpeechSynthesizerService`
+  dialogue methods (`synthesizeDialogue`, `streamSynthesizeDialogue`) —
+  both fail with `AiError.Unsupported`. The Layer does NOT ship the
+  `MultiSpeakerTts` marker; multi-speaker calls fail at compile time.
+- `pronunciations` on `CommonSynthesizeRequest` is silently ignored —
+  OpenAI TTS has no phoneme override surface.
 - Add optional `region` field to every `Config` (`OpenAISynthesizer`,
   `OpenAITranscriber`, `realtimeStt`). Typed union `OpenAiRegion = "default" |
   "eu" | (string & {})`; resolves to `eu.api.openai.com` for EU-residency

@@ -23,23 +23,24 @@ variant.
 ```ts
 import { synthesizeDialogue } from "@effect-uai/core/SpeechSynthesizer"
 
-yield* synthesizeDialogue({
-  model: "eleven_v3",
-  turns: [
-    { voiceId: "JBFqnCBsd6RMkjVDRZzb", text: "In American English, it's to-MAY-to." },
-    { voiceId: "EXAVITQu4vr4xnSDxMaL", text: "In British English, it's to-MAH-to." },
-    { voiceId: "JBFqnCBsd6RMkjVDRZzb", text: "And we say po-TAY-to." },
-    { voiceId: "EXAVITQu4vr4xnSDxMaL", text: "Whereas we say po-TAH-to." },
-    { voiceId: "JBFqnCBsd6RMkjVDRZzb", text: "Same spelling, different worlds." },
-  ],
-  pronunciations: [
-    { phrase: "to-MAY-to", pronunciation: "təˈmeɪtoʊ", encoding: "ipa" },
-    { phrase: "to-MAH-to", pronunciation: "təˈmɑːtoʊ", encoding: "ipa" },
-    { phrase: "po-TAY-to", pronunciation: "pəˈteɪtoʊ", encoding: "ipa" },
-    { phrase: "po-TAH-to", pronunciation: "pəˈtɑːtoʊ", encoding: "ipa" },
-  ],
-  outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, bitRate: 128 },
-})
+yield *
+  synthesizeDialogue({
+    model: "eleven_v3",
+    turns: [
+      { voiceId: "JBFqnCBsd6RMkjVDRZzb", text: "In American English, it's to-MAY-to." },
+      { voiceId: "EXAVITQu4vr4xnSDxMaL", text: "In British English, it's to-MAH-to." },
+      { voiceId: "JBFqnCBsd6RMkjVDRZzb", text: "And we say po-TAY-to." },
+      { voiceId: "EXAVITQu4vr4xnSDxMaL", text: "Whereas we say po-TAH-to." },
+      { voiceId: "JBFqnCBsd6RMkjVDRZzb", text: "Same spelling, different worlds." },
+    ],
+    pronunciations: [
+      { phrase: "to-MAY-to", pronunciation: "təˈmeɪtoʊ", encoding: "ipa" },
+      { phrase: "to-MAH-to", pronunciation: "təˈmɑːtoʊ", encoding: "ipa" },
+      { phrase: "po-TAY-to", pronunciation: "pəˈteɪtoʊ", encoding: "ipa" },
+      { phrase: "po-TAH-to", pronunciation: "pəˈtɑːtoʊ", encoding: "ipa" },
+    ],
+    outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, bitRate: 128 },
+  })
 ```
 
 `synthesizeDialogue` requires the `MultiSpeakerTts` capability marker
@@ -65,14 +66,14 @@ spelling itself nudges pronunciation in the right direction.
 
 ## Per-provider behavior
 
-| Provider | `synthesizeDialogue` | Pronunciations |
-|---|---|---|
-| **ElevenLabs** | Wired: `POST /v1/text-to-dialogue` (sync) + `/stream` (chunked). Ships `MultiSpeakerTts`. | Inline SSML `<phoneme>` for the gated models `eleven_flash_v2`, `eleven_english_v1`, `eleven_monolingual_v1`. Other models silently drop. `x-sampa` is always dropped. |
-| **Inworld** | `Unsupported`. | Inline `/ipa/` rewrite. Only `ipa` entries honored; English-only. |
-| **OpenAI** | `Unsupported`. | Silently dropped — no phoneme surface. |
-| **Google** (`@effect-uai/google`) | `Unsupported`. | Silently dropped — Gemini API has no equivalent. Use Cloud TTS via `@effect-uai/google-speech` (coming) for native phoneme support. |
-| **Hume** (future) | Planned: `utterances[]` with per-turn `description` + `speed`. | Phoneme support is preview, not yet on REST. |
-| **Google Cloud TTS** (future, `@effect-uai/google-speech`) | Planned: Gemini-TTS multi-speaker markup. | Structured `customPronunciations` field; IPA + X-SAMPA. |
+| Provider                                                   | `synthesizeDialogue`                                                                      | Pronunciations                                                                                                                                                         |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ElevenLabs**                                             | Wired: `POST /v1/text-to-dialogue` (sync) + `/stream` (chunked). Ships `MultiSpeakerTts`. | Inline SSML `<phoneme>` for the gated models `eleven_flash_v2`, `eleven_english_v1`, `eleven_monolingual_v1`. Other models silently drop. `x-sampa` is always dropped. |
+| **Inworld**                                                | `Unsupported`.                                                                            | Inline `/ipa/` rewrite. Only `ipa` entries honored; English-only.                                                                                                      |
+| **OpenAI**                                                 | `Unsupported`.                                                                            | Silently dropped — no phoneme surface.                                                                                                                                 |
+| **Google** (`@effect-uai/google`)                          | `Unsupported`.                                                                            | Silently dropped — Gemini API has no equivalent. Use Cloud TTS via `@effect-uai/google-speech` (coming) for native phoneme support.                                    |
+| **Hume** (future)                                          | Planned: `utterances[]` with per-turn `description` + `speed`.                            | Phoneme support is preview, not yet on REST.                                                                                                                           |
+| **Google Cloud TTS** (future, `@effect-uai/google-speech`) | Planned: Gemini-TTS multi-speaker markup.                                                 | Structured `customPronunciations` field; IPA + X-SAMPA.                                                                                                                |
 
 ## Workspace voice IDs
 

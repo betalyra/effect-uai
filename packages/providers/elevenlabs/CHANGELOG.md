@@ -22,7 +22,7 @@
   `ElevenLabsRegion = "default" | "eu" | "in" | (string & {})`; resolves to
   `api.{eu,in}.residency.elevenlabs.io` (REST + WSS). Reminder: ElevenLabs
   API keys are workspace-bound — pair an EU-workspace key with `region:
-  "eu"`. `baseUrl` continues to win when set; unknown region strings pass
+"eu"`. `baseUrl` continues to win when set; unknown region strings pass
   through as residency host prefixes for forward compat. Exports a
   `resolveHost(cfg)` helper. Non-breaking.
 
@@ -50,13 +50,13 @@
 
   ```ts
   // Before
-  import { retry } from "@effect-uai/core/LanguageModel";
-  streamTurn(req).pipe(retry(schedule));
+  import { retry } from "@effect-uai/core/LanguageModel"
+  streamTurn(req).pipe(retry(schedule))
 
   // After
-  import * as Retry from "@effect-uai/core/Retry";
-  streamTurn(req).pipe(Retry.stream(schedule));
-  embed(req).pipe(Retry.effect(schedule));
+  import * as Retry from "@effect-uai/core/Retry"
+  streamTurn(req).pipe(Retry.stream(schedule))
+  embed(req).pipe(Retry.effect(schedule))
   ```
 
   `Retryable` and `isRetryable` move to the same module.

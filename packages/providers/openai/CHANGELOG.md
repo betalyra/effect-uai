@@ -12,7 +12,7 @@
   OpenAI TTS has no phoneme override surface.
 - Add optional `region` field to every `Config` (`OpenAISynthesizer`,
   `OpenAITranscriber`, `realtimeStt`). Typed union `OpenAiRegion = "default" |
-  "eu" | (string & {})`; resolves to `eu.api.openai.com` for EU-residency
+"eu" | (string & {})`; resolves to `eu.api.openai.com` for EU-residency
   projects. `baseUrl` continues to win when set; unknown region strings pass
   through as host prefixes (`{region}.api.openai.com/v1`) for forward compat.
   Each package exports a `resolveHost(cfg)` helper. Non-breaking.
@@ -41,13 +41,13 @@
 
   ```ts
   // Before
-  import { retry } from "@effect-uai/core/LanguageModel";
-  streamTurn(req).pipe(retry(schedule));
+  import { retry } from "@effect-uai/core/LanguageModel"
+  streamTurn(req).pipe(retry(schedule))
 
   // After
-  import * as Retry from "@effect-uai/core/Retry";
-  streamTurn(req).pipe(Retry.stream(schedule));
-  embed(req).pipe(Retry.effect(schedule));
+  import * as Retry from "@effect-uai/core/Retry"
+  streamTurn(req).pipe(Retry.stream(schedule))
+  embed(req).pipe(Retry.effect(schedule))
   ```
 
   `Retryable` and `isRetryable` move to the same module.

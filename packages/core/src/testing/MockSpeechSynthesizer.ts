@@ -172,10 +172,7 @@ export const layer = (
   readonly recorder: Effect.Effect<MockSynthesizerRecorder>
 } => {
   const buffers = newBuffers()
-  const synthesizerLayer = Layer.effect(
-    SpeechSynthesizer,
-    makeService(script, recordFor(buffers)),
-  )
+  const synthesizerLayer = Layer.effect(SpeechSynthesizer, makeService(script, recordFor(buffers)))
   const live = Layer.mergeAll(
     synthesizerLayer,
     Layer.succeed(TtsIncrementalText, undefined),

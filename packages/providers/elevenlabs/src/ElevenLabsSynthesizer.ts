@@ -170,23 +170,22 @@ const synthesizeDialogueImpl = (cfg: Config) => (request: CommonSynthesizeDialog
     return { format, bytes: new Uint8Array(bytes) } satisfies AudioBlob
   })
 
-const streamSynthesizeDialogueImpl =
-  (cfg: Config) => (request: CommonSynthesizeDialogueRequest) =>
-    Stream.unwrap(
-      Effect.gen(function* () {
-        const client = yield* HttpClient.HttpClient
-        const { httpRequest } = yield* buildDialogueHttpRequest(cfg, request, "/stream")
-        const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
-        if (response.status >= 400) {
-          const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-          return Stream.fail(httpStatusError(response.status, text))
-        }
-        return response.stream.pipe(
-          Stream.mapError(transportFailure),
-          Stream.map((bytes): AudioChunk => ({ bytes })),
-        )
-      }),
-    )
+const streamSynthesizeDialogueImpl = (cfg: Config) => (request: CommonSynthesizeDialogueRequest) =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const client = yield* HttpClient.HttpClient
+      const { httpRequest } = yield* buildDialogueHttpRequest(cfg, request, "/stream")
+      const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
+      if (response.status >= 400) {
+        const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
+        return Stream.fail(httpStatusError(response.status, text))
+      }
+      return response.stream.pipe(
+        Stream.mapError(transportFailure),
+        Stream.map((bytes): AudioChunk => ({ bytes })),
+      )
+    }),
+  )
 
 // ---------------------------------------------------------------------------
 // HTTP plumbing (sync + chunked-HTTP streaming)

@@ -15,8 +15,13 @@ import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
 import { WebSocket as WSWebSocket } from "ws"
+import { type OpenAiRegion, resolveHost } from "./region.js"
 
-export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
+export type Config = {
+  readonly apiKey: Redacted.Redacted
+  readonly baseUrl?: string
+  readonly region?: OpenAiRegion
+}
 
 // ---------------------------------------------------------------------------
 // AudioFormat → OpenAI `input_audio_format`
@@ -49,8 +54,7 @@ const inputFormatToWire: (format: AudioFormat) => Effect.Effect<WireFormat, AiEr
 // URL + frame builders
 // ---------------------------------------------------------------------------
 
-const wsBaseUrl = (cfg: Config) =>
-  (cfg.baseUrl ?? "https://api.openai.com/v1").replace(/^http/, "ws")
+const wsBaseUrl = (cfg: Config) => resolveHost(cfg).replace(/^http/, "ws")
 
 const buildWsUrl = (cfg: Config) => `${wsBaseUrl(cfg)}/realtime?intent=transcription`
 

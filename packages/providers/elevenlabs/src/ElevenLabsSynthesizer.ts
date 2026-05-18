@@ -20,6 +20,7 @@ import {
 } from "./codec.js"
 import type { ElevenLabsTtsModel, ElevenLabsVoiceId } from "./models.js"
 import { streamSynthesis as realtimeStream } from "./realtimeTts.js"
+import { type ElevenLabsRegion, resolveHost } from "./region.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -53,7 +54,11 @@ export class ElevenLabsSynthesizer extends Context.Service<
   ElevenLabsSynthesizerService
 >()("@betalyra/effect-uai/providers/elevenlabs/ElevenLabsSynthesizer") {}
 
-export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
+export type Config = {
+  readonly apiKey: Redacted.Redacted
+  readonly baseUrl?: string
+  readonly region?: ElevenLabsRegion
+}
 
 // ---------------------------------------------------------------------------
 // Codec — request → JSON body
@@ -73,13 +78,11 @@ const buildBody = (r: ElevenLabsSynthesizeRequest) => ({
 // HTTP plumbing (sync + chunked-HTTP streaming)
 // ---------------------------------------------------------------------------
 
-const baseUrl = (cfg: Config) => cfg.baseUrl ?? "https://api.elevenlabs.io/v1"
-
 const buildHttpRequest = (cfg: Config, r: ElevenLabsSynthesizeRequest, path: "" | "/stream") =>
   Effect.gen(function* () {
     const format = r.outputFormat ?? defaultFormat
     const slug = yield* formatToOutputSlug(format)
-    const url = `${baseUrl(cfg)}/text-to-speech/${r.voiceId}${path}?output_format=${slug}`
+    const url = `${resolveHost(cfg)}/text-to-speech/${r.voiceId}${path}?output_format=${slug}`
     const httpRequest = HttpClientRequest.post(url).pipe(
       HttpClientRequest.setHeader("xi-api-key", Redacted.value(cfg.apiKey)),
       HttpClientRequest.bodyJsonUnsafe(buildBody(r)),

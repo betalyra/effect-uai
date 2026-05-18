@@ -10,8 +10,13 @@ import {
   wireVoiceSettings,
 } from "./codec.js"
 import type { ElevenLabsTtsModel, ElevenLabsVoiceId } from "./models.js"
+import { type ElevenLabsRegion, resolveHost } from "./region.js"
 
-export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
+export type Config = {
+  readonly apiKey: Redacted.Redacted
+  readonly baseUrl?: string
+  readonly region?: ElevenLabsRegion
+}
 
 export type { VoiceSettings } from "./codec.js"
 
@@ -35,7 +40,7 @@ export type StreamSynthesizeRequest = {
 // ---------------------------------------------------------------------------
 
 export const buildWsUrl = (cfg: Config, request: StreamSynthesizeRequest, outputFormat: string) => {
-  const wsBase = (cfg.baseUrl ?? "https://api.elevenlabs.io/v1").replace(/^http/, "ws")
+  const wsBase = resolveHost(cfg).replace(/^http/, "ws")
   const params = new URLSearchParams({
     output_format: outputFormat,
     auto_mode: String(request.autoMode ?? true),

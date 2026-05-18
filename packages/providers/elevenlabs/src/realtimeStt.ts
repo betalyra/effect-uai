@@ -7,8 +7,13 @@ import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent, WordTimestamp } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
 import { httpStatusError, transportFailure } from "./codec.js"
+import { type ElevenLabsRegion, resolveHost } from "./region.js"
 
-export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
+export type Config = {
+  readonly apiKey: Redacted.Redacted
+  readonly baseUrl?: string
+  readonly region?: ElevenLabsRegion
+}
 
 // ---------------------------------------------------------------------------
 // AudioFormat → audio_format slug
@@ -43,7 +48,7 @@ const decodeToken = Schema.decodeUnknownEffect(TokenWire)
 export const fetchSingleUseToken = (cfg: Config) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    const url = `${cfg.baseUrl ?? "https://api.elevenlabs.io/v1"}/single-use-token/realtime_scribe`
+    const url = `${resolveHost(cfg)}/single-use-token/realtime_scribe`
     const httpRequest = HttpClientRequest.post(url).pipe(
       HttpClientRequest.setHeader("xi-api-key", Redacted.value(cfg.apiKey)),
     )
@@ -178,7 +183,7 @@ export const buildWsUrl = (
   audioFormat: string,
   opts: RealtimeOptions,
 ) => {
-  const wsBase = (cfg.baseUrl ?? "https://api.elevenlabs.io/v1").replace(/^http/, "ws")
+  const wsBase = resolveHost(cfg).replace(/^http/, "ws")
   const params = new URLSearchParams({
     token,
     audio_format: audioFormat,

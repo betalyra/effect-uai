@@ -12,6 +12,7 @@ import * as SSE from "@effect-uai/core/SSE"
 import type { Turn, TurnEvent } from "@effect-uai/core/Turn"
 import { itemsToInput } from "./codec.js"
 import type { OpenAIModel } from "./models.js"
+import { type OpenAiRegion, resolveHost } from "./region.js"
 import {
   KnownProviderEvent,
   ProviderEvent,
@@ -95,6 +96,7 @@ export class Responses extends Context.Service<Responses, ResponsesService>()(
 export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
+  readonly region?: OpenAiRegion
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +224,7 @@ const httpStatusError = (status: number, body: string): AiError.AiError => {
 }
 
 const buildNativeStream = (cfg: Config) => {
-  const url = `${cfg.baseUrl ?? "https://api.openai.com/v1"}/responses`
+  const url = `${resolveHost(cfg)}/responses`
   return (
     request: ResponsesRequest,
   ): Stream.Stream<ProviderEvent, AiError.AiError, HttpClient.HttpClient> =>

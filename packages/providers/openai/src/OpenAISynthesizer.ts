@@ -16,6 +16,7 @@ import {
   transportFailure,
 } from "./codec.js"
 import type { OpenAITtsModel, OpenAIVoiceId } from "./models.js"
+import { type OpenAiRegion, resolveHost } from "./region.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -56,6 +57,7 @@ export class OpenAISynthesizer extends Context.Service<
 export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
+  readonly region?: OpenAiRegion
 }
 
 // ---------------------------------------------------------------------------
@@ -98,10 +100,8 @@ const buildBody = (
 // HTTP plumbing
 // ---------------------------------------------------------------------------
 
-const baseUrl = (cfg: Config): string => cfg.baseUrl ?? "https://api.openai.com/v1"
-
 const buildHttpRequest = (cfg: Config, body: WireBody) =>
-  HttpClientRequest.post(`${baseUrl(cfg)}/audio/speech`).pipe(
+  HttpClientRequest.post(`${resolveHost(cfg)}/audio/speech`).pipe(
     HttpClientRequest.bearerToken(cfg.apiKey),
     HttpClientRequest.bodyJsonUnsafe(body),
   )

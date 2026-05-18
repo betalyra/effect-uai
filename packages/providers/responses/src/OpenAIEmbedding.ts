@@ -17,6 +17,7 @@ import {
   type EmbedResponse,
 } from "@effect-uai/core/EmbeddingModel"
 import type { OpenAIEmbeddingModel } from "./models.js"
+import { type OpenAiRegion, resolveHost } from "./region.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -56,6 +57,7 @@ export class OpenAIEmbedding extends Context.Service<OpenAIEmbedding, OpenAIEmbe
 export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
+  readonly region?: OpenAiRegion
 }
 
 // ---------------------------------------------------------------------------
@@ -176,15 +178,13 @@ const transportFailure = (cause: unknown): AiError.AiError =>
 // HTTP plumbing
 // ---------------------------------------------------------------------------
 
-const baseUrl = (cfg: Config): string => cfg.baseUrl ?? "https://api.openai.com/v1"
-
 const postEmbed = (
   cfg: Config,
   body: WireBody,
 ): Effect.Effect<typeof WireResponse.Type, AiError.AiError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    const httpRequest = HttpClientRequest.post(`${baseUrl(cfg)}/embeddings`).pipe(
+    const httpRequest = HttpClientRequest.post(`${resolveHost(cfg)}/embeddings`).pipe(
       HttpClientRequest.bearerToken(cfg.apiKey),
       HttpClientRequest.bodyJsonUnsafe(body),
     )

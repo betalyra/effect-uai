@@ -1,5 +1,18 @@
 # @effect-uai/elevenlabs
 
+## 0.6.0
+
+### Minor Changes
+
+- Add optional `region` field to every `Config` (`ElevenLabsSynthesizer`,
+  `ElevenLabsTranscriber`, `realtimeTts`, `realtimeStt`). Typed union
+  `ElevenLabsRegion = "default" | "eu" | "in" | (string & {})`; resolves to
+  `api.{eu,in}.residency.elevenlabs.io` (REST + WSS). Reminder: ElevenLabs
+  API keys are workspace-bound — pair an EU-workspace key with `region:
+  "eu"`. `baseUrl` continues to win when set; unknown region strings pass
+  through as residency host prefixes for forward compat. Exports a
+  `resolveHost(cfg)` helper. Non-breaking.
+
 ## 0.5.2
 
 ### Patch Changes

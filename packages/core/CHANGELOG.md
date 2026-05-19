@@ -14,7 +14,10 @@
   - New methods `synthesizeDialogue` and `streamSynthesizeDialogue` on
     `SpeechSynthesizerService`, taking `CommonSynthesizeDialogueRequest`
     (`{model, turns, outputFormat?, languageCode?, pronunciations?}`).
-    `DialogueTurn` is `{voiceId, text, styleDescription?, speed?}`.
+    `DialogueTurn` is `{voiceId, text}` — per-turn knobs (style
+    description, per-turn speed) live on each provider's typed
+    `DialogueTurn` extension, mirroring how `CommonSynthesizeRequest`
+    delegates provider-specific knobs to provider-typed requests.
   - New capability marker `MultiSpeakerTts` — shipped only by provider
     Layers with native dialogue support. Top-level helpers
     `synthesizeDialogue` / `streamSynthesizeDialogue` require it in `R`,

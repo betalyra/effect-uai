@@ -10,9 +10,8 @@
   - `streamSynthesizeDialogue` → `POST /v1/text-to-dialogue/stream`
     (chunked binary).
   - Layer now also registers the `MultiSpeakerTts` capability marker
-    (alongside `TtsIncrementalText`). Per-turn `styleDescription` and
-    `speed` are silently ignored — ElevenLabs `inputs[]` takes
-    `{voice_id, text}` only.
+    (alongside `TtsIncrementalText`). Core's `DialogueTurn` is
+    `{voiceId, text}`; ElevenLabs `inputs[]` maps 1:1.
   - `pronunciations` are applied as inline SSML `<phoneme alphabet="ipa|cmu-arpabet" ph="...">phrase</phoneme>`
     tags for the phoneme-gated legacy models (`eleven_flash_v2`,
     `eleven_english_v1`, `eleven_monolingual_v1`). Other models silently

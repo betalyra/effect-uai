@@ -73,18 +73,14 @@ export type CommonSynthesizeRequest = {
 export type CommonStreamSynthesizeRequest = Omit<CommonSynthesizeRequest, "text">
 
 /**
- * One turn in a multi-speaker dialogue.
- *
- * `styleDescription` and `speed` are honored by providers that expose
- * per-turn knobs (Hume Octave-2) and silently ignored by others
- * (ElevenLabs `/v1/text-to-dialogue` accepts `{voice_id, text}` only;
- * Google Gemini TTS multi-speaker has no per-turn styling).
+ * One turn in a multi-speaker dialogue. Per-turn knobs (Hume Octave-2
+ * `description`, Cartesia per-turn `emotion`, ...) live on each
+ * provider's typed turn extension — same rule as
+ * `CommonSynthesizeRequest`'s provider-specific extensions.
  */
 export type DialogueTurn = {
   readonly voiceId: string
   readonly text: string
-  readonly styleDescription?: string
-  readonly speed?: number
 }
 
 /**
@@ -175,6 +171,11 @@ export class TtsIncrementalText extends Context.Service<TtsIncrementalText, void
  * Other providers leave the marker unregistered so the top-level
  * `synthesizeDialogue` / `streamSynthesizeDialogue` helpers fail to
  * satisfy R against those Layers — compile-time error.
+ *
+ * The marker only signals that dialogue synthesis itself is wired —
+ * it says nothing about per-turn knobs (style description, per-turn
+ * speed, etc.). Providers that expose those wire them on their typed
+ * `DialogueTurn` extension.
  */
 export class MultiSpeakerTts extends Context.Service<MultiSpeakerTts, void>()(
   "@betalyra/effect-uai/capability/MultiSpeakerTts",

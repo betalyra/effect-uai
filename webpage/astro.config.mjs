@@ -5,6 +5,28 @@ import react from "@astrojs/react";
 import sitemap from "@astrojs/sitemap";
 import tailwindcss from "@tailwindcss/vite";
 
+const stubPagePattern =
+  /\/(reranking|realtime|image-generation|video-generation)\/$/;
+
+const isVercelProduction = process.env.VERCEL_ENV === "production";
+
+const plausibleHead = isVercelProduction
+  ? [
+      {
+        tag: "script",
+        attrs: {
+          async: true,
+          src: "https://plausible.io/js/pa-yDUj4fz1BbZ6quQM9sZXf.js",
+        },
+      },
+      {
+        tag: "script",
+        content:
+          "window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()",
+      },
+    ]
+  : [];
+
 export default defineConfig({
   site: "https://effect-uai.betalyra.com",
   vite: {
@@ -12,25 +34,14 @@ export default defineConfig({
   },
   integrations: [
     react(),
-    sitemap(),
+    sitemap({
+      filter: (page) => !stubPagePattern.test(new URL(page).pathname),
+    }),
     starlight({
       title: "effect-uai",
       description: "Low-level primitives for AI agents in Effect.",
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
-      head: [
-        {
-          tag: "script",
-          attrs: {
-            async: true,
-            src: "https://plausible.io/js/pa-yDUj4fz1BbZ6quQM9sZXf.js",
-          },
-        },
-        {
-          tag: "script",
-          content:
-            "window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()",
-        },
-      ],
+      head: plausibleHead,
       components: {
         ThemeSelect: "./src/components/ThemeSelect.astro",
         Hero: "./src/components/Hero.astro",

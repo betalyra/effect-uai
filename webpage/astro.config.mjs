@@ -1,15 +1,18 @@
-import { defineConfig } from "astro/config"
-import starlight from "@astrojs/starlight"
-import mdx from "@astrojs/mdx"
-import react from "@astrojs/react"
-import tailwindcss from "@tailwindcss/vite"
+import { defineConfig } from "astro/config";
+import starlight from "@astrojs/starlight";
+import mdx from "@astrojs/mdx";
+import react from "@astrojs/react";
+import sitemap from "@astrojs/sitemap";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  site: "https://effect-uai.betalyra.com",
   vite: {
     plugins: [tailwindcss()],
   },
   integrations: [
     react(),
+    sitemap(),
     starlight({
       title: "effect-uai",
       description: "Low-level primitives for AI agents in Effect.",
@@ -57,7 +60,9 @@ export default defineConfig({
         },
         {
           label: "Concepts",
-          items: [{ label: "Items and turns", slug: "concepts/items-and-turns" }],
+          items: [
+            { label: "Items and turns", slug: "concepts/items-and-turns" },
+          ],
         },
         {
           label: "Language models",
@@ -77,8 +82,14 @@ export default defineConfig({
               label: "Recipes",
               collapsed: true,
               items: [
-                { label: "Tool call approval", slug: "recipes/tool-call-approval" },
-                { label: "Streaming tool output", slug: "recipes/streaming-tool-output" },
+                {
+                  label: "Tool call approval",
+                  slug: "recipes/tool-call-approval",
+                },
+                {
+                  label: "Streaming tool output",
+                  slug: "recipes/streaming-tool-output",
+                },
                 {
                   label: "Streaming structured output",
                   slug: "recipes/streaming-structured-output",
@@ -92,7 +103,10 @@ export default defineConfig({
                 { label: "Pause and resume", slug: "recipes/pause-resume" },
                 { label: "Mid-stream abort", slug: "recipes/mid-stream-abort" },
                 { label: "Agentic loop", slug: "recipes/agentic-loop" },
-                { label: "Modify output stream", slug: "recipes/modify-output-stream" },
+                {
+                  label: "Modify output stream",
+                  slug: "recipes/modify-output-stream",
+                },
                 { label: "Model retry", slug: "recipes/model-retry" },
                 {
                   label: "Multi-model compare",
@@ -112,7 +126,10 @@ export default defineConfig({
             {
               label: "Providers",
               items: [
-                { label: "Responses / OpenAI", slug: "embeddings/providers/responses" },
+                {
+                  label: "Responses / OpenAI",
+                  slug: "embeddings/providers/responses",
+                },
                 { label: "Google Gemini", slug: "embeddings/providers/gemini" },
                 { label: "Jina", slug: "embeddings/providers/jina" },
               ],
@@ -138,10 +155,22 @@ export default defineConfig({
               label: "Recipes",
               collapsed: true,
               items: [
-                { label: "Basic transcription", slug: "recipes/basic-transcription" },
-                { label: "Basic speech synthesis", slug: "recipes/basic-speech-synthesis" },
-                { label: "Streaming transcription", slug: "recipes/streaming-transcription" },
-                { label: "Streaming synthesis", slug: "recipes/streaming-synthesis" },
+                {
+                  label: "Basic transcription",
+                  slug: "recipes/basic-transcription",
+                },
+                {
+                  label: "Basic speech synthesis",
+                  slug: "recipes/basic-speech-synthesis",
+                },
+                {
+                  label: "Streaming transcription",
+                  slug: "recipes/streaming-transcription",
+                },
+                {
+                  label: "Streaming synthesis",
+                  slug: "recipes/streaming-synthesis",
+                },
                 { label: "Voice loop", slug: "recipes/voice-loop" },
               ],
             },
@@ -153,12 +182,22 @@ export default defineConfig({
             { label: "Overview", slug: "music-generation" },
             {
               label: "Providers",
-              items: [{ label: "Google Lyria", slug: "music-generation/providers/gemini" }],
+              items: [
+                {
+                  label: "Google Lyria",
+                  slug: "music-generation/providers/gemini",
+                },
+              ],
             },
             {
               label: "Recipes",
               collapsed: true,
-              items: [{ label: "Basic music generation", slug: "recipes/basic-music-generation" }],
+              items: [
+                {
+                  label: "Basic music generation",
+                  slug: "recipes/basic-music-generation",
+                },
+              ],
             },
           ],
         },
@@ -176,7 +215,11 @@ export default defineConfig({
           label: "Coming soon",
           collapsed: true,
           items: [
-            { label: "Reranking", slug: "reranking", badge: { text: "Soon", variant: "note" } },
+            {
+              label: "Reranking",
+              slug: "reranking",
+              badge: { text: "Soon", variant: "note" },
+            },
             {
               label: "Realtime",
               slug: "realtime",
@@ -198,4 +241,4 @@ export default defineConfig({
     }),
     mdx(),
   ],
-})
+});

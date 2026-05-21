@@ -13,6 +13,11 @@
   `@effect-uai/google-speech` package with Cloud TTS.
 - `pronunciations` on `CommonSynthesizeRequest` is silently ignored
   (Gemini API has no equivalent field).
+- `GeminiTranscribeRequest` narrows out `wordTimestamps` and
+  `diarization` — Gemini's prompt-driven transcription has neither, so
+  the gap is compile-time on the typed surface. The generic
+  `Transcriber` Layer still accepts the wider request and rejects
+  with `AiError.Unsupported` at the adapter boundary.
 
 ## 0.5.2
 

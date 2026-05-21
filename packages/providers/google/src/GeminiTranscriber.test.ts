@@ -61,15 +61,20 @@ describe("GeminiTranscriber.buildPrompt", () => {
   })
 })
 
-describe("GeminiTranscriber capability guards (runtime)", () => {
-  it("fails Unsupported for wordTimestamps", async () => {
-    const program = GeminiTranscriber.GeminiTranscriber.use((s) =>
-      s.transcribe({
-        audio: dummyAudio,
-        model: "gemini-2.5-flash",
-        wordTimestamps: true,
-      }),
+describe("GeminiTranscriber capability surface", () => {
+  it("omits wordTimestamps and diarization from the typed request (compile-time)", () => {
+    expectTypeOf<GeminiTranscriber.GeminiTranscribeRequest>().not.toHaveProperty(
+      "wordTimestamps",
     )
+    expectTypeOf<GeminiTranscriber.GeminiTranscribeRequest>().not.toHaveProperty("diarization")
+  })
+
+  it("fails Unsupported for wordTimestamps via the generic Transcriber", async () => {
+    const program = Transcriber.transcribe({
+      audio: dummyAudio,
+      model: "gemini-2.5-flash",
+      wordTimestamps: true,
+    })
     const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(live)))
     expect(exit._tag).toBe("Failure")
     if (exit._tag === "Failure") {
@@ -78,14 +83,12 @@ describe("GeminiTranscriber capability guards (runtime)", () => {
     }
   })
 
-  it("fails Unsupported for diarization", async () => {
-    const program = GeminiTranscriber.GeminiTranscriber.use((s) =>
-      s.transcribe({
-        audio: dummyAudio,
-        model: "gemini-2.5-flash",
-        diarization: true,
-      }),
-    )
+  it("fails Unsupported for diarization via the generic Transcriber", async () => {
+    const program = Transcriber.transcribe({
+      audio: dummyAudio,
+      model: "gemini-2.5-flash",
+      diarization: true,
+    })
     const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(live)))
     expect(exit._tag).toBe("Failure")
     if (exit._tag === "Failure") {

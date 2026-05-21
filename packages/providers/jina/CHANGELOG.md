@@ -1,5 +1,15 @@
 # @effect-uai/jina
 
+## 0.6.0
+
+### Minor Changes
+
+- `JinaEmbedding` now fails multi-part `content[]` inputs with
+  `AiError.Unsupported` (`capability: "multiPartInput"`) instead of
+  `AiError.InvalidRequest`. Jina's flat `input[]` can't preserve the
+  multi-part grouping — that's a feature gap, not a malformed-shape
+  error.
+
 ## 0.5.2
 
 ### Patch Changes

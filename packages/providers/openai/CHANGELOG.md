@@ -10,6 +10,13 @@
   `MultiSpeakerTts` marker; multi-speaker calls fail at compile time.
 - `pronunciations` on `CommonSynthesizeRequest` is silently ignored —
   OpenAI TTS has no phoneme override surface.
+- `OpenAITranscribeRequest` narrows out `diarization` — OpenAI's
+  transcription endpoint has no diarization, so the gap is
+  compile-time on the typed surface. `wordTimestamps` stays on the
+  typed request (it works with `whisper-1`); combining it with a
+  GPT-4o transcribe model still fails with `AiError.Unsupported`.
+  The generic `Transcriber` Layer rejects `diarization: true` at the
+  adapter boundary with `Unsupported`.
 - Add optional `region` field to every `Config` (`OpenAISynthesizer`,
   `OpenAITranscriber`, `realtimeStt`). Typed union `OpenAiRegion = "default" |
 "eu" | (string & {})`; resolves to `eu.api.openai.com` for EU-residency

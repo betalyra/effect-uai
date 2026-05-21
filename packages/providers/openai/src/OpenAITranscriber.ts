@@ -25,9 +25,15 @@ import { type OpenAiRegion, resolveHost } from "./region.js"
  * - `wordTimestamps` requires `whisper-1`. GPT-4o models don't return
  *   per-word timing; combining them with `wordTimestamps: true` fails
  *   with `AiError.Unsupported`.
- * - `diarization` is not offered by OpenAI's transcription endpoint.
+ * - `diarization` is narrowed out — OpenAI's transcription endpoint
+ *   has no speaker diarization. The generic `Transcriber` Layer still
+ *   accepts the wider `CommonTranscribeRequest`; setting `diarization`
+ *   there fails with `AiError.Unsupported` at the Layer adapter.
  */
-export type OpenAITranscribeRequest = Omit<CommonTranscribeRequest, "model"> & {
+export type OpenAITranscribeRequest = Omit<
+  CommonTranscribeRequest,
+  "model" | "diarization"
+> & {
   readonly model: OpenAITranscribeModel
   readonly temperature?: number
   readonly fileName?: string
@@ -76,7 +82,11 @@ const promptToString: (prompt: string | { readonly terms: ReadonlyArray<string> 
 const wantsVerboseJson = (request: OpenAITranscribeRequest): boolean =>
   request.wordTimestamps === true
 
-/** Capability guards: gate request-data-dependent gaps with `Unsupported`. */
+/**
+ * Typed-path guard: gates `wordTimestamps × model` (row D data-dependent
+ * gap — wordTimestamps stays on the typed request because it works for
+ * `whisper-1`).
+ */
 const guardCapabilities = (
   request: OpenAITranscribeRequest,
 ): Effect.Effect<void, AiError.AiError> => {
@@ -89,6 +99,17 @@ const guardCapabilities = (
       }),
     )
   }
+  return Effect.void
+}
+
+/**
+ * Generic-Layer guard: `diarization` is narrowed out of the typed
+ * request, but generic callers can still pass it via
+ * `CommonTranscribeRequest`. Reject at the adapter boundary.
+ */
+const guardGenericCapabilities = (
+  request: CommonTranscribeRequest,
+): Effect.Effect<void, AiError.AiError> => {
   if (request.diarization === true) {
     return Effect.fail(
       new AiError.Unsupported({
@@ -254,7 +275,9 @@ export const layer = (
         make(cfg),
         (s): TranscriberService => ({
           transcribe: (req: CommonTranscribeRequest) =>
-            s.transcribe(req as OpenAITranscribeRequest),
+            Effect.flatMap(guardGenericCapabilities(req), () =>
+              s.transcribe(req as OpenAITranscribeRequest),
+            ),
           streamTranscriptionFrom: s.streamTranscriptionFrom,
         }),
       ),

@@ -18,9 +18,19 @@ import type { GeminiSttModel } from "./models.js"
  * Gemini transcription rides on `:generateContent` — the model receives
  * audio plus a textual "transcribe verbatim" prompt and returns plain
  * text. There is no native structured timestamp / diarization channel,
- * so `wordTimestamps` / `diarization` short-circuit with `Unsupported`.
+ * so `wordTimestamps` and `diarization` are narrowed out of the typed
+ * request entirely (compile-time gap). Callers reaching for either
+ * feature need Cloud Speech-to-Text (Chirp 2), not Gemini.
+ *
+ * The generic `Transcriber` Layer still accepts the wider
+ * `CommonTranscribeRequest` (which has both fields); a runtime guard
+ * in the Layer adapter fails with `AiError.Unsupported` if either is
+ * set there.
  */
-export type GeminiTranscribeRequest = Omit<CommonTranscribeRequest, "model"> & {
+export type GeminiTranscribeRequest = Omit<
+  CommonTranscribeRequest,
+  "model" | "wordTimestamps" | "diarization"
+> & {
   readonly model: GeminiSttModel
 }
 
@@ -45,7 +55,11 @@ export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: st
 const unsupported = (capability: string, reason: string) =>
   new AiError.Unsupported({ provider: "gemini", capability, reason })
 
-const ensureSupported = Match.type<GeminiTranscribeRequest>().pipe(
+/**
+ * Runtime guard for callers using the generic `Transcriber` Layer
+ * (the typed `GeminiTranscriber` already narrows these fields out).
+ */
+const ensureSupported = Match.type<CommonTranscribeRequest>().pipe(
   Match.when({ wordTimestamps: true }, () =>
     Effect.fail(
       unsupported(
@@ -115,7 +129,6 @@ const baseUrl = (cfg: Config) => cfg.baseUrl ?? "https://generativelanguage.goog
 
 const transcribeImpl = (cfg: Config) => (request: GeminiTranscribeRequest) =>
   Effect.gen(function* () {
-    yield* ensureSupported(request)
     const client = yield* HttpClient.HttpClient
     const inline = yield* audioSourceToInlineData(request.audio)
     const httpRequest = HttpClientRequest.post(
@@ -196,7 +209,9 @@ export const layer = (cfg: Config) =>
         make(cfg),
         (s): TranscriberService => ({
           transcribe: (req: CommonTranscribeRequest) =>
-            s.transcribe(req as GeminiTranscribeRequest),
+            Effect.flatMap(ensureSupported(req), () =>
+              s.transcribe(req as GeminiTranscribeRequest),
+            ),
           streamTranscriptionFrom: s.streamTranscriptionFrom,
         }),
       ),

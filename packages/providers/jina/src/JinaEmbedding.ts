@@ -135,10 +135,11 @@ const contentPartToItem: (part: EmbedContentPart) => WireItem = Match.type<Embed
   Match.exhaustive,
 )
 
-const multiPartContentRejected: AiError.AiError = new AiError.InvalidRequest({
+const multiPartContentRejected: AiError.AiError = new AiError.Unsupported({
   provider: "jina",
-  param: "input.content",
-  raw: "Jina treats each input[] entry as one item; multi-part `content[]` would lose the grouping. Split into separate `inputs[]` entries.",
+  capability: "multiPartInput",
+  reason:
+    "Jina treats each input[] entry as one item; multi-part `content[]` would lose the grouping. Split into separate `inputs[]` entries.",
 })
 
 /**

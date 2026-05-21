@@ -4,6 +4,10 @@
 
 ### Minor Changes
 
+- `OpenAIEmbedding` now fails image inputs with `AiError.Unsupported`
+  (`capability: "imageEmbedding"`) instead of `AiError.InvalidRequest`.
+  OpenAI embeddings are text-only — that's a feature gap, not a
+  malformed-shape error.
 - Add optional `region` field to both `Config`s (`Responses`,
   `OpenAIEmbedding`). Typed union `OpenAiRegion = "default" | "eu" | (string &
 {})`; resolves to `eu.api.openai.com` for EU-residency projects. `baseUrl`

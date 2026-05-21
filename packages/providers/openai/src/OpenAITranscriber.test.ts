@@ -34,14 +34,16 @@ describe("OpenAITranscriber capability guards (runtime)", () => {
     }
   })
 
-  it("fails Unsupported when diarization is requested", async () => {
-    const program = OpenAITranscriber.OpenAITranscriber.use((t) =>
-      t.transcribe({
-        audio,
-        model: "whisper-1",
-        diarization: true,
-      }),
-    )
+  it("omits diarization from the typed request (compile-time)", () => {
+    expectTypeOf<OpenAITranscriber.OpenAITranscribeRequest>().not.toHaveProperty("diarization")
+  })
+
+  it("fails Unsupported when diarization is requested via the generic Transcriber", async () => {
+    const program = Transcriber.transcribe({
+      audio,
+      model: "whisper-1",
+      diarization: true,
+    })
     const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(live)))
     expect(exit._tag).toBe("Failure")
     if (exit._tag === "Failure") {

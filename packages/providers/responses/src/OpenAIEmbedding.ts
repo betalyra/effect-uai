@@ -64,29 +64,25 @@ export type Config = {
 // Codec - input flattening to the single string OpenAI expects
 // ---------------------------------------------------------------------------
 
-const imageRejected = (param: string): AiError.AiError =>
-  new AiError.InvalidRequest({
-    provider: "openai",
-    param,
-    raw: "OpenAI embeddings are text-only; pass a string or { text }",
-  })
+const imageRejected: AiError.AiError = new AiError.Unsupported({
+  provider: "openai",
+  capability: "imageEmbedding",
+  reason: "OpenAI embeddings are text-only; pass a string or { text }.",
+})
 
-const partToText = (
-  param: string,
-  part: EmbedContentPart,
-): Effect.Effect<string, AiError.AiError> =>
-  "text" in part ? Effect.succeed(part.text) : Effect.fail(imageRejected(param))
+const partToText = (part: EmbedContentPart): Effect.Effect<string, AiError.AiError> =>
+  "text" in part ? Effect.succeed(part.text) : Effect.fail(imageRejected)
 
 /**
  * OpenAI accepts a single string per input. Pure-text `content[]` is
  * concatenated with newlines (treats them as paragraphs of one document);
- * any image part fails with `InvalidRequest`.
+ * any image part fails with `AiError.Unsupported` (`imageEmbedding`).
  */
 const inputToString = (input: EmbedInput): Effect.Effect<string, AiError.AiError> => {
   if (typeof input === "string") return Effect.succeed(input)
   if ("text" in input) return Effect.succeed(input.text)
-  if ("image" in input) return Effect.fail(imageRejected("input.image"))
-  return Effect.forEach(input.content, (p, i) => partToText(`input.content[${i}].image`, p)).pipe(
+  if ("image" in input) return Effect.fail(imageRejected)
+  return Effect.forEach(input.content, partToText).pipe(
     Effect.map((texts) => texts.join("\n")),
   )
 }

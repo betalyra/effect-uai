@@ -32,6 +32,12 @@ export default defineConfig({
   site: "https://effect-uai.betalyra.com",
   vite: {
     plugins: [tailwindcss()],
+    optimizeDeps: {
+      exclude: ["@takumi-rs/core"],
+    },
+    ssr: {
+      external: ["@takumi-rs/core"],
+    },
   },
   integrations: [
     react(),
@@ -58,6 +64,7 @@ export default defineConfig({
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
       head: plausibleHead,
       components: {
+        Head: "./src/components/Head.astro",
         ThemeSelect: "./src/components/ThemeSelect.astro",
         Hero: "./src/components/Hero.astro",
         Footer: "./src/components/Footer.astro",

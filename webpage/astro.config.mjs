@@ -47,6 +47,10 @@ export default defineConfig({
     starlight({
       title: "effect-uai",
       description: "Low-level primitives for AI agents in Effect.",
+      logo: {
+        src: "./src/assets/effect-uai-logo.svg",
+        replacesTitle: true,
+      },
       plugins: [
         starlightLlmsTxt({
           projectName: "effect-uai",

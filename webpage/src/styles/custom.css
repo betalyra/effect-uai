@@ -75,77 +75,41 @@
   letter-spacing: -0.02em;
 }
 
-/* Hero: large, bold grotesque. Modernist proportions.
-   The clamp slope is intentionally gentle: at iPad-landscape widths
-   (~1024–1366px) the right column is narrow and the title needs to
-   stay on one line so the red triangle and the clipped white "uai"
-   overlay land on the same baseline. */
-.hero h1 {
-  font-weight: 800;
-  letter-spacing: -0.035em;
-  font-size: clamp(2.75rem, calc(0.5rem + 5.5vw), 6rem);
-  position: relative;
-  display: inline-block;
-  isolation: isolate;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-/* The graphic mark. An equilateral red triangle (Minas Gerais flag
-   geometry) sitting behind the "ai" of "uai": one mark referencing AI,
-   the MG interjection "uai", and U.I. With width 1.5em, equilateral
-   height = 1.5 * sqrt(3)/2 ≈ 1.3em. */
-.hero h1::before {
-  content: "";
-  position: absolute;
-  width: 1.5em;
-  height: 1.3em;
-  background-color: var(--color-mark);
-  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
-  inset-block-start: -0.2em;
-  inset-inline-end: -0.48em;
-  transform: rotate(10deg);
-  z-index: -1;
-}
-
-/* White copy of the title, clipped to the triangle's screen area. The
-   polygon points are the ::before's three corners rotated 10deg clockwise
-   around the ::before's center (100% - 0.27em, 0.45em). */
-.hero h1::after {
-  content: "effect-uai";
-  position: absolute;
-  inset: 0;
-  color: #ffffff;
-  pointer-events: none;
-  clip-path: polygon(
-    calc(100% - 0.16em) -0.19em,
-    calc(100% - 1.12em) 0.96em,
-    calc(100% + 0.36em) 1.22em
-  );
-}
-
-/* Tighten the gap between the H1 and the line beneath it. */
-.hero h1 {
-  margin-block-end: 0 !important;
-}
-
-.hero .tagline {
-  margin-block-start: 0.15rem !important;
-}
-
-/* Pronunciation guide. Sits between the title and the tagline. */
-.hero .tagline::before {
-  content: "/ˈi.fɛkt ˈwaj/";
+/* Hero logo: SVG wordmark including the red triangle mark and phonetic
+   guide. Sized fluidly so it scales the same way the old text-based
+   wordmark used to (44–96px equivalent height at narrow→wide viewports). */
+.hero h1.hero-logo {
   display: block;
-  margin-block-end: 0.9em;
-  font-family: var(--sl-font-system-mono);
-  font-size: 0.95rem;
-  font-weight: 400;
-  letter-spacing: 0.04em;
-  color: var(--sl-color-gray-3);
+  width: 100%;
+  max-width: clamp(20rem, 55vw, 38rem);
+  margin: 0 !important;
+  line-height: 0;
+}
+
+.hero h1.hero-logo svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* In dark mode, invert the black ink of the wordmark + phonetic guide so
+   they read against the dark background. The red triangle stays red
+   (invert + hue-rotate(180) round-trips the red back to itself). */
+:root[data-theme="dark"] .hero h1.hero-logo svg,
+:root[data-theme="dark"] .site-title img {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Nav logo: scale so the wordmark is legible. Default Starlight logo height
+   is set via --sl-nav-logo-height (1.5rem). Override to fit the wordmark
+   without the phonetic feeling cramped. */
+.site-title img {
+  height: 2rem;
+  width: auto;
 }
 
 .hero .tagline {
+  margin-block-start: 0.5rem !important;
   font-weight: 400;
   letter-spacing: -0.005em;
   max-width: 36rem;

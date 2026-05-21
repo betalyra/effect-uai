@@ -4,6 +4,7 @@ import { docsData } from "@/lib/hero-data"
 import { cn } from "@/lib/utils"
 import { PiArrowRight, PiArrowSquareOut } from "react-icons/pi"
 import HeroCodePanel from "./HeroCodePanel.astro"
+import logoSvg from "@/assets/effect-uai-logo.svg?raw"
 
 const data = docsData(Astro.locals.starlightRoute)
 const { title = data.title, tagline, actions = [] } = data.hero ?? {}
@@ -24,7 +25,10 @@ const variantToButton = {
     <div
       class="copy flex flex-col items-center gap-4 min-[50rem]:items-start *:max-w-[50ch]"
     >
-      <h1 id="_top" data-page-title set:html={title} />
+      <h1 id="_top" data-page-title class="hero-logo">
+        <span class="sr-only" set:html={title} />
+        <Fragment set:html={logoSvg} />
+      </h1>
       {
         tagline && (
           <div

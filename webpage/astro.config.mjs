@@ -3,6 +3,7 @@ import starlight from "@astrojs/starlight";
 import mdx from "@astrojs/mdx";
 import react from "@astrojs/react";
 import sitemap from "@astrojs/sitemap";
+import starlightLlmsTxt from "starlight-llms-txt";
 import tailwindcss from "@tailwindcss/vite";
 
 const stubPagePattern =
@@ -40,6 +41,20 @@ export default defineConfig({
     starlight({
       title: "effect-uai",
       description: "Low-level primitives for AI agents in Effect.",
+      plugins: [
+        starlightLlmsTxt({
+          projectName: "effect-uai",
+          description:
+            "Low-level Effect-TS primitives for building AI agents: streaming agent loops, tool calling, structured output, multi-provider (OpenAI, Anthropic, Google Gemini), embeddings, and speech.",
+          rawContent: true,
+          exclude: [
+            "reranking",
+            "realtime",
+            "image-generation",
+            "video-generation",
+          ],
+        }),
+      ],
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
       head: plausibleHead,
       components: {

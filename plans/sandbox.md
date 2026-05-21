@@ -183,9 +183,45 @@ For each provider: the primitive, lifecycle, what kind of execution it offers, p
 - **TS SDK**: yes (`dockerode`).
 - **Notable**: **plain Docker shares the host kernel — not safe for untrusted model code on its own**. Document this. gVisor (`runsc`) as a runtime is a stronger story; expose as a `runtime: "runc" | "runsc"` flag on the Docker provider.
 
+### Deno Deploy / Deno Subhosting — `subhosting` (npm) + Deno CLI
+
+Two complementary surfaces from the same vendor — both prioritized, both with **shape mismatch** against the exec-into-VM majority.
+
+**Deno Deploy (cloud)**
+- **Primitive**: V8 **isolate** — not a VM, not a container. Code is *deployed*, not *exec'd into*.
+- **Lifecycle**: create project → push deployment → invoke via HTTP. Isolates spin up per request and idle out. No `exec`, no shell, no `pip install`.
+- **Cold start**: ~ms (V8).
+- **Pricing**: per-request + CPU time; generous free tier.
+- **Execution**: ship JS/TS/Wasm → invoke via HTTPS. **Permissions model is the killer feature** — `--allow-net=api.openai.com`, `--allow-read=/tmp`, hostname-level by default. Maps cleanly to `NetworkPolicy.allowlist.hosts`.
+- **Persistence**: Deno KV; no general FS.
+- **Egress**: hostname-level (native to Deno runtime).
+- **Secret injection**: no native proxy-MITM, but `Deno.env` plus the permission model is the closest thing — env vars only the deployment can see.
+- **Images**: none. No package install at runtime. Ship code + deps via Subhosting.
+- **Auth**: Subhosting API token.
+- **TS SDK**: yes (`subhosting` on npm).
+
+**Deno CLI (local)**
+- **Primitive**: a sandboxed `deno` process with permission flags.
+- **Lifecycle**: shell out — `deno run --allow-net=… --allow-read=… script.ts`. No long-lived sandbox; each invocation is fresh.
+- **Cold start**: ms.
+- **Platforms**: Linux, macOS, Windows.
+- **Execution**: one-shot run of a TS/JS file or inline `--eval`. Permission-gated.
+- **Persistence**: host FS (where allowed).
+- **Egress**: native `--allow-net` allowlist.
+- **Secret injection**: no.
+
+**Shape mismatch — design note**
+
+The exec-into-VM model assumes you can run arbitrary shell commands and treat the kernel session (Jupyter-style REPL) as an optional capability on top. Deno inverts that: **`runCode` is the primary operation**, `exec` doesn't exist, custom images don't exist. Three ways to handle it:
+
+1. **(Recommended)** Treat Deno as a **`SandboxKernelSession`-only provider** that ships `SandboxKernelSession` + `SandboxHostnameAllowlist` markers, with `exec` / `spawn` / `files.*` / custom-image methods returning `AiError.Unsupported` at runtime. Consumers who target `SandboxKernelSession` can swap Deno in for free; consumers writing shell-exec code get a clear error. Simple, honest, no new service.
+2. Build a sibling `CodeRunner` service. Cleaner type-wise but doubles the surface and forces consumers to choose a shape up front. Reject unless we accumulate ≥2 more deploy-and-invoke providers (probably won't).
+3. Drop Deno. Rejected per user priority.
+
+Going with (1). The implication: `Sandbox.create({ image: registry("python:3.12") })` against the Deno layer fails at decode (Deno only accepts the JS/TS runtime). `sandbox.exec(...)` fails with `Unsupported` at runtime. `Sandbox.runCode(code, "typescript")` works. Document loudly that Deno is a *narrow* Sandbox.
+
 ### Other providers (briefly considered, not in initial pass)
 
-- **Deno Subhosting** — *deploy-code* shape, not *exec-into-VM*. Different abstraction; consider a sibling `CodeRunner` service later.
 - **Google Gemini code-execution tool** — hosted model tool; expose via the Gemini adapter, not the sandbox layer.
 - **OpenAI / Anthropic hosted code execution** — same: hosted tool, not a sandbox provider.
 - **Gondolin** (`@earendil-works/gondolin`) — TS-first microVM control plane, experimental; track for a later local provider.
@@ -196,18 +232,20 @@ For each provider: the primitive, lifecycle, what kind of execution it offers, p
 
 ## Cross-provider capability matrix
 
-| Capability | Vercel | Cloudflare | E2B | Modal | Daytona | CodeSandbox | Runloop | Microsandbox | BoxLite | Anthropic srt | Docker |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Shell exec + streaming | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| File R/W via SDK | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | host bind | ✓ |
-| Expose port → public URL | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | local fwd | local fwd | — | local pub |
-| **Snapshot / fork** | ✓ snap | DO state | ✓ pause/resume | ✓ fs-snap | ✓ snap | ✓ **fork** | ✓ snap | ✓ snap/fork | ✓ snap | — | `commit` |
-| **Persistent volumes** | beta | DO storage | template | ✓ Volume | ✓ | per-sandbox | mounts | ✓ | ✓ | host bind | ✓ |
-| **Egress hostname allowlist** | ✓ SNI | ✓ programmable | ✓ | CIDR only | CIDR only | — | ✓ policies | ✓ | ✓ | ✓ proxy | — (bolt-on) |
-| **Proxy secret injection** | partial | ✓ | ✓ | — | — | — | ✓ Gateway | ✓ | unknown | — | — |
-| Custom images | — (fixed) | ✓ | ✓ template | ✓ | ✓ | ✓ Dockerfile | ✓ Blueprint | ✓ OCI | ✓ OCI | — | ✓ |
-| Stateful REPL / kernel | — | ✓ Code Interp | ✓ Jupyter | — | partial | — | PTY | — | — | — | — |
-| PTY session | — | term API | — | — | — | — | ✓ WS | — | — | — | exec -it |
+P1 providers (priority) bolded in the header.
+
+| Capability | **Vercel** | **Cloudflare** | **Deno** | **Daytona** | **Microsandbox** | E2B | Modal | CodeSandbox | Runloop | BoxLite | Anthropic srt | Docker |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Shell exec + streaming | ✓ | ✓ | — (n/a) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| File R/W via SDK | ✓ | ✓ | virtual FS | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | host bind | ✓ |
+| Expose port → public URL | ✓ | ✓ | HTTPS endpoint | ✓ | local fwd | ✓ | ✓ | ✓ | ✓ | local fwd | — | local pub |
+| **Snapshot / fork** | ✓ snap | DO state | — | ✓ snap | ✓ snap/fork | ✓ pause/resume | ✓ fs-snap | ✓ **fork** | ✓ snap | ✓ snap | — | `commit` |
+| **Persistent volumes** | beta | DO storage | KV only | ✓ | ✓ | template | ✓ Volume | per-sandbox | mounts | ✓ | host bind | ✓ |
+| **Egress hostname allowlist** | ✓ SNI | ✓ programmable | ✓ native `--allow-net` | CIDR only | ✓ | ✓ | CIDR only | — | ✓ policies | ✓ | ✓ proxy | — (bolt-on) |
+| **Proxy secret injection** | partial | ✓ | — | — | ✓ | ✓ | — | — | ✓ Gateway | unknown | — | — |
+| Custom images | — (fixed) | ✓ | — (JS/TS/Wasm only) | ✓ | ✓ | ✓ template | ✓ | ✓ Dockerfile | ✓ Blueprint | ✓ OCI | — | ✓ |
+| Stateful REPL / kernel | — | ✓ Code Interp | ✓ (primary) | partial | — | ✓ Jupyter | — | — | PTY | — | — | — |
+| PTY session | — | term API | — | — | — | — | — | — | ✓ WS | — | — | exec -it |
 
 Where providers diverge most (the design decisions the abstraction has to make):
 

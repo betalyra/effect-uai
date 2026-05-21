@@ -16,6 +16,7 @@ import {
   transportFailure,
 } from "./codec.js"
 import type { OpenAITtsModel, OpenAIVoiceId } from "./models.js"
+import { type OpenAiRegion, resolveHost } from "./region.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -46,6 +47,8 @@ export type OpenAISynthesizerService = {
     textIn: Stream.Stream<string, E, R>,
     request: CommonStreamSynthesizeRequest,
   ) => Stream.Stream<AudioChunk, AiError.AiError | E, R>
+  readonly synthesizeDialogue: SpeechSynthesizerService["synthesizeDialogue"]
+  readonly streamSynthesizeDialogue: SpeechSynthesizerService["streamSynthesizeDialogue"]
 }
 
 export class OpenAISynthesizer extends Context.Service<
@@ -56,6 +59,7 @@ export class OpenAISynthesizer extends Context.Service<
 export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
+  readonly region?: OpenAiRegion
 }
 
 // ---------------------------------------------------------------------------
@@ -98,10 +102,8 @@ const buildBody = (
 // HTTP plumbing
 // ---------------------------------------------------------------------------
 
-const baseUrl = (cfg: Config): string => cfg.baseUrl ?? "https://api.openai.com/v1"
-
 const buildHttpRequest = (cfg: Config, body: WireBody) =>
-  HttpClientRequest.post(`${baseUrl(cfg)}/audio/speech`).pipe(
+  HttpClientRequest.post(`${resolveHost(cfg)}/audio/speech`).pipe(
     HttpClientRequest.bearerToken(cfg.apiKey),
     HttpClientRequest.bodyJsonUnsafe(body),
   )
@@ -174,6 +176,25 @@ const streamSynthesisFromUnsupported = <E, R>(
   return fail
 }
 
+const synthesizeDialogueUnsupported: SpeechSynthesizerService["synthesizeDialogue"] = () =>
+  Effect.fail(
+    new AiError.Unsupported({
+      provider: "openai",
+      capability: "synthesizeDialogue",
+      reason: "OpenAI TTS has no multi-speaker endpoint.",
+    }),
+  )
+
+const streamSynthesizeDialogueUnsupported: SpeechSynthesizerService["streamSynthesizeDialogue"] =
+  () =>
+    Stream.fail(
+      new AiError.Unsupported({
+        provider: "openai",
+        capability: "streamSynthesizeDialogue",
+        reason: "OpenAI TTS has no multi-speaker endpoint.",
+      }),
+    )
+
 // ---------------------------------------------------------------------------
 // Constructors
 // ---------------------------------------------------------------------------
@@ -187,6 +208,8 @@ export const make = (
     streamSynthesis: (request) =>
       streamSynthesisImpl(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client)),
     streamSynthesisFrom: streamSynthesisFromUnsupported,
+    synthesizeDialogue: synthesizeDialogueUnsupported,
+    streamSynthesizeDialogue: streamSynthesizeDialogueUnsupported,
   }))
 
 /**
@@ -213,6 +236,8 @@ export const layer = (
           streamSynthesis: (req: CommonSynthesizeRequest) =>
             s.streamSynthesis(req as OpenAISynthesizeRequest),
           streamSynthesisFrom: s.streamSynthesisFrom,
+          synthesizeDialogue: s.synthesizeDialogue,
+          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
         }),
       ),
     ),

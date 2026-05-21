@@ -1,5 +1,19 @@
 # @effect-uai/google
 
+## 0.6.0
+
+### Minor Changes
+
+- `GeminiSynthesizer` implements the new `SpeechSynthesizerService`
+  dialogue methods (`synthesizeDialogue`, `streamSynthesizeDialogue`) —
+  both fail with `AiError.Unsupported`. The Layer does NOT ship the
+  `MultiSpeakerTts` marker, so callers using the top-level
+  `synthesizeDialogue` helper get a compile-time error against this
+  Layer alone. For Gemini-voice multi-speaker, use the upcoming
+  `@effect-uai/google-speech` package with Cloud TTS.
+- `pronunciations` on `CommonSynthesizeRequest` is silently ignored
+  (Gemini API has no equivalent field).
+
 ## 0.5.2
 
 ### Patch Changes
@@ -24,13 +38,13 @@
 
   ```ts
   // Before
-  import { retry } from "@effect-uai/core/LanguageModel";
-  streamTurn(req).pipe(retry(schedule));
+  import { retry } from "@effect-uai/core/LanguageModel"
+  streamTurn(req).pipe(retry(schedule))
 
   // After
-  import * as Retry from "@effect-uai/core/Retry";
-  streamTurn(req).pipe(Retry.stream(schedule));
-  embed(req).pipe(Retry.effect(schedule));
+  import * as Retry from "@effect-uai/core/Retry"
+  streamTurn(req).pipe(Retry.stream(schedule))
+  embed(req).pipe(Retry.effect(schedule))
   ```
 
   `Retryable` and `isRetryable` move to the same module.

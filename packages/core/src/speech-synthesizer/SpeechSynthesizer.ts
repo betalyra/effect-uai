@@ -3,6 +3,34 @@ import * as AiError from "../domain/AiError.js"
 import type { AudioBlob, AudioChunk, AudioFormat } from "../domain/Audio.js"
 
 /**
+ * Phonetic alphabets accepted by `CustomPronunciation`. Not every
+ * provider supports every alphabet — adapters translate or warn+drop
+ * unsupported entries.
+ *
+ * - `ipa` — universal lowest common denominator (Google, ElevenLabs,
+ *   Inworld, Deepgram, Cartesia, MiniMax).
+ * - `x-sampa` — Google Cloud TTS.
+ * - `cmu-arpabet` — ElevenLabs `eleven_flash_v2` / `eleven_english_v1`.
+ */
+export type PhoneticEncoding = "ipa" | "x-sampa" | "cmu-arpabet"
+
+/**
+ * Per-phrase pronunciation override. The same shape unifies the
+ * structured-field providers (Google) and the inline-markup providers
+ * (ElevenLabs SSML, Inworld `/ipa/`, Deepgram, Cartesia, MiniMax) — the
+ * adapter does the wire translation.
+ *
+ * Unsupported alphabets are dropped at the adapter with a structured
+ * `logWarning` (one per call). The audio still renders, just without
+ * the override.
+ */
+export type CustomPronunciation = {
+  readonly phrase: string
+  readonly pronunciation: string
+  readonly encoding: PhoneticEncoding
+}
+
+/**
  * Cross-provider synthesis request. Provider-specific extensions
  * (ElevenLabs `stability` / `similarity_boost`, Cartesia `emotion`,
  * MiniMax `vol` / `pitch`, Azure SSML style tags) live on each
@@ -23,6 +51,14 @@ export type CommonSynthesizeRequest = {
   readonly outputFormat?: AudioFormat
   readonly speed?: number
   readonly languageCode?: string
+  /**
+   * Phoneme overrides for specific phrases. 7 of 9 TTS providers
+   * support some form of this; adapters either translate to a
+   * structured field, rewrite `text` inline, or `warn+drop` per-entry
+   * for alphabets they don't accept. OpenAI rejects non-empty arrays
+   * with `Unsupported`.
+   */
+  readonly pronunciations?: ReadonlyArray<CustomPronunciation>
 }
 
 /**
@@ -35,6 +71,34 @@ export type CommonSynthesizeRequest = {
  * call. Provider extensions can expose `forkContext` for that.
  */
 export type CommonStreamSynthesizeRequest = Omit<CommonSynthesizeRequest, "text">
+
+/**
+ * One turn in a multi-speaker dialogue.
+ *
+ * `styleDescription` and `speed` are honored by providers that expose
+ * per-turn knobs (Hume Octave-2) and silently ignored by others
+ * (ElevenLabs `/v1/text-to-dialogue` accepts `{voice_id, text}` only;
+ * Google Gemini TTS multi-speaker has no per-turn styling).
+ */
+export type DialogueTurn = {
+  readonly voiceId: string
+  readonly text: string
+  readonly styleDescription?: string
+  readonly speed?: number
+}
+
+/**
+ * Cross-provider dialogue request. Same return type as `synthesize` —
+ * one continuous `AudioBlob`. Per-turn timing metadata is not exposed
+ * in the common shape (only Hume returns it natively).
+ */
+export type CommonSynthesizeDialogueRequest = {
+  readonly model: string
+  readonly turns: ReadonlyArray<DialogueTurn>
+  readonly outputFormat?: AudioFormat
+  readonly languageCode?: string
+  readonly pronunciations?: ReadonlyArray<CustomPronunciation>
+}
 
 export type SpeechSynthesizerService = {
   /** One-shot. Full text in, full audio bytes out. Universally supported. */
@@ -62,6 +126,26 @@ export type SpeechSynthesizerService = {
     textIn: Stream.Stream<string, E, R>,
     request: CommonStreamSynthesizeRequest,
   ) => Stream.Stream<AudioChunk, AiError.AiError | E, R>
+  /**
+   * One-shot multi-speaker dialogue. Turn array in, single `AudioBlob`
+   * out. Providers without native dialogue support return
+   * `AiError.Unsupported` and do NOT ship the `MultiSpeakerTts` marker
+   * — calls via the top-level helper become a compile-time error.
+   */
+  readonly synthesizeDialogue: (
+    request: CommonSynthesizeDialogueRequest,
+  ) => Effect.Effect<AudioBlob, AiError.AiError>
+  /**
+   * Chunked-streaming variant of `synthesizeDialogue`. Same input,
+   * audio chunks emitted as the wire delivers them. Providers that
+   * synthesize the whole dialogue server-side may fall back to a
+   * single-chunk wrap of the sync result.
+   *
+   * Gated by `MultiSpeakerTts` at the top-level helper.
+   */
+  readonly streamSynthesizeDialogue: (
+    request: CommonSynthesizeDialogueRequest,
+  ) => Stream.Stream<AudioChunk, AiError.AiError>
 }
 
 export class SpeechSynthesizer extends Context.Service<
@@ -81,6 +165,19 @@ export class SpeechSynthesizer extends Context.Service<
  */
 export class TtsIncrementalText extends Context.Service<TtsIncrementalText, void>()(
   "@betalyra/effect-uai/capability/TtsIncrementalText",
+) {}
+
+/**
+ * Capability marker for multi-speaker dialogue. Shipped by provider
+ * Layers whose `synthesizeDialogue` is wired to a native multi-speaker
+ * endpoint (ElevenLabs `/v1/text-to-dialogue`, Hume `/v0/tts` with
+ * `utterances[]`, Google Cloud TTS Gemini TTS `multiSpeakerMarkup`).
+ * Other providers leave the marker unregistered so the top-level
+ * `synthesizeDialogue` / `streamSynthesizeDialogue` helpers fail to
+ * satisfy R against those Layers — compile-time error.
+ */
+export class MultiSpeakerTts extends Context.Service<MultiSpeakerTts, void>()(
+  "@betalyra/effect-uai/capability/MultiSpeakerTts",
 ) {}
 
 /** One-shot synthesis. */
@@ -129,3 +226,30 @@ export const streamSynthesisFrom: {
       }),
     ),
 )
+
+/**
+ * One-shot multi-speaker dialogue. Requires `MultiSpeakerTts` in R —
+ * providers without dialogue support are a compile-time error.
+ */
+export const synthesizeDialogue = (
+  request: CommonSynthesizeDialogueRequest,
+): Effect.Effect<AudioBlob, AiError.AiError, SpeechSynthesizer | MultiSpeakerTts> =>
+  Effect.gen(function* () {
+    const s = yield* SpeechSynthesizer.asEffect()
+    yield* MultiSpeakerTts.asEffect()
+    return yield* s.synthesizeDialogue(request)
+  })
+
+/**
+ * Chunked-streaming variant. Same R requirement as `synthesizeDialogue`.
+ */
+export const streamSynthesizeDialogue = (
+  request: CommonSynthesizeDialogueRequest,
+): Stream.Stream<AudioChunk, AiError.AiError, SpeechSynthesizer | MultiSpeakerTts> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const s = yield* SpeechSynthesizer.asEffect()
+      yield* MultiSpeakerTts.asEffect()
+      return s.streamSynthesizeDialogue(request)
+    }),
+  )

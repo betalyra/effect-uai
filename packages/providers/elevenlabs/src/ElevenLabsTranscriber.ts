@@ -12,6 +12,7 @@ import {
 import { audioToBlob, defaultFileName, httpStatusError, transportFailure } from "./codec.js"
 import type { ElevenLabsSttModel } from "./models.js"
 import { streamTranscription } from "./realtimeStt.js"
+import { type ElevenLabsRegion, resolveHost } from "./region.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -43,7 +44,11 @@ export class ElevenLabsTranscriber extends Context.Service<
   ElevenLabsTranscriberService
 >()("@betalyra/effect-uai/providers/elevenlabs/ElevenLabsTranscriber") {}
 
-export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
+export type Config = {
+  readonly apiKey: Redacted.Redacted
+  readonly baseUrl?: string
+  readonly region?: ElevenLabsRegion
+}
 
 // ---------------------------------------------------------------------------
 // Response schema
@@ -103,13 +108,11 @@ const buildForm = (request: ElevenLabsTranscribeRequest) =>
 // HTTP plumbing
 // ---------------------------------------------------------------------------
 
-const baseUrl = (cfg: Config) => cfg.baseUrl ?? "https://api.elevenlabs.io/v1"
-
 const transcribeImpl = (cfg: Config) => (request: ElevenLabsTranscribeRequest) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     const form = yield* buildForm(request)
-    const httpRequest = HttpClientRequest.post(`${baseUrl(cfg)}/speech-to-text`).pipe(
+    const httpRequest = HttpClientRequest.post(`${resolveHost(cfg)}/speech-to-text`).pipe(
       HttpClientRequest.setHeader("xi-api-key", Redacted.value(cfg.apiKey)),
       HttpClientRequest.bodyFormData(form),
     )

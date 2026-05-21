@@ -3,7 +3,6 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import {
-  type CommonStreamSynthesizeRequest,
   type CommonSynthesizeRequest,
   SpeechSynthesizer,
   type SpeechSynthesizerService,
@@ -31,6 +30,8 @@ export type GeminiSynthesizerService = {
     r: GeminiSynthesizeRequest,
   ) => Stream.Stream<AudioChunk, AiError.AiError>
   readonly streamSynthesisFrom: SpeechSynthesizerService["streamSynthesisFrom"]
+  readonly synthesizeDialogue: SpeechSynthesizerService["synthesizeDialogue"]
+  readonly streamSynthesizeDialogue: SpeechSynthesizerService["streamSynthesizeDialogue"]
 }
 
 export class GeminiSynthesizer extends Context.Service<
@@ -170,6 +171,26 @@ const unsupportedStreamFrom: SpeechSynthesizerService["streamSynthesisFrom"] = (
     }),
   )
 
+const unsupportedDialogue: SpeechSynthesizerService["synthesizeDialogue"] = () =>
+  Effect.fail(
+    new AiError.Unsupported({
+      provider: "gemini",
+      capability: "synthesizeDialogue",
+      reason:
+        "Gemini API (generativelanguage.googleapis.com) does not expose a multi-speaker endpoint. Use Cloud Text-to-Speech (`@effect-uai/google-speech`) with Gemini TTS for multi-speaker.",
+    }),
+  )
+
+const unsupportedStreamDialogue: SpeechSynthesizerService["streamSynthesizeDialogue"] = () =>
+  Stream.fail(
+    new AiError.Unsupported({
+      provider: "gemini",
+      capability: "streamSynthesizeDialogue",
+      reason:
+        "Gemini API (generativelanguage.googleapis.com) does not expose a multi-speaker endpoint. Use Cloud Text-to-Speech (`@effect-uai/google-speech`) with Gemini TTS for multi-speaker.",
+    }),
+  )
+
 // ---------------------------------------------------------------------------
 // Constructors
 // ---------------------------------------------------------------------------
@@ -186,6 +207,8 @@ export const make = (cfg: Config) =>
           Stream.provideService(HttpClient.HttpClient, client),
         ),
       streamSynthesisFrom: unsupportedStreamFrom,
+      synthesizeDialogue: unsupportedDialogue,
+      streamSynthesizeDialogue: unsupportedStreamDialogue,
     }),
   )
 
@@ -208,6 +231,8 @@ export const layer = (cfg: Config) =>
           streamSynthesis: (req: CommonSynthesizeRequest) =>
             s.streamSynthesis(req as GeminiSynthesizeRequest),
           streamSynthesisFrom: s.streamSynthesisFrom,
+          synthesizeDialogue: s.synthesizeDialogue,
+          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
         }),
       ),
     ),

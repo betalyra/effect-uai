@@ -10,6 +10,7 @@ import {
 } from "@effect-uai/core/Transcriber"
 import { audioToBlob, defaultFileName, httpStatusError, transportFailure } from "./codec.js"
 import type { OpenAITranscribeModel } from "./models.js"
+import { type OpenAiRegion, resolveHost } from "./region.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -50,6 +51,7 @@ export class OpenAITranscriber extends Context.Service<
 export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
+  readonly region?: OpenAiRegion
 }
 
 // ---------------------------------------------------------------------------
@@ -173,8 +175,6 @@ const decodeResponse = (
 // HTTP plumbing
 // ---------------------------------------------------------------------------
 
-const baseUrl = (cfg: Config): string => cfg.baseUrl ?? "https://api.openai.com/v1"
-
 /** Exported for reuse by `OpenAIRealtimeTranscriber` (same sync path). */
 export const transcribeImpl =
   (cfg: Config) =>
@@ -184,7 +184,7 @@ export const transcribeImpl =
     Effect.gen(function* () {
       const client = yield* HttpClient.HttpClient
       const formData = yield* buildFormData(request)
-      const httpRequest = HttpClientRequest.post(`${baseUrl(cfg)}/audio/transcriptions`).pipe(
+      const httpRequest = HttpClientRequest.post(`${resolveHost(cfg)}/audio/transcriptions`).pipe(
         HttpClientRequest.bearerToken(cfg.apiKey),
         HttpClientRequest.bodyFormData(formData),
       )

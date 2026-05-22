@@ -11,12 +11,12 @@
  *   OPENAI_API_KEY=... GOOGLE_API_KEY=... ANTHROPIC_API_KEY=... \
  *     pnpm tsx recipes/model-council/index.ts
  */
-import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import * as Items from "@effect-uai/core/Items"
 import { make as makeAnthropic } from "@effect-uai/anthropic/Anthropic"
+import * as Items from "@effect-uai/core/Items"
 import { make as makeGemini } from "@effect-uai/google/Gemini"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
+import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
 import { type CouncilEvent, type Member, council } from "./council.js"
 
 const QUESTION =

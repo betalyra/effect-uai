@@ -3,4 +3,4 @@ packages:
   - "packages/providers/*"
   - "recipes"
   - "webpage"
-  - "experiments/*"
+  - "integration-tests/*"

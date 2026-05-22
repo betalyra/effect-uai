@@ -2,10 +2,10 @@ import {
   ExecEvent as CoreExecEvent,
   Sandbox as CoreSandbox,
   SandboxHostnameAllowlist,
-  SandboxPauseResume,
   SandboxSecretInjection,
   SandboxSnapshots,
   SandboxVolumes,
+  type BoundSecret,
   type CommonCreateRequest,
   type CommonExecRequest,
   type ExecResult,
@@ -22,13 +22,18 @@ import {
 import * as SandboxError from "@effect-uai/core/SandboxError"
 import {
   Array as Arr,
+  Clock,
+  Context,
   Effect,
   Filter,
   Layer,
   Match,
   Option,
+  Random,
   Record,
   Redacted,
+  Result,
+  Scope,
   Stream,
 } from "effect"
 import {
@@ -46,12 +51,20 @@ import {
 const PROVIDER = "microsandbox"
 
 // ---------------------------------------------------------------------------
-// Provider-narrowed request — extends the common shape with the
-// Microsandbox-specific knobs the SDK exposes. `name` is what
-// microsandbox keys by; we mint a random one when absent.
+// Provider-narrowed request types.
+//
+// Microsandbox's secret-injection wire only supports the default
+// `Authorization: Bearer <value>` header convention — there's no
+// per-secret custom header. We omit `header` on the typed surface
+// (row B / type-level narrowing); calls via the generic `Sandbox.create`
+// surface that set `header` are rejected at runtime (row D
+// `SandboxUnsupported`) — see the upcast adapter in `layer`.
 // ---------------------------------------------------------------------------
 
-export type MicrosandboxCreateRequest = CommonCreateRequest & {
+export type MicrosandboxBoundSecret = Omit<BoundSecret, "header">
+
+export type MicrosandboxCreateRequest = Omit<CommonCreateRequest, "secrets"> & {
+  readonly secrets?: ReadonlyArray<MicrosandboxBoundSecret>
   readonly name?: string
   readonly cpus?: number
   readonly memoryMib?: number
@@ -67,7 +80,7 @@ export type MicrosandboxCreateRequest = CommonCreateRequest & {
   readonly replace?: boolean | { readonly graceMs: number }
   /**
    * Detach so the sandbox outlives the calling scope. The scope
-   * finalizer skips `stop()`; clean up via {@link Sandbox.destroy}.
+   * finalizer skips destroy; clean up via {@link Sandbox.destroy}.
    */
   readonly detached?: boolean
 }
@@ -77,6 +90,29 @@ export type MicrosandboxConfig = {
   readonly defaultImage?: string
 }
 
+/**
+ * Microsandbox-narrowed service. `create` accepts the narrowed
+ * {@link MicrosandboxCreateRequest}; every other method is identical
+ * to the generic {@link SandboxService}.
+ */
+export type MicrosandboxSandboxService = Omit<SandboxService, "create"> & {
+  readonly create: (
+    request: MicrosandboxCreateRequest,
+  ) => Effect.Effect<SandboxInstance, SandboxError.SandboxError, Scope.Scope>
+}
+
+export class MicrosandboxSandbox extends Context.Service<
+  MicrosandboxSandbox,
+  MicrosandboxSandboxService
+>()("@betalyra/effect-uai/providers/microsandbox/MicrosandboxSandbox") {}
+
+// ---------------------------------------------------------------------------
+// Effect-native primitives
+// ---------------------------------------------------------------------------
+
+/** Random base-36 token, ~8 chars. Stand-in for `Math.random` IDs. */
+const randomToken = Random.next.pipe(Effect.map((r) => r.toString(36).slice(2, 10)))
+
 // ---------------------------------------------------------------------------
 // Error mapping
 // ---------------------------------------------------------------------------
@@ -85,18 +121,37 @@ const reasonOf = (e: unknown) => (e instanceof Error ? { reason: e.message } : {
 
 const mapCreateError = (e: unknown): SandboxError.SandboxError =>
   e instanceof SandboxStillRunningError
-    ? new SandboxError.SandboxAlreadyExists({ provider: PROVIDER, id: e.message })
+    ? new SandboxError.SandboxAlreadyExists({
+        provider: PROVIDER,
+        id: e.message,
+      })
     : e instanceof SandboxNotFoundError
       ? new SandboxError.SandboxNotFound({ provider: PROVIDER, id: e.message })
-      : new SandboxError.SandboxCreateFailed({ provider: PROVIDER, raw: e, ...reasonOf(e) })
+      : new SandboxError.SandboxCreateFailed({
+          provider: PROVIDER,
+          raw: e,
+          ...reasonOf(e),
+        })
 
 const mapExecError = (e: unknown): SandboxError.SandboxError =>
   e instanceof ExecTimeoutError
-    ? new SandboxError.SandboxTimeout({ provider: PROVIDER, operation: "exec", raw: e })
-    : new SandboxError.SandboxExecFailed({ provider: PROVIDER, raw: e, ...reasonOf(e) })
+    ? new SandboxError.SandboxTimeout({
+        provider: PROVIDER,
+        operation: "exec",
+        raw: e,
+      })
+    : new SandboxError.SandboxExecFailed({
+        provider: PROVIDER,
+        raw: e,
+        ...reasonOf(e),
+      })
 
 const mapFsError = (e: unknown): SandboxError.SandboxError =>
-  new SandboxError.SandboxExecFailed({ provider: PROVIDER, raw: e, ...reasonOf(e) })
+  new SandboxError.SandboxExecFailed({
+    provider: PROVIDER,
+    raw: e,
+    ...reasonOf(e),
+  })
 
 const mapLookupError =
   (id: string) =>
@@ -104,6 +159,52 @@ const mapLookupError =
     e instanceof SandboxNotFoundError
       ? new SandboxError.SandboxNotFound({ provider: PROVIDER, id })
       : mapCreateError(e)
+
+// ---------------------------------------------------------------------------
+// Stop a sandbox by id and wait for the DB to land the new status.
+//
+// Empirically (spike + SDK 0.4.6):
+// - `handle.connect()` + `live.stopAndWait()` resolves in 0ms on a
+//   non-owning connection — the VM keeps running.
+// - `handle.kill()` signals the runtime to terminate, but the DB row's
+//   `status` field only flips to "stopped" ~200ms later. Operations
+//   that re-read DB status (`MsbSandbox.remove`, `handle.snapshot`)
+//   reject during that window.
+//
+// We pick 250ms; spike showed 200ms as the smallest reliable value.
+// `SandboxNotFound` short-circuits to a no-op — the sandbox is already
+// gone, which is exactly the state callers want.
+// ---------------------------------------------------------------------------
+
+const DB_SETTLE = "250 millis"
+
+const stopUnowned = (id: string) =>
+  Effect.tryPromise({
+    try: () => MsbSandbox.get(id),
+    catch: mapLookupError(id),
+  }).pipe(
+    Effect.flatMap((handle) =>
+      handle.status === "running"
+        ? Effect.tryPromise({
+            try: () => handle.kill(),
+            catch: mapLookupError(id),
+          }).pipe(Effect.andThen(Effect.sleep(DB_SETTLE)))
+        : Effect.void,
+    ),
+    Effect.catchTag("SandboxNotFound", () => Effect.void),
+  )
+
+/** Stop + remove. Idempotent — `SandboxNotFound` is treated as success. */
+const destroyById = (id: SandboxId) =>
+  stopUnowned(id).pipe(
+    Effect.andThen(
+      Effect.tryPromise({
+        try: () => MsbSandbox.remove(id),
+        catch: mapLookupError(id),
+      }),
+    ),
+    Effect.catchTag("SandboxNotFound", () => Effect.void),
+  )
 
 // ---------------------------------------------------------------------------
 // Builder pipeline — a `Step` is a pure builder→builder transformation.
@@ -255,6 +356,9 @@ const argv = (
 
 type ExecConfigure = Parameters<MsbSandbox["execWith"]>[1]
 
+const toBuffer = (input: Uint8Array | string) =>
+  typeof input === "string" ? Buffer.from(input, "utf-8") : Buffer.from(input)
+
 const execConfigure =
   (args: ReadonlyArray<string>, request: CommonExecRequest): ExecConfigure =>
   (b) => {
@@ -264,25 +368,38 @@ const execConfigure =
       request.env === undefined
         ? withCwd
         : Record.reduce(request.env, withCwd, (acc, v, k) => acc.env(k, v))
-    return request.timeoutMs === undefined ? withEnv : withEnv.timeout(request.timeoutMs)
+    const withTimeout =
+      request.timeoutMs === undefined ? withEnv : withEnv.timeout(request.timeoutMs)
+    return request.stdin === undefined
+      ? withTimeout
+      : withTimeout.stdinBytes(toBuffer(request.stdin))
   }
 
 // ---------------------------------------------------------------------------
 // MsbExecEvent → Option<CoreExecEvent>. `started` carries the pid but
 // downstream observers don't need it — drop via `Option.none()`.
-// Microsandbox uses `kind` as the discriminator, so `Match.discriminators`.
+// Duration is precomputed by the caller (Clock-based).
 // ---------------------------------------------------------------------------
 
-const execEventFromMsb = (startedAt: number) =>
-  Match.type<MsbExecEvent>().pipe(
+const execEventFromMsb = (event: MsbExecEvent, durationMs: number): Option.Option<CoreExecEvent> =>
+  Match.value(event).pipe(
     Match.discriminators("kind")({
-      started: (): Option.Option<CoreExecEvent> => Option.none(),
+      started: () => Option.none<CoreExecEvent>(),
       stdout: ({ data }) => Option.some(CoreExecEvent.Stdout({ chunk: data })),
       stderr: ({ data }) => Option.some(CoreExecEvent.Stderr({ chunk: data })),
-      exited: ({ code }) =>
-        Option.some(CoreExecEvent.Complete({ exitCode: code, durationMs: Date.now() - startedAt })),
+      exited: ({ code }) => Option.some(CoreExecEvent.Complete({ exitCode: code, durationMs })),
     }),
     Match.exhaustive,
+  )
+
+const someEvent = Filter.fromPredicateOption((o: Option.Option<CoreExecEvent>) => o)
+
+const eventStream = (handle: AsyncIterable<MsbExecEvent>, startedAt: number) =>
+  Stream.fromAsyncIterable(handle, mapExecError).pipe(
+    Stream.mapEffect((event) =>
+      Effect.map(Clock.currentTimeMillis, (now) => execEventFromMsb(event, now - startedAt)),
+    ),
+    Stream.filterMap(someEvent),
   )
 
 // ---------------------------------------------------------------------------
@@ -295,14 +412,23 @@ const adaptInstance = (msb: MsbSandbox): SandboxInstance => {
   const openExecStream = (request: CommonExecRequest) =>
     Effect.gen(function* () {
       const { cmd, args } = yield* argv(request.cmd)
+      const startedAt = yield* Clock.currentTimeMillis
+      // `asyncDispose` alone drops the relay connection but does NOT
+      // terminate the guest process — sleep / dev servers / watchers
+      // happily keep running. Explicitly kill first; both calls are
+      // safe to invoke on an already-exited handle.
       const handle = yield* Effect.acquireRelease(
         Effect.tryPromise({
           try: () => msb.execStreamWith(cmd, execConfigure(args, request)),
           catch: mapExecError,
         }),
-        (h) => Effect.promise(() => h[Symbol.asyncDispose]()),
+        (h) =>
+          Effect.tryPromise({
+            try: () => h.kill(),
+            catch: () => undefined,
+          }).pipe(Effect.ignore, Effect.andThen(Effect.promise(() => h[Symbol.asyncDispose]()))),
       )
-      return { handle, startedAt: Date.now() }
+      return { handle, startedAt }
     })
 
   return {
@@ -311,26 +437,24 @@ const adaptInstance = (msb: MsbSandbox): SandboxInstance => {
     exec: (request) =>
       Effect.gen(function* () {
         const { cmd, args } = yield* argv(request.cmd)
-        const startedAt = Date.now()
+        const startedAt = yield* Clock.currentTimeMillis
         const output = yield* Effect.tryPromise({
           try: () => msb.execWith(cmd, execConfigure(args, request)),
           catch: mapExecError,
         })
-        const result: ExecResult = {
+        const completedAt = yield* Clock.currentTimeMillis
+        return {
           exitCode: output.code,
           stdout: output.stdout(),
           stderr: output.stderr(),
-          durationMs: Date.now() - startedAt,
-        }
-        return result
+          durationMs: completedAt - startedAt,
+        } satisfies ExecResult
       }),
 
     execStream: (request) =>
       Stream.unwrap(
         Effect.map(openExecStream(request), ({ handle, startedAt }) =>
-          Stream.fromAsyncIterable(handle, mapExecError).pipe(
-            Stream.filterMap(Filter.fromPredicateOption(execEventFromMsb(startedAt))),
-          ),
+          eventStream(handle, startedAt),
         ),
       ),
 
@@ -341,38 +465,50 @@ const adaptInstance = (msb: MsbSandbox): SandboxInstance => {
           // Microsandbox surfaces pid via the "started" event; the
           // handle exposes no sync getter. Surface 0 until it does.
           pid: 0,
-          events: Stream.fromAsyncIterable(handle, mapExecError).pipe(
-            Stream.filterMap(Filter.fromPredicateOption(execEventFromMsb(startedAt))),
-          ),
-          kill: Effect.tryPromise({ try: () => handle.kill(), catch: mapExecError }),
-          exit: Effect.tryPromise({ try: () => handle.wait(), catch: mapExecError }).pipe(
-            Effect.map((status) => ({ exitCode: status.code })),
-          ),
+          events: eventStream(handle, startedAt),
+          kill: Effect.tryPromise({
+            try: () => handle.kill(),
+            catch: mapExecError,
+          }),
+          exit: Effect.tryPromise({
+            try: () => handle.wait(),
+            catch: mapExecError,
+          }).pipe(Effect.map((status) => ({ exitCode: status.code }))),
         }),
       ),
 
     files: {
-      read: (path) => Effect.tryPromise({ try: () => msb.fs().read(path), catch: mapFsError }),
-      write: (path, contents) =>
-        Effect.tryPromise({ try: () => msb.fs().write(path, contents), catch: mapFsError }),
-      remove: (path) => Effect.tryPromise({ try: () => msb.fs().remove(path), catch: mapFsError }),
-      mkdir: (path) => Effect.tryPromise({ try: () => msb.fs().mkdir(path), catch: mapFsError }),
-      list: (path) =>
-        Effect.tryPromise({ try: () => msb.fs().list(path), catch: mapFsError }).pipe(
-          Effect.map(Arr.map((e) => ({ path: e.path, kind: e.kind }))),
-        ),
-      exists: (path) => Effect.tryPromise({ try: () => msb.fs().exists(path), catch: mapFsError }),
-    },
-
-    exposePort: () =>
-      Effect.fail(
-        new SandboxError.SandboxUnsupported({
-          provider: PROVIDER,
-          capability: "exposePort",
-          reason:
-            "microsandbox exposes guest ports via host-side port forwarding configured at create time; runtime exposure is not supported",
+      read: (path) =>
+        Effect.tryPromise({
+          try: () => msb.fs().read(path),
+          catch: mapFsError,
         }),
-      ),
+      write: (path, contents) =>
+        Effect.tryPromise({
+          try: () => msb.fs().write(path, contents),
+          catch: mapFsError,
+        }),
+      remove: (path) =>
+        Effect.tryPromise({
+          try: () => msb.fs().remove(path),
+          catch: mapFsError,
+        }),
+      mkdir: (path) =>
+        Effect.tryPromise({
+          try: () => msb.fs().mkdir(path),
+          catch: mapFsError,
+        }),
+      list: (path) =>
+        Effect.tryPromise({
+          try: () => msb.fs().list(path),
+          catch: mapFsError,
+        }).pipe(Effect.map(Arr.map((e) => ({ path: e.path, kind: e.kind })))),
+      exists: (path) =>
+        Effect.tryPromise({
+          try: () => msb.fs().exists(path),
+          catch: mapFsError,
+        }),
+    },
   }
 }
 
@@ -380,7 +516,7 @@ const adaptInstance = (msb: MsbSandbox): SandboxInstance => {
 // Service factory
 // ---------------------------------------------------------------------------
 
-const buildService = (config: MicrosandboxConfig): SandboxService => {
+const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService => {
   const resolveImageStep = imageStep(config.defaultImage)
 
   const acquireSandbox = (request: MicrosandboxCreateRequest, name: string) =>
@@ -410,81 +546,144 @@ const buildService = (config: MicrosandboxConfig): SandboxService => {
       })
     })
 
+  // Attach picks the right resume path: `connect()` for an already-
+  // running (e.g. detached) sandbox, `startDetached()` for a stopped
+  // one. Plain `MsbSandbox.start(id)` rejects on running sandboxes,
+  // which breaks the detached-survives-scope-close flow.
+  const acquireAttached = (id: SandboxId) =>
+    Effect.tryPromise({
+      try: () => MsbSandbox.get(id),
+      catch: mapLookupError(id),
+    }).pipe(
+      Effect.flatMap((handle) =>
+        Effect.tryPromise({
+          try: handle.status === "running" ? () => handle.connect() : () => handle.startDetached(),
+          catch: mapLookupError(id),
+        }),
+      ),
+    )
+
   return {
     create: (request) =>
       Effect.gen(function* () {
-        const req = request as MicrosandboxCreateRequest
-        const name = req.name ?? `eff-uai-${Math.random().toString(36).slice(2, 10)}`
-        const msb = yield* Effect.acquireRelease(acquireSandbox(req, name), (s) =>
-          // Finalizers must not throw; swallow `stop()` failures.
-          Effect.promise(() => (s.ownsLifecycle ? s.stop().catch(() => {}) : Promise.resolve())),
+        const token = yield* randomToken
+        const name = (request.name ?? `eff-uai-${token}`) as SandboxId
+        const detached = request.detached === true
+        // Detached sandboxes outlive the scope — finalizer skips
+        // teardown and the user calls `destroy(id)` explicitly.
+        const msb = yield* Effect.acquireRelease(acquireSandbox(request, name), () =>
+          detached ? Effect.void : Effect.ignore(destroyById(name)),
         )
         return adaptInstance(msb)
       }),
 
     attach: (id) =>
-      Effect.map(
-        Effect.acquireRelease(
-          Effect.tryPromise({ try: () => MsbSandbox.start(id), catch: mapLookupError(id) }),
-          // Detach on scope close — do NOT stop.
-          () => Effect.void,
-        ),
-        adaptInstance,
-      ),
+      Effect.acquireRelease(
+        acquireAttached(id),
+        // Detach on scope close — do NOT stop.
+        () => Effect.void,
+      ).pipe(Effect.map(adaptInstance)),
 
-    list: Effect.tryPromise({ try: () => MsbSandbox.list(), catch: mapCreateError }).pipe(
-      Effect.map(Arr.map((h): SandboxRef => ({ id: h.name as SandboxId, name: h.name }))),
-    ),
+    list: Effect.tryPromise({
+      try: () => MsbSandbox.list(),
+      catch: mapCreateError,
+    }).pipe(Effect.map(Arr.map((h): SandboxRef => ({ id: h.name as SandboxId, name: h.name })))),
 
-    destroy: (id) =>
-      Effect.tryPromise({ try: () => MsbSandbox.remove(id), catch: mapLookupError(id) }),
+    destroy: destroyById,
 
     snapshots: {
+      // Microsandbox requires the source sandbox to be stopped before
+      // snapshotting. We must also flush root-FS writes BEFORE stop:
+      // SDK 0.4.6's stop path races the guest poweroff and `fs().write`
+      // data sitting in page cache never reaches the upper.ext4. Fix
+      // landed upstream as microsandbox#746 but isn't released — we
+      // call `sync` via exec first. Drop this `flush` step once the
+      // SDK is bumped past the fix.
+      //
+      // `SandboxHandle.snapshot(name)` registers the artifact in the
+      // DB index (visible to `Snapshot.list` / `msb snapshot list` /
+      // `fromSnapshot(name)`); `Snapshot.builder` skips that, so we
+      // go through the handle. The handle's `inner.status` is read at
+      // fetch time, so we re-`get` AFTER the stop has settled.
       create: (from, name) =>
-        Effect.tryPromise({
-          try: async () => {
-            const builder = MsbSnapshot.builder(from.id as string)
-            const named = name === undefined ? builder : builder.name(name)
-            const snap = await named.create()
-            return snap.inner.digest as SnapshotId
-          },
-          catch: mapCreateError,
+        Effect.gen(function* () {
+          const token = yield* randomToken
+          const snapName = name ?? `eff-uai-snap-${token}`
+          yield* Effect.ignore(from.exec({ cmd: ["sync"] }))
+          yield* stopUnowned(from.id as string)
+          const handle = yield* Effect.tryPromise({
+            try: () => MsbSandbox.get(from.id as string),
+            catch: mapLookupError(from.id),
+          })
+          yield* Effect.tryPromise({
+            try: () => handle.snapshot(snapName),
+            catch: mapCreateError,
+          })
+          return snapName as SnapshotId
         }),
       destroy: (sid) =>
         Effect.tryPromise({
-          try: () => MsbSnapshot.get(sid).then((h) => h.remove?.()),
+          try: () => MsbSnapshot.get(sid),
           catch: mapLookupError(sid),
-        }).pipe(Effect.asVoid),
-      list: Effect.tryPromise({ try: () => MsbSnapshot.list(), catch: mapCreateError }).pipe(
+        }).pipe(
+          Effect.flatMap((h) =>
+            Effect.tryPromise({
+              try: () => h.remove(),
+              catch: mapLookupError(sid),
+            }),
+          ),
+        ),
+      list: Effect.tryPromise({
+        try: () => MsbSnapshot.list(),
+        catch: mapCreateError,
+      }).pipe(
         Effect.map(
-          Arr.map((h) =>
+          Arr.filterMap((h) =>
             h.name === null
-              ? { id: h.digest as SnapshotId }
-              : { id: h.digest as SnapshotId, name: h.name },
+              ? Result.failVoid
+              : Result.succeed({ id: h.name as SnapshotId, name: h.name }),
           ),
         ),
       ),
     },
 
     volumes: {
-      create: (name, options) =>
-        Effect.tryPromise({
-          try: async () => {
-            const builder = MsbVolume.builder(name)
-            const sized =
-              options?.quotaBytes === undefined
-                ? builder
-                : builder.quota(Math.ceil(options.quotaBytes / (1024 * 1024)))
-            const vol = await sized.create()
-            return vol.name as VolumeId
-          },
+      create: (name, options) => {
+        const builder = MsbVolume.builder(name)
+        const sized =
+          options?.quotaBytes === undefined
+            ? builder
+            : builder.quota(Math.ceil(options.quotaBytes / (1024 * 1024)))
+        return Effect.tryPromise({
+          try: () => sized.create(),
           catch: mapCreateError,
-        }),
+        }).pipe(Effect.map((vol) => vol.name as VolumeId))
+      },
       destroy: (vid) =>
-        Effect.tryPromise({ try: () => MsbVolume.remove(vid), catch: mapLookupError(vid) }),
-      list: Effect.tryPromise({ try: () => MsbVolume.list(), catch: mapCreateError }).pipe(
-        Effect.map(Arr.map((h) => ({ id: h.name as VolumeId, name: h.name }))),
-      ),
+        Effect.tryPromise({
+          try: () => MsbVolume.remove(vid),
+          catch: mapLookupError(vid),
+        }),
+      list: Effect.tryPromise({
+        try: () => MsbVolume.list(),
+        catch: mapCreateError,
+      }).pipe(Effect.map(Arr.map((h) => ({ id: h.name as VolumeId, name: h.name })))),
+    },
+
+    ports: {
+      // Defensive stub. The Layer doesn't ship `SandboxPortExposure`,
+      // so the free helper `Sandbox.exposePort` is a compile error
+      // against this provider. This stub only fires if a caller
+      // bypassed the marker and reached into `s.ports.expose` directly.
+      expose: () =>
+        Effect.fail(
+          new SandboxError.SandboxUnsupported({
+            provider: PROVIDER,
+            capability: "ports.expose",
+            reason:
+              "microsandbox forwards guest ports to host ports at create time via the per-provider request; runtime port exposure is not supported",
+          }),
+        ),
     },
   }
 }
@@ -504,21 +703,53 @@ const buildService = (config: MicrosandboxConfig): SandboxService => {
  *   substitution; the real value never enters the guest.
  * - {@link SandboxSnapshots} — `Snapshot.builder(sourceSandbox)`.
  * - {@link SandboxVolumes} — `Volume.builder(name)`.
- * - {@link SandboxPauseResume} — `Sandbox.start(name)` resumes a
- *   stopped sandbox by name; the same id survives across the pause.
  *
  * NOT shipped (calling those helpers fails at compile time):
+ * - `SandboxPauseResume` — microsandbox's `stop()` + `Sandbox.start(name)`
+ *   resumes a previously stopped sandbox from disk, but RAM/process
+ *   state is lost. That's different semantics from E2B-style
+ *   memory-preserving pause/resume which `SandboxPauseResume` is
+ *   meant to denote.
  * - `SandboxCustomImage` — accepts OCI registry refs only.
- * - `SandboxPortExposure` — ports forwarded at create time; runtime
- *   `exposePort` calls fail with `SandboxUnsupported`.
+ * - `SandboxPortExposure` — ports are forwarded at create time via the
+ *   per-provider request; runtime `exposePort` is unavailable.
  * - `SandboxKernelSession`, `SandboxPty` — no Jupyter/REPL/PTY.
  */
-export const layer = (config: MicrosandboxConfig = {}) =>
-  Layer.mergeAll(
-    Layer.succeed(CoreSandbox, buildService(config)),
+// Row-D guard: reject `BoundSecret.header` when callers route through
+// the generic `Sandbox.create` surface (the typed `MicrosandboxSandbox`
+// surface omits the field at the type level — row B). Microsandbox's
+// secret API doesn't accept arbitrary headers; silently dropping would
+// produce wrong outbound auth, so we fail loudly.
+const rejectCustomHeader = (
+  secrets: CommonCreateRequest["secrets"],
+): Effect.Effect<void, SandboxError.SandboxError> =>
+  secrets === undefined || !secrets.some((s) => s.header !== undefined)
+    ? Effect.void
+    : Effect.fail(
+        new SandboxError.SandboxUnsupported({
+          provider: PROVIDER,
+          capability: "BoundSecret.header",
+          reason:
+            "microsandbox always injects secrets as `Authorization: Bearer <value>` — custom headers aren't supported. Use the narrowed `MicrosandboxSandbox.create` surface, which omits this field.",
+        }),
+      )
+
+const upcastService = (s: MicrosandboxSandboxService): SandboxService => ({
+  ...s,
+  create: (request) =>
+    rejectCustomHeader(request.secrets).pipe(
+      Effect.andThen(s.create(request as MicrosandboxCreateRequest)),
+    ),
+})
+
+export const layer = (config: MicrosandboxConfig = {}) => {
+  const service = buildService(config)
+  return Layer.mergeAll(
+    Layer.succeed(MicrosandboxSandbox, service),
+    Layer.succeed(CoreSandbox, upcastService(service)),
     Layer.succeed(SandboxHostnameAllowlist, undefined),
     Layer.succeed(SandboxSecretInjection, undefined),
     Layer.succeed(SandboxSnapshots, undefined),
     Layer.succeed(SandboxVolumes, undefined),
-    Layer.succeed(SandboxPauseResume, undefined),
   )
+}

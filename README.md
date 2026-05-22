@@ -123,7 +123,7 @@ what you actually use.
 │   └── basic-music-generation/ # Lyria 3 with simple + weighted prompts
 ├── docs/                      # Source for the docs site (concepts, recipes, providers)
 ├── webpage/                   # Astro/Starlight site that renders docs/
-└── experiments/               # Spikes and prototypes; not part of the published surface
+└── integration-tests/         # Live-system smoke tests (e.g. local microVM); run manually, not part of CI unit tests
 ```
 
 A recipe folder typically contains:

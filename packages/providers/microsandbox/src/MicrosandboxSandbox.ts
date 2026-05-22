@@ -11,6 +11,7 @@ import {
   type ExecResult,
   type ImageRef,
   type NetworkPolicy,
+  type CommonSpawnRequest,
   type ProcessHandle,
   SandboxId,
   type SandboxInstance,
@@ -24,6 +25,7 @@ import {
   Array as Arr,
   Clock,
   Context,
+  Duration,
   Effect,
   Filter,
   Layer,
@@ -38,6 +40,7 @@ import {
   Stream,
 } from "effect"
 import {
+  type ExecHandle as MsbExecHandle,
   ExecTimeoutError,
   NetworkPolicyBuilder,
   Sandbox as MsbSandbox,
@@ -388,8 +391,17 @@ type ExecConfigure = Parameters<MsbSandbox["execWith"]>[1]
 const toBuffer = (input: Uint8Array | string) =>
   typeof input === "string" ? Buffer.from(input, "utf-8") : Buffer.from(input)
 
+/**
+ * `string` / `Uint8Array` stdin uses one-shot `stdinBytes`; a Stream
+ * uses `stdinPipe` and gets fed via `feedStdin` once the handle is open.
+ */
+const stdinIsStream = (
+  stdin: CommonSpawnRequest["stdin"],
+): stdin is Stream.Stream<Uint8Array, never, never> =>
+  stdin !== undefined && typeof stdin !== "string" && !(stdin instanceof Uint8Array)
+
 const execConfigure =
-  (args: ReadonlyArray<string>, request: CommonExecRequest): ExecConfigure =>
+  (args: ReadonlyArray<string>, request: CommonSpawnRequest): ExecConfigure =>
   (b) => {
     const withArgs = args.length === 0 ? b : b.args([...args])
     const withCwd = request.cwd === undefined ? withArgs : withArgs.cwd(request.cwd)
@@ -398,11 +410,54 @@ const execConfigure =
         ? withCwd
         : Record.reduce(request.env, withCwd, (acc, v, k) => acc.env(k, v))
     const withTimeout =
-      request.timeoutMs === undefined ? withEnv : withEnv.timeout(request.timeoutMs)
-    return request.stdin === undefined
-      ? withTimeout
-      : withTimeout.stdinBytes(toBuffer(request.stdin))
+      request.timeout === undefined
+        ? withEnv
+        : withEnv.timeout(Duration.toMillis(Duration.fromInputUnsafe(request.timeout)))
+    if (request.stdin === undefined) return withTimeout
+    if (stdinIsStream(request.stdin)) return withTimeout.stdinPipe()
+    return withTimeout.stdinBytes(toBuffer(request.stdin))
   }
+
+// ---------------------------------------------------------------------------
+// Stream stdin → SDK `ExecSink`. Takes the writer once, pumps each
+// chunk via `sink.write(Buffer)`, closes on stream completion. Errors
+// from the SDK side (sink already taken / closed / process exited
+// mid-stream) are mapped through {@link mapExecError}. Caller forks
+// this against a `Scope` so the pump dies with the spawn.
+// ---------------------------------------------------------------------------
+
+const feedStreamStdin = (
+  handle: MsbExecHandle,
+  stream: Stream.Stream<Uint8Array, never, never>,
+): Effect.Effect<void, SandboxError.SandboxError> =>
+  Effect.tryPromise({
+    try: () => handle.takeStdin(),
+    catch: mapExecError,
+  }).pipe(
+    Effect.flatMap((sink) =>
+      sink === null
+        ? Effect.fail(
+            new SandboxError.SandboxInvalidRequest({
+              provider: PROVIDER,
+              param: "stdin",
+              reason: "stdin sink already taken — the SDK exposes it once per spawn",
+            }),
+          )
+        : Stream.runForEach(stream, (chunk) =>
+            Effect.tryPromise({
+              try: () => sink.write(Buffer.from(chunk)),
+              catch: mapExecError,
+            }),
+          ).pipe(
+            Effect.andThen(
+              Effect.tryPromise({
+                try: () => sink.close(),
+                catch: mapExecError,
+              }),
+            ),
+          ),
+    ),
+  )
 
 // ---------------------------------------------------------------------------
 // MsbExecEvent → Option<CoreExecEvent>. `started` carries the pid but
@@ -438,7 +493,7 @@ const eventStream = (handle: AsyncIterable<MsbExecEvent>, startedAt: number) =>
 const adaptInstance = (msb: MsbSandbox): SandboxInstance => {
   const id = SandboxId(msb.name)
 
-  const openExecStream = (request: CommonExecRequest) =>
+  const openExecStream = (request: CommonSpawnRequest) =>
     Effect.gen(function* () {
       const { cmd, args } = yield* argv(request.cmd)
       const startedAt = yield* Clock.currentTimeMillis
@@ -457,6 +512,12 @@ const adaptInstance = (msb: MsbSandbox): SandboxInstance => {
             catch: () => undefined,
           }).pipe(Effect.ignore, Effect.andThen(Effect.promise(() => h[Symbol.asyncDispose]()))),
       )
+      // Stream stdin: fork a fiber that drains the user's stream into
+      // the SDK's `ExecSink`, closing on completion. Scoped to the
+      // caller's scope so it dies if the spawn is interrupted.
+      if (stdinIsStream(request.stdin)) {
+        yield* Effect.forkScoped(feedStreamStdin(handle, request.stdin))
+      }
       return { handle, startedAt }
     })
 
@@ -560,7 +621,11 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
         when(request.user, (u) => (b) => b.user(u)),
         when(request.maxDurationSecs, (s) => (b) => b.maxDuration(s)),
         when(request.idleTimeoutSecs, (s) => (b) => b.idleTimeout(s)),
-        when(request.timeoutMs, (ms) => (b) => b.maxDuration(Math.ceil(ms / 1000))),
+        when(
+          request.timeout,
+          (t) => (b) =>
+            b.maxDuration(Math.ceil(Duration.toMillis(Duration.fromInputUnsafe(t)) / 1000)),
+        ),
         when(request.env, (env) => (b) => b.envs(env)),
         when(request.network, networkStep),
         ...Arr.map(request.secrets ?? [], secretStep),
@@ -639,13 +704,13 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
           const token = yield* randomToken
           const snapName = name ?? `eff-uai-snap-${token}`
           yield* Effect.ignore(from.exec({ cmd: ["sync"] }))
-          yield* killRunning(from.id as string)
+          yield* killRunning(from.id)
           // Re-`get` per attempt: `SandboxHandle.status` is snapshotted
           // at fetch time, so a stale handle would keep failing even
           // after the DB lands the "stopped" status.
           yield* retryOnSettle(
             Effect.tryPromise({
-              try: () => MsbSandbox.get(from.id as string),
+              try: () => MsbSandbox.get(from.id),
               catch: mapLookupError(from.id),
             }).pipe(
               Effect.flatMap((handle) =>

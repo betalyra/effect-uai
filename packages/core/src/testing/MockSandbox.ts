@@ -13,6 +13,7 @@ import {
   SandboxVolumes,
   type CommonCreateRequest,
   type CommonExecRequest,
+  type CommonSpawnRequest,
   type ExecResult,
   type FileEntry,
   type ProcessHandle,
@@ -39,7 +40,7 @@ export type Call = Data.TaggedEnum<{
   Destroy: { readonly id: SandboxId }
   Exec: { readonly id: SandboxId; readonly request: CommonExecRequest }
   ExecStream: { readonly id: SandboxId; readonly request: CommonExecRequest }
-  Spawn: { readonly id: SandboxId; readonly request: CommonExecRequest }
+  Spawn: { readonly id: SandboxId; readonly request: CommonSpawnRequest }
   FileRead: { readonly id: SandboxId; readonly path: string }
   FileWrite: {
     readonly id: SandboxId
@@ -251,9 +252,7 @@ const buildService = (
         record(
           name === undefined ? Call.SnapshotCreate({ id }) : Call.SnapshotCreate({ id, name }),
         ).pipe(
-          Effect.as(
-            SnapshotId(`mock-snapshot-${name ?? Math.random().toString(36).slice(2, 8)}`),
-          ),
+          Effect.as(SnapshotId(`mock-snapshot-${name ?? Math.random().toString(36).slice(2, 8)}`)),
         ),
       destroy: (sid) => record(Call.SnapshotDestroy({ id: sid })),
       list: Effect.succeed(script.snapshots ?? []),

@@ -370,7 +370,7 @@ process.stdout.write(JSON.stringify(summary))
   }, 120_000)
 
   // -------------------------------------------------------------------------
-  // Network policy + replace + timeoutMs
+  // Network policy + replace + timeout
   // -------------------------------------------------------------------------
 
   it("network policy: non-allowlisted hosts are unreachable", async () => {
@@ -431,12 +431,12 @@ process.stdout.write(JSON.stringify(summary))
     await Effect.runPromise(program.pipe(Effect.scoped, Effect.provide(live)))
   }, 180_000)
 
-  it("timeoutMs aborts a long-running exec with SandboxTimeout", async () => {
+  it("timeout aborts a long-running exec with SandboxTimeout", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
         image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
       })
-      return yield* sb.exec({ cmd: ["sleep", "30"], timeoutMs: 500 })
+      return yield* sb.exec({ cmd: ["sleep", "30"], timeout: "500 millis" })
     })
 
     const exit = await Effect.runPromiseExit(program.pipe(Effect.scoped, Effect.provide(live)))
@@ -444,5 +444,117 @@ process.stdout.write(JSON.stringify(summary))
     if (exit._tag === "Failure") {
       expect(JSON.stringify(exit.cause)).toContain("SandboxTimeout")
     }
+  }, 60_000)
+
+  // -------------------------------------------------------------------------
+  // (4) env + cwd on exec
+  // -------------------------------------------------------------------------
+
+  it("exec: env and cwd are delivered to the process", async () => {
+    const program = Effect.gen(function* () {
+      const sb = yield* Sandbox.create({
+        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+      })
+      const result = yield* sb.exec({
+        cmd: ["sh", "-c", "echo $FOO at $(pwd)"],
+        env: { FOO: "bar" },
+        cwd: "/tmp",
+      })
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout.trim()).toBe("bar at /tmp")
+    })
+    await Effect.runPromise(program.pipe(Effect.scoped, Effect.provide(live)))
+  }, 60_000)
+
+  // -------------------------------------------------------------------------
+  // (5) execStream `Complete` is terminal — last event, nothing after
+  // -------------------------------------------------------------------------
+
+  it("execStream: Complete is the terminal event", async () => {
+    const program = Effect.gen(function* () {
+      const sb = yield* Sandbox.create({
+        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+      })
+      const events = yield* Stream.runCollect(
+        sb.execStream({ cmd: ["sh", "-c", "echo a; echo b 1>&2; exit 3"] }),
+      )
+      const list = Array.from(events)
+      const lastIdx = list.length - 1
+      const completeIdx = list.findIndex((e) => e._tag === "Complete")
+      expect(completeIdx).toBe(lastIdx)
+      const complete = list[lastIdx]!
+      expect(complete._tag).toBe("Complete")
+      if (complete._tag === "Complete") {
+        expect(complete.exitCode).toBe(3)
+      }
+    })
+    await Effect.runPromise(program.pipe(Effect.scoped, Effect.provide(live)))
+  }, 60_000)
+
+  // -------------------------------------------------------------------------
+  // (6) destroy(id) is idempotent
+  // -------------------------------------------------------------------------
+
+  it("destroy(id) is idempotent — second call is a no-op", async () => {
+    const name = `eff-uai-idemp-${Date.now()}`
+    // Phase 1: create detached so it survives scope close
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const msb = yield* MicrosandboxSandbox.asEffect()
+        yield* msb.create({
+          image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+          name,
+          detached: true,
+        })
+      }).pipe(Effect.scoped, Effect.provide(live)),
+    )
+
+    const destroy = Sandbox.destroy(Sandbox.SandboxId(name)).pipe(Effect.provide(live))
+    // First call removes it.
+    await Effect.runPromise(destroy)
+    // Second call should succeed silently (sandbox already gone).
+    await Effect.runPromise(destroy)
+  }, 60_000)
+
+  // -------------------------------------------------------------------------
+  // (7) Unknown image ref → SandboxCreateFailed
+  // -------------------------------------------------------------------------
+
+  it("unknown image ref fails create with SandboxCreateFailed", async () => {
+    const program = Sandbox.create({
+      image: Sandbox.ImageRef.Registry({
+        ref: "effect-uai-test/does-not-exist:fake-tag-xyz",
+      }),
+    })
+    const exit = await Effect.runPromiseExit(program.pipe(Effect.scoped, Effect.provide(live)))
+    expect(exit._tag).toBe("Failure")
+    if (exit._tag === "Failure") {
+      expect(JSON.stringify(exit.cause)).toContain("SandboxCreateFailed")
+    }
+  }, 120_000)
+
+  // -------------------------------------------------------------------------
+  // Streaming stdin into spawn — Stream<Uint8Array> piped into the
+  // process's stdin, EOF on stream completion.
+  // -------------------------------------------------------------------------
+
+  it("spawn: Stream<Uint8Array> stdin is piped into the process", async () => {
+    const program = Effect.gen(function* () {
+      const sb = yield* Sandbox.create({
+        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+      })
+      const stdin = Stream.fromIterable([
+        new TextEncoder().encode("line-1\n"),
+        new TextEncoder().encode("line-2\n"),
+        new TextEncoder().encode("line-3\n"),
+      ])
+      const handle = yield* sb.spawn({ cmd: ["cat"], stdin })
+      const events = yield* Stream.runCollect(handle.events)
+      const stdout = Arr.filterMap(events, (e) =>
+        e._tag === "Stdout" ? Result.succeed(decode(e.chunk)) : Result.failVoid,
+      ).join("")
+      expect(stdout).toBe("line-1\nline-2\nline-3\n")
+    })
+    await Effect.runPromise(program.pipe(Effect.scoped, Effect.provide(live)))
   }, 60_000)
 })

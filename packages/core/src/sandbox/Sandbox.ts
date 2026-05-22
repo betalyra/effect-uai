@@ -1,4 +1,4 @@
-import { Brand, Context, Data, Effect, Redacted, Scope, Stream } from "effect"
+import { Brand, Context, Data, type Duration, Effect, Redacted, Scope, Stream } from "effect"
 import type * as SandboxError from "./SandboxError.js"
 
 // ---------------------------------------------------------------------------
@@ -140,8 +140,11 @@ export type VolumeMount = {
 export type CommonCreateRequest = {
   /** Image / snapshot to boot from. Omit for the provider's default. */
   readonly image?: ImageRef
-  /** Idle / hard timeout in milliseconds. Providers default differently. */
-  readonly timeoutMs?: number
+  /**
+   * Idle / hard timeout. Accepts a number (millis), a string like
+   * `"30 seconds"`, or a `Duration`. Providers default differently.
+   */
+  readonly timeout?: Duration.Input
   /**
    * Env vars exposed to the sandbox. NOT for secrets you want hidden
    * from the running code — use {@link BoundSecret} instead.
@@ -179,8 +182,22 @@ export type CommonExecRequest = {
   readonly cwd?: string
   readonly env?: Readonly<Record<string, string>>
   readonly stdin?: string | Uint8Array
-  /** Per-exec timeout in milliseconds. */
-  readonly timeoutMs?: number
+  /**
+   * Per-exec timeout. Accepts a number (millis), a string like
+   * `"5 seconds"`, or a `Duration`.
+   */
+  readonly timeout?: Duration.Input
+}
+
+/**
+ * Spawn request — extends {@link CommonExecRequest} with the option
+ * to provide stdin as a `Stream<Uint8Array>`. The provider takes one
+ * chunk at a time and sends EOF when the stream completes. Useful
+ * for piping LLM output into a sandboxed process, or feeding stdin
+ * from another stream source. `exec` does not accept streams.
+ */
+export type CommonSpawnRequest = Omit<CommonExecRequest, "stdin"> & {
+  readonly stdin?: string | Uint8Array | Stream.Stream<Uint8Array, never, never>
 }
 
 export type ExecResult = {
@@ -271,7 +288,7 @@ export type SandboxInstance = {
    * commands prefer `exec`.
    */
   readonly spawn: (
-    request: CommonExecRequest,
+    request: CommonSpawnRequest,
   ) => Effect.Effect<ProcessHandle, SandboxError.SandboxError, Scope.Scope>
   readonly files: SandboxFilesystem
 }

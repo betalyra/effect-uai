@@ -12,12 +12,12 @@ import {
   type ImageRef,
   type NetworkPolicy,
   type ProcessHandle,
-  type SandboxId,
+  SandboxId,
   type SandboxInstance,
   type SandboxRef,
   type SandboxService,
-  type SnapshotId,
-  type VolumeId,
+  SnapshotId,
+  VolumeId,
 } from "@effect-uai/core/Sandbox"
 import * as SandboxError from "@effect-uai/core/SandboxError"
 import {
@@ -33,6 +33,7 @@ import {
   Record,
   Redacted,
   Result,
+  Schedule,
   Scope,
   Stream,
 } from "effect"
@@ -161,24 +162,50 @@ const mapLookupError =
       : mapCreateError(e)
 
 // ---------------------------------------------------------------------------
-// Stop a sandbox by id and wait for the DB to land the new status.
+// Stopping & post-kill DB sync.
 //
 // Empirically (spike + SDK 0.4.6):
 // - `handle.connect()` + `live.stopAndWait()` resolves in 0ms on a
-//   non-owning connection — the VM keeps running.
+//   non-owning connection — the VM keeps running. Useless.
 // - `handle.kill()` signals the runtime to terminate, but the DB row's
 //   `status` field only flips to "stopped" ~200ms later. Operations
 //   that re-read DB status (`MsbSandbox.remove`, `handle.snapshot`)
-//   reject during that window.
+//   reject during that window with a "still running" error.
 //
-// We pick 250ms; spike showed 200ms as the smallest reliable value.
-// `SandboxNotFound` short-circuits to a no-op — the sandbox is already
-// gone, which is exactly the state callers want.
+// Rather than a fixed sleep (which over- and under-shoots), we kill
+// then retry the next operation on the transient race with exponential
+// backoff. Typical recovery: 1–3 retries (~50–350ms). Budget is 5
+// attempts ≈ 50+100+200+400+800 = 1.55s — plenty of margin for a
+// loaded host.
 // ---------------------------------------------------------------------------
 
-const DB_SETTLE = "250 millis"
+const settleSchedule = Schedule.exponential("50 millis")
+const SETTLE_RETRIES = 5
 
-const stopUnowned = (id: string) =>
+/**
+ * Microsandbox's post-kill DB sync window surfaces as "still running"
+ * either via `SandboxStillRunningError` (mapped to `SandboxAlreadyExists`
+ * by {@link mapCreateError}) or, for `handle.snapshot`, a generic
+ * `MicrosandboxError` whose message contains "is not stopped" /
+ * "still running" (mapped to `SandboxCreateFailed`).
+ */
+const isPostKillRace = (e: SandboxError.SandboxError) =>
+  e._tag === "SandboxAlreadyExists" ||
+  (e._tag === "SandboxCreateFailed" &&
+    typeof e.reason === "string" &&
+    /still running|is not stopped/i.test(e.reason))
+
+const retryOnSettle = <A, R>(
+  effect: Effect.Effect<A, SandboxError.SandboxError, R>,
+): Effect.Effect<A, SandboxError.SandboxError, R> =>
+  Effect.retry(effect, {
+    schedule: settleSchedule,
+    times: SETTLE_RETRIES,
+    while: isPostKillRace,
+  })
+
+/** Force-kill a running sandbox. No-op if absent or already stopped. */
+const killRunning = (id: string) =>
   Effect.tryPromise({
     try: () => MsbSandbox.get(id),
     catch: mapLookupError(id),
@@ -188,7 +215,7 @@ const stopUnowned = (id: string) =>
         ? Effect.tryPromise({
             try: () => handle.kill(),
             catch: mapLookupError(id),
-          }).pipe(Effect.andThen(Effect.sleep(DB_SETTLE)))
+          })
         : Effect.void,
     ),
     Effect.catchTag("SandboxNotFound", () => Effect.void),
@@ -196,12 +223,14 @@ const stopUnowned = (id: string) =>
 
 /** Stop + remove. Idempotent — `SandboxNotFound` is treated as success. */
 const destroyById = (id: SandboxId) =>
-  stopUnowned(id).pipe(
+  killRunning(id).pipe(
     Effect.andThen(
-      Effect.tryPromise({
-        try: () => MsbSandbox.remove(id),
-        catch: mapLookupError(id),
-      }),
+      retryOnSettle(
+        Effect.tryPromise({
+          try: () => MsbSandbox.remove(id),
+          catch: mapLookupError(id),
+        }),
+      ),
     ),
     Effect.catchTag("SandboxNotFound", () => Effect.void),
   )
@@ -407,7 +436,7 @@ const eventStream = (handle: AsyncIterable<MsbExecEvent>, startedAt: number) =>
 // ---------------------------------------------------------------------------
 
 const adaptInstance = (msb: MsbSandbox): SandboxInstance => {
-  const id = msb.name as SandboxId
+  const id = SandboxId(msb.name)
 
   const openExecStream = (request: CommonExecRequest) =>
     Effect.gen(function* () {
@@ -567,7 +596,7 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
     create: (request) =>
       Effect.gen(function* () {
         const token = yield* randomToken
-        const name = (request.name ?? `eff-uai-${token}`) as SandboxId
+        const name = SandboxId(request.name ?? `eff-uai-${token}`)
         const detached = request.detached === true
         // Detached sandboxes outlive the scope — finalizer skips
         // teardown and the user calls `destroy(id)` explicitly.
@@ -587,7 +616,7 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
     list: Effect.tryPromise({
       try: () => MsbSandbox.list(),
       catch: mapCreateError,
-    }).pipe(Effect.map(Arr.map((h): SandboxRef => ({ id: h.name as SandboxId, name: h.name })))),
+    }).pipe(Effect.map(Arr.map((h): SandboxRef => ({ id: SandboxId(h.name), name: h.name })))),
 
     destroy: destroyById,
 
@@ -610,16 +639,24 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
           const token = yield* randomToken
           const snapName = name ?? `eff-uai-snap-${token}`
           yield* Effect.ignore(from.exec({ cmd: ["sync"] }))
-          yield* stopUnowned(from.id as string)
-          const handle = yield* Effect.tryPromise({
-            try: () => MsbSandbox.get(from.id as string),
-            catch: mapLookupError(from.id),
-          })
-          yield* Effect.tryPromise({
-            try: () => handle.snapshot(snapName),
-            catch: mapCreateError,
-          })
-          return snapName as SnapshotId
+          yield* killRunning(from.id as string)
+          // Re-`get` per attempt: `SandboxHandle.status` is snapshotted
+          // at fetch time, so a stale handle would keep failing even
+          // after the DB lands the "stopped" status.
+          yield* retryOnSettle(
+            Effect.tryPromise({
+              try: () => MsbSandbox.get(from.id as string),
+              catch: mapLookupError(from.id),
+            }).pipe(
+              Effect.flatMap((handle) =>
+                Effect.tryPromise({
+                  try: () => handle.snapshot(snapName),
+                  catch: mapCreateError,
+                }),
+              ),
+            ),
+          )
+          return SnapshotId(snapName)
         }),
       destroy: (sid) =>
         Effect.tryPromise({
@@ -641,7 +678,7 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
           Arr.filterMap((h) =>
             h.name === null
               ? Result.failVoid
-              : Result.succeed({ id: h.name as SnapshotId, name: h.name }),
+              : Result.succeed({ id: SnapshotId(h.name), name: h.name }),
           ),
         ),
       ),
@@ -657,7 +694,7 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
         return Effect.tryPromise({
           try: () => sized.create(),
           catch: mapCreateError,
-        }).pipe(Effect.map((vol) => vol.name as VolumeId))
+        }).pipe(Effect.map((vol) => VolumeId(vol.name)))
       },
       destroy: (vid) =>
         Effect.tryPromise({
@@ -667,7 +704,7 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
       list: Effect.tryPromise({
         try: () => MsbVolume.list(),
         catch: mapCreateError,
-      }).pipe(Effect.map(Arr.map((h) => ({ id: h.name as VolumeId, name: h.name })))),
+      }).pipe(Effect.map(Arr.map((h) => ({ id: VolumeId(h.name), name: h.name })))),
     },
 
     ports: {

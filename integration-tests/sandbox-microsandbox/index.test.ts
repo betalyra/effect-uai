@@ -357,7 +357,7 @@ process.stdout.write(JSON.stringify(summary))
       // Phase 2: attach in a fresh scope and read the marker
       const text = await Effect.runPromise(
         Effect.gen(function* () {
-          const sb = yield* Sandbox.attach(name as Sandbox.SandboxId)
+          const sb = yield* Sandbox.attach(Sandbox.SandboxId(name))
           const bytes = yield* sb.files.read("/tmp/marker.txt")
           return decode(bytes)
         }).pipe(Effect.scoped, Effect.provide(live)),
@@ -365,7 +365,7 @@ process.stdout.write(JSON.stringify(summary))
       expect(text).toBe("from-phase-1")
     } finally {
       // Phase 3: explicit cleanup (attach's finalizer doesn't destroy)
-      await Effect.runPromise(Sandbox.destroy(name as Sandbox.SandboxId).pipe(Effect.provide(live)))
+      await Effect.runPromise(Sandbox.destroy(Sandbox.SandboxId(name)).pipe(Effect.provide(live)))
     }
   }, 120_000)
 

@@ -16,12 +16,12 @@ import {
   type ExecResult,
   type FileEntry,
   type ProcessHandle,
-  type SandboxId,
+  SandboxId,
   type SandboxInstance,
   type SandboxRef,
   type SandboxService,
-  type SnapshotId,
-  type VolumeId,
+  SnapshotId,
+  VolumeId,
 } from "../sandbox/Sandbox.js"
 import * as SandboxError from "../sandbox/SandboxError.js"
 
@@ -218,7 +218,7 @@ const buildService = (
   script: MockSandboxScript,
   record: (call: Call) => Effect.Effect<void>,
 ): SandboxService => {
-  const id = (script.id ?? "mock-sandbox") as SandboxId
+  const id = SandboxId(script.id ?? "mock-sandbox")
 
   const acquireInstance = (sandboxId: SandboxId, onClose: Effect.Effect<void>) =>
     Effect.gen(function* () {
@@ -252,7 +252,7 @@ const buildService = (
           name === undefined ? Call.SnapshotCreate({ id }) : Call.SnapshotCreate({ id, name }),
         ).pipe(
           Effect.as(
-            `mock-snapshot-${name ?? Math.random().toString(36).slice(2, 8)}` as SnapshotId,
+            SnapshotId(`mock-snapshot-${name ?? Math.random().toString(36).slice(2, 8)}`),
           ),
         ),
       destroy: (sid) => record(Call.SnapshotDestroy({ id: sid })),
@@ -265,7 +265,7 @@ const buildService = (
           options?.quotaBytes === undefined
             ? Call.VolumeCreate({ name })
             : Call.VolumeCreate({ name, quotaBytes: options.quotaBytes }),
-        ).pipe(Effect.as(`mock-volume-${name}` as VolumeId)),
+        ).pipe(Effect.as(VolumeId(`mock-volume-${name}`))),
       destroy: (vid) => record(Call.VolumeDestroy({ id: vid })),
       list: Effect.succeed(script.volumes ?? []),
     },

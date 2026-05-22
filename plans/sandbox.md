@@ -8,7 +8,7 @@ Compiled 2026-05-21. Pricing, model/template names, and SDK shapes change quickl
 
 Modern LLM agents routinely need to execute model-authored code, run shell commands, install packages, snapshot state across turns, and call external APIs from inside the sandbox. The provider landscape has crystallized — the major cloud labs (Vercel, Cloudflare, Modal, E2B, Daytona, CodeSandbox, Runloop) each ship a "create a sandbox, exec into it, read/write files, expose ports" API, plus a few local microVM options that match capability-for-capability (Microsandbox, BoxLite, Gondolin). We want one Effect-shaped service that callers can wire any of them behind.
 
-The non-goals: we are **not** wrapping hosted model-side code interpreters (OpenAI's `code_interpreter` tool, Anthropic's `code_execution` tool, Gemini code-execution). Those are *tools the model invokes*; they belong in `@effect-uai/<provider>` as native tool-shape adapters, not in a `Sandbox` provider layer.
+The non-goals: we are **not** wrapping hosted model-side code interpreters (OpenAI's `code_interpreter` tool, Anthropic's `code_execution` tool, Gemini code-execution). Those are _tools the model invokes_; they belong in `@effect-uai/<provider>` as native tool-shape adapters, not in a `Sandbox` provider layer.
 
 ## Scope
 
@@ -21,7 +21,7 @@ The non-goals: we are **not** wrapping hosted model-side code interpreters (Open
 **Out of scope (initial pass)**
 
 - Hosted model-side interpreters (OpenAI, Anthropic, Gemini built-in code execution).
-- "Deploy code and invoke" providers like Deno Subhosting and the Gemini `code-execution` tool — different shape; route through a separate `CodeRunner` interface if needed later.
+- "Deploy code and invoke" providers (Deno Subhosting v2, the Gemini `code-execution` tool) — different shape; route through a separate `CodeRunner` interface if needed later. **Note: Deno _Sandbox_ — the separate Feb 2026 product — is in scope.**
 - Browser-only sandboxes (Pyodide, StackBlitz WebContainers) — different runtime, different consumers; potential future `@effect-uai/sandbox-browser` package.
 - Pure JS evaluators (`isolated-vm`) — not "run untrusted Python with packages"; potential future JS-only adapter.
 - Kubernetes-backed agent farms (BrowserBase, Northflank etc.) — out of scope until there's a concrete user.
@@ -34,29 +34,47 @@ For each provider: the primitive, lifecycle, what kind of execution it offers, p
 
 ### Vercel Sandbox — `@vercel/sandbox`
 
-- **Primitive**: Firecracker microVM on Amazon Linux 2023.
-- **Lifecycle**: `Sandbox.create()` → `runCommand()` / `writeFiles()` → `stop()`. Snapshotting + "Persistent Sandboxes" (beta) for resume.
+Verified against [docs.vercel.com/vercel-sandbox](https://vercel.com/docs/vercel-sandbox) (last updated 2026-03-13) and [SDK reference](https://vercel.com/docs/vercel-sandbox/sdk-reference) (2026-03-09).
+
+- **Primitive**: Firecracker microVM on Amazon Linux 2023. Each sandbox runs as the `vercel-sandbox` user with sudo + working dir `/vercel/sandbox`.
+- **Lifecycle**: `Sandbox.create()` → `runCommand()` / `writeFiles()` → `stop()`. **Persistent sandboxes is now GA and the default** — auto-saves state on stop. Snapshots remain available as a separate primitive for "skip dependency install on subsequent runs."
 - **Timeouts**: default 5 min; max 45 min Hobby, 5 h Pro/Enterprise.
 - **Cold start**: ~ms (advertised).
 - **Pricing**: Active CPU $0.128/hr (billed only while CPU active), provisioned mem $0.0212/GB-hr, $0.60/M creates, $0.08/GB-mo storage. `iad1` only.
-- **Execution**: `runCommand` (sync + streaming), file R/W via SDK. Runtimes: node22/24/26, python3.13; others via `dnf`. No first-class REPL. Up to 15 exposed ports → preview URLs.
-- **Persistence**: 32 GB NVMe; snapshots persist across sandboxes; persistent-sandboxes beta auto-saves.
-- **Egress**: SNI filtering + CIDR via `updateNetworkPolicy` (advanced egress firewall).
-- **Secret injection**: yes — credentials "injected on egress, never enter sandbox scope" (docs lean on this for OIDC; full API surface less documented than the network-policy primitives).
+- **Execution**: `runCommand` (sync + streaming), file R/W via SDK. Runtimes: `node26`, `node24` (default), `node22`, `python3.13`; others via `dnf`. No first-class REPL. Up to 15 exposed ports → preview URLs.
+- **Persistence**: 32 GB NVMe; snapshots persist across sandboxes; persistent sandboxes auto-save.
+- **Egress**: advanced egress firewall via `networkPolicy.allow` — supports exact domains and wildcards (e.g. `*.github.com`).
+- **Secret injection** ✓ — GA since Feb 23, 2026 (Pro/Enterprise). Firewall-layer header injection (not TLS MITM): when the sandbox makes an HTTPS request to a matching domain, the firewall adds/replaces the configured headers before forwarding. Per-host scoped via the same `networkPolicy.allow` shape:
+  ```ts
+  await Sandbox.create({
+    networkPolicy: {
+      allow: {
+        "ai-gateway.vercel.sh": [
+          {
+            transform: [{ headers: { authorization: `Bearer ${process.env.AI_GATEWAY_API_KEY}` } }],
+          },
+        ],
+      },
+    },
+  })
+  ```
+  Sources: [changelog 2026-02-23](https://vercel.com/changelog/safely-inject-credentials-in-http-headers-with-vercel-sandbox).
 - **Images**: fixed AL2023 base, runtime install only (sudo OK).
-- **Auth**: OIDC (default on Vercel) or access token.
+- **Auth**: OIDC (default on Vercel; `vercel link` + `vercel env pull` for local dev) or access token.
 - **TS SDK**: yes, first-class.
 
 ### Cloudflare Sandbox SDK — `@cloudflare/sandbox`
 
-- **Primitive**: Container (Cloudflare's container runtime, attached to a Durable Object).
-- **Lifecycle**: `getSandbox(env.Sandbox, id)` → `.exec()` / `.writeFile()`; idle stop via `sleepAfter`. State tied to a DO.
+Verified against [developers.cloudflare.com/sandbox](https://developers.cloudflare.com/sandbox/) and [the proxy-requests guide](https://developers.cloudflare.com/sandbox/guides/proxy-requests/).
+
+- **Primitive**: Container (Cloudflare's container runtime), backed by a Durable Object.
+- **Lifecycle**: `getSandbox(env.Sandbox, "user-123")` → `.exec()`, `.mkdir()`, `.writeFile()`, `.readFile()`, `.watch()`, `.terminal()`, `.wsConnect()`; idle stop via `sleepAfter`. State tied to a DO.
 - **Cold start**: container boot (seconds cold, warm fast).
 - **Pricing**: Cloudflare Containers billing (CPU-ms + GB-s + requests); needs Workers Paid.
-- **Execution**: `exec()` blocking, `execStream()` streaming. Full FS. First-class **Code Interpreter** API with persistent Python/JS contexts and auto-parsed rich output (closest equivalent to Jupyter). Background processes, WebSocket browser terminal, preview URLs, R2/S3/GCS bucket mounting.
+- **Execution**: `.exec()`, `.createCodeContext()` + `.runCode()` for the **Code Interpreter API** (persistent Python/JS contexts with auto-parsed rich output). Browser terminal via `.terminal()` / `.wsConnect()`. Preview URLs for exposed ports. R2/S3/GCS bucket mounting.
 - **Persistence**: container FS lives while DO is alive; can mount object storage. No memory snapshot/fork.
-- **Egress**: programmable via outbound Workers — fully arbitrary JS at the proxy layer.
-- **Secret injection**: yes — outbound Worker injects per-host headers; identity-aware via `ctx.containerId`. The most flexible model on the list.
+- **Egress**: programmable via outbound Worker proxy — `createProxyHandler` mounts handlers at `/proxy/<service-name>/*` paths.
+- **Secret injection**: yes — `createProxyToken` issues a signed JWT per sandbox (the JWT carries `sandboxId`); `ServiceConfig.transform(ctx)` injects the real credential before forwarding (`ctx.env` + `ctx.jwt`). "Real credentials never enter the sandbox." Most flexible model in the lineup — arbitrary JS at the proxy layer.
 - **Images**: Dockerfile supported via Containers; runtime install OK.
 - **TS SDK**: yes, designed for Workers context.
 
@@ -82,24 +100,26 @@ For each provider: the primitive, lifecycle, what kind of execution it offers, p
 - **Pricing**: per-CPU-second + GPU + memory.
 - **Execution**: `sb.exec()` with streaming. Any language in the image. Per-sandbox multi-process tracking. Tunnels API for public HTTP/2 URLs.
 - **Persistence**: `modal.Volume` named persistent storage; FS snapshots cross-24h.
-- **Egress**: `block_network=True`, `cidr_allowlist` (**CIDR only — IP/range, not hostname**). Sandbox Connect Tokens for authenticated *inbound* HTTP.
+- **Egress**: `block_network=True`, `cidr_allowlist` (**CIDR only — IP/range, not hostname**). Sandbox Connect Tokens for authenticated _inbound_ HTTP.
 - **Secret injection**: no — env vars only, no HTTPS MITM rewrite.
 - **Images**: `modal.Image` (Debian slim, pip/apt, registry refs, full Dockerfile).
 - **TS SDK**: yes, **beta** (libmodal JS+Go). Python is primary.
 
 ### Daytona — `@daytona/sdk`
 
-- **Primitive**: "Sandbox" with dedicated kernel + FS + network stack (VM-grade).
-- **Lifecycle**: create → `executeCommand()` / `code_run()` → stop/destroy; stateful snapshots.
-- **Cold start**: marketed "<90 ms" — fastest in the list.
+Verified against [Daytona TypeScript SDK docs v0.177](https://www.daytona.io/docs/typescript-sdk/sandbox/).
+
+- **Primitive**: "Sandbox" exposing `fs`, `process`, and git integration; dedicated kernel + FS + network stack.
+- **Lifecycle**: create → `process.executeCommand()` / `process.codeRun()` → stop/destroy. Snapshot + fork are **experimental** (`_experimental_createSnapshot()`, `_experimental_fork()`) — flag as unstable.
+- **Cold start**: marketed "<90 ms" (separate marketing page).
 - **Pricing**: not transparently public.
-- **Execution**: shell exec, `code_run()`, log streaming. Python/TS/JS first-class. Preview proxy for ports.
-- **Persistence**: volumes + stateful snapshots for "persistent agent operations."
-- **Egress**: CIDR only (max 10, IPv4).
+- **Execution**: shell exec via `process.executeCommand`, code execution via `process.codeRun` (any language). `CodeInterpreter` is **Python-only** — multi-language goes through `process.codeRun`. Preview proxy for ports.
+- **Persistence**: `volumes?: SandboxVolume[]` field on create; experimental snapshots.
+- **Egress**: `networkAllowList?: string` (CIDR format) and `networkBlockAll: boolean` — **CIDR only, no hostname support**.
 - **Secret injection**: no.
-- **Images**: OCI/Docker compatible + templates.
+- **Images**: OCI/Docker compatible.
 - **TS SDK**: yes, first-class.
-- **Notable**: ships an MCP server, VNC for desktop/browser-use, computer-use tool. Most "agent-OS" framing.
+- **Notable**: ships `ComputerUse` interface, `toolboxProxyUrl`, MCP server (separate). Most "agent-OS" framing.
 
 ### CodeSandbox SDK — `@codesandbox/sdk`
 
@@ -129,17 +149,20 @@ For each provider: the primitive, lifecycle, what kind of execution it offers, p
 
 ### Microsandbox (local) — `microsandbox`
 
-- **Primitive**: libkrun-backed microVM, each with its own kernel.
-- **Lifecycle**: library API → local daemon (`msbserver`). `Sandbox.create("agent", { image: "python:3.12" })`. Snapshot/fork first-class — "fork hundreds of identical sandboxes from one baseline."
-- **Cold start**: ~320 ms on bare-metal Linux.
-- **Platforms**: Linux (KVM), macOS (HVF), Windows (WSL2).
-- **License**: Apache 2.0.
-- **Execution**: shell exec, FS, scripts, REPL via long-lived sandbox, process mgmt, port forwarding.
-- **Persistence**: OCI image reuse, full snapshots, volumes.
-- **Egress**: hostname allowlists, DNS pinning, TLS-edge inspection.
-- **Secret injection**: **yes** — placeholders inside the guest swap for real values on verified TLS handshake to allowlisted hosts. Closest local equivalent to E2B/Cloudflare.
-- **Images**: any OCI image.
-- **TS SDK**: yes (npm `microsandbox`).
+Verified against [docs.microsandbox.dev/getting-started/introduction](https://docs.microsandbox.dev/getting-started/introduction).
+
+- **Primitive**: microVM (specific tech like libkrun not disclosed in the public docs).
+- **Lifecycle**: **no daemon** — the runtime spawns directly as a child process of whatever application creates the sandbox. Library API; snapshot/fork ("capture a stopped sandbox's writable upper layer as a portable artifact, then boot fresh sandboxes from it").
+- **Cold start**: **under 100 ms** per the docs.
+- **Platforms**: macOS (Apple Silicon) + Linux (KVM). **No Windows** in the current docs (revise if a later release adds it).
+- **License**: not stated on this page.
+- **Execution**: shell exec, FS, scripts, process mgmt, port forwarding.
+- **Persistence**: OCI image reuse, snapshots, host-dir mounts + managed volumes.
+- **Egress (general allowlist)**: **roadmap — "coming soon"** in the docs (`allowlist(["api.openai.com"])`-style API). Not yet shipped. **Implication for the abstraction: do NOT ship the `SandboxHostnameAllowlist` marker for Microsandbox in Phase 1.** Re-check at implementation time.
+- **Secret injection** ✓ shipped: `.secret_env()` API with per-secret `.allow_host()` restriction — placeholders inside the guest swap for real values at the network boundary. "The guest never has the secret at all." This is the _secret-scoped_ network gate, distinct from a general egress allowlist.
+- **Images**: any OCI image (Docker Hub, GHCR, ECR, GCR).
+- **TS SDK**: yes — `microsandbox` on npm.
+- **Notable**: ships an MCP server per the project landing page (not mentioned on the introduction page; re-verify against the MCP docs section).
 
 ### BoxLite (local) — `@boxlite-ai/boxlite`
 
@@ -183,42 +206,37 @@ For each provider: the primitive, lifecycle, what kind of execution it offers, p
 - **TS SDK**: yes (`dockerode`).
 - **Notable**: **plain Docker shares the host kernel — not safe for untrusted model code on its own**. Document this. gVisor (`runsc`) as a runtime is a stronger story; expose as a `runtime: "runc" | "runsc"` flag on the Docker provider.
 
-### Deno Deploy / Deno Subhosting — `subhosting` (npm) + Deno CLI
+### Deno Sandbox — `@deno/sandbox`
 
-Two complementary surfaces from the same vendor — both prioritized, both with **shape mismatch** against the exec-into-VM majority.
+Launched February 3, 2026 alongside Deno Deploy GA. Deno's **purpose-built** product for running LLM-generated code (not to be confused with Deno Subhosting, which remains a separate "multi-tenant ship-and-invoke" SaaS platform). One of the cleanest API shapes in the entire landscape — and it's already designed around explicit resource management, which maps directly to our Effect.Scope design.
 
-**Deno Deploy (cloud)**
-- **Primitive**: V8 **isolate** — not a VM, not a container. Code is *deployed*, not *exec'd into*.
-- **Lifecycle**: create project → push deployment → invoke via HTTP. Isolates spin up per request and idle out. No `exec`, no shell, no `pip install`.
-- **Cold start**: ~ms (V8).
-- **Pricing**: per-request + CPU time; generous free tier.
-- **Execution**: ship JS/TS/Wasm → invoke via HTTPS. **Permissions model is the killer feature** — `--allow-net=api.openai.com`, `--allow-read=/tmp`, hostname-level by default. Maps cleanly to `NetworkPolicy.allowlist.hosts`.
-- **Persistence**: Deno KV; no general FS.
-- **Egress**: hostname-level (native to Deno runtime).
-- **Secret injection**: no native proxy-MITM, but `Deno.env` plus the permission model is the closest thing — env vars only the deployment can see.
-- **Images**: none. No package install at runtime. Ship code + deps via Subhosting.
-- **Auth**: Subhosting API token.
-- **TS SDK**: yes (`subhosting` on npm).
+- **Primitive**: Firecracker microVM (same tech as AWS Lambda, E2B, Vercel Sandbox, Microsandbox).
+- **Lifecycle**: `Sandbox.create(opts)` → `await using` resource — auto-disposed on scope exit. Boots in **under 1 s**.
+- **Timeouts**: max **30 min** lifetime per sandbox.
+- **Resources**: 2 vCPU, 768 MB – 4 GB RAM (1.2 GB default), 10 GB ephemeral disk.
+- **Concurrency**: 5 sandboxes / org during pre-release; increases planned.
+- **Regions**: `ams` (Amsterdam), `ord` (Chicago).
+- **Execution**: `sandbox.sh\`...\``template-literal shell exec;`spawn(...)` (Python SDK shape; expected on JS SDK) for long-running processes. Full Linux environment — files, processes, package managers.
+- **Persistence**: **Volumes** (read-write, for caches/databases/user data) + **Snapshots** (read-only pre-installed images for fast cold starts).
+- **Egress**: hostname allowlist via `allowNet: ["api.openai.com", "*.anthropic.com"]` — implemented as an outbound proxy at the VM boundary.
+- **Secret injection** ✓ — first-class, the cleanest API of any provider:
+  ```ts
+  await using sandbox = await Sandbox.create({
+    allowNet: ["api.openai.com"],
+    secrets: {
+      OPENAI_API_KEY: { hosts: ["api.openai.com"], value: process.env.OPENAI_API_KEY },
+    },
+  })
+  ```
+  Placeholder in the env; real value materializes only on outbound to listed host. Exfiltrated placeholders are inert.
+- **`sandbox.deploy()`**: graduate a sandbox to a production Deno Deploy deployment. Useful for "agent prototypes a service, then ships it" workflows. We expose it through the per-provider narrowed request, not the common interface.
+- **Images**: not user-customizable (no Dockerfile). Snapshots fill the "pre-installed dependencies" role.
+- **Auth**: Deno Deploy API token.
+- **TS SDK**: yes — `@deno/sandbox` (JSR + npm). Python SDK at `deno-sandbox` (PyPI).
+- **Pricing**: not yet finalized at GA; pre-release pricing TBD.
+- **Notable**: the SDK already uses TC39's **`await using`** for explicit resource management. The lifetime model is identical to our `Effect.Scope`-based design — wiring is mechanical.
 
-**Deno CLI (local)**
-- **Primitive**: a sandboxed `deno` process with permission flags.
-- **Lifecycle**: shell out — `deno run --allow-net=… --allow-read=… script.ts`. No long-lived sandbox; each invocation is fresh.
-- **Cold start**: ms.
-- **Platforms**: Linux, macOS, Windows.
-- **Execution**: one-shot run of a TS/JS file or inline `--eval`. Permission-gated.
-- **Persistence**: host FS (where allowed).
-- **Egress**: native `--allow-net` allowlist.
-- **Secret injection**: no.
-
-**Shape mismatch — design note**
-
-The exec-into-VM model assumes you can run arbitrary shell commands and treat the kernel session (Jupyter-style REPL) as an optional capability on top. Deno inverts that: **`runCode` is the primary operation**, `exec` doesn't exist, custom images don't exist. Three ways to handle it:
-
-1. **(Recommended)** Treat Deno as a **`SandboxKernelSession`-only provider** that ships `SandboxKernelSession` + `SandboxHostnameAllowlist` markers, with `exec` / `spawn` / `files.*` / custom-image methods returning `AiError.Unsupported` at runtime. Consumers who target `SandboxKernelSession` can swap Deno in for free; consumers writing shell-exec code get a clear error. Simple, honest, no new service.
-2. Build a sibling `CodeRunner` service. Cleaner type-wise but doubles the surface and forces consumers to choose a shape up front. Reject unless we accumulate ≥2 more deploy-and-invoke providers (probably won't).
-3. Drop Deno. Rejected per user priority.
-
-Going with (1). The implication: `Sandbox.create({ image: registry("python:3.12") })` against the Deno layer fails at decode (Deno only accepts the JS/TS runtime). `sandbox.exec(...)` fails with `Unsupported` at runtime. `Sandbox.runCode(code, "typescript")` works. Document loudly that Deno is a *narrow* Sandbox.
+Sources: [docs.deno.com/sandbox](https://docs.deno.com/sandbox/), [Introducing Deno Sandbox](https://deno.com/blog/introducing-deno-sandbox).
 
 ### Other providers (briefly considered, not in initial pass)
 
@@ -234,22 +252,25 @@ Going with (1). The implication: `Sandbox.create({ image: registry("python:3.12"
 
 P1 providers (priority) bolded in the header.
 
-| Capability | **Vercel** | **Cloudflare** | **Deno** | **Daytona** | **Microsandbox** | E2B | Modal | CodeSandbox | Runloop | BoxLite | Anthropic srt | Docker |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Shell exec + streaming | ✓ | ✓ | — (n/a) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| File R/W via SDK | ✓ | ✓ | virtual FS | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | host bind | ✓ |
-| Expose port → public URL | ✓ | ✓ | HTTPS endpoint | ✓ | local fwd | ✓ | ✓ | ✓ | ✓ | local fwd | — | local pub |
-| **Snapshot / fork** | ✓ snap | DO state | — | ✓ snap | ✓ snap/fork | ✓ pause/resume | ✓ fs-snap | ✓ **fork** | ✓ snap | ✓ snap | — | `commit` |
-| **Persistent volumes** | beta | DO storage | KV only | ✓ | ✓ | template | ✓ Volume | per-sandbox | mounts | ✓ | host bind | ✓ |
-| **Egress hostname allowlist** | ✓ SNI | ✓ programmable | ✓ native `--allow-net` | CIDR only | ✓ | ✓ | CIDR only | — | ✓ policies | ✓ | ✓ proxy | — (bolt-on) |
-| **Proxy secret injection** | partial | ✓ | — | — | ✓ | ✓ | — | — | ✓ Gateway | unknown | — | — |
-| Custom images | — (fixed) | ✓ | — (JS/TS/Wasm only) | ✓ | ✓ | ✓ template | ✓ | ✓ Dockerfile | ✓ Blueprint | ✓ OCI | — | ✓ |
-| Stateful REPL / kernel | — | ✓ Code Interp | ✓ (primary) | partial | — | ✓ Jupyter | — | — | PTY | — | — | — |
+| Capability                    | **Vercel**          | **Cloudflare** | **Deno**      | **Daytona** | **Microsandbox** | E2B            | Modal     | CodeSandbox | Runloop    | BoxLite   | Anthropic srt | Docker      |
+| ----------------------------- | ------------------- | -------------- | ------------- | ----------- | ---------------- | -------------- | --------- | ----------- | ---------- | --------- | ------------- | ----------- |
+| Shell exec + streaming        | ✓                   | ✓              | ✓             | ✓           | ✓                | ✓              | ✓         | ✓           | ✓          | ✓         | ✓             | ✓           |
+| File R/W via SDK              | ✓                   | ✓              | ✓             | ✓           | ✓                | ✓              | ✓         | ✓           | ✓          | ✓         | host bind     | ✓           |
+| Expose port → public URL      | ✓                   | ✓              | ✓             | ✓           | local fwd        | ✓              | ✓         | ✓           | ✓          | local fwd | —             | local pub   |
+| **Snapshot / fork**           | ✓ snap              | DO state       | ✓ (read-only) | exp.¹       | ✓ snap/fork      | ✓ pause/resume | ✓ fs-snap | ✓ **fork**  | ✓ snap     | ✓ snap    | —             | `commit`    |
+| **Persistent volumes**        | beta                | DO storage     | ✓             | ✓           | ✓                | template       | ✓ Volume  | per-sandbox | mounts     | ✓         | host bind     | ✓           |
+| **Egress hostname allowlist** | ✓ domains+wildcards | ✓ programmable | ✓ `allowNet`  | CIDR only   | soon²            | ✓              | CIDR only | —           | ✓ policies | ✓         | ✓ proxy       | — (bolt-on) |
+| **Proxy secret injection**    | ✓ header xform      | ✓ JWT          | ✓             | —           | ✓ secret-scoped  | ✓              | —         | —           | ✓ Gateway  | unknown   | —             | —           |
+
+¹ Daytona snapshot/fork is exposed as `_experimental_*` in the TS SDK — treat as unstable.
+² Microsandbox: per-secret `.allow_host()` is shipped, but the general `allowlist([...])` egress API is marked "coming soon" in the docs. Don't ship `SandboxHostnameAllowlist` for Microsandbox in Phase 1; secret injection works regardless.
+| Custom images | — (fixed) | ✓ | — (snapshots only) | ✓ | ✓ | ✓ template | ✓ | ✓ Dockerfile | ✓ Blueprint | ✓ OCI | — | ✓ |
+| Stateful REPL / kernel | — | ✓ Code Interp | — | partial | — | ✓ Jupyter | — | — | PTY | — | — | — |
 | PTY session | — | term API | — | — | — | — | — | — | ✓ WS | — | — | exec -it |
 
 Where providers diverge most (the design decisions the abstraction has to make):
 
-1. **Snapshot semantics.** Eight providers support some form of snapshot, but the shape varies dramatically — E2B/CodeSandbox have memory+disk pause/resume; Modal/Vercel have FS-only; Runloop/Daytona/Microsandbox/BoxLite snapshot then restore as a *new* sandbox. We can't unify into one verb without lying.
+1. **Snapshot semantics.** Eight providers support some form of snapshot, but the shape varies dramatically — E2B/CodeSandbox have memory+disk pause/resume; Modal/Vercel have FS-only; Runloop/Daytona/Microsandbox/BoxLite snapshot then restore as a _new_ sandbox. We can't unify into one verb without lying.
 2. **Egress policy fidelity.** SNI/hostname (Vercel, E2B, Microsandbox, Cloudflare, Runloop) vs CIDR-only (Modal, Daytona) vs none-without-bolt-on (CodeSandbox, plain Docker). A `allowedHosts: string[]` field silently truncated to CIDRs is worse than refusing.
 3. **Proxy-layer secret injection.** This is the single highest-value security feature for agent code-exec (LLM never sees the real key), and only 4–5 providers do it: E2B, Cloudflare, Runloop Agent Gateway, Microsandbox, and (claimed) Vercel. Treat it as a first-class capability marker — not a parameter on a generic method.
 4. **REPL vs exec.** Cloudflare Code Interpreter and E2B Jupyter sessions are persistent Python/JS kernels with rich output (charts, tables). Everyone else expects you to `python script.py` from `exec`. Different shape, different return type, gate behind a capability.
@@ -284,7 +305,9 @@ export type SandboxService = {
    * scope close. Use `Sandbox.attach` for sandboxes that should outlive the
    * scope (paused, persistent, or shared across runs).
    */
-  readonly create: (request: CommonCreateRequest) => Effect.Effect<SandboxInstance, AiError, Scope.Scope>
+  readonly create: (
+    request: CommonCreateRequest,
+  ) => Effect.Effect<SandboxInstance, AiError, Scope.Scope>
 
   /**
    * Re-acquire a previously created sandbox by id. Same scoped semantics —
@@ -452,13 +475,17 @@ export type CommonCreateRequest = {
 export type NetworkPolicy =
   | { readonly _tag: "open" }
   | { readonly _tag: "blocked" }
-  | { readonly _tag: "allowlist"; readonly hosts?: ReadonlyArray<string>; readonly cidrs?: ReadonlyArray<string> }
+  | {
+      readonly _tag: "allowlist"
+      readonly hosts?: ReadonlyArray<string>
+      readonly cidrs?: ReadonlyArray<string>
+    }
 
 export type BoundSecret = {
-  readonly name: string                       // placeholder visible inside sandbox (e.g. "OPENAI_API_KEY")
-  readonly value: Redacted.Redacted<string>   // real value, never enters the sandbox
-  readonly hosts: ReadonlyArray<string>       // host patterns where injection is allowed
-  readonly header?: string                    // default: "Authorization: Bearer <value>"
+  readonly name: string // placeholder visible inside sandbox (e.g. "OPENAI_API_KEY")
+  readonly value: Redacted.Redacted<string> // real value, never enters the sandbox
+  readonly hosts: ReadonlyArray<string> // host patterns where injection is allowed
+  readonly header?: string // default: "Authorization: Bearer <value>"
 }
 ```
 
@@ -510,7 +537,7 @@ Following the existing pattern: pass the request through a `Schema.Struct` narro
 
 ### Why capability markers, not a single mega-interface
 
-Because the consumer code is then *typed* — `sandbox.snapshot()` only compiles if `SandboxSnapshots` is in the environment. The user picks providers based on the capabilities their code requires; mismatches are a compile error, not a 3 AM `UnsupportedError`. This is exactly the trick used by `TtsIncrementalText` and `MultiSpeakerTts` in [SpeechSynthesizer.ts](packages/core/src/speech-synthesizer/SpeechSynthesizer.ts).
+Because the consumer code is then _typed_ — `sandbox.snapshot()` only compiles if `SandboxSnapshots` is in the environment. The user picks providers based on the capabilities their code requires; mismatches are a compile error, not a 3 AM `UnsupportedError`. This is exactly the trick used by `TtsIncrementalText` and `MultiSpeakerTts` in [SpeechSynthesizer.ts](packages/core/src/speech-synthesizer/SpeechSynthesizer.ts).
 
 ---
 
@@ -539,6 +566,7 @@ packages/
 ```
 
 Each `*Sandbox.ts` file exports:
+
 - a narrowed `<Provider>SandboxService` type (extending `SandboxService` with provider-specific request fields typed)
 - a `<Provider>Sandbox` `Context.Service`
 - a `layer(config)` builder that provides `Sandbox` + whichever capability markers the provider satisfies
@@ -566,9 +594,37 @@ Deferred:
 
 ## Suggested phasing
 
-1. **Phase 1 — core + 2 cloud providers + 1 local.** Ship `core/sandbox/Sandbox.ts` with the minimal interface (exec, files, ports, destroy), `SandboxPauseResume`, `SandboxKernelSession`, `SandboxHostnameAllowlist`, `SandboxSecretInjection`. Wire **E2B** and **Vercel** as the canonical cloud providers (full capability coverage between them), and **Microsandbox** as the canonical local one. Validate the abstraction by writing one recipe that uses identical code against all three.
-2. **Phase 2 — round out cloud.** Add Cloudflare (kernel + secret-injection winner), Modal (volumes), Daytona (PTY-ish + MCP). Add `SandboxSnapshots`, `SandboxVolumes`, `SandboxPty`.
-3. **Phase 3 — local + escape hatches.** Add Anthropic srt (process-level), Docker via dockerode, BoxLite. Add `SandboxCustomImage`.
-4. **Phase 4 — optional.** CodeSandbox (fork), Runloop (Agent Gateway), the hosted-interpreter fallback Layer, MCP server export.
+The five **P1 providers** were chosen to cover the full capability surface with as little overlap as possible: two cloud microVMs that share the secret-injection winners' bracket (**Deno**, **Cloudflare**), one cloud microVM without secret-injection but with the cleanest egress firewall and persistent-sandboxes story (**Vercel**), one agent-OS-flavoured cloud (**Daytona**) for the experimental snapshot/fork + computer-use surface, and one local microVM (**Microsandbox**) for the offline / on-prem / zero-latency case.
+
+### Phase 1 — core + 5 P1 providers
+
+Ship `packages/core/src/sandbox/Sandbox.ts` with:
+
+- The minimal interface — `create` (scoped), `attach`, `list`; instance methods `exec`, `execStream`, `spawn`, `files.*`, `exposePort`.
+- Capability markers needed by P1 — `SandboxHostnameAllowlist`, `SandboxSecretInjection`, `SandboxSnapshots`, `SandboxVolumes`, `SandboxKernelSession`.
+
+Wire all five P1 layers:
+
+| Provider           | Package                          | Capability markers shipped                                                                                              |
+| ------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Deno Sandbox       | `@effect-uai/deno` (new)         | Allowlist + SecretInjection + Snapshots + Volumes                                                                       |
+| Cloudflare Sandbox | `@effect-uai/cloudflare` (new)   | Allowlist + SecretInjection + KernelSession                                                                             |
+| Vercel Sandbox     | `@effect-uai/vercel` (new)       | Allowlist + SecretInjection + Snapshots                                                                                 |
+| Daytona            | `@effect-uai/daytona` (new)      | Volumes (Snapshots gated behind an `experimental` flag until GA)                                                        |
+| Microsandbox       | `@effect-uai/microsandbox` (new) | SecretInjection + Snapshots + Volumes (NOT Allowlist — general egress allowlist is roadmap; re-check at implementation) |
+
+Validate the abstraction by writing **one recipe** that runs identical code (call a model-authored Python script, inject `OPENAI_API_KEY` for outbound to `api.openai.com` only, return result) against all five P1 providers from the same consumer code — with only the Layer differing.
+
+### Phase 2 (deferred)
+
+E2B (pause/resume + Jupyter sessions — strongest capability coverage outside P1), Modal (volumes + gVisor), CodeSandbox (memory fork), Runloop (Agent Gateway, MCP Hub). Add `SandboxPauseResume`, `SandboxPty`.
+
+### Phase 3 (deferred)
+
+Local + escape hatches. Anthropic srt (extends the existing `@effect-uai/anthropic`), Docker via `dockerode`, BoxLite. Add `SandboxCustomImage`.
+
+### Phase 4 (deferred)
+
+Per-provider MCP-server bindings inside the respective vendor packages. Decided in a separate workstream.
 
 Each phase adds one capability marker at most — same cadence we used rolling out `MultiSpeakerTts` and `TtsIncrementalText`.

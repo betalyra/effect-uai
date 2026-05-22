@@ -82,6 +82,14 @@
       "types": "./dist/music-generator/MusicGenerator.d.mts",
       "import": "./dist/music-generator/MusicGenerator.mjs"
     },
+    "./Sandbox": {
+      "types": "./dist/sandbox/Sandbox.d.mts",
+      "import": "./dist/sandbox/Sandbox.mjs"
+    },
+    "./SandboxError": {
+      "types": "./dist/sandbox/SandboxError.d.mts",
+      "import": "./dist/sandbox/SandboxError.mjs"
+    },
     "./SpeechSynthesizer": {
       "types": "./dist/speech-synthesizer/SpeechSynthesizer.d.mts",
       "import": "./dist/speech-synthesizer/SpeechSynthesizer.mjs"
@@ -157,6 +165,10 @@
     "./testing/MockSpeechSynthesizer": {
       "types": "./dist/testing/MockSpeechSynthesizer.d.mts",
       "import": "./dist/testing/MockSpeechSynthesizer.mjs"
+    },
+    "./testing/MockSandbox": {
+      "types": "./dist/testing/MockSandbox.d.mts",
+      "import": "./dist/testing/MockSandbox.mjs"
     },
     "./testing/MockTranscriber": {
       "types": "./dist/testing/MockTranscriber.d.mts",

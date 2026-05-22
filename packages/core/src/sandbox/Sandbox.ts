@@ -268,17 +268,10 @@ export type SandboxInstance = {
     request: CommonExecRequest,
   ) => Effect.Effect<ProcessHandle, SandboxError.SandboxError, Scope.Scope>
   readonly files: SandboxFilesystem
-  /**
-   * Expose an internal port; returns a public URL. Capability-gated
-   * on {@link SandboxPortExposure}.
-   */
-  readonly exposePort: (
-    port: number,
-  ) => Effect.Effect<{ readonly url: string }, SandboxError.SandboxError>
 }
 
 // ---------------------------------------------------------------------------
-// Snapshot + volume sub-services (capability-gated)
+// Snapshot / volume / port sub-services (capability-gated)
 // ---------------------------------------------------------------------------
 
 export type SandboxSnapshotsApi = {
@@ -303,6 +296,19 @@ export type SandboxVolumesApi = {
     ReadonlyArray<{ readonly id: VolumeId; readonly name: string }>,
     SandboxError.SandboxError
   >
+}
+
+export type SandboxPortsApi = {
+  /**
+   * Expose an internal sandbox port as a publicly reachable URL.
+   * Gated by {@link SandboxPortExposure} on the free helper; adapters
+   * that don't ship the marker leave this sub-API out of the public
+   * surface entirely (callers can't construct an Effect against it).
+   */
+  readonly expose: (
+    instance: SandboxInstance,
+    port: number,
+  ) => Effect.Effect<{ readonly url: string }, SandboxError.SandboxError>
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +370,9 @@ export type SandboxService = {
 
   /** Volume management. Capability-gated on {@link SandboxVolumes}. */
   readonly volumes: SandboxVolumesApi
+
+  /** Port exposure. Capability-gated on {@link SandboxPortExposure}. */
+  readonly ports: SandboxPortsApi
 }
 
 export class Sandbox extends Context.Service<Sandbox, SandboxService>()(
@@ -500,11 +509,11 @@ export const attach = (
   Effect.flatMap(Sandbox.asEffect(), (s) => s.attach(id))
 
 /** Enumerate sandboxes for the configured account / project. */
-export const list = (): Effect.Effect<
+export const list: Effect.Effect<
   ReadonlyArray<SandboxRef>,
   SandboxError.SandboxError,
   Sandbox
-> => Effect.flatMap(Sandbox.asEffect(), (s) => s.list)
+> = Effect.flatMap(Sandbox.asEffect(), (s) => s.list)
 
 /**
  * Escape hatch for destroying a sandbox from outside its owning
@@ -551,4 +560,57 @@ export const destroyVolume = (
     const s = yield* Sandbox.asEffect()
     yield* SandboxVolumes.asEffect()
     return yield* s.volumes.destroy(id)
+  })
+
+/** Enumerate persistent volumes. Requires {@link SandboxVolumes}. */
+export const listVolumes: Effect.Effect<
+  ReadonlyArray<{ readonly id: VolumeId; readonly name: string }>,
+  SandboxError.SandboxError,
+  Sandbox | SandboxVolumes
+> = Effect.gen(function* () {
+  const s = yield* Sandbox.asEffect()
+  yield* SandboxVolumes.asEffect()
+  return yield* s.volumes.list
+})
+
+/** Destroy a snapshot. Requires {@link SandboxSnapshots}. */
+export const destroySnapshot = (
+  id: SnapshotId,
+): Effect.Effect<void, SandboxError.SandboxError, Sandbox | SandboxSnapshots> =>
+  Effect.gen(function* () {
+    const s = yield* Sandbox.asEffect()
+    yield* SandboxSnapshots.asEffect()
+    return yield* s.snapshots.destroy(id)
+  })
+
+/** Enumerate snapshots. Requires {@link SandboxSnapshots}. */
+export const listSnapshots: Effect.Effect<
+  ReadonlyArray<{ readonly id: SnapshotId; readonly name?: string }>,
+  SandboxError.SandboxError,
+  Sandbox | SandboxSnapshots
+> = Effect.gen(function* () {
+  const s = yield* Sandbox.asEffect()
+  yield* SandboxSnapshots.asEffect()
+  return yield* s.snapshots.list
+})
+
+/**
+ * Expose an internal port of a live sandbox as a publicly reachable
+ * URL. Requires {@link SandboxPortExposure} — adapters whose provider
+ * doesn't support runtime port exposure (e.g. Microsandbox, which
+ * forwards at create time only) don't ship the marker, and calls
+ * fail at `Effect.provide` with a type error.
+ */
+export const exposePort = (
+  instance: SandboxInstance,
+  port: number,
+): Effect.Effect<
+  { readonly url: string },
+  SandboxError.SandboxError,
+  Sandbox | SandboxPortExposure
+> =>
+  Effect.gen(function* () {
+    const s = yield* Sandbox.asEffect()
+    yield* SandboxPortExposure.asEffect()
+    return yield* s.ports.expose(instance, port)
   })

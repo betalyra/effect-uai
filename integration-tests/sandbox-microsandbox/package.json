@@ -1,0 +1,19 @@
+{
+  "name": "@effect-uai/integration-sandbox-microsandbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect-uai/core": "workspace:*",
+    "@effect-uai/microsandbox": "workspace:*",
+    "effect": "4.0.0-beta.57",
+    "microsandbox": "^0.4.6"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}

@@ -26,6 +26,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "pnpm -r typecheck",
     "typecheck:core": "pnpm --filter @effect-uai/core typecheck",
     "typecheck:responses": "pnpm --filter @effect-uai/responses typecheck",

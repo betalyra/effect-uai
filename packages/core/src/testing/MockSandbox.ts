@@ -212,11 +212,6 @@ const buildInstance = (
         Effect.map((map) => map.has(path)),
       ),
   },
-
-  exposePort: (port) =>
-    record(Call.ExposePort({ id, port })).pipe(
-      Effect.as({ url: (script.portUrl ?? ((p) => `http://mock.local:${p}`))(port) }),
-    ),
 })
 
 const buildService = (
@@ -273,6 +268,13 @@ const buildService = (
         ).pipe(Effect.as(`mock-volume-${name}` as VolumeId)),
       destroy: (vid) => record(Call.VolumeDestroy({ id: vid })),
       list: Effect.succeed(script.volumes ?? []),
+    },
+
+    ports: {
+      expose: (instance, port) =>
+        record(Call.ExposePort({ id: instance.id, port })).pipe(
+          Effect.as({ url: (script.portUrl ?? ((p) => `http://mock.local:${p}`))(port) }),
+        ),
     },
   }
 }

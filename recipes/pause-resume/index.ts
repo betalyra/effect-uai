@@ -10,6 +10,10 @@
  *
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/pause-resume/index.ts`
  */
+import * as Items from "@effect-uai/core/Items"
+import { loop, nextAfter, onTurnComplete, stop } from "@effect-uai/core/Loop"
+import * as Turn from "@effect-uai/core/Turn"
+import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 import {
   Config,
   Effect,
@@ -24,10 +28,6 @@ import {
   pipe,
 } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import * as Turn from "@effect-uai/core/Turn"
-import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Demo configuration
@@ -43,7 +43,7 @@ const PROMPT_BANK = [
   "Now Paris.",
   "Now Cairo.",
   "Now London.",
-]
+] as const
 
 // ---------------------------------------------------------------------------
 // State
@@ -55,7 +55,7 @@ interface State {
 }
 
 const initial: State = {
-  history: [Items.userText(PROMPT_BANK[0]!)],
+  history: [Items.userText(PROMPT_BANK[0])],
   pendingPrompts: PROMPT_BANK.slice(1),
 }
 
@@ -143,7 +143,7 @@ const program = Effect.gen(function* () {
 
   yield* Stream.runForEach(conversation(pauseLatch, turnsCompleted), (event) =>
     Match.value(event).pipe(
-      Match.discriminators("_tag")({
+      Match.tags({
         TurnComplete: ({ turn }) =>
           Effect.logInfo("turn complete", {
             assistant: Turn.assistantTexts(turn).join(" "),

@@ -1,8 +1,8 @@
-import { Array as Arr, pipe, Result, Schema, Stream } from "effect"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import type * as Turn from "@effect-uai/core/Turn"
+import { Array as Arr, pipe, Result, Schema, Stream } from "effect"
 
 export interface Member {
   readonly name: string

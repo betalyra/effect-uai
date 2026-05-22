@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Redacted, Scope, Stream } from "effect"
+import { Brand, Context, Data, Effect, Redacted, Scope, Stream } from "effect"
 import type * as SandboxError from "./SandboxError.js"
 
 // ---------------------------------------------------------------------------
@@ -10,8 +10,12 @@ import type * as SandboxError from "./SandboxError.js"
  * accept a raw user-supplied id. Each provider mints these per its own
  * naming scheme (uuid for E2B/Vercel, user-supplied name for
  * Microsandbox/Modal, …); the core code treats them opaquely.
+ *
+ * Mint via the value-level `SandboxId(...)` smart constructor instead
+ * of `as SandboxId` casts.
  */
-export type SandboxId = string & { readonly __sandboxId: unique symbol }
+export type SandboxId = Brand.Branded<string, "SandboxId">
+export const SandboxId = Brand.nominal<SandboxId>()
 
 /**
  * Reference returned by `list`. Carries just enough to call `attach` —
@@ -23,9 +27,11 @@ export type SandboxRef = {
   readonly name?: string
 }
 
-export type VolumeId = string & { readonly __volumeId: unique symbol }
+export type VolumeId = Brand.Branded<string, "VolumeId">
+export const VolumeId = Brand.nominal<VolumeId>()
 
-export type SnapshotId = string & { readonly __snapshotId: unique symbol }
+export type SnapshotId = Brand.Branded<string, "SnapshotId">
+export const SnapshotId = Brand.nominal<SnapshotId>()
 
 // ---------------------------------------------------------------------------
 // Image / runtime selection

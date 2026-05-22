@@ -114,6 +114,21 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/providers/microsandbox:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+      microsandbox:
+        specifier: ^0.4.6
+        version: 0.4.6
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/providers/openai:
     devDependencies:
       '@effect-uai/core':
@@ -2140,6 +2155,26 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
+  '@superradcompany/microsandbox-darwin-arm64@0.4.6':
+    resolution: {integrity: sha512-/TC09DAubzS73B1Lo6uY35ybwpZQQueE7kdAmd3CCmdk9Yl4V31A+8vnLSYk409oaK1URKaa3V5UTnGSYWwtXA==}
+    engines: {node: '>= 22'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@superradcompany/microsandbox-linux-arm64-gnu@0.4.6':
+    resolution: {integrity: sha512-IaS21OrfxYIzlc6Coxp/eY+SYh9qer4zYX9pvp3jAq7+qpG0aKWzL+GyO4HNeDEKkiZpa1iE6OghhvHmMIt1vA==}
+    engines: {node: '>= 22'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@superradcompany/microsandbox-linux-x64-gnu@0.4.6':
+    resolution: {integrity: sha512-UqLB/sPfXCwQI8o8pyA31J2q3IvZXYMl3Wo9xDn+C2keIkamGydQiPvroUcJasKfrNH9MUpTZOPKETpFG5qS0Q==}
+    engines: {node: '>= 22'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
   '@tailwindcss/node@4.2.4':
     resolution: {integrity: sha512-Ai7+yQPxz3ddrDQzFfBKdHEVBg0w3Zl83jnjuwxnZOsnH9pGn93QHQtpU0p/8rYWxvbFZHneni6p1BSLK4DkGA==}
 
@@ -3482,6 +3517,11 @@ packages:
   micromatch@4.0.8:
     resolution: {integrity: sha512-PXwfBhYu0hBCPw8Dn0E+WDYb7af3dSLVWKi3HGv84IdF4TyFoC0ysxFd0Goxw7nSv4T/PzEJQxsYsEiFCKo2BA==}
     engines: {node: '>=8.6'}
+
+  microsandbox@0.4.6:
+    resolution: {integrity: sha512-6uS+pF8E2gJjiI9MIXKjclRqQEJXZSWzXJs+ejLcO1zEn7/Vzrzv5G0q4p/w73XFyyFFEVhmndI+Uws7ysR18Q==}
+    engines: {node: '>= 22'}
+    hasBin: true
 
   mri@1.2.0:
     resolution: {integrity: sha512-tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA==}
@@ -6489,6 +6529,15 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
+  '@superradcompany/microsandbox-darwin-arm64@0.4.6':
+    optional: true
+
+  '@superradcompany/microsandbox-linux-arm64-gnu@0.4.6':
+    optional: true
+
+  '@superradcompany/microsandbox-linux-x64-gnu@0.4.6':
+    optional: true
+
   '@tailwindcss/node@4.2.4':
     dependencies:
       '@jridgewell/remapping': 2.3.5
@@ -8276,6 +8325,12 @@ snapshots:
     dependencies:
       braces: 3.0.3
       picomatch: 2.3.2
+
+  microsandbox@0.4.6:
+    optionalDependencies:
+      '@superradcompany/microsandbox-darwin-arm64': 0.4.6
+      '@superradcompany/microsandbox-linux-arm64-gnu': 0.4.6
+      '@superradcompany/microsandbox-linux-x64-gnu': 0.4.6
 
   mri@1.2.0: {}
 

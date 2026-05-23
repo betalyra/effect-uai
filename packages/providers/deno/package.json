@@ -1,0 +1,62 @@
+{
+  "name": "@effect-uai/deno",
+  "version": "0.0.0",
+  "description": "Deno Sandbox provider (Firecracker microVMs on Deno Deploy) for @effect-uai/core.",
+  "keywords": [
+    "agents",
+    "ai",
+    "deno",
+    "effect",
+    "microvm",
+    "sandbox"
+  ],
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/deno",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "license": "MIT",
+  "author": "Betalyra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai",
+    "directory": "packages/providers/deno"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./DenoSandbox": {
+      "types": "./dist/DenoSandbox.d.mts",
+      "import": "./dist/DenoSandbox.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm typecheck && pnpm build"
+  },
+  "devDependencies": {
+    "@deno/sandbox": "^0.13.2",
+    "@effect-uai/core": "workspace:*",
+    "effect": "4.0.0-beta.57",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@deno/sandbox": "^0.13.0",
+    "@effect-uai/core": "workspace:>=0.5.0 <1",
+    "effect": "4.0.0-beta.57"
+  }
+}

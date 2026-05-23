@@ -241,7 +241,10 @@ export default defineConfig({
             { label: "Overview", slug: "sandboxes" },
             {
               label: "Providers",
-              items: [{ label: "Microsandbox", slug: "sandboxes/providers/microsandbox" }],
+              items: [
+                { label: "Microsandbox", slug: "sandboxes/providers/microsandbox" },
+                { label: "Deno Sandbox", slug: "sandboxes/providers/deno" },
+              ],
             },
             {
               label: "Recipes",

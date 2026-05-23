@@ -243,6 +243,11 @@ export default defineConfig({
               label: "Providers",
               items: [{ label: "Microsandbox", slug: "sandboxes/providers/microsandbox" }],
             },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Run, fix, repeat", slug: "recipes/sandbox-code-interpreter" }],
+            },
           ],
         },
         {

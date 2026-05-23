@@ -15,6 +15,7 @@ import {
   PiPulse,
   PiShieldCheck,
   PiStairs,
+  PiTerminalWindow,
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
 
@@ -124,6 +125,13 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Talk to your agent.** Streaming STT, LLM, and TTS composed as Effect fibers; stop-words interrupt mid-sentence.",
     href: "/recipes/voice-loop/",
     Icon: PiMicrophone,
+  },
+  {
+    title: "Run, fix, repeat",
+    description:
+      "**Let the model run its own code.** It writes Python; the sandbox runs it; tracebacks feed back into the next turn until the answer's right.",
+    href: "/recipes/sandbox-code-interpreter/",
+    Icon: PiTerminalWindow,
   },
 ]
 

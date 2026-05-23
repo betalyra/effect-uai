@@ -5,8 +5,7 @@ import { createOgImage } from "@/lib/og-image"
 const SITE_TITLE = "effect-uai"
 const SITE_TAGLINE = "Low-level primitives for AI agents in Effect."
 
-const stubPagePattern =
-  /^(reranking|realtime|image-generation|video-generation)(\/|$)/
+const stubPagePattern = /^(reranking|realtime|image-generation|video-generation)(\/|$)/
 
 type Entry = Awaited<ReturnType<typeof getCollection>>[number]
 
@@ -29,8 +28,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
       params: { slug: ogSlugFor(doc) },
       props: {
         title: (doc.data.hero?.title || doc.data.title || SITE_TITLE) as string,
-        subtitle:
-          (doc.data.hero?.tagline || doc.data.description || SITE_TAGLINE) as string,
+        subtitle: (doc.data.hero?.tagline || doc.data.description || SITE_TAGLINE) as string,
         eyebrow: eyebrowFor(doc),
       },
     }))

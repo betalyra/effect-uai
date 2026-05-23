@@ -10,6 +10,8 @@
 import { Array as Arr, Effect, Redacted, Result, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Sandbox from "@effect-uai/core/Sandbox"
+import * as Image from "@effect-uai/core/SandboxImage"
+import * as Network from "@effect-uai/core/SandboxNetwork"
 import {
   layer as microsandboxLayer,
   MicrosandboxSandbox,
@@ -32,7 +34,7 @@ describe("MicrosandboxSandbox (live microVM)", () => {
   it("creates → exec → fs roundtrip → scope finalizer destroys", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
         env: { GREETING: "world" },
       })
 
@@ -99,7 +101,7 @@ process.stdout.write(JSON.stringify(summary))
 
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: NODE_IMAGE }),
+        image: Image.registry(NODE_IMAGE),
       })
 
       yield* sb.files.write("/tmp/script.ts", source)
@@ -123,7 +125,7 @@ process.stdout.write(JSON.stringify(summary))
     const REAL_SECRET = "sk-real-secret-must-never-enter-the-guest"
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
         secrets: [
           {
             name: "OPENAI_API_KEY",
@@ -155,7 +157,7 @@ process.stdout.write(JSON.stringify(summary))
   it("non-zero exit code is an ExecResult, not a failed Effect", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
       })
       return yield* sb.exec({ cmd: ["sh", "-c", "exit 7"] })
     })
@@ -168,7 +170,7 @@ process.stdout.write(JSON.stringify(summary))
   it("stdin is delivered to the process", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
       })
       return yield* sb.exec({ cmd: ["cat"], stdin: "hello stdin" })
     })
@@ -181,7 +183,7 @@ process.stdout.write(JSON.stringify(summary))
   it("spawn process is killed when its scope closes", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
       })
 
       // Sub-scope spawns sleep; its finalizer must kill the process.
@@ -213,7 +215,7 @@ process.stdout.write(JSON.stringify(summary))
   it("rejects BoundSecret.header via generic Sandbox surface (row D)", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
         secrets: [
           {
             name: "MY_TOKEN",
@@ -265,7 +267,7 @@ process.stdout.write(JSON.stringify(summary))
       yield* Effect.scoped(
         Effect.gen(function* () {
           const sb = yield* Sandbox.create({
-            image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+            image: Image.registry(IMAGE),
             volumes: [{ id: volId, mountPath: "/data" }],
           })
           const wrote = yield* sb.exec({
@@ -279,7 +281,7 @@ process.stdout.write(JSON.stringify(summary))
       const read = yield* Effect.scoped(
         Effect.gen(function* () {
           const sb = yield* Sandbox.create({
-            image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+            image: Image.registry(IMAGE),
             volumes: [{ id: volId, mountPath: "/data", readonly: true }],
           })
           return yield* sb.exec({ cmd: ["cat", "/data/marker.txt"] })
@@ -306,7 +308,7 @@ process.stdout.write(JSON.stringify(summary))
       const snapshotId = yield* Effect.scoped(
         Effect.gen(function* () {
           const source = yield* Sandbox.create({
-            image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+            image: Image.registry(IMAGE),
           })
           yield* source.files.write("/srv/marker.txt", "preserved-by-snapshot")
           return yield* Sandbox.snapshot(source, `eff-uai-snap-${Date.now()}`)
@@ -320,7 +322,7 @@ process.stdout.write(JSON.stringify(summary))
       const text = yield* Effect.scoped(
         Effect.gen(function* () {
           const restored = yield* Sandbox.create({
-            image: Sandbox.ImageRef.Snapshot({ id: snapshotId }),
+            image: Image.snapshot(snapshotId),
           })
           const bytes = yield* restored.files.read("/srv/marker.txt")
           return decode(bytes)
@@ -345,7 +347,7 @@ process.stdout.write(JSON.stringify(summary))
       Effect.gen(function* () {
         const msb = yield* MicrosandboxSandbox.asEffect()
         const sb = yield* msb.create({
-          image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+          image: Image.registry(IMAGE),
           name,
           detached: true,
         })
@@ -376,8 +378,8 @@ process.stdout.write(JSON.stringify(summary))
   it("network policy: non-allowlisted hosts are unreachable", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
-        network: Sandbox.NetworkPolicy.Allowlist({ hosts: ["api.openai.com"] }),
+        image: Image.registry(IMAGE),
+        network: Network.allowHosts("api.openai.com"),
       })
       // Try to reach a non-allowed host — should fail at the VM boundary.
       // `|| echo BLOCKED` makes the shell exit cleanly with a known marker.
@@ -398,14 +400,14 @@ process.stdout.write(JSON.stringify(summary))
 
       // First sandbox stays alive in the outer scope.
       yield* msb.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
         name,
       })
 
       // Second create with same name, no replace → SandboxAlreadyExists
       const fail = yield* msb
         .create({
-          image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+          image: Image.registry(IMAGE),
           name,
         })
         .pipe(Effect.scoped, Effect.exit)
@@ -418,7 +420,7 @@ process.stdout.write(JSON.stringify(summary))
       yield* Effect.scoped(
         Effect.gen(function* () {
           const replaced = yield* msb.create({
-            image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+            image: Image.registry(IMAGE),
             name,
             replace: true,
           })
@@ -434,7 +436,7 @@ process.stdout.write(JSON.stringify(summary))
   it("timeout aborts a long-running exec with SandboxTimeout", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
       })
       return yield* sb.exec({ cmd: ["sleep", "30"], timeout: "500 millis" })
     })
@@ -453,7 +455,7 @@ process.stdout.write(JSON.stringify(summary))
   it("exec: env and cwd are delivered to the process", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
       })
       const result = yield* sb.exec({
         cmd: ["sh", "-c", "echo $FOO at $(pwd)"],
@@ -473,7 +475,7 @@ process.stdout.write(JSON.stringify(summary))
   it("execStream: Complete is the terminal event", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
       })
       const events = yield* Stream.runCollect(
         sb.execStream({ cmd: ["sh", "-c", "echo a; echo b 1>&2; exit 3"] }),
@@ -502,7 +504,7 @@ process.stdout.write(JSON.stringify(summary))
       Effect.gen(function* () {
         const msb = yield* MicrosandboxSandbox.asEffect()
         yield* msb.create({
-          image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+          image: Image.registry(IMAGE),
           name,
           detached: true,
         })
@@ -522,9 +524,7 @@ process.stdout.write(JSON.stringify(summary))
 
   it("unknown image ref fails create with SandboxCreateFailed", async () => {
     const program = Sandbox.create({
-      image: Sandbox.ImageRef.Registry({
-        ref: "effect-uai-test/does-not-exist:fake-tag-xyz",
-      }),
+      image: Image.registry("effect-uai-test/does-not-exist:fake-tag-xyz"),
     })
     const exit = await Effect.runPromiseExit(program.pipe(Effect.scoped, Effect.provide(live)))
     expect(exit._tag).toBe("Failure")
@@ -541,7 +541,7 @@ process.stdout.write(JSON.stringify(summary))
   it("spawn: Stream<Uint8Array> stdin is piped into the process", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({
-        image: Sandbox.ImageRef.Registry({ ref: IMAGE }),
+        image: Image.registry(IMAGE),
       })
       const stdin = Stream.fromIterable([
         new TextEncoder().encode("line-1\n"),

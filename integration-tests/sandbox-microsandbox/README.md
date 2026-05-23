@@ -6,28 +6,31 @@ scope finalizer, and tears it down.
 
 Excluded from the default `pnpm test` run.
 
+This package is a **standalone**, deliberately kept out of the pnpm
+workspace so its native deps (`microsandbox`, vitest's esbuild binary)
+don't get pulled into the monorepo's root `node_modules`. Same pattern
+as [`recipes-extras/`](../../recipes-extras/).
+
 ## Prerequisites
 
 - Linux with KVM **or** macOS on Apple Silicon
 - Node ≥ 22 (the SDK relies on `await using` / `Symbol.asyncDispose`)
-- `msb` runtime installed:
+- The workspace built once from the repo root: `pnpm build`
+- `msb` runtime installed and running:
 
   ```bash
-  npx microsandbox install
+  npx microsandbox install   # one-time
+  msb server start
   ```
 
 ## Run
 
-From the repo root:
-
 ```bash
+# install once
+pnpm -C integration-tests/sandbox-microsandbox install --ignore-workspace
+
+# run from the repo root (uses this folder's local vitest)
 pnpm test:integration
-```
-
-Or just this suite:
-
-```bash
-pnpm test:integration -- integration-tests/sandbox-microsandbox
 ```
 
 Override the OCI image via env:
@@ -35,6 +38,9 @@ Override the OCI image via env:
 ```bash
 MSB_IMAGE=python:3.12 pnpm test:integration
 ```
+
+The unusual `--ignore-workspace` flag and `link:`-based deps are
+explained in [`recipes-extras/README.md`](../../recipes-extras/README.md).
 
 ## What it covers
 

@@ -4,3 +4,6 @@ packages:
   - "recipes"
   - "webpage"
   - "integration-tests/*"
+  # Excluded: standalone packages with heavy native deps. Install with
+  # `pnpm install --ignore-workspace` from inside each folder.
+  - "!integration-tests/sandbox-microsandbox"

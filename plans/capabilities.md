@@ -33,12 +33,12 @@ Existing markers, all in `packages/core/src`:
 
 Registration matrix (ships the marker?):
 
-| Marker | inworld sync | inworld realtime | google Gemini | google Lyria | elevenlabs sync | openai sync | openai realtime |
-|---|---|---|---|---|---|---|---|
-| `TtsIncrementalText` | no | yes ([:81](packages/providers/inworld/src/InworldRealtimeSynthesizer.ts#L81)) | no | n/a | yes ([:292](packages/providers/elevenlabs/src/ElevenLabsSynthesizer.ts#L292)) | no | n/a |
-| `MultiSpeakerTts` | no | no | no | n/a | yes ([:293](packages/providers/elevenlabs/src/ElevenLabsSynthesizer.ts#L293)) | no | n/a |
-| `SttStreaming` | no | yes ([:63](packages/providers/inworld/src/InworldRealtimeTranscriber.ts#L63)) | no | n/a | yes ([:181](packages/providers/elevenlabs/src/ElevenLabsTranscriber.ts#L181)) | n/a | yes ([:60](packages/providers/openai/src/OpenAIRealtimeTranscriber.ts#L60)) |
-| `MusicInteractiveSession` | n/a | n/a | n/a | no ([:368](packages/providers/google/src/LyriaGenerator.ts#L368)) | n/a | n/a | n/a |
+| Marker                    | inworld sync | inworld realtime                                                              | google Gemini | google Lyria                                                      | elevenlabs sync                                                               | openai sync | openai realtime                                                             |
+| ------------------------- | ------------ | ----------------------------------------------------------------------------- | ------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------- |
+| `TtsIncrementalText`      | no           | yes ([:81](packages/providers/inworld/src/InworldRealtimeSynthesizer.ts#L81)) | no            | n/a                                                               | yes ([:292](packages/providers/elevenlabs/src/ElevenLabsSynthesizer.ts#L292)) | no          | n/a                                                                         |
+| `MultiSpeakerTts`         | no           | no                                                                            | no            | n/a                                                               | yes ([:293](packages/providers/elevenlabs/src/ElevenLabsSynthesizer.ts#L293)) | no          | n/a                                                                         |
+| `SttStreaming`            | no           | yes ([:63](packages/providers/inworld/src/InworldRealtimeTranscriber.ts#L63)) | no            | n/a                                                               | yes ([:181](packages/providers/elevenlabs/src/ElevenLabsTranscriber.ts#L181)) | n/a         | yes ([:60](packages/providers/openai/src/OpenAIRealtimeTranscriber.ts#L60)) |
+| `MusicInteractiveSession` | n/a          | n/a                                                                           | n/a           | no ([:368](packages/providers/google/src/LyriaGenerator.ts#L368)) | n/a                                                                           | n/a         | n/a                                                                         |
 
 Registration is always unconditional per Layer — the conditional axis
 is which Layer the caller imports (e.g. `InworldSynthesizer` vs.
@@ -115,8 +115,9 @@ and `encoding`:
 
 Notably, **the same field (`task`) is handled three different ways
 across three packages**: narrowed (Jina), removed (OpenAI), widened
-+ silently dropped on some models (Google). That is exactly the
-inconsistency this document is meant to address.
+
+- silently dropped on some models (Google). That is exactly the
+  inconsistency this document is meant to address.
 
 ### 1.5 `InvalidRequest` used for capability gaps
 
@@ -146,6 +147,7 @@ closest equivalent in code today, but it lives as a runtime predicate
 ### Phantom capability marker (§1.1)
 
 **Pros**
+
 - Type error at provide time — caller sees the gap before running.
 - Zero runtime cost (`void` service).
 - Composable: one marker per capability, providers opt in piecemeal.
@@ -153,6 +155,7 @@ closest equivalent in code today, but it lives as a runtime predicate
   computation requires of its environment".
 
 **Cons**
+
 - Adds a tag to import; verbose for callers who already provide the
   parent service.
 - Doesn't help in dynamic provider selection (e.g. a `selectByModel`
@@ -167,17 +170,19 @@ closest equivalent in code today, but it lives as a runtime predicate
 ### Runtime `Unsupported` (§1.2)
 
 **Pros**
+
 - Granular: can carry `capability`, `reason`, and request context.
 - Handles request-data dependence cleanly (model × feature × format).
 - No type-level acrobatics required.
 
 **Cons**
+
 - Caller must remember to handle it — `AiError` is a large union and
   the dev experience often becomes "catch-all then log".
 - For **blanket method-not-supported** (the §1.2(a) stubs), it
   duplicates the marker's information and is **strictly worse**:
   the marker would catch it at compile time, and the runtime stub
-  only fires if the marker is missing in `R` *and* the caller never
+  only fires if the marker is missing in `R` _and_ the caller never
   hit the type check. We currently ship both, which is belt-and-
   braces but increases surface.
 - §1.2(c) ("request-flag-dependent blanket") is the worst form:
@@ -187,14 +192,16 @@ closest equivalent in code today, but it lives as a runtime predicate
 ### Silent drop (§1.3)
 
 **Pros**
+
 - Maximizes "it just works" for cross-provider code — the same
   request runs against any provider, output is correct-ish.
 - No error to plumb through.
-- Right answer when the field is *advisory* and dropping it doesn't
+- Right answer when the field is _advisory_ and dropping it doesn't
   change correctness (e.g. `prompt` vocab biasing on a provider that
   ignores prompts).
 
 **Cons**
+
 - Invisible to the caller: silently degraded output, no warning, hard
   to diagnose when something sounds wrong.
 - Across providers we are **inconsistent**: pronunciations are
@@ -206,6 +213,7 @@ closest equivalent in code today, but it lives as a runtime predicate
 ### Type-level narrowing (`Omit` / re-typing) (§1.4)
 
 **Pros**
+
 - Best dev experience for fields tied to identity (model name,
   voice ID): autocompletion just works.
 - Removes invalid choices entirely; no runtime check needed.
@@ -213,21 +221,24 @@ closest equivalent in code today, but it lives as a runtime predicate
   `voiceSettings`).
 
 **Cons**
+
 - Forces a per-provider request type, so cross-provider code needs an
   adapter layer (the `fromCommon`-style helpers we already write).
-- Doesn't compose with the *generic* helper (`SpeechSynthesizer
-  .synthesize(req)` always takes `CommonSynthesizeRequest`).
+- Doesn't compose with the _generic_ helper (`SpeechSynthesizer
+.synthesize(req)` always takes `CommonSynthesizeRequest`).
 - Inconsistent today: `task` is narrowed by one provider, removed by
   another, kept-and-dropped by a third.
 
 ### `InvalidRequest` for capability gaps (§1.5)
 
 **Pros**
+
 - Conceptually close enough that callers usually do the right thing
   (the `param` field carries the offending field name).
 - Already what wire APIs return for these — feels natural to mirror.
 
 **Cons**
+
 - Conflates "you sent a malformed request" with "this provider
   doesn't support what you asked for". Different remediation: one is
   fix-the-call, the other is switch-provider or accept-the-gap.
@@ -254,7 +265,7 @@ class TtsIncremental extends Context.Service<TtsIncremental, { streamSynthesisFr
 Pro: methods that don't exist don't appear on the service value, so
 typos and stubs disappear. Con: callers need to provide more than one
 service. And `synthesizeDialogue` doesn't cleanly split — it's a
-sync method available on a *subset* of sync Layers — which is exactly
+sync method available on a _subset_ of sync Layers — which is exactly
 what the marker pattern was for in the first place.
 
 ### 3.2 Tagged-union request types
@@ -320,7 +331,7 @@ exists in scattered docstrings; could be consolidated.
 Two questions, asked in order, narrow the choice to one mechanism.
 
 **Q1.** Is the gap pinned to "which Layer the caller picked"
-(blanket) or does it depend on the *contents* of the request
+(blanket) or does it depend on the _contents_ of the request
 (data-driven)?
 
 **Q2.** If data-driven: would silently dropping the offending field
@@ -333,21 +344,21 @@ row, and what the caller sees.
 
 ### 4.1 The matrix
 
-| # | Scenario | Diagnostic question | Mechanism | What the caller sees |
-|---|---|---|---|---|
-| **A** | **Whole method unavailable on this Layer.** *Example: `streamSynthesisFrom` on `InworldSynthesizer` (sync). The realtime Layer wires it; the sync Layer doesn't.* | "Is the gap fully determined by which Layer is in scope, with no input that could change the answer?" | **Compile-time phantom marker** (`TtsIncrementalText` etc.) on the top-level helper's `R` channel. Provider Layers that support it ship `Layer.succeed(Marker, undefined)`; others omit. | Type error at `Effect.provide` — *before* the call runs. No runtime AiError to handle. |
-| **B** | **Identity-typed input has a fixed set of valid values.** *Example: `voiceId` on OpenAI is exactly the six Aria/Echo/... voices; `model` on Anthropic is the Claude lineup.* | "Is the set of valid values for this field known at compile time and unlikely to grow per-call?" | **Type-level narrowing** on the provider's typed request (`Omit<CommonX, "field"> & { field: LiteralUnion }`). Apply `Omit` + narrow consistently. | Autocompletion shows the valid values. Invalid values are a TS error. No runtime branch needed. |
-| **C** | **One provider exposes multiple sub-APIs that differ in more than one field.** *Example: Google Cloud TTS has `chirp-3-hd` (no prompt, simple voice name) and `gemini-tts` (prompt, model+voice combo) on the same endpoint. Lyria has `clip` vs `pro` with different body shapes.* | "If I tried to put both variants in one request type, would I need optional fields whose presence depends on another field's value?" | **Tagged-union request type** with `family: "chirp-3-hd" \| "gemini-tts"`. Each branch narrows its own fields; dispatch is a single `switch`. | Picking a `family` narrows the whole request via TS discrimination. No invalid combinations representable. |
-| **D** | **Data-dependent gap, honoring the field is load-bearing.** *Example: `wordTimestamps: true` on a model that doesn't emit them; image part on a text-only embedding model; cmu-arpabet pronunciation on a provider that can't even approximate it.* | "If we silently dropped this field, would the caller's downstream code do the wrong thing — render a UI with no timestamps, embed text instead of an image, mispronounce a critical word?" | **Runtime `AiError.Unsupported`** with `capability`, `reason`, and the offending field name. Reject at the adapter entry, before any wire call. | Typed failure in the Effect channel. Caller pattern-matches on `_tag === "Unsupported"` and either falls back to another provider or surfaces a user-facing error. |
-| **E** | **Data-dependent gap, field is advisory.** *Example: `task: "retrieval.query"` on `gemini-embedding-2` (which ignores task hints — embeddings are still valid, just not task-optimized); `instructions: "speak softly"` on OpenAI's `tts-1` (only `gpt-4o-mini-tts` honors it); per-turn `styleDescription` on a dialogue API without per-turn knobs.* | "If we silently dropped this field, is the output still semantically correct — just less tailored?" | **Warn-and-drop**: `Effect.logWarning` with `{ field, value, reason }`, plus a `@capability advisory` docstring tag on the field. Audio/embeddings/text still produced. | Successful result; structured warning emitted on the observability hook. A future strict-mode config flag can escalate to error. Never silently. |
-| **F** | **Wire-shape mismatch — the caller's input can't be POSTed at all.** *Example: passing a URL `AudioSource` to a provider whose API only accepts inline base64 bytes (Inworld, Gemini speech, OpenAI audio).* | "Is this 'you handed me input I can't even put on the wire' rather than 'this provider doesn't do feature X'?" | **`AiError.InvalidRequest`** with `param` pointing at the offending field. | Typed failure; remediation is "fix your call site to provide inline bytes", distinct from "switch provider". |
+| #     | Scenario                                                                                                                                                                                                                                                                                                                                               | Diagnostic question                                                                                                                                                                        | Mechanism                                                                                                                                                                                | What the caller sees                                                                                                                                               |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A** | **Whole method unavailable on this Layer.** _Example: `streamSynthesisFrom` on `InworldSynthesizer` (sync). The realtime Layer wires it; the sync Layer doesn't._                                                                                                                                                                                      | "Is the gap fully determined by which Layer is in scope, with no input that could change the answer?"                                                                                      | **Compile-time phantom marker** (`TtsIncrementalText` etc.) on the top-level helper's `R` channel. Provider Layers that support it ship `Layer.succeed(Marker, undefined)`; others omit. | Type error at `Effect.provide` — _before_ the call runs. No runtime AiError to handle.                                                                             |
+| **B** | **Identity-typed input has a fixed set of valid values.** _Example: `voiceId` on OpenAI is exactly the six Aria/Echo/... voices; `model` on Anthropic is the Claude lineup._                                                                                                                                                                           | "Is the set of valid values for this field known at compile time and unlikely to grow per-call?"                                                                                           | **Type-level narrowing** on the provider's typed request (`Omit<CommonX, "field"> & { field: LiteralUnion }`). Apply `Omit` + narrow consistently.                                       | Autocompletion shows the valid values. Invalid values are a TS error. No runtime branch needed.                                                                    |
+| **C** | **One provider exposes multiple sub-APIs that differ in more than one field.** _Example: Google Cloud TTS has `chirp-3-hd` (no prompt, simple voice name) and `gemini-tts` (prompt, model+voice combo) on the same endpoint. Lyria has `clip` vs `pro` with different body shapes._                                                                    | "If I tried to put both variants in one request type, would I need optional fields whose presence depends on another field's value?"                                                       | **Tagged-union request type** with `family: "chirp-3-hd" \| "gemini-tts"`. Each branch narrows its own fields; dispatch is a single `switch`.                                            | Picking a `family` narrows the whole request via TS discrimination. No invalid combinations representable.                                                         |
+| **D** | **Data-dependent gap, honoring the field is load-bearing.** _Example: `wordTimestamps: true` on a model that doesn't emit them; image part on a text-only embedding model; cmu-arpabet pronunciation on a provider that can't even approximate it._                                                                                                    | "If we silently dropped this field, would the caller's downstream code do the wrong thing — render a UI with no timestamps, embed text instead of an image, mispronounce a critical word?" | **Runtime `AiError.Unsupported`** with `capability`, `reason`, and the offending field name. Reject at the adapter entry, before any wire call.                                          | Typed failure in the Effect channel. Caller pattern-matches on `_tag === "Unsupported"` and either falls back to another provider or surfaces a user-facing error. |
+| **E** | **Data-dependent gap, field is advisory.** _Example: `task: "retrieval.query"` on `gemini-embedding-2` (which ignores task hints — embeddings are still valid, just not task-optimized); `instructions: "speak softly"` on OpenAI's `tts-1` (only `gpt-4o-mini-tts` honors it); per-turn `styleDescription` on a dialogue API without per-turn knobs._ | "If we silently dropped this field, is the output still semantically correct — just less tailored?"                                                                                        | **Warn-and-drop**: `Effect.logWarning` with `{ field, value, reason }`, plus a `@capability advisory` docstring tag on the field. Audio/embeddings/text still produced.                  | Successful result; structured warning emitted on the observability hook. A future strict-mode config flag can escalate to error. Never silently.                   |
+| **F** | **Wire-shape mismatch — the caller's input can't be POSTed at all.** _Example: passing a URL `AudioSource` to a provider whose API only accepts inline base64 bytes (Inworld, Gemini speech, OpenAI audio)._                                                                                                                                           | "Is this 'you handed me input I can't even put on the wire' rather than 'this provider doesn't do feature X'?"                                                                             | **`AiError.InvalidRequest`** with `param` pointing at the offending field.                                                                                                               | Typed failure; remediation is "fix your call site to provide inline bytes", distinct from "switch provider".                                                       |
 
 ### 4.2 Distinguishing rows D and E in practice
 
 D and E both answer Q1 with "data-driven". The split on Q2
 ("load-bearing vs. advisory") is per-field, not per-provider:
 
-- **`pronunciations` is almost always D** — the *point* of the
+- **`pronunciations` is almost always D** — the _point_ of the
   override is correct pronunciation. Today we treat it as E
   (silent drop on Inworld/ElevenLabs). That's a bug, not a policy
   choice.
@@ -372,10 +383,12 @@ When unsure, default to D. Promoting D → E is a breaking change
    splits the service further.
 
 2. **§1.3 silent drops need an uplift.** A single helper —
+
    ```ts
    const dropUnsupported = (field: string, value: unknown, reason: string) =>
      Effect.logWarning("[provider] dropping unsupported field", { field, value, reason })
    ```
+
    plus the `@capability advisory` docstring convention on the field
    is enough. Cheap.
 
@@ -418,7 +431,7 @@ When unsure, default to D. Promoting D → E is a breaking change
   service, or factor into its own service type (`DialogueTts`) that
   only multi-speaker providers implement? Today it's a method with a
   marker; tomorrow it could be a service. The deciding factor is
-  whether we expect *every* TTS Layer to want the dialogue method's
+  whether we expect _every_ TTS Layer to want the dialogue method's
   signature in its type.
 - Is `styleDescription` worth keeping in core if no provider
   implements it? Either implement it on Hume Octave-2 (the only
@@ -443,14 +456,14 @@ The six mechanisms in the matrix each cover a genuinely distinct
 case. There isn't a single mechanism that subsumes the others
 without becoming awkward in 80% of uses:
 
-- **Marker** is the only way to get a *compile-time* error for
+- **Marker** is the only way to get a _compile-time_ error for
   a Layer-level gap.
 - **Narrowing** is the only way to get autocompletion on a known
   set of values.
 - **Tagged union** is the only way to keep "this combination is
   representable" honest when sub-APIs diverge.
 - **`Unsupported`** is the only way to refuse a wire call when the
-  *data* triggers the gap and a silent miss would be a bug.
+  _data_ triggers the gap and a silent miss would be a bug.
 - **Warn-and-drop** is the only way to keep cross-provider code
   ergonomic for fields that are advisory hints.
 - **`InvalidRequest`** is the right tool when the input can't be
@@ -463,7 +476,7 @@ Trying to collapse two of these always punishes a third case.
 The only mechanism that should go away entirely. Every silent drop
 today is either (a) a row D case mis-classified as row E (e.g.
 pronunciations dropped on Inworld/ElevenLabs) or (b) a row E case
-that just forgot to emit a warning. Once row E *always* warns, there
+that just forgot to emit a warning. Once row E _always_ warns, there
 is no remaining justification for true silence.
 
 Concrete deletions:
@@ -550,7 +563,7 @@ When introducing a new optional field on a `Common*Request`:
 2. If a whole provider can't support it at all → compile-time marker
    (and consider a service-shape split if more than one capability
    pins to the same Layer dimension).
-3. If specific *inputs* trigger the gap → `AiError.Unsupported`.
+3. If specific _inputs_ trigger the gap → `AiError.Unsupported`.
 4. If the field is advisory and providers can choose to ignore it →
    `Effect.logWarning` + docstring note. Never silently.
 5. Never `InvalidRequest` for "you asked for a feature this provider
@@ -575,7 +588,7 @@ wrong. Promote silent → `Unsupported`.
 
 ### 9.2 Row D mis-classified as row F (`InvalidRequest` for a feature gap)
 
-The wire *can* carry the shape; the provider just doesn't support
+The wire _can_ carry the shape; the provider just doesn't support
 the feature. Move to `Unsupported`.
 
 - [OpenAIEmbedding.ts:68](packages/providers/responses/src/OpenAIEmbedding.ts#L68) — image part rejected with `InvalidRequest`. **Fix:** `Unsupported` with `capability: "imageEmbedding"`.
@@ -609,13 +622,13 @@ ignore is silent. Add `Effect.logWarning` (via the proposed
 Same field, three different mechanisms across embedding providers
 ([§1.4](#))[:](#)
 
-| Provider | Today | Correct row |
-|---|---|---|
-| Jina | Narrows `task: JinaTask` | B ✓ |
-| OpenAIEmbedding (typed) | Omits `task` entirely | B ✓ |
-| OpenAIEmbedding (generic Layer) | Accepts + silently drops | should warn (9.4) |
-| GeminiEmbedding (typed) | Widens to `GoogleEmbeddingTask` | B ✓ |
-| GeminiEmbedding (runtime) | Drops silently on `gemini-embedding-2` | should warn (9.4) |
+| Provider                        | Today                                  | Correct row       |
+| ------------------------------- | -------------------------------------- | ----------------- |
+| Jina                            | Narrows `task: JinaTask`               | B ✓               |
+| OpenAIEmbedding (typed)         | Omits `task` entirely                  | B ✓               |
+| OpenAIEmbedding (generic Layer) | Accepts + silently drops               | should warn (9.4) |
+| GeminiEmbedding (typed)         | Widens to `GoogleEmbeddingTask`        | B ✓               |
+| GeminiEmbedding (runtime)       | Drops silently on `gemini-embedding-2` | should warn (9.4) |
 
 No structural fix — three providers, three valid type surfaces. The
 fix is just to make the generic-Layer drops audible (row E).
@@ -673,10 +686,9 @@ Concrete action plan:
      readonly description?: string
      readonly speed?: number
    }
-   export type HumeSynthesizeDialogueRequest =
-     Omit<CommonSynthesizeDialogueRequest, "turns"> & {
-       readonly turns: ReadonlyArray<HumeDialogueTurn>
-     }
+   export type HumeSynthesizeDialogueRequest = Omit<CommonSynthesizeDialogueRequest, "turns"> & {
+     readonly turns: ReadonlyArray<HumeDialogueTurn>
+   }
    ```
    and have Hume's typed `synthesizeDialogue` accept the narrowed
    request. The generic `SpeechSynthesizer.synthesizeDialogue`
@@ -716,15 +728,15 @@ The stubbed `Unsupported` returns for methods covered by markers
 
 ### 9.9 Summary count
 
-| Class | Count | Effort |
-|---|---|---|
-| Row D mis-classified as silent E (9.1) | 3 sites | Mechanical |
-| `InvalidRequest` → `Unsupported` (9.2) | 2 sites | Mechanical |
-| §1.2(c) hybrids → Row B (9.3) | 3 fields × 2 providers | Mechanical (delete from type + delete runtime guard) |
-| Silent → warn-and-drop (9.4) | 4 sites | Add helper + 4 call sites |
-| `DialogueTurn` reshape (9.6) | 2 fields removed from core | Small — but a breaking-change entry in core's CHANGELOG |
-| Row C conversion (9.7) | 1 site (Lyria) | Moderate — touches body codec |
-| Core additions: `dropUnsupported` helper + `CapabilityWarning` event | — | Small |
+| Class                                                                | Count                      | Effort                                                  |
+| -------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------- |
+| Row D mis-classified as silent E (9.1)                               | 3 sites                    | Mechanical                                              |
+| `InvalidRequest` → `Unsupported` (9.2)                               | 2 sites                    | Mechanical                                              |
+| §1.2(c) hybrids → Row B (9.3)                                        | 3 fields × 2 providers     | Mechanical (delete from type + delete runtime guard)    |
+| Silent → warn-and-drop (9.4)                                         | 4 sites                    | Add helper + 4 call sites                               |
+| `DialogueTurn` reshape (9.6)                                         | 2 fields removed from core | Small — but a breaking-change entry in core's CHANGELOG |
+| Row C conversion (9.7)                                               | 1 site (Lyria)             | Moderate — touches body codec                           |
+| Core additions: `dropUnsupported` helper + `CapabilityWarning` event | —                          | Small                                                   |
 
 Total: roughly a dozen edited files plus one helper added to core.
 No architectural restructuring required.

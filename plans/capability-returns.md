@@ -1,7 +1,7 @@
 # Return-shape design for capability degradation
 
 A follow-on to [plans/capabilities.md](capabilities.md). That doc
-debates *how* a provider should signal that it can't honor a request
+debates _how_ a provider should signal that it can't honor a request
 field — refuse (`AiError.Unsupported`), drop silently, drop with a
 warning. This doc asks a more basic question:
 
@@ -45,7 +45,7 @@ providers:
   buffered.
 
 Any consumer writing real UI code ends up in pattern (1) — they
-inspect the output. The request flag is a *wish*, not a contract,
+inspect the output. The request flag is a _wish_, not a contract,
 because the output shape was never going to honor it
 unconditionally.
 
@@ -136,7 +136,7 @@ type TranscriptResult = {
 }
 ```
 
-Same as B plus a structured trace of *why* each ask was dropped.
+Same as B plus a structured trace of _why_ each ask was dropped.
 
 - **Pro:** audit-grade signal.
 - **Con:** `degraded[]` is empty on the happy path; pure overhead for
@@ -146,11 +146,11 @@ Same as B plus a structured trace of *why* each ask was dropped.
 
 ## 3. Mapping shapes to consumer jobs
 
-| Job | What they need | Best shape |
-|---|---|---|
-| **Render a transcript** (chat UI, captions) | The data, as-is. Render what's present. | A is sufficient |
-| **Multi-provider council / fallback** ("did anyone diarize?") | A predicate per result. | B — `result.applied.diarization` |
-| **Audit / debugging / billing** ("which asks did this provider honor across the batch?") | Per-call structured trace. | C |
+| Job                                                                                      | What they need                          | Best shape                       |
+| ---------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------- |
+| **Render a transcript** (chat UI, captions)                                              | The data, as-is. Render what's present. | A is sufficient                  |
+| **Multi-provider council / fallback** ("did anyone diarize?")                            | A predicate per result.                 | B — `result.applied.diarization` |
+| **Audit / debugging / billing** ("which asks did this provider honor across the batch?") | Per-call structured trace.              | C                                |
 
 The render job dominates by volume. The audit job is rare. The
 multi-provider job sits between, and is where Shape A's heuristics
@@ -159,11 +159,13 @@ break down.
 ### Why Shape A fails the multi-provider job
 
 ```ts
-const [a, b, c] = yield* Effect.all([
-  withLayer(ElevenLabs, transcribe(req)),
-  withLayer(OpenAI,     transcribe(req)),
-  withLayer(Gemini,     transcribe(req)),
-])
+const [a, b, c] =
+  yield *
+  Effect.all([
+    withLayer(ElevenLabs, transcribe(req)),
+    withLayer(OpenAI, transcribe(req)),
+    withLayer(Gemini, transcribe(req)),
+  ])
 const diarizedResult = [a, b, c].find(/* heuristic */) ?? a
 ```
 
@@ -174,14 +176,14 @@ const diarizedResult = [a, b, c].find(/* heuristic */) ?? a
   capability from audio content.
 - `r.words?.some((w, _, arr) => arr.some((other) => other.speakerId !== w.speakerId))` —
   needs ≥2 speakers in the audio to detect; doesn't fire on
-  one-speaker audio where the provider *did* try.
+  one-speaker audio where the provider _did_ try.
 
 There's no Shape A predicate that cleanly answers "did the provider
 attempt diarization?" Shape B answers it with `r.applied.diarization`.
 
 ### The reverse case Shape B also fixes
 
-A caller *doesn't* ask for diarization, but the provider always
+A caller _doesn't_ ask for diarization, but the provider always
 diarizes (some Deepgram / Azure modes). With Shape A, the result
 has `speakerId` populated and the consumer has no idea whether to
 trust it or where it came from. With Shape B, `applied.diarization`
@@ -280,31 +282,31 @@ fact that an adapter needs to be updated.
 
 What each adapter writes:
 
-| Provider | `applied.diarization` | `applied.wordTimestamps` |
-|---|---|---|
-| ElevenLabs Scribe | `req.diarization === true` | `req.wordTimestamps === true` |
-| OpenAI Whisper-1 | `false` (never) | `req.wordTimestamps === true` |
-| OpenAI GPT-4o-transcribe | `false` (never) | `false` (model doesn't support) |
-| Gemini (`generateContent` STT) | `false` (never) | `false` (never) |
-| Google Cloud STT (Chirp 2) | `req.diarization === true` | `req.wordTimestamps === true` |
-| AssemblyAI Universal-2 | `req.diarization === true` | `req.wordTimestamps === true` |
-| Deepgram Nova-3 | `req.diarization === true` | `req.wordTimestamps === true` |
+| Provider                       | `applied.diarization`      | `applied.wordTimestamps`        |
+| ------------------------------ | -------------------------- | ------------------------------- |
+| ElevenLabs Scribe              | `req.diarization === true` | `req.wordTimestamps === true`   |
+| OpenAI Whisper-1               | `false` (never)            | `req.wordTimestamps === true`   |
+| OpenAI GPT-4o-transcribe       | `false` (never)            | `false` (model doesn't support) |
+| Gemini (`generateContent` STT) | `false` (never)            | `false` (never)                 |
+| Google Cloud STT (Chirp 2)     | `req.diarization === true` | `req.wordTimestamps === true`   |
+| AssemblyAI Universal-2         | `req.diarization === true` | `req.wordTimestamps === true`   |
+| Deepgram Nova-3                | `req.diarization === true` | `req.wordTimestamps === true`   |
 
 Mechanical. Three lines per adapter for two flags. The OpenAI model
 × field interaction at the request level still exists internally
 (do we ask the wire for `verbose_json` to get word timing?), but the
-*output-side* claim is whether the response carries the data.
+_output-side_ claim is whether the response carries the data.
 
 ---
 
 ## 7. Caller-side strictness
 
-The "I *require* diarization" caller still has a clean idiom:
+The "I _require_ diarization" caller still has a clean idiom:
 
 ```ts
-const result = yield* Transcriber.transcribe(req)
+const result = yield * Transcriber.transcribe(req)
 if (req.diarization && !result.applied.diarization) {
-  yield* Effect.fail(new MyDomainError("diarization required"))
+  yield * Effect.fail(new MyDomainError("diarization required"))
 }
 ```
 
@@ -357,7 +359,7 @@ If we adopt Shape B:
 - **`applied` for fields the request didn't set.** If `req.diarization`
   is `undefined` and the provider always diarizes, should
   `applied.diarization` be `true`? Probably yes — it reports the
-  *output* state, not the *match* between request and output. The
+  _output_ state, not the _match_ between request and output. The
   consumer checks `applied`, not `request`.
 - **Streaming events.** `applied` on `final` events is clear. On
   `partial`s — does it report what the partial honors, or the

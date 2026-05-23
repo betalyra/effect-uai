@@ -9,9 +9,7 @@ import { Effect, Layer } from "effect"
 import * as EffectMod from "effect/Effect"
 import { Transcription } from "./index.js"
 
-type Eq<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
-  ? true
-  : false
+type Eq<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
 
 declare const audio: ArrayBuffer
 declare const ElevenLabsImpl: Layer.Layer<Transcription.Service>
@@ -50,7 +48,7 @@ type LaxType = typeof lax
 type LaxA = EffectMod.Success<LaxType>
 type LaxR = EffectMod.Services<LaxType>
 
-const _laxA: Eq<LaxA, Transcription.Result<never>> = true
+const _laxA: Eq<LaxA, Transcription.Result> = true
 const _laxR: Eq<LaxR, Transcription.Service> = true
 
 const laxFallback = Transcription.fallback([elevenLabsLayer, openaiLayer, geminiLayer])
@@ -80,23 +78,19 @@ type StrictType = typeof strict
 type StrictA = EffectMod.Success<StrictType>
 type StrictR = EffectMod.Services<StrictType>
 
-// Narrowed to BOTH capabilities
-const _strictA: Eq<StrictA, Transcription.Result<"diarization" | "wordTimestamps">> = true
+// Result type is the SAME as lax — markers don't narrow output. Only R differs.
+const _strictA: Eq<StrictA, Transcription.Result> = true
 // R now requires the Service AND both guarantee markers
 const _strictR: Eq<
   StrictR,
-  | Transcription.Service
-  | Transcription.DiarizationGuarantee
-  | Transcription.WordTimestampsGuarantee
+  Transcription.Service | Transcription.DiarizationGuarantee | Transcription.WordTimestampsGuarantee
 > = true
 
 const strictFallback = Transcription.fallback([elevenLabsLayer, assemblyAILayer])
 type StrictFallbackROut = Layer.Success<typeof strictFallback>
 const _strictFallbackR: Eq<
   StrictFallbackROut,
-  | Transcription.Service
-  | Transcription.DiarizationGuarantee
-  | Transcription.WordTimestampsGuarantee
+  Transcription.Service | Transcription.DiarizationGuarantee | Transcription.WordTimestampsGuarantee
 > = true
 // ↑ Both markers survive — they're in every tier.
 

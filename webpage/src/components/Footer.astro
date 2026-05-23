@@ -1,4 +1,5 @@
 ---
+import { Icon } from "@astrojs/starlight/components"
 import EditLink from "virtual:starlight/components/EditLink"
 import LastUpdated from "virtual:starlight/components/LastUpdated"
 import Pagination from "virtual:starlight/components/Pagination"
@@ -68,14 +69,35 @@ import Pagination from "virtual:starlight/components/Pagination"
 
     <span class="sep" aria-hidden="true">·</span>
 
-    <nav class="links" aria-label="Legal">
-      <a href="https://betalyra.com/imprint" target="_blank" rel="noopener noreferrer">
-        Imprint
-      </a>
-      <a href="https://betalyra.com/privacy" target="_blank" rel="noopener noreferrer">
-        Privacy
-      </a>
-    </nav>
+    <div class="right">
+      <nav class="social" aria-label="Social">
+        <a
+          href="https://github.com/betalyra/effect-uai"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="GitHub"
+        >
+          <Icon name="github" />
+        </a>
+        <a
+          href="https://x.com/effectuai_sdk"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="X (Twitter)"
+        >
+          <Icon name="x.com" />
+        </a>
+      </nav>
+
+      <nav class="links" aria-label="Legal">
+        <a href="https://betalyra.com/imprint" target="_blank" rel="noopener noreferrer">
+          Imprint
+        </a>
+        <a href="https://betalyra.com/privacy" target="_blank" rel="noopener noreferrer">
+          Privacy
+        </a>
+      </nav>
+    </div>
   </div>
 </footer>
 
@@ -138,10 +160,33 @@ import Pagination from "virtual:starlight/components/Pagination"
     color: var(--sl-color-gray-5);
   }
 
+  .right {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-inline-start: auto;
+  }
+
+  .social {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .social a {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .social :global(svg) {
+    width: 1rem;
+    height: 1rem;
+  }
+
   .links {
     display: inline-flex;
     flex-wrap: wrap;
     gap: 1rem;
-    margin-inline-start: auto;
   }
 </style>

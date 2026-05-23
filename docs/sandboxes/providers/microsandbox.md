@@ -72,7 +72,7 @@ interface MicrosandboxCreateRequest extends Omit<CommonCreateRequest, "secrets">
   readonly secrets?: ReadonlyArray<MicrosandboxBoundSecret> // no `header` field
   readonly name?: string // explicit id (else auto-generated)
   readonly cpus?: number
-  readonly memoryMib?: number
+  readonly memory?: Memory.Input // bytes, branded Memory, or "1 GiB"
   readonly workdir?: string
   readonly user?: string
   readonly maxDuration?: Duration.Input // hard wall-clock cap
@@ -87,8 +87,10 @@ On top of [`CommonCreateRequest`](/sandboxes/#picking-an-image)
 
 - **`name`** — explicit sandbox id. Microsandbox keys by name; omit it
   and the adapter generates `eff-uai-<random>`.
-- **`cpus` / `memoryMib`** — VM sizing. Defaults come from the SDK
-  builder.
+- **`cpus` / `memory`** — VM sizing. `memory` accepts a byte count, a
+  [`Memory`](/sandboxes/#cpu-memory-and-other-sizing-knobs) branded value, or a
+  human string like `"1 GiB"` / `"512 MiB"` — rounded up to whole MiB
+  before handing off to the SDK. Defaults come from the SDK builder.
 - **`workdir` / `user`** — process cwd and effective user inside the
   guest.
 - **`maxDuration`** — hard wall-clock cap on the sandbox. Distinct

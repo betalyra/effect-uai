@@ -74,8 +74,8 @@ export type MicrosandboxCreateRequest = Omit<CommonCreateRequest, "secrets"> & {
   readonly memoryMib?: number
   readonly workdir?: string
   readonly user?: string
-  readonly maxDurationSecs?: number
-  readonly idleTimeoutSecs?: number
+  readonly maxDuration?: Duration.Input
+  readonly idleTimeout?: Duration.Input
   /**
    * Stop any existing sandbox with the same name before creating.
    * `true` = `SIGTERM` with the SDK default grace; `{ graceMs }` =
@@ -619,8 +619,16 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
         when(request.memoryMib, (n) => (b) => b.memory(n)),
         when(request.workdir, (p) => (b) => b.workdir(p)),
         when(request.user, (u) => (b) => b.user(u)),
-        when(request.maxDurationSecs, (s) => (b) => b.maxDuration(s)),
-        when(request.idleTimeoutSecs, (s) => (b) => b.idleTimeout(s)),
+        when(
+          request.maxDuration,
+          (d) => (b) =>
+            b.maxDuration(Math.ceil(Duration.toMillis(Duration.fromInputUnsafe(d)) / 1000)),
+        ),
+        when(
+          request.idleTimeout,
+          (d) => (b) =>
+            b.idleTimeout(Math.ceil(Duration.toMillis(Duration.fromInputUnsafe(d)) / 1000)),
+        ),
         when(
           request.timeout,
           (t) => (b) =>

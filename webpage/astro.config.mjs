@@ -1,15 +1,14 @@
-import { defineConfig } from "astro/config";
-import starlight from "@astrojs/starlight";
-import mdx from "@astrojs/mdx";
-import react from "@astrojs/react";
-import sitemap from "@astrojs/sitemap";
-import starlightLlmsTxt from "starlight-llms-txt";
-import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "astro/config"
+import starlight from "@astrojs/starlight"
+import mdx from "@astrojs/mdx"
+import react from "@astrojs/react"
+import sitemap from "@astrojs/sitemap"
+import starlightLlmsTxt from "starlight-llms-txt"
+import tailwindcss from "@tailwindcss/vite"
 
-const stubPagePattern =
-  /\/(reranking|realtime|image-generation|video-generation)\/$/;
+const stubPagePattern = /\/(reranking|realtime|image-generation|video-generation)\/$/
 
-const isVercelProduction = process.env.VERCEL_ENV === "production";
+const isVercelProduction = process.env.VERCEL_ENV === "production"
 
 const plausibleHead = isVercelProduction
   ? [
@@ -26,7 +25,7 @@ const plausibleHead = isVercelProduction
           "window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()",
       },
     ]
-  : [];
+  : []
 
 export default defineConfig({
   site: "https://effect-uai.betalyra.com",
@@ -57,12 +56,7 @@ export default defineConfig({
           description:
             "Low-level Effect-TS primitives for building AI agents: streaming agent loops, tool calling, structured output, multi-provider (OpenAI, Anthropic, Google Gemini), embeddings, and speech.",
           rawContent: true,
-          exclude: [
-            "reranking",
-            "realtime",
-            "image-generation",
-            "video-generation",
-          ],
+          exclude: ["reranking", "realtime", "image-generation", "video-generation"],
         }),
       ],
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
@@ -102,9 +96,7 @@ export default defineConfig({
         },
         {
           label: "Concepts",
-          items: [
-            { label: "Items and turns", slug: "concepts/items-and-turns" },
-          ],
+          items: [{ label: "Items and turns", slug: "concepts/items-and-turns" }],
         },
         {
           label: "Language models",
@@ -244,6 +236,16 @@ export default defineConfig({
           ],
         },
         {
+          label: "Sandboxes",
+          items: [
+            { label: "Overview", slug: "sandboxes" },
+            {
+              label: "Providers",
+              items: [{ label: "Microsandbox", slug: "sandboxes/providers/microsandbox" }],
+            },
+          ],
+        },
+        {
           label: "Migrations",
           collapsed: true,
           items: [
@@ -283,4 +285,4 @@ export default defineConfig({
     }),
     mdx(),
   ],
-});
+})

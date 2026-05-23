@@ -90,6 +90,14 @@
       "types": "./dist/sandbox/SandboxError.d.mts",
       "import": "./dist/sandbox/SandboxError.mjs"
     },
+    "./SandboxImage": {
+      "types": "./dist/sandbox/SandboxImage.d.mts",
+      "import": "./dist/sandbox/SandboxImage.mjs"
+    },
+    "./SandboxNetwork": {
+      "types": "./dist/sandbox/SandboxNetwork.d.mts",
+      "import": "./dist/sandbox/SandboxNetwork.mjs"
+    },
     "./SpeechSynthesizer": {
       "types": "./dist/speech-synthesizer/SpeechSynthesizer.d.mts",
       "import": "./dist/speech-synthesizer/SpeechSynthesizer.mjs"

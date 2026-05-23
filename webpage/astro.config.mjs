@@ -80,6 +80,11 @@ export default defineConfig({
           label: "GitHub",
           href: "https://github.com/betalyra/effect-uai",
         },
+        {
+          icon: "x.com",
+          label: "X (Twitter)",
+          href: "https://x.com/effectuai_sdk",
+        },
       ],
       sidebar: [
         {

@@ -102,7 +102,7 @@ On top of [`CommonCreateRequest`](/sandboxes/#pick-an-image)
   to the layer's `defaultRegion`, then to the org's default. Volumes
   are currently `"ord"`-only.
 - **`memory`** — accepts a byte count, a
-  [`Memory`](/sandboxes/#memory-and-sizing-knobs) branded value, or
+  [`Memory`](/sandboxes/#cpu-memory-and-other-sizing-knobs) branded value, or
   a human string like `"1280 MiB"` / `"1 GiB"`. Deno's accepted range
   at GA is 768 MiB – 4 GiB (default ~1.2 GiB).
 - **`labels`** — up to 5 key/value pairs for filtering in

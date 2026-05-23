@@ -21,6 +21,7 @@ import {
   VolumeId,
 } from "@effect-uai/core/Sandbox"
 import * as SandboxError from "@effect-uai/core/SandboxError"
+import * as Memory from "@effect-uai/core/Memory"
 import {
   Array as Arr,
   Clock,
@@ -71,7 +72,12 @@ export type MicrosandboxCreateRequest = Omit<CommonCreateRequest, "secrets"> & {
   readonly secrets?: ReadonlyArray<MicrosandboxBoundSecret>
   readonly name?: string
   readonly cpus?: number
-  readonly memoryMib?: number
+  /**
+   * Memory size. Accepts a byte count, a {@link Memory.Memory}, or a
+   * human string like `"1 GiB"` / `"512 MiB"`. Rounded up to whole
+   * MiB at the SDK boundary (microsandbox's builder takes MiB).
+   */
+  readonly memory?: Memory.Input
   readonly workdir?: string
   readonly user?: string
   readonly maxDuration?: Duration.Input
@@ -616,7 +622,7 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
       const steps: ReadonlyArray<Step> = [
         img,
         when(request.cpus, (n) => (b) => b.cpus(n)),
-        when(request.memoryMib, (n) => (b) => b.memory(n)),
+        when(request.memory, (m) => (b) => b.memory(Math.ceil(Memory.toBytes(m) / (1024 * 1024)))),
         when(request.workdir, (p) => (b) => b.workdir(p)),
         when(request.user, (u) => (b) => b.user(u)),
         when(

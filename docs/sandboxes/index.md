@@ -86,7 +86,7 @@ const sb =
     msb.create({
       image: Image.registry("python:3.12"),
       cpus: 2,
-      memoryMib: 1024,
+      memory: "1 GiB", // or 1024 * 1024 * 1024, or Memory.gib(1)
       idleTimeout: "5 minutes", // auto-shutdown when idle
     }),
   )

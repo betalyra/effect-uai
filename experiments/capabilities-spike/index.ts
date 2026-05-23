@@ -364,105 +364,174 @@ export namespace ImageGen {
 namespace Demo {
   declare const someAudio: ArrayBuffer
 
-  // ---- (a) Transcription, lax ----------------------------------------------
+  // Provider Layer stubs — declared up front so each section can reach for
+  // them. Each layer ships markers for the capabilities its provider honors.
+  declare const ElevenLabsImpl: Layer.Layer<Transcription.Service>
+  declare const AssemblyAIImpl: Layer.Layer<Transcription.Service>
+  declare const OpenAIImpl: Layer.Layer<Transcription.Service>
+  declare const GeminiImpl: Layer.Layer<Transcription.Service>
+  declare const CachingLLMImpl: Layer.Layer<LLM.Service>
+  declare const NonCachingLLMImpl: Layer.Layer<LLM.Service>
+
+  const elevenLabsLayer = Layer.mergeAll(
+    ElevenLabsImpl,
+    Layer.succeed(Transcription.DiarizationGuarantee, undefined),
+    Layer.succeed(Transcription.WordTimestampsGuarantee, undefined),
+  )
+  const assemblyAILayer = Layer.mergeAll(
+    AssemblyAIImpl,
+    Layer.succeed(Transcription.DiarizationGuarantee, undefined),
+    Layer.succeed(Transcription.WordTimestampsGuarantee, undefined),
+  )
+  const openaiLayer = Layer.mergeAll(
+    OpenAIImpl,
+    Layer.succeed(Transcription.WordTimestampsGuarantee, undefined),
+    // no DiarizationGuarantee — OpenAI Whisper can't diarize
+  )
+  const geminiLayer = GeminiImpl // ships nothing — Gemini STT has neither cap
+  const cachingLLMLayer = Layer.mergeAll(
+    CachingLLMImpl,
+    Layer.succeed(LLM.CacheControlGuarantee, undefined),
+  )
+  const nonCachingLLMLayer = NonCachingLLMImpl
+
+  // ==========================================================================
+  // (a) Transcription — LAX (no requires)
+  // ==========================================================================
   const lax = Effect.gen(function* () {
     const r = yield* Transcription.transcribe({
       audio: someAudio,
       diarization: true,
     })
-    // r : Transcription.Result — words and speakerId are optional.
+    // r.words?.[0].speakerId : string | undefined — caller narrows by check.
     for (const w of r.words ?? []) {
       if (w.speakerId !== undefined) console.log(`[${w.speakerId}] ${w.text}`)
       else console.log(w.text)
     }
   })
 
-  // ---- (b) Transcription, compile-time gated -------------------------------
-  // require* adds R requirements but does NOT change the result shape.
-  // Single-speaker audio still legitimately returns no speakerId; the
-  // consumer's `if (w.speakerId)` is unavoidable.
-  const strict = Transcription.transcribe({
-    audio: someAudio,
-    diarization: true,
-    wordTimestamps: true,
-  }).pipe(Transcription.requireDiarization, Transcription.requireWordTimestamps)
-
-  const strictConsume = Effect.gen(function* () {
-    const r = yield* strict
-    // r : Transcription.Result — same shape as lax. The marker handles
-    // configuration; the optional checks handle audio reality.
+  // ==========================================================================
+  // (b) Transcription — GATE-ONLY (requireDiarization + requireWordTimestamps)
+  // ==========================================================================
+  // ✓ Compiles and runs against a layer that ships both markers.
+  const strictOk = Effect.gen(function* () {
+    const r = yield* Transcription.transcribe({
+      audio: someAudio,
+      diarization: true,
+      wordTimestamps: true,
+    }).pipe(Transcription.requireDiarization, Transcription.requireWordTimestamps)
+    // result shape UNCHANGED — speakerId still optional. Marker only gates config.
     for (const w of r.words ?? []) {
-      if (w.speakerId !== undefined) {
-        console.log(`[${w.speakerId}] ${w.text}`)
-      } else {
-        console.log(w.text)
-      }
+      if (w.speakerId !== undefined) console.log(`[${w.speakerId}] ${w.text}`)
     }
-  })
+  }).pipe(Effect.provide(elevenLabsLayer))
+  void Effect.runPromise(strictOk)
 
-  // ---- (c) LLM thinking — GATE-ONLY ----------------------------------------
-  // requireThinking gates config (provider must support thinking) but does
-  // NOT promise reasoning text — the model decides whether to think.
-  const llmThinking = LLM.chat({
-    messages: [{ role: "user", content: "explain X" }],
-    thinking: true,
-  }).pipe(LLM.requireThinking)
+  // ✗ Same call against Gemini (ships no markers) — gate fails.
+  const strictBad = Effect.gen(function* () {
+    return yield* Transcription.transcribe({ audio: someAudio }).pipe(
+      Transcription.requireDiarization,
+    )
+  }).pipe(Effect.provide(geminiLayer))
+  // strictBad.R = DiarizationGuarantee (leaked, NOT never)
+  // @ts-expect-error — Gemini layer doesn't ship DiarizationGuarantee
+  void Effect.runPromise(strictBad)
 
-  const llmThinkingConsume = Effect.gen(function* () {
-    const r = yield* llmThinking
-    // r.reasoning : string | undefined  — still optional
+  // ==========================================================================
+  // (c) LLM thinking — GATE-ONLY (no narrowing case to fail)
+  // ==========================================================================
+  // ✓ requireThinking gates config; reasoning stays optional (model decides).
+  const thinkingOk = Effect.gen(function* () {
+    const r = yield* LLM.chat({
+      messages: [{ role: "user", content: "explain X" }],
+      thinking: true,
+    }).pipe(LLM.requireThinking)
+    // r.reasoning : string | undefined  — still optional, no narrowing
     if (r.reasoning !== undefined) console.log(r.reasoning)
   })
+  void thinkingOk
 
-  // ---- (d) LLM cacheControl — NARROW ---------------------------------------
-  // requireCacheControl both gates config AND narrows the result's usage
-  // fields. Cache-enabled calls always report cache token counts (possibly 0).
-  const llmCached = LLM.chat({
-    messages: [{ role: "user", content: "hi" }],
-    cacheControl: true,
-  }).pipe(LLM.requireCacheControl)
-
-  const llmCachedConsume = Effect.gen(function* () {
-    const r = yield* llmCached
-    // r.usage.cacheReadInputTokens : number  — narrowed, not `| undefined`
+  // ==========================================================================
+  // (d) LLM cacheControl — NARROW
+  // ==========================================================================
+  // ✓ Narrows cache token counts to `number` AND requires the layer to ship
+  //   CacheControlGuarantee.
+  const cachedOk = Effect.gen(function* () {
+    const r = yield* LLM.chat({ messages: [], cacheControl: true }).pipe(LLM.requireCacheControl)
+    // r.usage.cacheReadInputTokens : number  (narrowed)
     const cacheHit: number = r.usage.cacheReadInputTokens
     const cacheCreate: number = r.usage.cacheCreationInputTokens
     console.log(`cache: read=${cacheHit} create=${cacheCreate}`)
-  })
+  }).pipe(Effect.provide(cachingLLMLayer))
+  void Effect.runPromise(cachedOk)
 
-  // ---- (e) LLM structured output — NARROW ----------------------------------
-  // requireStructured<T> claims the output conforms to T. Provider validates
-  // schema server-side; success path guarantees `parsed: T`.
+  // ✗ Reading the narrowed field WITHOUT piping requireCacheControl — narrow fails.
+  const cachedNarrowBad = Effect.gen(function* () {
+    const r = yield* LLM.chat({ messages: [] })
+    // @ts-expect-error — `cacheReadInputTokens` is `number | undefined` in lax
+    const _bad: number = r.usage.cacheReadInputTokens
+    return _bad
+  })
+  void cachedNarrowBad
+
+  // ✗ Piping requireCacheControl against a non-caching layer — gate fails.
+  const cachedGateBad = Effect.gen(function* () {
+    return yield* LLM.chat({ messages: [], cacheControl: true }).pipe(LLM.requireCacheControl)
+  }).pipe(Effect.provide(nonCachingLLMLayer))
+  // @ts-expect-error — CacheControlGuarantee not in nonCachingLLMLayer
+  void Effect.runPromise(cachedGateBad)
+
+  // ==========================================================================
+  // (e) LLM structured<T> — NARROW
+  // ==========================================================================
+  // ✓ Schema validated server-side; `parsed` narrowed to T.
   type Recipe = {
     readonly title: string
     readonly steps: ReadonlyArray<string>
   }
-
-  const llmStructured = LLM.chat({
-    messages: [{ role: "user", content: "give me a recipe" }],
-  }).pipe(LLM.requireStructured<Recipe>())
-
-  const llmStructuredConsume = Effect.gen(function* () {
-    const r = yield* llmStructured
-    // r.parsed : Recipe  — narrowed, not `| undefined`
+  const structuredOk = Effect.gen(function* () {
+    const r = yield* LLM.chat({
+      messages: [{ role: "user", content: "give me a recipe" }],
+    }).pipe(LLM.requireStructured<Recipe>())
+    // r.parsed : Recipe  (narrowed, not `| undefined`)
     const recipe: Recipe = r.parsed
     console.log(`${recipe.title}: ${recipe.steps.length} steps`)
   })
+  void structuredOk
 
-  // ---- (f) Image gen seed — NARROW -----------------------------------------
-  // requireSeed both gates config AND narrows. Seed is echoed (or auto-
-  // generated and returned) by any seed-supporting provider, every call.
-  const imgWithSeed = ImageGen.generate({ prompt: "a cat", seed: 42 }).pipe(ImageGen.requireSeed)
-  const imgWithSeedConsume = Effect.gen(function* () {
-    const r = yield* imgWithSeed
-    // r.seed : number  — narrowed
+  // ✗ Reading parsed without requireStructured — narrow fails.
+  const structuredBad = Effect.gen(function* () {
+    const r = yield* LLM.chat({ messages: [] })
+    // @ts-expect-error — `parsed` is `undefined` (T = never) without requireStructured
+    const _bad: Recipe = r.parsed
+    return _bad
+  })
+  void structuredBad
+
+  // ==========================================================================
+  // (f) ImageGen seed — NARROW
+  // ==========================================================================
+  // ✓ Seed echoed (or auto-generated and returned) every call.
+  const seedOk = Effect.gen(function* () {
+    const r = yield* ImageGen.generate({ prompt: "a cat", seed: 42 }).pipe(ImageGen.requireSeed)
+    // r.seed : number  (narrowed)
     const seed: number = r.seed
     console.log(`generated with seed ${seed}`)
   })
+  void seedOk
 
-  // ---- (h) Embeddings — no narrowing -----------------------------------------
-  // `task` tunes the vector but presence of `vector` doesn't depend on it.
-  // Nothing to narrow. Marker still gates config if the caller cares.
+  // ✗ Reading seed without requireSeed — narrow fails.
+  const seedBad = Effect.gen(function* () {
+    const r = yield* ImageGen.generate({ prompt: "x" })
+    // @ts-expect-error — `seed` is `number | undefined` in lax
+    const _bad: number = r.seed
+    return _bad
+  })
+  void seedBad
+
+  // ==========================================================================
+  // (g) Embeddings — GATE-ONLY (no narrowing — vector shape unchanged)
+  // ==========================================================================
   const emb = Effect.gen(function* () {
     const r = yield* Embedding.embed({
       input: "hello",
@@ -470,157 +539,44 @@ namespace Demo {
     }).pipe(Embedding.requireTaskTuning)
     return r.vector
   })
+  void emb
 
-  // ---- (f) Provider Layers ship the markers they honor ---------------------
-  declare const ElevenLabsImpl: Layer.Layer<Transcription.Service>
-  declare const GeminiImpl: Layer.Layer<Transcription.Service>
-
-  // ElevenLabs Scribe honors both → ships both guarantees
-  const elevenLabsLayer = Layer.mergeAll(
-    ElevenLabsImpl,
-    Layer.succeed(Transcription.DiarizationGuarantee, undefined),
-    Layer.succeed(Transcription.WordTimestampsGuarantee, undefined),
-  )
-
-  // Gemini transcription has neither → ships no guarantees
-  const geminiLayer = GeminiImpl
-
-  // ---- (g) Fallback ---------------------------------------------------------
-  declare const AssemblyAIImpl: Layer.Layer<Transcription.Service>
-  declare const OpenAIImpl: Layer.Layer<Transcription.Service>
-
-  const assemblyAILayer = Layer.mergeAll(
-    AssemblyAIImpl,
-    Layer.succeed(Transcription.DiarizationGuarantee, undefined),
-    Layer.succeed(Transcription.WordTimestampsGuarantee, undefined),
-  )
-
-  const openaiLayer = Layer.mergeAll(
-    OpenAIImpl,
-    Layer.succeed(Transcription.WordTimestampsGuarantee, undefined),
-    // no DiarizationGuarantee — OpenAI Whisper can't diarize
-  )
-
-  // Lax fallback — any combination works, output is widest result type.
+  // ==========================================================================
+  // (h) Fallback — marker intersection across tiers
+  // ==========================================================================
+  // ✓ Lax fallback works with any combination (no markers required).
   const laxFallback = Transcription.fallback([elevenLabsLayer, openaiLayer, geminiLayer])
-  // laxFallback : Layer<Transcription.Service>  (markers don't survive intersection)
+  // laxFallback : Layer<Service>  (no marker survives the intersection)
+  const laxFallbackUse = lax.pipe(Effect.provide(laxFallback))
+  void Effect.runPromise(laxFallbackUse)
 
-  const laxConsumer = Effect.gen(function* () {
-    const r = yield* Transcription.transcribe({
-      audio: someAudio,
-      diarization: true,
-    })
-    // r : Result<never>
-    for (const w of r.words ?? []) {
-      if (w.speakerId !== undefined) console.log(`[${w.speakerId}] ${w.text}`)
-    }
-  }).pipe(Effect.provide(laxFallback))
-
-  // Strict fallback — every tier MUST provide the required marker.
+  // ✓ Strict fallback — every tier ships both markers, both survive.
   const strictFallback = Transcription.fallback([elevenLabsLayer, assemblyAILayer])
   // strictFallback : Layer<Service | DiarizationGuarantee | WordTimestampsGuarantee>
-
-  const strictConsumer = Effect.gen(function* () {
-    const r = yield* Transcription.transcribe({
-      audio: someAudio,
-      diarization: true,
-      wordTimestamps: true,
-    }).pipe(Transcription.requireDiarization, Transcription.requireWordTimestamps)
-    for (const w of r.words ?? []) {
-      if (w.speakerId !== undefined) {
-        console.log(`[${w.speakerId}] ${w.text}`)
-      }
-    }
+  const strictFallbackUse = Effect.gen(function* () {
+    return yield* Transcription.transcribe({ audio: someAudio }).pipe(
+      Transcription.requireDiarization,
+      Transcription.requireWordTimestamps,
+    )
   }).pipe(Effect.provide(strictFallback))
+  void Effect.runPromise(strictFallbackUse)
 
-  // ---- (g.bad) compile failure on a partial-capability fallback ------------
-  // OpenAI lacks DiarizationGuarantee, so the intersection drops Diarization
-  // for the whole fallback. Consuming with `requireDiarization` then leaves
-  // R = DiarizationGuarantee — a terminal call like runPromise rejects it.
+  // ✗ Partial fallback — one tier lacks DiarizationGuarantee → it drops from
+  //   the intersection. Consuming with requireDiarization leaks the marker
+  //   into R, and runPromise rejects.
   const partialFallback = Transcription.fallback([
     elevenLabsLayer, // D + WT
     openaiLayer, //     WT only — breaks the intersection for D
     assemblyAILayer, // D + WT
   ])
   // partialFallback : Layer<Service | WordTimestampsGuarantee>
-
-  const partialProvided = Effect.gen(function* () {
-    const r = yield* Transcription.transcribe({ audio: someAudio }).pipe(
-      Transcription.requireDiarization,
-    )
-    return r
-  }).pipe(Effect.provide(partialFallback))
-  // partialProvided services R = DiarizationGuarantee (NOT never).
-
-  // @ts-expect-error — R is not `never`, `runPromise` requires fully discharged R.
-  void Effect.runPromise(partialProvided)
-
-  // ===========================================================================
-  // Compile-error verification — each @ts-expect-error MUST fire
-  // ===========================================================================
-  // If any of these directives become "unused" (the line below typechecks),
-  // the build breaks. That's the regression check: we've lost a guarantee.
-
-  // ── (E1) GATE-ONLY: requireDiarization against a Layer without the marker ──
-  const gemOnlyProvided = Effect.gen(function* () {
+  const partialFallbackUse = Effect.gen(function* () {
     return yield* Transcription.transcribe({ audio: someAudio }).pipe(
       Transcription.requireDiarization,
     )
-  }).pipe(Effect.provide(geminiLayer))
-  // gemOnlyProvided.R = DiarizationGuarantee (leaked)
-
-  // @ts-expect-error — Gemini layer doesn't ship DiarizationGuarantee
-  void Effect.runPromise(gemOnlyProvided)
-
-  // ── (E2) NARROW: reading cache tokens without requireCacheControl ─────────
-  const llmLax = Effect.gen(function* () {
-    const r = yield* LLM.chat({ messages: [] })
-    // @ts-expect-error — `cacheReadInputTokens` is `number | undefined` in lax
-    const _bad: number = r.usage.cacheReadInputTokens
-    return _bad
-  })
-
-  // ── (E3) NARROW: reading parsed without requireStructured ──────────────────
-  type Recipe2 = { readonly title: string }
-  const llmUnstructured = Effect.gen(function* () {
-    const r = yield* LLM.chat({ messages: [] })
-    // @ts-expect-error — `parsed` is `undefined` (T = never) without requireStructured
-    const _bad: Recipe2 = r.parsed
-    return _bad
-  })
-
-  // ── (E4) NARROW: reading seed without requireSeed ─────────────────────────
-  const imgLax = Effect.gen(function* () {
-    const r = yield* ImageGen.generate({ prompt: "x" })
-    // @ts-expect-error — `seed` is `number | undefined` in lax
-    const _bad: number = r.seed
-    return _bad
-  })
-
-  // ── (E5) GATE-ONLY: requireCacheControl against a non-caching Layer ───────
-  // Same shape as E1 but for a narrowing capability — the narrowing alone
-  // doesn't help; the Layer must still satisfy the marker.
-  declare const NonCachingImpl: Layer.Layer<LLM.Service>
-  const nonCachingLayer = NonCachingImpl
-
-  const llmCachedOnNonCachingProvider = Effect.gen(function* () {
-    return yield* LLM.chat({ messages: [], cacheControl: true }).pipe(LLM.requireCacheControl)
-  }).pipe(Effect.provide(nonCachingLayer))
-
-  // @ts-expect-error — CacheControlGuarantee not provided by nonCachingLayer
-  void Effect.runPromise(llmCachedOnNonCachingProvider)
-
-  // Suppress unused-var lint
-  void llmLax
-  void llmUnstructured
-  void imgLax
-  void laxConsumer
-  void strictConsumer
-  void llmThinkingConsume
-  void llmCachedConsume
-  void llmStructuredConsume
-  void imgWithSeedConsume
-  void emb
+  }).pipe(Effect.provide(partialFallback))
+  // @ts-expect-error — DiarizationGuarantee leaks; R is not `never`.
+  void Effect.runPromise(partialFallbackUse)
 }
 
 void Demo

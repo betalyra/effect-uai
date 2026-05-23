@@ -6,6 +6,7 @@
     { "path": "./packages/providers/google" },
     { "path": "./packages/providers/anthropic" },
     { "path": "./packages/providers/jina" },
+    { "path": "./packages/providers/deno" },
     { "path": "./recipes" }
   ]
 }

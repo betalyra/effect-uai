@@ -82,6 +82,10 @@
       "types": "./dist/music-generator/MusicGenerator.d.mts",
       "import": "./dist/music-generator/MusicGenerator.mjs"
     },
+    "./Memory": {
+      "types": "./dist/sandbox/Memory.d.mts",
+      "import": "./dist/sandbox/Memory.mjs"
+    },
     "./Sandbox": {
       "types": "./dist/sandbox/Sandbox.d.mts",
       "import": "./dist/sandbox/Sandbox.mjs"

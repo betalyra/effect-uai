@@ -321,9 +321,10 @@ not by every provider that has snapshots.
 
 ## Provider matrix
 
-| Provider     | Snapshots | Volumes | Secrets | Hostname allowlist | Pause/Resume | Custom image | Port exposure        |
-| ------------ | --------- | ------- | ------- | ------------------ | ------------ | ------------ | -------------------- |
-| Microsandbox | ✓         | ✓       | ✓       | ✓                  | —            | —            | — (create-time only) |
+| Provider      | Snapshots               | Volumes        | Secrets | Hostname allowlist | Pause/Resume | Custom image | Port exposure        |
+| ------------- | ----------------------- | -------------- | ------- | ------------------ | ------------ | ------------ | -------------------- |
+| Microsandbox  | ✓                       | ✓              | ✓       | ✓                  | —            | —            | — (create-time only) |
+| Deno Sandbox  | ◐ (volume-derived)      | ✓ (`ord` only) | ✓       | ✓ (no CIDRs)       | —            | —            | ✓                    |
 
 More providers (Vercel, E2B, Modal, Cloudflare, Daytona) land as
 their adapters ship; the matrix grows downward, not the API surface.
@@ -341,6 +342,11 @@ their adapters ship; the matrix grows downward, not the API surface.
 
 ## Next step
 
-Wire up the only adapter shipping today:
-[Microsandbox](/sandboxes/providers/microsandbox/) — a local microVM
-runtime, no API key, runs against the `msb` daemon on your machine.
+Wire up an adapter:
+
+- **[Microsandbox](/sandboxes/providers/microsandbox/)** — local
+  microVM runtime, no API key, runs against the `msb` daemon on your
+  machine.
+- **[Deno Sandbox](/sandboxes/providers/deno/)** — cloud microVM on
+  the Deno Deploy edge with sub-second boot, hostname-allowlist
+  egress, proxy-injected secrets, and public preview URLs.

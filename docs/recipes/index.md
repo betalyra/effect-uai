@@ -63,3 +63,9 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | Recipe                                                     | One-line                                                                                             |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | [Basic music generation](/recipes/basic-music-generation/) | Generate a 30-second clip with Lyria 3; simple prompt or weighted prompts with lyrics and BPM hints. |
+
+## Sandboxes
+
+| Recipe                                                 | One-line                                                                                                                |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| [Run, fix, repeat](/recipes/sandbox-code-interpreter/) | LLMs are bad at exact computation — give them Python. Tracebacks from a sandboxed microVM feed back into the next turn. |

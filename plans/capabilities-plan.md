@@ -4,376 +4,51 @@ Companion to [capabilities.md](capabilities.md) (the design) and
 [experiments/capabilities-spike/index.ts](../experiments/capabilities-spike/index.ts)
 (the type-level reference). This document is the concrete migration plan.
 
-**Scope of this document:** STT (Transcriber) end-to-end, then TTS
-(SpeechSynthesizer). Embeddings, LLM, and ImageGen are deferred to a
-later plan once the STT/TTS rollout has shaken out the ergonomics.
+**Scope:** Phase 0 prerequisites, then STT (Transcriber) end-to-end,
+then TTS (SpeechSynthesizer). Embeddings, LLM, and ImageGen are
+deferred to a later plan once STT/TTS rollout has shaken out the
+ergonomics.
 
 ---
 
-## 0. Sequencing rationale
+## 0. Scope & sequencing
 
-The consolidated guideline's §10 lists seven adoption steps. Of those,
-the in-flight `refactor-capabilities` branch already covers parts of
-steps 2 and 3 (the `Caps: Step 1` WIP commit). This plan picks up at
-**step 4 — introduce the first per-modifier markers on Transcriber +
-the `fallback` combinator** and carries it through to a clean,
-type-safe STT surface before moving to TTS.
+Three phases:
+
+- **Phase 0 — Prerequisites.** `dropUnsupported` helper +
+  `CapabilityWarning` event; lock in the "translate provider errors,
+  don't maintain per-model tables" policy (guideline §2.3).
+- **Phase 1 — STT.** Per-modifier markers + `fallback` combinator on
+  Transcriber. Remove per-model variance checks. Promote silent
+  bucket-2 drops to `dropUnsupported`.
+- **Phase 2 — TTS.** `fallback` combinator on SpeechSynthesizer.
+  Promote silent pronunciation drops to `Unsupported`. No new
+  per-modifier markers.
 
 We start with STT because:
 
-- The two modifiers we need (`diarization`, `wordTimestamps`) are the
-  cleanest GATE-ONLY cases in the spike — no NARROW machinery, no `as
-  any` casts.
-- The provider gap is well understood: ElevenLabs and Inworld support
-  both; OpenAI supports word timestamps for `whisper-1` only and no
-  diarization; Gemini supports neither at the prompt-driven endpoint.
+- `diarization` and `wordTimestamps` are the cleanest GATE-ONLY
+  cases — no result-type changes, no `as any` casts.
+- The provider gap is well understood: ElevenLabs and Inworld
+  support both; OpenAI supports word timestamps for `whisper-1` only
+  and no diarization; Gemini supports neither.
 - The existing `SttStreaming` service-level marker gives us a
-  pattern-mate already in tree
+  pattern-mate in tree
   ([Transcriber.ts:80](../packages/core/src/transcriber/Transcriber.ts#L80))
   — we mirror its declaration / registration / consumption shape.
 
-TTS comes second because its per-modifier story is thinner (most TTS
-flags are advisory and belong in row E "warn-and-drop") — most of the
-remaining TTS work is §9.1 (promote pronunciation silent-drops to
-`Unsupported`) rather than new markers.
+TTS comes second because its per-modifier story is thinner — most
+TTS modifiers are bucket 2 (warn-and-drop) or bucket 3 (silent), not
+marker candidates. Phase 2 is mostly the pronunciation fix.
 
 ---
 
-## 1. Phase 1 — STT (Transcriber)
+## 1. Phase 0 — Prerequisites
 
-### 1.1 Core additions
+Unblocks Phase 1's STT-prompt warn-and-drop AND Phase 2's
+pronunciation rejection logging. Small, mechanical, lands first.
 
-All changes in `packages/core/src/transcriber/`. New file
-`Capabilities.ts` keeps marker declarations and combinators together;
-re-exported from `Transcriber.ts` for caller ergonomics.
-
-#### 1.1.1 New marker declarations
-
-```ts
-// packages/core/src/transcriber/Capabilities.ts
-import { Context, Effect, Stream } from "effect"
-
-/**
- * GATE-ONLY marker — Layers that diarize ship this; consumers gate via
- * `requireDiarization`. Result `speakerId` stays optional because
- * single-speaker audio legitimately returns no speaker even on a
- * diarizing provider. See plans/capabilities.md §4.2.
- */
-export class DiarizationGuarantee extends Context.Service<DiarizationGuarantee, void>()(
-  "@betalyra/effect-uai/capability/DiarizationGuarantee",
-) {}
-
-export class WordTimestampsGuarantee extends Context.Service<WordTimestampsGuarantee, void>()(
-  "@betalyra/effect-uai/capability/WordTimestampsGuarantee",
-) {}
-```
-
-Tag string convention matches the existing
-`@betalyra/effect-uai/capability/SttStreaming`
-([Transcriber.ts:81](../packages/core/src/transcriber/Transcriber.ts#L81)).
-
-#### 1.1.2 `requireX` combinators
-
-Per spike §1 (GATE-ONLY shape, no result narrowing). Both Effect-
-and Stream-friendly variants because `transcribe` returns an Effect
-but `streamTranscriptionFrom` returns a Stream — the spike only
-covers Effect.
-
-```ts
-export const requireDiarization: {
-  <A, E, R>(eff: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | DiarizationGuarantee>
-  <A, E, R>(str: Stream.Stream<A, E, R>): Stream.Stream<A, E, R | DiarizationGuarantee>
-} = (input: any) =>
-  Effect.isEffect(input)
-    ? Effect.flatMap(DiarizationGuarantee.asEffect(), () => input)
-    : Stream.unwrap(Effect.map(DiarizationGuarantee.asEffect(), () => input))
-
-// same shape for requireWordTimestamps
-```
-
-**Decision needed:** dual Effect/Stream or two named exports
-(`requireDiarization` / `requireDiarizationStream`)? The dual is
-nicer at the call site; two exports are simpler to type. Leaning
-dual — easy to reverse if it bites us.
-
-#### 1.1.3 `fallback` combinator
-
-The spike's machinery lives inside the `Transcription` namespace but
-is mechanically service-agnostic — only the runtime impl is
-service-specific (which method to chain with `Effect.orElse`).
-
-Proposal: lift `IntersectROut` to `packages/core/src/internal/typeHelpers.ts`
-(or similar; pick one — there's no existing utility module today).
-Keep a `Transcriber.fallback` runtime wrapper that knows to orElse on
-both `transcribe` and `streamTranscriptionFrom`.
-
-```ts
-// packages/core/src/transcriber/Capabilities.ts
-export const fallback = <
-  const Layers extends ReadonlyArray<Layer.Layer<Transcriber, any, any>>,
->(tiers: Layers): Layer.Layer<IntersectROut<Layers>, never, LayerRIn<Layers>> => {
-  // Build a `Transcriber` whose transcribe / streamTranscriptionFrom
-  // are `tiers.reduce((acc, t) => acc.pipe(Effect.orElse(...)))`.
-  // Materialize each tier in its own scope via Layer.unwrapEffect.
-  // ...
-}
-```
-
-**Two TypeScript gotchas from the spike that must carry over:**
-
-1. `<const Layers extends …>` — without `const`, array literals
-   widen and `IntersectROut` returns `unknown`.
-2. `infer _E, infer _RIn` (not `any, any`) in `ROutOf` — `Layer` is
-   contravariant in `ROut`, so `any` in other slots collapses `infer`
-   to `unknown`.
-
-Both already documented in the spike header
-([index.ts:496-503](../experiments/capabilities-spike/index.ts#L496)).
-Copy the comments verbatim to the runtime file so future-us doesn't
-re-learn them.
-
-**Decision needed:** is `fallback` a Transcriber-only concern for
-Phase 1, or do we factor a generic capability-fallback helper that
-SpeechSynthesizer can reuse in Phase 2? Recommendation: build it on
-Transcriber first, factor when SpeechSynthesizer needs it (don't
-pre-generalize from one example).
-
-#### 1.1.4 No changes to `TranscriptResult`, `WordTimestamp`, or
-helpers
-
-`speakerId` and `words[]` stay optional
-([Transcript.ts:6,20](../packages/core/src/domain/Transcript.ts#L6))
-— guideline §4.2 GATE-ONLY rule. The combinators only touch `R`.
-
-### 1.2 Provider Layer updates — markers
-
-Each provider's existing `Layer.mergeAll(...)` block gets one or two
-new `Layer.succeed(Marker, undefined)` lines. **No runtime behaviour
-changes.**
-
-| Provider | File | DiarizationGuarantee | WordTimestampsGuarantee |
-|---|---|---|---|
-| **ElevenLabs** STT | [ElevenLabsTranscriber.ts:167-182](../packages/providers/elevenlabs/src/ElevenLabsTranscriber.ts#L167) | ✓ ship | ✓ ship |
-| **Inworld** STT (sync) | [InworldTranscriber.ts:209-225](../packages/providers/inworld/src/InworldTranscriber.ts#L209) | ✓ ship | ✓ ship |
-| **Inworld** STT (realtime) | [InworldRealtimeTranscriber.ts:49-64](../packages/providers/inworld/src/InworldRealtimeTranscriber.ts#L49) | ✓ ship | ✓ ship |
-| **OpenAI** STT | [OpenAITranscriber.ts:267-285](../packages/providers/openai/src/OpenAITranscriber.ts#L267) | ✗ omit | **conditional — see §1.3.2** |
-| **Gemini** STT | [GeminiTranscriber.ts:203-219](../packages/providers/google/src/GeminiTranscriber.ts#L203) | ✗ omit | ✗ omit |
-
-OpenAI is the awkward one: `wordTimestamps` only works on `whisper-1`,
-not on `gpt-4o-transcribe`. Per guideline §9.3, the right move is
-either to split into `OpenAIWhisper1Layer` + `OpenAIGpt4oTranscribeLayer`
-(each ships the marker iff it applies) or to keep one Layer that
-**doesn't** ship the marker and force callers who need word timestamps
-into the typed `OpenAIWhisper1Layer`. Recommendation below.
-
-### 1.3 Per-provider request narrowing — §9.3 follow-through
-
-The `Caps: Step 1` commit already started this. The remaining work:
-
-#### 1.3.1 Gemini
-
-[GeminiTranscriber.ts:30-35](../packages/providers/google/src/GeminiTranscriber.ts#L30)
-already `Omit`s both `wordTimestamps` and `diarization` from the typed
-request. **Already correct.** Once §1.1 lands, delete the runtime
-guards at lines 62-78 — the per-modifier markers (which Gemini does
-not ship) catch the misuse at compile time for callers using the
-generic Layer.
-
-**Caveat:** the runtime guard still has value for **dynamic** provider
-selection (a `selectByModel` value-level chooser strips markers from
-the type). Keep both — narrow at type level, guard at runtime as
-defense in depth. Add a comment pointing at this plan so the
-defensive guard isn't deleted later as "dead code."
-
-#### 1.3.2 OpenAI
-
-[OpenAITranscriber.ts:33-40](../packages/providers/openai/src/OpenAITranscriber.ts#L33)
-already `Omit`s `diarization` and keeps `wordTimestamps`. Two choices:
-
-**Option A (recommended): split into model-family Layers.**
-- `OpenAIWhisper1Layer` — narrows `model` to `"whisper-1"`, keeps
-  `wordTimestamps`, ships `WordTimestampsGuarantee`.
-- `OpenAIGpt4oTranscribeLayer` — narrows `model` to gpt-4o variants,
-  `Omit`s `wordTimestamps`, ships nothing.
-- The current `OpenAITranscriber` Layer becomes a thin re-export that
-  installs whichever family the caller wants.
-
-**Option B (cheaper, less type-safe):** keep one Layer; don't ship
-the marker. Callers who want word timestamps fall back to runtime
-`Unsupported`.
-
-Recommendation: Option A. It's a one-shot cost but it lets `fallback`
-combinator users compose `OpenAIWhisper1Layer + ElevenLabsLayer` and
-get `WordTimestampsGuarantee` surviving the intersection.
-
-**Sub-decision:** do we split provider Layers in this Phase 1 plan or
-defer to a follow-up? Splitting is mechanical but touches the public
-re-exports. Recommend deferring — Phase 1 lands with Option B, Phase
-1.5 splits OpenAI.
-
-### 1.4 Mock layers + tests
-
-#### 1.4.1 MockTranscriber
-
-[MockTranscriber.ts:83-137](../packages/core/src/testing/MockTranscriber.ts#L83)
-already has `layer` (ships `SttStreaming`) and `layerSyncOnly` (omits
-`SttStreaming`). Mirror the same pattern for the new markers:
-
-- `layer(script)` — ships `SttStreaming + DiarizationGuarantee +
-  WordTimestampsGuarantee`. The "full capability" mock.
-- `layerWithoutDiarization(script)` — omits `DiarizationGuarantee`.
-- `layerWithoutWordTimestamps(script)` — omits `WordTimestampsGuarantee`.
-- Existing `layerSyncOnly` stays as-is (its consumers care about
-  `SttStreaming`, not the per-modifier markers — recommend it ship
-  both new markers too so existing tests don't break).
-
-#### 1.4.2 New tests
-
-In [Transcriber.test.ts](../packages/core/src/transcriber/Transcriber.test.ts):
-mirror the existing `SttStreaming` type-test block (lines 42-88) for
-each new marker pair.
-
-- ✓ `requireDiarization` on `transcribe(...)` against
-  `MockTranscriber.layer` typechecks and resolves to `never` R.
-- ✗ Same against `layerWithoutDiarization` leaks the marker — use
-  `@ts-expect-error` on `Effect.runPromise`.
-- ✓ `fallback([elevenlabsMock, inworldMock])` exposes both markers.
-- ✗ `fallback([elevenlabsMock, openaiMock])` exposes only
-  `WordTimestampsGuarantee`; consuming with `requireDiarization`
-  leaks.
-
-These are pure typecheck tests — vitest `expectTypeOf` (per [memory:
-no scratch type-check files][1]), not throwaway `_check-*.ts`.
-
-[1]: ../.claude/projects/-Users-janschulte-code-effect-uai/memory/feedback_no_scratch_type_checks.md
-
-#### 1.4.3 Runtime smoke for `fallback`
-
-A small integration-test that exercises the orElse chain:
-- Tier 1 returns `Unsupported`; tier 2 returns a value → fallback
-  returns the tier-2 value.
-- All tiers return `Unsupported` → fallback surfaces the last error.
-- Stream case: tier 1 errors at acquire; tier 2 streams successfully.
-
-### 1.5 Recipes / docs
-
-Add one minimal recipe under `recipes/` showing:
-
-```ts
-import { Transcriber } from "@effect-uai/core"
-import { ElevenLabsTranscriber } from "@effect-uai/elevenlabs"
-import { OpenAITranscriber } from "@effect-uai/openai"
-
-const layer = Transcriber.fallback([ElevenLabsTranscriber.layer, OpenAITranscriber.layer])
-
-const program = Effect.gen(function* () {
-  const r = yield* Transcriber.transcribe({ audio, diarization: true })
-    .pipe(Transcriber.requireDiarization)
-  return r
-}).pipe(Effect.provide(layer))
-```
-
-Recipe runner naming follows the established pattern: `run-node.ts`
-([memory][2]).
-
-[2]: ../.claude/projects/-Users-janschulte-code-effect-uai/memory/feedback_runner_naming.md
-
-### 1.6 Phase 1 deliverable checklist
-
-- [ ] `packages/core/src/transcriber/Capabilities.ts` with two
-      markers, two `requireX` combinators, `fallback`.
-- [ ] Re-exports from
-      `packages/core/src/transcriber/Transcriber.ts` (no breaking
-      change to existing surface).
-- [ ] Layer registrations in ElevenLabs, Inworld (sync + realtime),
-      OpenAI (deferred to Phase 1.5), Gemini.
-- [ ] MockTranscriber `layer` / `layerWithoutDiarization` /
-      `layerWithoutWordTimestamps`.
-- [ ] `expectTypeOf` blocks for each marker in `Transcriber.test.ts`.
-- [ ] Runtime smoke for `fallback` (3 cases above).
-- [ ] One recipe under `recipes/transcribe-fallback/` with
-      `run-node.ts`.
-- [ ] No changes to `TranscriptResult` / `WordTimestamp` shapes.
-
----
-
-## 2. Phase 2 — TTS (SpeechSynthesizer)
-
-Smaller than Phase 1. The two service-level markers
-(`TtsIncrementalText`, `MultiSpeakerTts`) already exist
-([SpeechSynthesizer.ts:162,180](../packages/core/src/speech-synthesizer/SpeechSynthesizer.ts#L162))
-and providers already ship/omit them correctly. The work here is:
-
-1. **Add a `fallback` combinator for TTS** (parallel to §1.1.3).
-2. **Promote silent pronunciation drops to `Unsupported`** — guideline
-   §9.1.
-3. **Decide whether any TTS modifiers warrant per-modifier markers.**
-
-### 2.1 Fallback for SpeechSynthesizer
-
-Mechanical: lift the `IntersectROut` type helper (factored out in
-§1.1.3) into a shared location, then write
-`SpeechSynthesizer.fallback` that orElses across all five service
-methods. Carries existing service-level markers
-(`TtsIncrementalText`, `MultiSpeakerTts`) through the intersection
-correctly.
-
-### 2.2 §9.1 — pronunciation drops
-
-| Provider | File | Current behaviour | Fix |
-|---|---|---|---|
-| **Inworld** TTS | [InworldSynthesizer.ts:78-95](../packages/providers/inworld/src/InworldSynthesizer.ts#L78) | non-IPA entries silently skipped | reject with `AiError.Unsupported` if any non-IPA entry present |
-| **ElevenLabs** TTS | [ElevenLabsSynthesizer.ts:79-113](../packages/providers/elevenlabs/src/ElevenLabsSynthesizer.ts#L79) | whole-array dropped on unsupported model; per-item x-sampa silently dropped | reject with `Unsupported` for both gaps |
-
-`pronunciations` is row D not row E — the override is load-bearing
-(guideline §4.3).
-
-### 2.3 Per-modifier markers for TTS — discussion only
-
-Looking at the TTS modifier surface against the §4.2 NARROW/GATE-ONLY
-rule:
-
-| Modifier | Row | Why |
-|---|---|---|
-| `pronunciations` | D (Unsupported) | load-bearing; not a marker case |
-| `speed` | E (warn-and-drop) | clamp/ignore still produces valid audio |
-| `languageCode` | E | hint; provider may ignore |
-| `outputFormat` | D (existing) | provider can't fulfill the shape — already correct on Gemini |
-| `instructions` (OpenAI) | E | gpt-4o-mini-tts only; silent today |
-
-None of these is a per-modifier marker candidate. The marker pattern
-fits **on/off capabilities the caller can require** — TTS's optional
-fields are mostly "hints that may be ignored" (row E) or "data-driven
-gaps" (row D), not on/off configuration gates.
-
-**Recommendation:** **no new TTS markers in Phase 2.** The marker
-discussion can revisit when we add provider-specific knobs (e.g. SSML
-support could become a `SsmlGuarantee` marker if/when we surface a
-common SSML field).
-
-### 2.4 Phase 2 deliverable checklist
-
-- [ ] `SpeechSynthesizer.fallback` (using the lifted helper).
-- [ ] Inworld pronunciation: silent drop → `Unsupported`.
-- [ ] ElevenLabs pronunciation: two silent drops → `Unsupported`.
-- [ ] Update `MockSpeechSynthesizer.layerWithoutIncremental`
-      etc. if anything in §2.1 forces a shape change (don't expect
-      so).
-- [ ] Tests for fallback marker intersection.
-- [ ] No changes to `SpeechSynthesizerService` shape.
-
----
-
-## 3. Cross-cutting work (touches both phases)
-
-### 3.1 `dropUnsupported` helper + `CapabilityWarning` event
-
-Guideline §10 step 1. Lowest-disruption fix for the §1.3 silent-drop
-problem. Not strictly required for Phase 1 (STT has no silent drops
-that warrant it), but **prerequisite for §9.4** which Phase 2's
-pronunciation work will surface.
-
-Sketch:
+### 1.1 `CapabilityWarning` event
 
 ```ts
 // packages/core/src/domain/CapabilityWarning.ts
@@ -385,7 +60,15 @@ export type CapabilityWarning = {
   readonly value: unknown
   readonly reason: string
 }
+```
 
+Log-only for now (no API surface). Promote to typed `AiError`
+variant only if a consumer needs to pattern-match — tracked as open
+item in guideline §11.
+
+### 1.2 `dropUnsupported` helper
+
+```ts
 // packages/core/src/capabilities/dropUnsupported.ts
 export const dropUnsupported = (
   warning: Omit<CapabilityWarning, "_tag">,
@@ -393,74 +76,493 @@ export const dropUnsupported = (
   Effect.logWarning("Capability dropped", { ...warning, _tag: "CapabilityWarning" })
 ```
 
-**Decision needed:** does `CapabilityWarning` become an `AiError`
-variant (typed channel, caller pattern-matches) or stay on the log
-side (observability only)? Guideline open question §6 leaves this
-undecided. **Recommend:** start log-side (cheaper, no API surface
-change). Promote to typed error if a real consumer needs to react.
+That's the whole API. Used by adapters at the point where they drop
+a bucket-2 field.
 
-### 3.2 Provider registration audit
+### 1.3 Provider error translation policy — locked in
 
-After Phase 1+2 land, sweep every provider Layer and confirm:
+Guideline §2.3: per-Layer gaps stay as proactive guards; per-model
+gaps **translate the provider's error**. Phase 1 will exercise this
+by removing OpenAI's `wordTimestamps && model !== "whisper-1"` check.
 
-- Every supported per-modifier capability has its marker registered.
-- Every unsupported capability is **either** narrowed out of the
-  typed request **or** runtime-guarded **or** both (defense in depth
-  for dynamic selection).
+No new infrastructure needed — existing `AiError.Unsupported`
+covers the translated case. The work is in each adapter's existing
+error-translation layer (already extracts `error` from non-2xx
+responses).
 
-Track in a follow-up checklist commit; don't gate the phases on it.
+### 1.4 Phase 0 deliverables
 
----
-
-## 4. Decisions to make before coding
-
-These need answers before Phase 1 implementation starts. None
-blocks writing the plan, but each forks the implementation.
-
-1. **Dual Effect/Stream `requireX` vs two named exports?**
-   Recommendation: dual.
-2. **`fallback` location — `transcriber/Capabilities.ts` or shared
-   `internal/`?** Recommendation: keep runtime in transcriber for
-   Phase 1; lift type helper to `internal/typeHelpers.ts` so Phase 2
-   can reuse without copy-paste.
-3. **OpenAI STT — split into Whisper1 / Gpt4o Layers now or later?**
-   Recommendation: later (Phase 1.5). Phase 1 ships OpenAI without
-   `WordTimestampsGuarantee`.
-4. **`CapabilityWarning` — typed error or log only?**
-   Recommendation: log only for now.
-5. **Tag string convention for the new markers** — confirmed
-   `@betalyra/effect-uai/capability/<Name>` per existing
-   `SttStreaming`. No decision needed, just locking it in.
+- [ ] `packages/core/src/domain/CapabilityWarning.ts`
+- [ ] `packages/core/src/capabilities/dropUnsupported.ts`
+- [ ] Re-exports from `packages/core/src/index.ts`
+- [ ] Smoke test that `dropUnsupported(...)` emits the structured log entry
+- [ ] No changes to any provider yet — that's Phase 1 / Phase 2
 
 ---
 
-## 5. Open questions (carry over from guideline §6)
+## 2. Phase 1 — STT (Transcriber)
 
-- **Third-party Layer authors:** no enforcement that "if you
+### 2.1 Core additions
+
+All changes in
+[packages/core/src/transcriber/Transcriber.ts](../packages/core/src/transcriber/Transcriber.ts) —
+**co-located** with the existing `Transcriber` and `SttStreaming`
+declarations, NOT in a separate `Capabilities.ts` and NOT in a
+separate experimental sub-path. Markers and combinators are
+load-bearing for provider packages; a separate sub-path would force
+provider packages to import from "experimental" (guideline §6).
+
+#### 2.1.1 Marker declarations
+
+```ts
+// packages/core/src/transcriber/Transcriber.ts (additions)
+
+/**
+ * @experimental Per-modifier capability marker. The marker *set* and
+ * policy are subject to change — see plans/capabilities.md §7. The
+ * type shape itself is stable; the `Context.Service<X, void>` pattern
+ * is settled. Providers that honor diarization should ship this via
+ * `Layer.succeed(DiarizationGuarantee, undefined)`.
+ *
+ * @since 0.x.x
+ * @category capabilities
+ */
+export class DiarizationGuarantee extends Context.Service<DiarizationGuarantee, void>()(
+  "@betalyra/effect-uai/capability/DiarizationGuarantee",
+) {}
+
+/**
+ * @experimental See `DiarizationGuarantee` above.
+ */
+export class WordTimestampsGuarantee extends Context.Service<WordTimestampsGuarantee, void>()(
+  "@betalyra/effect-uai/capability/WordTimestampsGuarantee",
+) {}
+```
+
+Tag string convention matches the existing
+`@betalyra/effect-uai/capability/SttStreaming`
+([Transcriber.ts:81](../packages/core/src/transcriber/Transcriber.ts#L81)).
+
+#### 2.1.2 `requireX` combinators — dual Effect/Stream overload
+
+Overload pattern (Option A from the discussion) because both
+`transcribe` returns Effect and `streamTranscriptionFrom` returns
+Stream:
+
+```ts
+/**
+ * @experimental Pipe through to require the Layer in scope ships
+ * `DiarizationGuarantee`. Compile-time gate only; result fields
+ * remain optional (single-speaker audio legitimately returns no
+ * speakerId even on a diarizing provider).
+ */
+export const requireDiarization: {
+  <A, E, R>(eff: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | DiarizationGuarantee>
+  <A, E, R>(str: Stream.Stream<A, E, R>): Stream.Stream<A, E, R | DiarizationGuarantee>
+} = (<A, E, R>(input: Effect.Effect<A, E, R> | Stream.Stream<A, E, R>) =>
+  Effect.isEffect(input)
+    ? Effect.flatMap(DiarizationGuarantee.asEffect(), () => input)
+    : Stream.unwrap(Effect.map(DiarizationGuarantee.asEffect(), () => input))) as any
+
+// same shape for requireWordTimestamps
+```
+
+Single `as any` at the implementation boundary; audited once. The
+two overload signatures are public; the body type is `(input: any)
+=> any` effectively.
+
+#### 2.1.3 `fallback` combinator
+
+Service-specific runtime (which methods to chain with `orElse`),
+generic type machinery. For Phase 1 the type helper
+(`IntersectROut` + `ROutOf`) lives inline in `Transcriber.ts` —
+**lift to a shared module only when Phase 2 needs it**, not
+speculatively.
+
+```ts
+type ROutOf<L> = L extends Layer.Layer<infer Out, infer _E, infer _RIn> ? Out : never
+
+type IntersectROut<Layers extends ReadonlyArray<Layer.Layer<any, any, any>>> =
+  Layers extends readonly [
+    infer Head extends Layer.Layer<any, any, any>,
+    ...infer Tail extends ReadonlyArray<Layer.Layer<any, any, any>>,
+  ]
+    ? ROutOf<Head> & IntersectROut<Tail>
+    : unknown
+
+/**
+ * Run provider tiers in preference order. First tier whose call
+ * succeeds wins; on `AiError.Unsupported` from a tier, fall through
+ * to the next.
+ *
+ * @experimental The marker-survives-intersection guarantee is
+ * experimental. The orElse runtime behaviour is stable.
+ */
+export const fallback = <
+  const Layers extends ReadonlyArray<Layer.Layer<Transcriber, any, any>>,
+>(tiers: Layers): Layer.Layer<IntersectROut<Layers>, never, /* RIn union */> => {
+  // Runtime: build a Transcriber whose `transcribe` and
+  // `streamTranscriptionFrom` are `tiers.reduce(orElse)`. Each tier
+  // materialised in its own scope via Layer.unwrapEffect.
+  ...
+}
+```
+
+**Two TypeScript gotchas — copy verbatim from the spike** into a
+comment block above the type helpers:
+
+1. `<const Layers extends …>` — without `const`, array literals
+   widen to non-tuple unions and `IntersectROut` returns `unknown`.
+2. `infer _E, infer _RIn` (not `any, any`) in `ROutOf` — `Layer` is
+   contravariant in `ROut`; `any` in other slots collapses `infer
+   Out` to `unknown`.
+
+Reference: [experiments/capabilities-spike/index.ts:130-152](../experiments/capabilities-spike/index.ts#L130).
+
+#### 2.1.4 No result type changes
+
+`TranscriptResult` and `WordTimestamp` stay exactly as they are
+today
+([Transcript.ts:6,20](../packages/core/src/domain/Transcript.ts#L6)).
+GATE-ONLY markers don't touch result types. `speakerId` and `words`
+remain optional.
+
+This is the entire `domain/Transcript.ts` change for Phase 1: **none.**
+
+### 2.2 Provider Layer updates — marker registration
+
+Each provider's existing `Layer.mergeAll(...)` gets zero, one, or
+two new `Layer.succeed(Marker, undefined)` lines. **Pessimistic
+registration** per guideline §5: ship a marker only if every model
+the Layer routes to honors the modifier.
+
+| Provider | File | DiarizationGuarantee | WordTimestampsGuarantee |
+|---|---|---|---|
+| **ElevenLabs** STT | [ElevenLabsTranscriber.ts:167-182](../packages/providers/elevenlabs/src/ElevenLabsTranscriber.ts#L167) | ✓ ship | ✓ ship |
+| **Inworld** STT (sync) | [InworldTranscriber.ts:209-225](../packages/providers/inworld/src/InworldTranscriber.ts#L209) | ✓ ship | ✓ ship |
+| **Inworld** STT (realtime) | [InworldRealtimeTranscriber.ts:49-64](../packages/providers/inworld/src/InworldRealtimeTranscriber.ts#L49) | ✓ ship | ✓ ship |
+| **OpenAI** STT | [OpenAITranscriber.ts:267-285](../packages/providers/openai/src/OpenAITranscriber.ts#L267) | ✗ omit | ✗ omit (pessimistic — whisper-1 only) |
+| **Gemini** STT | [GeminiTranscriber.ts:203-219](../packages/providers/google/src/GeminiTranscriber.ts#L203) | ✗ omit | ✗ omit |
+
+OpenAI ships **neither** marker. Per guideline §5 (mixed-model
+Layers), the per-Layer marker only ships if every routable model
+supports the modifier; whisper-1's exception doesn't qualify. A
+`withModel<M>()` Layer constructor that narrows the marker set to a
+specific model's profile is the escape hatch — introduce lazily,
+when a consumer asks. **Not in Phase 1.**
+
+Callers needing the strict path for word timestamps use
+`Transcriber.fallback([ElevenLabsTranscriber.layer,
+OpenAITranscriber.layer])` — ElevenLabs satisfies the marker via
+the intersection, OpenAI is best-effort fallback.
+
+### 2.3 Per-provider request narrowing follow-through
+
+The `Caps: Step 1` WIP commit started this. Remaining work:
+
+#### 2.3.1 Gemini
+
+[GeminiTranscriber.ts:30-35](../packages/providers/google/src/GeminiTranscriber.ts#L30)
+already `Omit`s `wordTimestamps` and `diarization` from the typed
+request. **Already correct.** Keep the runtime guards at
+[GeminiTranscriber.ts:62-78](../packages/providers/google/src/GeminiTranscriber.ts#L62)
+as defense-in-depth for dynamic provider selection (guideline §5).
+Add a comment pointing at the guideline so the guards aren't deleted
+later as "dead code."
+
+#### 2.3.2 OpenAI
+
+[OpenAITranscriber.ts:33-40](../packages/providers/openai/src/OpenAITranscriber.ts#L33)
+already `Omit`s `diarization`. **Keep `wordTimestamps` on the typed
+request** — it works for `whisper-1`. Per §2.4 below, drop the
+per-model runtime check.
+
+### 2.4 Remove per-model variance checks (guideline §2.3)
+
+Guideline §2.3 — don't maintain per-model capability tables.
+Translate provider errors instead. Removals:
+
+- [OpenAITranscriber.ts:85](../packages/providers/openai/src/OpenAITranscriber.ts#L85) —
+  drop `if (req.wordTimestamps && req.model !== "whisper-1") throw
+  Unsupported`. Let OpenAI return its 400, translate to
+  `AiError.Unsupported` in the error-translation layer.
+- Audit OpenAI adapter's existing error-translation: ensure
+  `error.type === "invalid_request_error"` with capability-shaped
+  messages produces `Unsupported`, not `InvalidRequest`.
+
+This is the *first concrete application* of the §2.3 policy. The
+guideline §14.4 lists this and `LyriaGenerator` clip × wav as the
+known per-model checks to remove; Lyria is out of scope for Phase 1
+(image/music; revisit in its own phase).
+
+### 2.5 STT `prompt` → warn-and-drop
+
+Guideline §14.5 — STT `prompt` is currently silent on providers
+without a biasing equivalent. Now bucket 2 (explicit feature,
+provider has no interpretation) per §2.
+
+Per-provider audit:
+
+| Provider | Has biasing equivalent? | Action |
+|---|---|---|
+| OpenAI Whisper | Yes (`prompt` field) | No change |
+| AssemblyAI | Partial (`word_boost`) | No change if mapped; warn if not |
+| ElevenLabs | No native equivalent | `dropUnsupported({field: "prompt", ...})` when caller provides it |
+| Inworld | Has `prompts` array | No change |
+| Gemini | Built into prompt template | No change |
+
+Net work: one `dropUnsupported` call in `ElevenLabsTranscriber` (and
+any other adapter that lacks a biasing equivalent — quick audit
+during implementation).
+
+### 2.6 Mocks + tests
+
+#### 2.6.1 MockTranscriber
+
+[MockTranscriber.ts:83-137](../packages/core/src/testing/MockTranscriber.ts#L83)
+already has `layer` (ships `SttStreaming`) and `layerSyncOnly`
+(omits `SttStreaming`). Mirror for the new markers:
+
+- `layer(script)` — ships `SttStreaming + DiarizationGuarantee +
+  WordTimestampsGuarantee`. The "full capability" mock.
+- `layerWithoutDiarization(script)` — omits `DiarizationGuarantee`.
+- `layerWithoutWordTimestamps(script)` — omits
+  `WordTimestampsGuarantee`.
+- `layerSyncOnly` — extend to ship both new markers (it's about
+  streaming, not per-modifier; existing tests shouldn't break).
+
+#### 2.6.2 Type-level tests in `Transcriber.test.ts`
+
+Mirror the existing `SttStreaming` block at
+[Transcriber.test.ts:42-88](../packages/core/src/transcriber/Transcriber.test.ts#L42)
+for each marker pair. Use vitest `expectTypeOf` per memory.
+
+- ✓ `requireDiarization` on `transcribe(...)` against
+  `MockTranscriber.layer` typechecks and resolves to `never` R.
+- ✗ Same against `layerWithoutDiarization` leaks the marker — use
+  `@ts-expect-error` on `Effect.runPromise`.
+- ✓ `fallback([elevenlabsMock, inworldMock])` exposes both markers.
+- ✗ `fallback([elevenlabsMock, openaiMock])` exposes **nothing**
+  (OpenAI ships neither marker, intersection drops both).
+- ✓ Stream variant: piping `requireDiarization` after
+  `streamTranscriptionFrom` preserves R + marker through the
+  Stream chain.
+
+#### 2.6.3 Runtime smoke for `fallback`
+
+Small integration test exercising the orElse chain:
+
+- Tier 1 returns `Unsupported`; tier 2 returns a value → fallback
+  returns tier-2 value.
+- All tiers return `Unsupported` → fallback surfaces the last error.
+- Stream case: tier 1 errors at acquire; tier 2 streams successfully.
+
+#### 2.6.4 Smoke for per-model translation
+
+After the §2.4 removal, add a test that calls OpenAI's
+transcriber-mock with `wordTimestamps: true` + non-whisper-1 model
+and asserts the surfaced error is `Unsupported`, not the raw
+provider error.
+
+### 2.7 Recipe
+
+Add one minimal recipe under
+`recipes/transcribe-fallback/run-node.ts`:
+
+```ts
+import { Effect, Layer } from "effect"
+import { Transcriber } from "@effect-uai/core"
+import { ElevenLabsTranscriber } from "@effect-uai/elevenlabs"
+import { OpenAITranscriber } from "@effect-uai/openai"
+
+const layer = Transcriber.fallback([
+  ElevenLabsTranscriber.layer,
+  OpenAITranscriber.layer,
+])
+
+const program = Effect.gen(function* () {
+  const r = yield* Transcriber.transcribe({ audio, diarization: true })
+    .pipe(Transcriber.requireDiarization)
+  return r
+}).pipe(Effect.provide(layer))
+```
+
+Recipe runner naming follows the established pattern: `run-node.ts`
+per memory.
+
+### 2.8 Phase 1 deliverable checklist
+
+- [ ] Markers + combinators added inline in
+      [Transcriber.ts](../packages/core/src/transcriber/Transcriber.ts)
+      with `@experimental` JSDoc.
+- [ ] `fallback` combinator with both gotcha comments verbatim from
+      the spike.
+- [ ] Layer registrations: ElevenLabs ✓✓, Inworld sync ✓✓, Inworld
+      realtime ✓✓, OpenAI ✗✗, Gemini ✗✗.
+- [ ] OpenAI per-model `wordTimestamps` runtime check removed;
+      provider error translation verified.
+- [ ] ElevenLabs (and any other) STT `prompt` →
+      `dropUnsupported` when no biasing equivalent.
+- [ ] Gemini transcriber runtime guards retained as
+      defense-in-depth, comment added.
+- [ ] MockTranscriber: `layer` ships both markers,
+      `layerWithoutDiarization`, `layerWithoutWordTimestamps` added.
+- [ ] `expectTypeOf` blocks for each marker pair in
+      `Transcriber.test.ts` (positive + negative cases for
+      `requireX` and `fallback`).
+- [ ] Runtime smoke for `fallback` (3 cases) and per-model
+      translation (1 case).
+- [ ] Recipe at `recipes/transcribe-fallback/run-node.ts`.
+- [ ] No changes to
+      [domain/Transcript.ts](../packages/core/src/domain/Transcript.ts).
+
+---
+
+## 3. Phase 2 — TTS (SpeechSynthesizer)
+
+Smaller than Phase 1. The two service-level markers
+(`TtsIncrementalText`, `MultiSpeakerTts`) already exist
+([SpeechSynthesizer.ts:162,180](../packages/core/src/speech-synthesizer/SpeechSynthesizer.ts#L162))
+and providers already ship/omit them correctly.
+
+### 3.1 `fallback` for SpeechSynthesizer
+
+If Phase 1's `IntersectROut` was kept inline in `Transcriber.ts`,
+**lift it now** to `packages/core/src/internal/typeHelpers.ts` (or
+similar — there's no existing shared utilities module today; pick
+the location during Phase 2 implementation). Both `Transcriber.ts`
+and `SpeechSynthesizer.ts` import from there.
+
+`SpeechSynthesizer.fallback` runtime orElses across all five
+service methods (`synthesize`, `streamSynthesis`,
+`streamSynthesisFrom`, `synthesizeDialogue`,
+`streamSynthesizeDialogue`). Carries existing service-level
+markers (`TtsIncrementalText`, `MultiSpeakerTts`) through the
+intersection correctly — verify with type tests parallel to §2.6.2.
+
+### 3.2 Pronunciation drops → `Unsupported` (bucket 1)
+
+Per guideline §14.1. Pronunciations are load-bearing — silent drop
+= audibly wrong output.
+
+| Provider | File | Current | Fix |
+|---|---|---|---|
+| **Inworld** TTS | [InworldSynthesizer.ts:78-95](../packages/providers/inworld/src/InworldSynthesizer.ts#L78) | non-IPA silently skipped | reject with `AiError.Unsupported` if any non-IPA entry present |
+| **ElevenLabs** TTS | [ElevenLabsSynthesizer.ts:79-113](../packages/providers/elevenlabs/src/ElevenLabsSynthesizer.ts#L79) | whole-array drop on unsupported model; per-item x-sampa silent drop | reject with `Unsupported` for both gaps |
+
+Error message convention: `AiError.Unsupported({ capability:
+"pronunciations", reason: "Inworld TTS only supports IPA
+pronunciation encoding; got 'cmu-arpabet'." })`.
+
+### 3.3 Bucket 2 fixes — instructions
+
+Per guideline §14.5:
+
+- [OpenAISynthesizer.ts:30-31](../packages/providers/openai/src/OpenAISynthesizer.ts#L30) —
+  `instructions` silently ignored on `tts-1` / `tts-1-hd`.
+  **Fix:** `dropUnsupported` when caller provides `instructions`
+  against a non-mini-tts model.
+
+Per §2.3 of the guideline, this is per-model variance. Strictly we
+should translate the provider's error. **But** OpenAI doesn't error
+on `instructions` for non-mini-tts; it silently ignores. So the
+adapter has to actively warn — there's no provider error to
+translate. Keep the per-model check **specifically for the
+warn-and-drop path**; the §2.3 rule applies to rejection-side
+checks, not to warning-side ones.
+
+Note: [openai/codec.ts:93](../packages/providers/openai/src/codec.ts#L93)
+`sampleRate` ignored is bucket 3 (provider always reports realized
+format on output — has an interpretation). **No change.**
+
+### 3.4 No new per-modifier markers for TTS
+
+TTS modifier surface against the §4 failure-vs-degradation rule:
+
+| Modifier | Verdict |
+|---|---|
+| `pronunciations` | bucket 1 — `Unsupported` (§3.2 above); not a marker |
+| `speed` | bucket 3 — silent (clamp) |
+| `languageCode` | bucket 3 — silent (inferred from voice) |
+| `instructions` (OpenAI) | bucket 2 — `dropUnsupported` (§3.3 above) |
+| `outputFormat` | bucket 1 — already `Unsupported` on Gemini |
+
+None of these is a marker candidate. No new markers in Phase 2.
+Revisit when a TTS feature with a real compliance use case lands
+(e.g. SSML support could become a future `SsmlGuarantee` marker).
+
+### 3.5 Phase 2 deliverable checklist
+
+- [ ] `IntersectROut` lifted to shared location.
+- [ ] `SpeechSynthesizer.fallback` with marker-intersection tests.
+- [ ] Inworld pronunciation: silent drop → `Unsupported`.
+- [ ] ElevenLabs pronunciation: two silent drops → `Unsupported`.
+- [ ] OpenAI `instructions`: silent → `dropUnsupported` on
+      non-mini-tts models.
+- [ ] Mocks (`MockSpeechSynthesizer`) unchanged — Phase 2 adds no
+      new markers.
+- [ ] Tests for fallback marker intersection over
+      `TtsIncrementalText` and `MultiSpeakerTts`.
+- [ ] No changes to `SpeechSynthesizerService` shape.
+
+---
+
+## 4. Decisions recap (previously open)
+
+All resolved during the design discussion. Recording here so they
+don't get re-litigated mid-implementation.
+
+| Decision | Resolution | Reasoning |
+|---|---|---|
+| `requireX` shape | Overloaded function (Effect / Stream), single `as any` in body | Best hover output, best error messages, no inference traps. |
+| Marker / combinator location | Co-located inline in service module (`Transcriber.ts`), `@experimental` JSDoc | Load-bearing for providers; separate sub-path makes the "experimental" label dishonest. |
+| OpenAI STT layer split | **No split.** Ship neither marker pessimistically. | Mixed-model variance is per-model, not per-Layer; per §5 of the guideline, pessimistic registration. |
+| `withModel<M>()` escape hatch | **Not in Phase 1.** Add lazily when a consumer asks. | Don't speculate. |
+| `CapabilityWarning` shape | Log-only via `Effect.logWarning`, no typed `AiError` variant | Cheaper; promote only if consumer needs programmatic match. |
+| Tag string convention | `@betalyra/effect-uai/capability/<Name>` | Matches existing `SttStreaming`. |
+| Per-model variance checks (e.g. OpenAI `wordTimestamps`) | Remove; translate provider errors | Guideline §2.3 — don't maintain per-model tables. |
+| Per-service tag naming | Per-service classes (`Transcriber.DiarizationGuarantee`); naturally satisfied for STT modifiers | Cross-service modality markers (LLM `AudioInput` etc.) become a real concern only in later phases. |
+| `IntersectROut` location | Inline in `Transcriber.ts` for Phase 1; lift to shared utility in Phase 2 when TTS needs it | Don't pre-generalise from one example. |
+| `fallback` runtime stability | The orElse runtime is stable; the marker-intersection guarantee is `@experimental` | Different stability axes; document accordingly. |
+
+---
+
+## 5. Open items (carry over from guideline §11)
+
+- **Third-party Layer authors.** No enforcement that "if you
   implement diarization, you must register the marker." Forgotten
-  markers leave consumers stuck on the lax path. Not blocking Phase
-  1; raise as a doc/lint item.
-- **Inter-package wire boundaries:** marker types don't survive JSON
-  serialization. Phase 1 doesn't introduce this problem (markers are
-  layer-side, not value-side) but worth a mention in the recipe doc.
-- **`MultiSpeakerTts` granularity:** today it gates both
+  markers leave consumers stuck on the lax path. Not blocking; raise
+  as a doc/lint item.
+- **Inter-package wire boundaries.** Marker types don't survive
+  JSON serialization. Phase 1 doesn't introduce this problem
+  (markers are Layer-side); mention in the recipe doc.
+- **`MultiSpeakerTts` granularity.** Today it gates both
   `synthesizeDialogue` and `streamSynthesizeDialogue`. If a provider
-  supports one but not the other we'd need to split — not on our
+  supports one but not the other we'd need to split. Not on the
   roadmap.
+- **Promotion criteria from `@experimental`.** What signal warrants
+  dropping the tag? Guideline §11 leaves this open.
 
 ---
 
 ## 6. Out of scope — future phases
 
-- **Phase 3 — Embeddings.** Smaller surface; just `TaskTuningGuarantee`
-  (GATE-ONLY) per spike §2. Also catches up the warn-and-drop work
-  from guideline §9.4.
-- **Phase 4 — LLM.** This is where the NARROW machinery actually
-  earns its keep (`CacheControlGuarantee`, `StructuredOutputGuarantee`
-  with `as any`-audited combinators). Bigger phase; needs its own
-  plan.
-- **Phase 5 — Image generation.** `SeedGuarantee` (NARROW) per spike
-  §4. Small.
+- **Phase 3 — Embeddings.** `ImageEmbeddingGuarantee`
+  (per modality) when image embedding providers + consumers
+  materialise. Also catches up §14.5 task-field warn-and-drop work.
+- **Phase 4 — LLM.** `ToolCallingGuarantee`, `VisionGuarantee`,
+  later `AudioInputGuarantee` / `VideoInputGuarantee` as multimodal
+  providers land. Bigger phase; needs its own plan. Will revisit the
+  NARROW question (`cacheControl`, `structured<T>`) but current
+  policy says **lax with typed `LLM.structured<T>()` helper**, no
+  NARROW marker.
+- **Phase 5 — Image generation.** Currently lax. `SeedGuarantee` is
+  not on the curated list under current policy.
+- **Phase 6 — Music generation.** `MusicInteractiveSession` already
+  in tree; no per-modifier markers planned.
+- **Future services (video, live, OCR, S2ST, reranker).** Markers
+  listed in guideline §7 Tier 3. Land with their respective
+  services.
 
 ---
 
@@ -468,8 +570,7 @@ blocks writing the plan, but each forks the implementation.
 
 | Phase | Surface touched | Effort |
 |---|---|---|
-| Phase 1 (STT) | 1 core file added, ~5 provider Layer blocks, mock + tests, 1 recipe | 1-2 days |
-| Phase 1.5 (OpenAI split) | 1 provider package re-org | 0.5 day |
-| Phase 2 (TTS) | 1 core function, 2 provider files (pronunciation), tests | 0.5-1 day |
-| Cross-cutting (§3.1) | 2 small new core files | 0.5 day |
-| Phases 3-5 (separate plans) | — | — |
+| Phase 0 | 2 small new core files, 1 smoke test | 0.5 day |
+| Phase 1 (STT) | Inline additions to `Transcriber.ts`, ~5 provider Layer blocks, 1-2 runtime check removals, 1-2 `dropUnsupported` calls, mock + tests, 1 recipe | 1.5-2 days |
+| Phase 2 (TTS) | 1 core function + type helper lift, 2 provider pronunciation fixes, 1 instructions fix, tests | 1 day |
+| Phases 3-6 | Separate plans | — |

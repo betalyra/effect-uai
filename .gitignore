@@ -49,3 +49,9 @@ coverage/
 *.mp3
 *.wav
 *.pcm
+
+# Nix
+.corepack/
+.direnv/
+result
+result-*

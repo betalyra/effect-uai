@@ -4,8 +4,8 @@ description: Plain and streaming tools, explicit execution, structured results, 
 ---
 
 Tools are typed Effects your loop decides to run, not callbacks hidden inside
-an agent runtime. The model emits `FunctionCall` items; your harness inspects
-them, applies any policy, and passes approved calls to `Toolkit.executeAll`.
+an agent runtime. The model emits `ToolCall` items; your harness inspects
+them, applies any policy, and passes approved calls to `Toolkit.run`.
 The executor renders schemas, validates arguments, runs the tool, and turns
 success or failure into structured `ToolResult`s. You own `run` and every
 policy decision around it.
@@ -67,7 +67,7 @@ const askSubagent = Tool.streaming({
 
 A `StreamingTool` is `{ name, description, inputSchema, run, finalize, strict? }`.
 `run` returns `Stream<Event, unknown, R>`; events flow as
-`ToolEvent.Intermediate`s. When the stream ends, `finalize(events)`
+`ToolEvent.Progress`s. When the stream ends, `finalize(events)`
 reduces them into the `Output` the model sees next turn.
 
 Three canonical `finalize` patterns — text concat, result list, progress +
@@ -94,26 +94,19 @@ The same schema serves two purposes:
 - **Wire rendering** — `Tool.toDescriptors` calls
   `inputSchema.~standard.jsonSchema.input({ target: "draft-2020-12" })`
   to produce the JSON Schema each provider sends.
-- **Argument validation** — when a `FunctionCall` arrives, the executor
+- **Argument validation** — when a `ToolCall` arrives, the executor
   parses arguments, validates them, and either passes the parsed value
   to `run` or synthesizes a `Failure(execution_error)`.
 
 ## Wiring tools up
 
-For homogeneous plain-tool toolkits, use `Toolkit.make`:
+Collect your tools — plain, streaming, or a mix — in a flat array typed
+`ReadonlyArray<Tool.AnyTool>`, then render them with `Tool.toDescriptors`:
 
 ```ts
-import * as Toolkit from "@effect-uai/core/Toolkit"
+import * as Tool from "@effect-uai/core/Tool"
 
-const toolkit = Toolkit.make([getCurrentTime, lookupWeather])
-const tools = Toolkit.toDescriptors(toolkit)
-```
-
-For mixed plain + streaming tools, use a flat array typed
-`ReadonlyArray<Tool.AnyKindTool>` and `Tool.toDescriptors`:
-
-```ts
-const allTools: ReadonlyArray<Tool.AnyKindTool> = [
+const allTools: ReadonlyArray<Tool.AnyTool> = [
   getCurrentTime, // plain
   askSubagent, // streaming
 ]
@@ -160,7 +153,7 @@ const getCoords = Tool.make({
     }),
 })
 
-const events = Toolkit.executeAll([lookupWeather, getCoords], calls)
+const events = Toolkit.run([lookupWeather, getCoords], calls)
 //   ^? Stream<ToolEvent, never, WeatherApiKey | GeoApiKey>
 
 const Live = Layer.mergeAll(
@@ -174,22 +167,22 @@ events.pipe(Stream.provide(Live))
 The compiler enforces that every required service is provided before
 the stream runs. Tools that need nothing keep `R = never`.
 
-## `Toolkit.executeAll` — the executor
+## `Toolkit.run` — the executor
 
 ```ts
 import * as Toolkit from "@effect-uai/core/Toolkit"
 
-const events = Toolkit.executeAll(allTools, calls)
+const events = Toolkit.run(allTools, calls)
 //   ^? Stream<ToolEvent>
 ```
 
-`executeAll` runs every requested tool concurrently and emits a
+`run` runs every requested tool concurrently and emits a
 `Stream<ToolEvent>` in real time. Three event variants:
 
-- **`Intermediate`** — one per element from a streaming tool's `run`.
+- **`Progress`** — one per element from a streaming tool's `run`.
   Plain tools don't emit any.
 - **`Output`** — one per call, terminal. Carries a structured `ToolResult`.
-- **`ApprovalRequested`** — emitted by `fromVerdictQueue` for gated calls.
+- **`ApprovalRequested`** — emitted by `fromQueue` for gated calls.
 
 Graceful by default: hallucinated tool names become `Failure(unknown_tool)`
 for that call only; runtime errors and validation failures become
@@ -199,26 +192,26 @@ to bound it.
 
 ## `ToolResult` — structured results
 
-The executor speaks in `ToolResult` (structured), not `FunctionCallOutput`
+The executor speaks in `ToolResult` (structured), not `ToolCallOutput`
 (wire-shaped). Recipes can inspect, redact, audit, or re-route values
 before serialization without parse-and-restringify.
 
 ```ts
 type ToolResult =
-  | { _tag: "Value"; call_id: string; tool: string; value: unknown }
+  | { _tag: "Ok"; call_id: string; tool: string; value: unknown }
   | { _tag: "Failure"; call_id: string; tool: string; kind: string; reason?: string }
 ```
 
-Synthesizers from `@effect-uai/core/Outcome`: `denied`, `cancelled`,
-`executionError`, plus `rejected(call, kind, reason)` for any custom
+Synthesizers from `@effect-uai/core/ToolResult`: `denied`, `cancelled`,
+`executionError`, plus `failed(call, kind, reason)` for any custom
 string kind. The executor doesn't inspect `kind` — it's recipe-level
 metadata for audit logs and pattern-matching downstream.
 
 ## Wire conversion at the boundary
 
 `Stream<ToolEvent>` carries structured values; `state.history` carries
-wire-shaped `FunctionCallOutput`s. The single explicit conversion point
-is `toFunctionCallOutput`, applied where results meet history. See the
+wire-shaped `ToolCallOutput`s. The single explicit conversion point
+is `toToolCallOutput`, applied where results meet history. See the
 round-trip below.
 
 ## The round-trip shape
@@ -228,59 +221,59 @@ The full pattern is in [Basic usage](/recipes/basic-usage/). The body:
 ```ts
 onTurnComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
-    const calls = Turn.functionCalls(turn)
+    const calls = Turn.getToolCalls(turn)
     // If the model did not ask for tools, this conversation is done.
-    if (calls.length === 0) return stop
+    if (calls.length === 0) return stop()
 
-    return Toolkit.executeAll(allTools, calls).pipe(
-      Toolkit.continueWith((results) =>
+    return Toolkit.run(allTools, calls).pipe(
+      Toolkit.continueWithResults((results) =>
         // Provider history needs both the function_call items and their outputs.
-        Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+        Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
       ),
     )
   }),
 )
 ```
 
-`Turn.appendTurn` appends the turn's items (including the `FunctionCall`s
-themselves) and then the collected `FunctionCallOutput`s. Both must be
+`Turn.appendToHistory` appends the turn's items (including the `ToolCall`s
+themselves) and then the collected `ToolCallOutput`s. Both must be
 present for the model to see what it asked for _and_ what came back.
 
 ## Approval gating
 
-For HITL, `executeAll` stays the only executor. Approval helpers return
+For HITL, `run` stays the only executor. Approval helpers return
 plain data the recipe composes explicitly:
 
 ```ts
 type ToolCallPlan = {
-  readonly approved: ReadonlyArray<FunctionCall>
+  readonly approved: ReadonlyArray<ToolCall>
   readonly rejected: ReadonlyArray<ToolResult>
 }
 ```
 
-HTTP/request-shaped flows use `fromApprovalMap(predicate, approvals)(calls)`,
+HTTP/request-shaped flows use `fromMap(predicate, approvals)(calls)`,
 which splits calls into approved and rejected up front:
 
 ```ts
-const plan = fromApprovalMap(isSensitive, approvals)(calls)
+const plan = fromMap(isSensitive, approvals)(calls)
 const events = Stream.merge(
-  Toolkit.executeAll(allTools, plan.approved),
+  Toolkit.run(allTools, plan.approved),
   Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
 )
 ```
 
-Long-lived queue flows use `fromVerdictQueue(predicate, verdicts)(calls)`,
-which returns safe calls up front, an `announce` stream of
+Long-lived queue flows use `fromQueue(predicate, verdicts)(calls)`,
+which returns safe calls up front, an `approvalRequests` stream of
 `ApprovalRequested` events, and a decision stream for gated calls as
 verdicts arrive:
 
 ```ts
-const { approved, decisions, announce } = yield * fromVerdictQueue(isSensitive, verdicts)(calls)
+const { approved, decisions, approvalRequests } = yield * fromQueue(isSensitive, verdicts)(calls)
 
 const events = Stream.merge(
-  announce,
+  approvalRequests,
   Stream.merge(
-    Toolkit.executeAll(allTools, approved),
+    Toolkit.run(allTools, approved),
     decisions.pipe(Stream.flatMap(decisionToEvents)),
   ),
 )
@@ -302,7 +295,7 @@ before submitting:
 import { cancelAllPending, findUnansweredCalls, isReconciled } from "@effect-uai/core/HistoryCheck"
 
 const closures = cancelAllPending(history, "user moved on")
-const reconciled = [...history, ...closures.map(toFunctionCallOutput)]
+const reconciled = [...history, ...closures.map(toToolCallOutput)]
 ```
 
 Call these at known transition points; not from inside the loop.

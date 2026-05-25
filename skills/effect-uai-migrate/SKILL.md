@@ -32,6 +32,140 @@ The full migration prose (with rationale and edge cases) lives in
 
 ---
 
+## 0.6 → 0.7
+
+The "consistent naming" sweep. Almost entirely find-and-replace; the
+only judgement call is the `Loop` helper trim. **Wire literals
+(`"function_call"`, `"function_call_output"`) do not change** — only
+type and helper names do, so provider payloads and on-the-wire
+pattern matching stay identical.
+
+### Required rewrites
+
+#### Module moves
+
+| Before                       | After                         |
+| ---------------------------- | ----------------------------- |
+| `@effect-uai/core/Outcome`   | `@effect-uai/core/ToolResult` |
+| `@effect-uai/core/Resolvers` | `@effect-uai/core/Approval`   |
+
+#### Flat renames
+
+| Before                                       | After                               |
+| -------------------------------------------- | ----------------------------------- |
+| `Item`                                       | `HistoryItem`                       |
+| `FunctionCall`                               | `ToolCall`                          |
+| `FunctionCallOutput`                         | `ToolCallOutput`                    |
+| `Items.functionCallOutput(…)`                | `Items.toolCallOutput(…)`           |
+| `Items.isFunctionCall`                       | `Items.isToolCall`                  |
+| `Items.isFunctionCallOutput`                 | `Items.isToolCallOutput`            |
+| `Turn.functionCalls(turn)`                   | `Turn.getToolCalls(turn)`           |
+| `Turn.appendTurn(…)`                         | `Turn.appendToHistory(…)`           |
+| `Turn.toStructured(…)`                       | `Turn.decodeStructured(…)`          |
+| `ToolResult.Value` / `isValue`               | `ToolResult.Ok` / `isOk`            |
+| `rejected(call, kind, reason)`               | `failed(call, kind, reason)`        |
+| `toFunctionCallOutput(…)`                    | `toToolCallOutput(…)`               |
+| `Toolkit.executeAll(…)`                      | `Toolkit.run(…)`                    |
+| `Toolkit.continueWith(…)`                    | `Toolkit.continueWithResults(…)`    |
+| `Tool.AnyKindTool`                           | `Tool.AnyTool`                      |
+| `ToolEvent.Intermediate` / `isIntermediate`  | `ToolEvent.Progress` / `isProgress` |
+| `Loop.loopFrom(…)`                           | `Loop.loopOver(…)`                  |
+| `Loop.Event<A, S>`                           | `Loop.Step<A, S>`                   |
+| `ToolCallDecision`                           | `ApprovalDecision`                  |
+| `fromApprovalMap(…)`                         | `fromMap(…)`                        |
+| `fromVerdictQueue(…)`                        | `fromQueue(…)`                      |
+| `fromQueue(…).announce`                      | `fromQueue(…).approvalRequests`     |
+
+The `Failure` variant, the `denied` / `cancelled` / `executionError`
+synthesizers, `approve` / `reject`, and the `approved` / `decisions`
+fields keep their names.
+
+#### Removed: `Toolkit.make` / `Toolkit.toDescriptors`
+
+Build a flat array of tools (plain, streaming, or mixed) and render it
+with `Tool.toDescriptors`.
+
+```ts
+// Before
+const toolkit = Toolkit.make([getTime, lookupWeather])
+const descriptors = Toolkit.toDescriptors(toolkit)
+
+// After
+import * as Tool from "@effect-uai/core/Tool"
+const descriptors = Tool.toDescriptors([getTime, lookupWeather])
+```
+
+#### Trimmed Loop helpers: `stop` / `next` are streams, `*After` gone
+
+`next(state)`, `stop()`, and `stop(state)` each emit a single terminal
+step. Concatenate your values in front of them; `stopWith(state)`
+collapses into `stop(state)`.
+
+| Before                            | After                                                            |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `return stop`                     | `return stop()`                                                  |
+| `return stopWith(state)`          | `return stop(state)`                                             |
+| `return nextAfter(stream, s)`     | `return stream.pipe(Stream.map(value), Stream.concat(next(s)))`  |
+| `return stopAfter(stream)`        | `return stream.pipe(Stream.map(value), Stream.concat(stop()))`   |
+| `return stopWithAfter(stream, s)` | `return stream.pipe(Stream.map(value), Stream.concat(stop(s)))`  |
+
+`stopEvent` and `nextAfterFold` are removed with no direct replacement —
+build the step stream from `value` / `next` / `stop` plus standard
+`Stream` combinators.
+
+#### Canonical loop body
+
+```ts
+// Before
+onTurnComplete<State, ToolEvent>((turn) => {
+  const calls = Turn.functionCalls(turn)
+  if (calls.length === 0) return stop
+  return Toolkit.executeAll(tools, calls).pipe(
+    Toolkit.continueWith((results) =>
+      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+    ),
+  )
+})
+
+// After
+onTurnComplete<State, ToolEvent>((turn) => {
+  const calls = Turn.getToolCalls(turn)
+  if (calls.length === 0) return stop()
+  return Toolkit.run(tools, calls).pipe(
+    Toolkit.continueWithResults((results) =>
+      Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
+    ),
+  )
+})
+```
+
+### After-migration checklist
+
+- [ ] No imports from `@effect-uai/core/Outcome` or `@effect-uai/core/Resolvers`
+- [ ] No remaining `executeAll` / `continueWith` / `appendTurn` /
+      `functionCalls` / `toStructured` / `toFunctionCallOutput` references
+- [ ] No `Item` / `FunctionCall` / `FunctionCallOutput` type names
+      (wire literals `"function_call"` / `"function_call_output"` stay)
+- [ ] No `Toolkit.make` / `Toolkit.toDescriptors`; tools rendered via
+      `Tool.toDescriptors([...])`
+- [ ] No `nextAfter` / `stopAfter` / `stopWithAfter` / `stopWith` /
+      `loopFrom`; `stop` called as `stop()`
+- [ ] No `ToolEvent.Intermediate` / `isIntermediate`
+- [ ] `pnpm typecheck` clean
+- [ ] Tests pass
+
+---
+
+## 0.5 → 0.6
+
+**No rewrites needed.** 0.6 is additive: multi-speaker dialogue and
+custom pronunciations on `SpeechSynthesizer` (`synthesizeDialogue` /
+`streamSynthesizeDialogue`, the `MultiSpeakerTts` capability marker, and
+`pronunciations` on the synthesize request). Every existing call site
+keeps compiling. Bump dependencies, run typecheck, done.
+
+---
+
 ## 0.4 → 0.5
 
 ### Required rewrites
@@ -397,6 +531,7 @@ ToolResult.$match({ Value: ..., Failure: ... })(result) // matcher
 
 ## See also
 
+- [Migration guide for 0.7](https://effect-uai.betalyra.com/migrations/v0-7/)
 - [Migration guide for 0.5](https://effect-uai.betalyra.com/migrations/v0-5/)
 - [Migration guide for 0.4](https://effect-uai.betalyra.com/migrations/v0-4/)
 - [Migration guide for 0.3](https://effect-uai.betalyra.com/migrations/v0-3/)

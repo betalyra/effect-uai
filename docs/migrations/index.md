@@ -15,6 +15,15 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.7](/migrations/v0-7/) — the consistent-naming sweep.
+  "Function call" → "tool call" terminology (`Item` → `HistoryItem`,
+  `FunctionCall` → `ToolCall`), modules `Outcome` → `ToolResult` and
+  `Resolvers` → `Approval`, `Toolkit.executeAll` → `run`,
+  `Tool.AnyKindTool` → `AnyTool`, `ToolEvent.Intermediate` → `Progress`,
+  and a trimmed `Loop` surface (`loopFrom` → `loopOver`,
+  `stop()` / `stop(state)`, `nextAfter` / `stopAfter` removed). Breaking
+  but mechanical; the wire format is unchanged. (0.6 was additive —
+  multi-speaker dialogue — so it has no migration page.)
 - [Migrating to 0.5](/migrations/v0-5/) — `TurnEvent` migrated to
   `Data.TaggedEnum` (`type` → `_tag`, snake_case → PascalCase),
   `Encoding` → `EmbedEncoding`, generic `EmbedResponse<E>`,

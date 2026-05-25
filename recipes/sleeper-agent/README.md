@@ -1,8 +1,8 @@
 ---
-title: External task polling
+title: Sleeper agent
 description: Coordinate an agent with a long-running external task using a Deferred and a forked polling fiber.
-source: recipes/external-task-polling
-icon: PiArrowsClockwise
+source: recipes/sleeper-agent
+icon: PiDetective
 ---
 
 Pause an agent loop until an external task completes, with no busy-waiting
@@ -98,4 +98,4 @@ can be opened and closed repeatedly — overkill for a single completion
 event, and it doesn't carry a result value.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/external-task-polling/index.ts).
+[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/sleeper-agent/index.ts).

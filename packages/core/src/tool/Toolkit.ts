@@ -237,10 +237,10 @@ export const appendToolResults = <S extends { readonly history: ReadonlyArray<It
 export const collectResults = <E, R>(
   stream: Stream.Stream<ToolEvent, E, R>,
 ): Effect.Effect<ReadonlyArray<ToolResult>, E, R> =>
-  Stream.runFold(
-    stream,
-    () => [] as ReadonlyArray<ToolResult>,
-    (acc, e) => (isOutput(e) ? Arr.append(acc, e.result) : acc),
+  stream.pipe(
+    Stream.filter(isOutput),
+    Stream.map((e) => e.result),
+    Stream.runCollect,
   )
 
 /**

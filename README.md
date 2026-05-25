@@ -161,6 +161,24 @@ To run a recipe end-to-end against real providers:
 OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-usage/run.ts
 ```
 
+### Nix dev shell (optional)
+
+This repo ships a `flake.nix` that provides a dev shell with the exact
+toolchain CI uses - Node 24, the pinned pnpm version (via corepack), and
+Deno for the integration tests. It is **100% optional**: if you already
+have Node and pnpm installed, ignore this entirely and use the commands
+above.
+
+If you do use [Nix](https://nixos.org/download) with flakes enabled:
+
+```bash
+nix develop          # drops you into a shell with node, pnpm and deno
+```
+
+The repo also ships an `.envrc`, so with [direnv](https://direnv.net/)
+installed the shell loads automatically when you `cd` in - just run
+`direnv allow` once. Without direnv the file is inert and ignored.
+
 ## License
 
 MIT - see [LICENSE](./LICENSE).

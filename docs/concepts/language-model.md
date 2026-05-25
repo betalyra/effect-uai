@@ -29,7 +29,7 @@ rest is the lowest common denominator across providers:
 
 ```ts
 interface CommonRequest {
-  readonly history: ReadonlyArray<Item>
+  readonly history: ReadonlyArray<HistoryItem>
   readonly model: string
   readonly tools?: ReadonlyArray<ToolDescriptor>
   readonly toolChoice?: "auto" | "required" | "none" | { type: "function"; name: string }

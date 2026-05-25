@@ -1,7 +1,7 @@
 /**
  * Drive a Responses / Anthropic / Gemini conversation against a JSON
  * Schema and validate the model's output. Server enforces the schema;
- * `Turn.toStructured` is the local safety net that surfaces wire-level
+ * `Turn.decodeStructured` is the local safety net that surfaces wire-level
  * surprises as `StructuredDecodeError`.
  *
  * Switch providers via `--provider`:
@@ -70,7 +70,7 @@ const program = (model: string) =>
         }),
       ),
     )
-    const recipe = yield* Turn.toStructured(turn, recipeFormat)
+    const recipe = yield* Turn.decodeStructured(turn, recipeFormat)
     yield* Effect.logInfo("recipe", { recipe })
   })
 

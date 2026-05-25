@@ -26,7 +26,7 @@ import { type Member, council } from "./council.js"
 
 const QUESTION = "In one short sentence, what's the most underrated programming language and why?"
 
-const initialHistory: ReadonlyArray<Items.Item> = [Items.userText(QUESTION)]
+const initialHistory: ReadonlyArray<Items.HistoryItem> = [Items.userText(QUESTION)]
 
 const finalText = (turn: Turn.Turn): string => Turn.assistantText(turn)
 

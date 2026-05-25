@@ -22,7 +22,7 @@ import { type CouncilEvent, type Member, council } from "./council.js"
 const QUESTION =
   "Name a piece of conventional life wisdom you believe is wrong. Defend your pick in 3 sentences."
 
-const initialHistory: ReadonlyArray<Items.Item> = [Items.userText(QUESTION)]
+const initialHistory: ReadonlyArray<Items.HistoryItem> = [Items.userText(QUESTION)]
 
 const logEvent = (event: CouncilEvent): Effect.Effect<void> =>
   Match.value(event).pipe(

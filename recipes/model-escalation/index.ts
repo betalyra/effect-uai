@@ -28,7 +28,7 @@
 import { Array as Arr, Effect, Option, Result, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, stop, onTurnComplete, value } from "@effect-uai/core/Loop"
+import { loop, next, stop, onTurnComplete, value } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -95,7 +95,7 @@ export interface Tier {
 }
 
 export interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly tier: 0 | 1
   readonly escalation?: EscalateArgs
 }
@@ -118,7 +118,7 @@ export type ConversationEvent = Turn.TurnEvent | EscalationEvent
 // stored in history, so it doesn't bloat the accumulator.
 // ---------------------------------------------------------------------------
 
-export const initialState = (question: string, prior: ReadonlyArray<Items.Item> = []): State => ({
+export const initialState = (question: string, prior: ReadonlyArray<Items.HistoryItem> = []): State => ({
   history: [...prior, Items.userText(question)],
   tier: 0,
 })
@@ -156,12 +156,12 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
             onTurnComplete((turn) =>
               Effect.sync(() =>
                 current.tier === 1
-                  ? stop
+                  ? stop()
                   : pipe(
-                      Turn.functionCalls(turn),
+                      Turn.getToolCalls(turn),
                       Arr.findFirst((c) => c.name === "escalate"),
                       Option.match({
-                        onNone: () => stop,
+                        onNone: () => stop(),
                         onSome: (call) =>
                           Result.match(decodeEscalateArgs(call.arguments), {
                             onFailure: (issue) =>
@@ -170,23 +170,25 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
                                   call_id: call.call_id,
                                   arguments: call.arguments,
                                   issue: String(issue),
-                                }).pipe(Effect.as(stop)),
+                                }).pipe(Effect.as(stop())),
                               ),
                             onSuccess: (args) =>
-                              nextAfter(
-                                Stream.succeed<EscalationEvent>({
-                                  _tag: "escalated",
-                                  reason: args.reason,
-                                  question: args.question,
-                                }),
-                                // Strong tier sees the same accumulated history
-                                // the cheap tier saw - no system prompt, no
-                                // cheap-tier turn, no escalate function call.
-                                {
-                                  history: current.history,
-                                  tier: 1,
-                                  escalation: args,
-                                } satisfies State,
+                              Stream.succeed<EscalationEvent>({
+                                _tag: "escalated",
+                                reason: args.reason,
+                                question: args.question,
+                              }).pipe(
+                                Stream.map(value),
+                                Stream.concat(
+                                  // Strong tier sees the same accumulated history
+                                  // the cheap tier saw - no system prompt, no
+                                  // cheap-tier turn, no escalate function call.
+                                  next({
+                                    history: current.history,
+                                    tier: 1,
+                                    escalation: args,
+                                  } satisfies State),
+                                ),
                               ),
                           }),
                       }),

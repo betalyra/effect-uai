@@ -11,7 +11,7 @@
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/pause-resume/index.ts`
  */
 import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, onTurnComplete, stop } from "@effect-uai/core/Loop"
+import { loop, next, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 import {
@@ -50,7 +50,7 @@ const PROMPT_BANK = [
 // ---------------------------------------------------------------------------
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly pendingPrompts: ReadonlyArray<string>
 }
 
@@ -88,12 +88,12 @@ const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) 
             onTurnComplete((turn) =>
               Effect.gen(function* () {
                 yield* Ref.update(turnsCompleted, (n) => n + 1)
-                const next = advance(state, turn)
-                if (next.pendingPrompts.length === 0) return stop
-                const [nextPrompt, ...rest] = next.pendingPrompts
-                return nextAfter(Stream.empty, {
-                  ...next,
-                  history: [...next.history, Items.userText(nextPrompt!)],
+                const nextState = advance(state, turn)
+                if (nextState.pendingPrompts.length === 0) return stop()
+                const [nextPrompt, ...rest] = nextState.pendingPrompts
+                return next({
+                  ...nextState,
+                  history: [...nextState.history, Items.userText(nextPrompt!)],
                   pendingPrompts: rest,
                 })
               }),

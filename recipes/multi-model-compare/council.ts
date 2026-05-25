@@ -16,7 +16,7 @@ export type CouncilEvent =
 
 const memberStream = (
   member: Member,
-  history: ReadonlyArray<Items.Item>,
+  history: ReadonlyArray<Items.HistoryItem>,
 ): Stream.Stream<CouncilEvent> =>
   member.service.streamTurn({ history, model: member.model }).pipe(
     Stream.map((delta): CouncilEvent => ({ type: "delta", member: member.name, delta })),
@@ -33,7 +33,7 @@ const memberStream = (
  */
 export const council = (
   members: ReadonlyArray<Member>,
-  history: ReadonlyArray<Items.Item>,
+  history: ReadonlyArray<Items.HistoryItem>,
 ): Stream.Stream<CouncilEvent> =>
   Stream.mergeAll(
     members.map((m) => memberStream(m, history)),

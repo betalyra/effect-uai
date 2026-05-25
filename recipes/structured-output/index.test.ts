@@ -33,7 +33,7 @@ describe("structured-output: single object", () => {
       }),
     )
 
-    const recipe = await Effect.runPromise(Turn.toStructured(turn, recipeFormat))
+    const recipe = await Effect.runPromise(Turn.decodeStructured(turn, recipeFormat))
 
     expect(recipe).toEqual({
       title: "Lemon Chicken",
@@ -45,7 +45,7 @@ describe("structured-output: single object", () => {
   it("fails with JsonParseError on invalid JSON", async () => {
     const turn = turnWithText("not json")
 
-    const exit = await Effect.runPromiseExit(Turn.toStructured(turn, recipeFormat))
+    const exit = await Effect.runPromiseExit(Turn.decodeStructured(turn, recipeFormat))
 
     expect(exit._tag).toBe("Failure")
     if (exit._tag === "Failure") {
@@ -58,7 +58,7 @@ describe("structured-output: single object", () => {
   it("fails with StructuredDecodeError on shape mismatch", async () => {
     const turn = turnWithText(JSON.stringify({ title: "X", ingredients: "wrong" }))
 
-    const exit = await Effect.runPromiseExit(Turn.toStructured(turn, recipeFormat))
+    const exit = await Effect.runPromiseExit(Turn.decodeStructured(turn, recipeFormat))
 
     expect(exit._tag).toBe("Failure")
     if (exit._tag === "Failure") {
@@ -80,7 +80,7 @@ describe("structured-output: single object", () => {
       ],
     }
 
-    const exit = await Effect.runPromiseExit(Turn.toStructured(turn, recipeFormat))
+    const exit = await Effect.runPromiseExit(Turn.decodeStructured(turn, recipeFormat))
 
     expect(exit._tag).toBe("Failure")
     if (exit._tag === "Failure") {

@@ -130,17 +130,17 @@
       "types": "./dist/tool/Toolkit.d.mts",
       "import": "./dist/tool/Toolkit.mjs"
     },
-    "./Outcome": {
-      "types": "./dist/tool/Outcome.d.mts",
-      "import": "./dist/tool/Outcome.mjs"
+    "./ToolResult": {
+      "types": "./dist/tool/ToolResult.d.mts",
+      "import": "./dist/tool/ToolResult.mjs"
     },
     "./ToolEvent": {
       "types": "./dist/tool/ToolEvent.d.mts",
       "import": "./dist/tool/ToolEvent.mjs"
     },
-    "./Resolvers": {
-      "types": "./dist/tool/Resolvers.d.mts",
-      "import": "./dist/tool/Resolvers.mjs"
+    "./Approval": {
+      "types": "./dist/tool/Approval.d.mts",
+      "import": "./dist/tool/Approval.mjs"
     },
     "./HistoryCheck": {
       "types": "./dist/tool/HistoryCheck.d.mts",

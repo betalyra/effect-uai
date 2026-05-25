@@ -46,15 +46,15 @@ const getCurrentTime = Tool.make({
   strict: true,
 })
 
-const toolkit = Toolkit.make([getCurrentTime])
-const tools = Toolkit.toDescriptors(toolkit)
+const allTools = [getCurrentTime]
+const tools = Tool.toDescriptors(allTools)
 
 // ---------------------------------------------------------------------------
 // State and types
 // ---------------------------------------------------------------------------
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly index: number
 }
 
@@ -87,18 +87,18 @@ export const conversation = pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
           onTurnComplete((turn) =>
             Effect.sync(() => {
-              const calls = Turn.functionCalls(turn)
+              const calls = Turn.getToolCalls(turn)
 
               // No tool calls - the assistant is done.
-              if (calls.length === 0) return stop
+              if (calls.length === 0) return stop()
 
               // Stream tool events to the consumer; on end-of-stream
               // emit one `Loop.next` carrying the appended turn.
-              // `continueWith` is the broadcast pattern bundled into one
-              // call - see `Loop.emitValues` / `Toolkit.collectResults` /
-              // `Loop.emitNext` if you ever need to vary an arm.
-              return Toolkit.executeAll(toolkit.tools, calls).pipe(
-                Toolkit.continueWith(
+              // `continueWithResults` is the broadcast pattern bundled into one
+              // call - see `Loop.value` / `Toolkit.collectResults` /
+              // `Loop.next` if you ever need to vary an arm.
+              return Toolkit.run(allTools, calls).pipe(
+                Toolkit.continueWithResults(
                   Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
                 ),
               )

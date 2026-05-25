@@ -3,17 +3,13 @@ import { describe, expect, expectTypeOf, it } from "vitest"
 import * as AiError from "../domain/AiError.js"
 import { TurnEvent } from "../domain/Turn.js"
 import {
-  type Event,
+  type Step,
   loop,
-  loopFrom,
+  loopOver,
   loopWithState,
   next,
-  nextAfter,
   onTurnComplete,
   stop,
-  stopAfter,
-  stopEvent,
-  stopWith,
   value,
 } from "./Loop.js"
 
@@ -22,8 +18,8 @@ describe("Loop.loop", () => {
     // Each iter emits [n, n + 0.5] then continues; final iter emits [n] and stops.
     const stream = loop(0, (n: number) =>
       n >= 3
-        ? stopAfter(Stream.fromIterable([n]))
-        : nextAfter(Stream.fromIterable([n, n + 0.5]), n + 1),
+        ? Stream.fromIterable([n]).pipe(Stream.map(value), Stream.concat(stop()))
+        : Stream.fromIterable([n, n + 0.5]).pipe(Stream.map(value), Stream.concat(next(n + 1))),
     )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
@@ -32,9 +28,7 @@ describe("Loop.loop", () => {
 
   it("supports iterations that emit zero values and only decide", async () => {
     // Every iteration emits nothing, just bumps state; stops at 5.
-    const stream = loop(0, (n: number) =>
-      n >= 5 ? Stream.fromIterable([stopEvent]) : Stream.fromIterable([next(n + 1)]),
-    )
+    const stream = loop(0, (n: number) => (n >= 5 ? stop() : next(n + 1)))
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
     expect(result).toEqual([])
@@ -47,8 +41,8 @@ describe("Loop.loop", () => {
       Effect.gen(function* () {
         const doubled = yield* Effect.succeed(n * 2)
         return doubled >= 16
-          ? stopAfter(Stream.fromIterable([doubled]))
-          : nextAfter(Stream.fromIterable([doubled]), doubled)
+          ? Stream.fromIterable([doubled]).pipe(Stream.map(value), Stream.concat(stop()))
+          : Stream.fromIterable([doubled]).pipe(Stream.map(value), Stream.concat(next(doubled)))
       }),
     )
 
@@ -62,8 +56,8 @@ describe("Loop.loop", () => {
         Effect.gen(function* () {
           const doubled = yield* Effect.succeed(n * 2)
           return doubled >= 4
-            ? stopAfter(Stream.fromIterable([doubled]))
-            : nextAfter(Stream.fromIterable([doubled]), doubled)
+            ? Stream.fromIterable([doubled]).pipe(Stream.map(value), Stream.concat(stop()))
+            : Stream.fromIterable([doubled]).pipe(Stream.map(value), Stream.concat(next(doubled)))
         }),
       ),
     )
@@ -76,8 +70,10 @@ describe("Loop.loop", () => {
     const boom = new Error("boom")
     const stream = loop(
       0,
-      (n: number): Stream.Stream<Event<number, number>, Error> =>
-        n === 2 ? Stream.fail(boom) : Stream.fromIterable([value(n), next(n + 1)]),
+      (n: number): Stream.Stream<Step<number, number>, Error> =>
+        n === 2
+          ? Stream.fail(boom)
+          : Stream.succeed(value(n)).pipe(Stream.concat(next(n + 1))),
     )
 
     const result = await Effect.runPromiseExit(Stream.runCollect(stream))
@@ -93,14 +89,17 @@ describe("Loop.loop", () => {
   })
 
   it("short-circuits the body's stream when a Decision is seen", async () => {
-    // Body emits [n, next(n+1), n+10]. Once the Decision is encountered, the
-    // body's stream is interrupted - `n+10` is never pulled, so it never
-    // flows to the outer stream. This is the correct behavior: a Decision
-    // marks "I'm done with this iteration"; anything after it is dead code.
+    // Body emits value(n), then a Next decision, then value(n+10). Once the
+    // decision is encountered, the body is closed - `n+10` is never pulled, so
+    // it never flows to the outer stream. This is the correct behavior: a
+    // decision marks "I'm done with this iteration"; anything after it is dead.
     const stream = loop(0, (n: number) =>
       n >= 2
-        ? Stream.fromIterable([value(n), stopEvent])
-        : Stream.fromIterable([value(n), next(n + 1), value(n + 10)]),
+        ? Stream.succeed(value(n)).pipe(Stream.concat(stop()))
+        : Stream.succeed(value(n)).pipe(
+            Stream.concat(next(n + 1)),
+            Stream.concat(Stream.succeed(value(n + 10))),
+          ),
     )
 
     const result = await Effect.runPromise(Stream.runCollect(stream))
@@ -130,7 +129,7 @@ describe("Loop.loop", () => {
 
   it("type: onTurnComplete inside loop infers S and A from the handler without annotation", () => {
     // Regression: when piped through loop, onTurnComplete's handler return
-    // type (Stream<Event<A, S>>) is the single source of truth for the loop
+    // type (Stream<Step<A, S>>) is the single source of truth for the loop
     // body's element type. The previous workaround required explicit
     // <S, A> at the call site. Now the loop's outer-return generics pull
     // them through automatically.
@@ -146,10 +145,11 @@ describe("Loop.loop", () => {
             onTurnComplete(() =>
               Effect.sync(() =>
                 state.turns >= 1
-                  ? stop
-                  : nextAfter(Stream.succeed<ToolEvent>({ _tag: "tool", name: "x" }), {
-                      turns: state.turns + 1,
-                    }),
+                  ? stop()
+                  : Stream.succeed<ToolEvent>({ _tag: "tool", name: "x" }).pipe(
+                      Stream.map(value),
+                      Stream.concat(next({ turns: state.turns + 1 })),
+                    ),
               ),
             ),
           )
@@ -170,8 +170,8 @@ describe("Loop.loop", () => {
     const textDelta: TurnEvent = TurnEvent.TextDelta({ text: "hi" })
     const deltas: Stream.Stream<TurnEvent> = Stream.fromIterable([textDelta, turnComplete])
 
-    const dataFirst = onTurnComplete(deltas, () => Effect.sync(() => stop))
-    const dataLast = deltas.pipe(onTurnComplete(() => Effect.sync(() => stop)))
+    const dataFirst = onTurnComplete(deltas, () => Effect.sync(() => stop()))
+    const dataLast = deltas.pipe(onTurnComplete(() => Effect.sync(() => stop())))
 
     const a = await Effect.runPromise(Stream.runCollect(dataFirst))
     const b = await Effect.runPromise(Stream.runCollect(dataLast))
@@ -186,8 +186,8 @@ describe("Loop.loop", () => {
     const N = 100_000
     const stream = loop(0, (n: number) =>
       n >= N
-        ? Stream.fromIterable([value(n), stopEvent])
-        : Stream.fromIterable([value(n), next(n + 1)]),
+        ? Stream.succeed(value(n)).pipe(Stream.concat(stop()))
+        : Stream.succeed(value(n)).pipe(Stream.concat(next(n + 1))),
     )
 
     const count = await Effect.runPromise(
@@ -254,7 +254,7 @@ const scriptedModel = (script: ReadonlyArray<ReadonlyArray<Delta>>): MockModel =
  *   2. flatMap projects deltas into UiEvents forwarded to the outer stream.
  *   3. Continuation reads the captured calls; if any, runs them, emits
  *      tool_result events, builds the next state (with model swap if a tool
- *      asked for one), and emits `next(state)`. Otherwise `stop`.
+ *      asked for one), and emits `next(state)`. Otherwise `stop()`.
  */
 const conversationLoop = (initial: State, runTool: ToolRunner) =>
   loop(initial, (state) =>
@@ -265,7 +265,7 @@ const conversationLoop = (initial: State, runTool: ToolRunner) =>
           ReadonlyArray<{ readonly id: string; readonly name: string }>
         >([])
 
-        const deltas: Stream.Stream<Event<UiEvent, State>> = state.model
+        const deltas: Stream.Stream<Step<UiEvent, State>> = state.model
           .streamTurn(state.history)
           .pipe(
             Stream.tap((d) =>
@@ -274,7 +274,7 @@ const conversationLoop = (initial: State, runTool: ToolRunner) =>
                 : Ref.update(toolCallsRef, (t) => [...t, { id: d.id, name: d.name }]),
             ),
             Stream.flatMap(
-              (d): Stream.Stream<Event<UiEvent, State>> =>
+              (d): Stream.Stream<Step<UiEvent, State>> =>
                 d.type === "text"
                   ? Stream.fromIterable([value<UiEvent>({ type: "text", text: d.text })])
                   : Stream.fromIterable([
@@ -283,13 +283,13 @@ const conversationLoop = (initial: State, runTool: ToolRunner) =>
             ),
           )
 
-        const continuation: Stream.Stream<Event<UiEvent, State>> = Stream.unwrap(
+        const continuation: Stream.Stream<Step<UiEvent, State>> = Stream.unwrap(
           Effect.gen(function* () {
             const texts = yield* Ref.get(textsRef)
             const toolCalls = yield* Ref.get(toolCallsRef)
 
             if (toolCalls.length === 0) {
-              return stopAfter(Stream.empty)
+              return stop()
             }
 
             const turnItems: ReadonlyArray<HistoryItem> = [
@@ -326,7 +326,10 @@ const conversationLoop = (initial: State, runTool: ToolRunner) =>
               model: nextModel,
             }
 
-            return nextAfter(Stream.fromIterable(events), nextState)
+            return Stream.fromIterable(events).pipe(
+              Stream.map(value),
+              Stream.concat(next(nextState)),
+            )
           }),
         )
 
@@ -419,8 +422,8 @@ describe("Loop.loop - pull-specific stream semantics", () => {
             Ref.update(callsRef, (calls) => calls + 1).pipe(
               Effect.as(
                 n >= 10
-                  ? Stream.fromIterable([value(n), stopEvent])
-                  : Stream.fromIterable([value(n), next(n + 1)]),
+                  ? Stream.succeed(value(n)).pipe(Stream.concat(stop()))
+                  : Stream.succeed(value(n)).pipe(Stream.concat(next(n + 1))),
               ),
             ),
           ),
@@ -449,8 +452,11 @@ describe("Loop.loop - pull-specific stream semantics", () => {
         const releasesRef = yield* Ref.make<ReadonlyArray<number>>([])
         const stream = loop(0, (n: number) =>
           (n >= 1
-            ? Stream.fromIterable([value(n), stopEvent])
-            : Stream.fromIterable([value(n), next(n + 1), value(n + 10)])
+            ? Stream.succeed(value(n)).pipe(Stream.concat(stop()))
+            : Stream.succeed(value(n)).pipe(
+                Stream.concat(next(n + 1)),
+                Stream.concat(Stream.succeed(value(n + 10))),
+              )
           ).pipe(Stream.ensuring(Ref.update(releasesRef, (values) => [...values, n]))),
         )
 
@@ -468,7 +474,7 @@ describe("Loop.loop - pull-specific stream semantics", () => {
       Effect.gen(function* () {
         const started = yield* Deferred.make<void>()
         const releasesRef = yield* Ref.make(0)
-        const body = (): Stream.Stream<Event<number, never>> =>
+        const body = (): Stream.Stream<Step<number, never>> =>
           Stream.concat(
             Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(value(0)))),
             Stream.never,
@@ -490,7 +496,7 @@ describe("Loop.loop - pull-specific stream semantics", () => {
     const defect = new Error("body construction failed")
     const result = await Effect.runPromiseExit(
       Stream.runCollect(
-        loop(0, (): Stream.Stream<Event<number, never>> => {
+        loop(0, (): Stream.Stream<Step<number, never>> => {
           throw defect
         }),
       ),
@@ -504,7 +510,9 @@ describe("Loop.loopWithState", () => {
   it("exposes the final state in the SubscriptionRef after the stream completes", async () => {
     const program = Effect.gen(function* () {
       const { stream, state } = yield* loopWithState(0, (n: number) =>
-        n >= 3 ? stopAfter(Stream.fromIterable([n])) : nextAfter(Stream.fromIterable([n]), n + 1),
+        n >= 3
+          ? Stream.fromIterable([n]).pipe(Stream.map(value), Stream.concat(stop()))
+          : Stream.fromIterable([n]).pipe(Stream.map(value), Stream.concat(next(n + 1))),
       )
       const values = yield* Stream.runCollect(stream)
       const finalState = yield* SubscriptionRef.get(state)
@@ -519,9 +527,7 @@ describe("Loop.loopWithState", () => {
 
   it("the state ref starts at `initial` and stays there if the loop stops without advancing", async () => {
     const program = Effect.gen(function* () {
-      const { stream, state } = yield* loopWithState({ count: 7 }, () =>
-        Stream.fromIterable([stopEvent]),
-      )
+      const { stream, state } = yield* loopWithState({ count: 7 }, () => stop())
       yield* Stream.runDrain(stream)
       return yield* SubscriptionRef.get(state)
     })
@@ -535,7 +541,9 @@ describe("Loop.loopWithState", () => {
     // tracks loop state without the body needing to surface it.
     const program = Effect.gen(function* () {
       const { stream, state } = yield* loopWithState(0, (n: number) =>
-        n >= 3 ? stopAfter(Stream.fromIterable([n])) : nextAfter(Stream.fromIterable([n]), n + 1),
+        n >= 3
+          ? Stream.fromIterable([n]).pipe(Stream.map(value), Stream.concat(stop()))
+          : Stream.fromIterable([n]).pipe(Stream.map(value), Stream.concat(next(n + 1))),
       )
       const seen: Array<{ value: number; stateAfter: number }> = []
       yield* Stream.runForEach(stream, (v) =>
@@ -565,7 +573,7 @@ describe("Loop.loopWithState", () => {
       const { stream, state } = yield* loopWithState(0, (n: number) =>
         Effect.gen(function* () {
           if (n === 0) yield* Latch.await(start)
-          return n >= 3 ? stopAfter(Stream.empty) : nextAfter(Stream.empty, n + 1)
+          return n >= 3 ? stop() : next(n + 1)
         }),
       )
 
@@ -593,8 +601,8 @@ describe("Loop.loopWithState", () => {
     const program = Effect.gen(function* () {
       const { stream } = yield* loopWithState(0, (n: number) =>
         n >= 3
-          ? stopAfter(Stream.fromIterable([n]))
-          : nextAfter(Stream.fromIterable([n, n + 0.5]), n + 1),
+          ? Stream.fromIterable([n]).pipe(Stream.map(value), Stream.concat(stop()))
+          : Stream.fromIterable([n, n + 0.5]).pipe(Stream.map(value), Stream.concat(next(n + 1))),
       )
       return Array.from(yield* Stream.runCollect(stream))
     })
@@ -603,16 +611,16 @@ describe("Loop.loopWithState", () => {
   })
 })
 
-describe("Loop.loopFrom", () => {
+describe("Loop.loopOver", () => {
   it("runs a multi-turn inner loop per input until the body emits stop", async () => {
     // Per input: emit (input + turnsSoFar) twice, then stop. State counts
     // total turns ACROSS inputs. Demonstrates that `next(s)` continues with
     // the SAME input, multiple times per input — not one body call per item.
     const result = await Effect.runPromise(
       Stream.fromIterable(["a", "b"]).pipe(
-        loopFrom(0, (turns: number, input: string) => {
-          if (turns >= 2 * (input === "a" ? 1 : 2)) return Stream.fromIterable([stopEvent])
-          return Stream.fromIterable([value(`${input}:${turns}`), next(turns + 1)])
+        loopOver(0, (turns: number, input: string) => {
+          if (turns >= 2 * (input === "a" ? 1 : 2)) return stop()
+          return Stream.succeed(value(`${input}:${turns}`)).pipe(Stream.concat(next(turns + 1)))
         }),
         Stream.runCollect,
       ),
@@ -625,15 +633,14 @@ describe("Loop.loopFrom", () => {
 
   it("threads state across inputs (audio-pipeline shape)", async () => {
     // History accumulates across inputs. Each input emits its joined view of
-    // history+input, then `stopWith` ends the inner loop AND carries the
+    // history+input, then `stop(state)` ends the inner loop AND carries the
     // updated history to the next input.
     const result = await Effect.runPromise(
       Stream.fromIterable(["x", "y", "z"]).pipe(
-        loopFrom([] as ReadonlyArray<string>, (history: ReadonlyArray<string>, input: string) =>
-          Stream.fromIterable([
-            value([...history, input].join(",")),
-            stopWith([...history, input]),
-          ]),
+        loopOver([] as ReadonlyArray<string>, (history: ReadonlyArray<string>, input: string) =>
+          Stream.succeed(value([...history, input].join(","))).pipe(
+            Stream.concat(stop([...history, input])),
+          ),
         ),
         Stream.runCollect,
       ),
@@ -653,27 +660,24 @@ describe("Loop.loopFrom", () => {
 
     const result = await Effect.runPromise(
       Stream.fromIterable(["doc1", "doc2"]).pipe(
-        loopFrom({ turn: 0, totalTurns: 0 } as State, (state, doc: string) => {
+        loopOver({ turn: 0, totalTurns: 0 } as State, (state, doc: string) => {
           // Each document runs three turns then stops.
           if (state.turn === 0) {
-            return Stream.fromIterable([
-              value<Turn>({ kind: "text", doc, text: "thinking" }),
-              next({ turn: 1, totalTurns: state.totalTurns + 1 }),
-            ])
+            return Stream.succeed(value<Turn>({ kind: "text", doc, text: "thinking" })).pipe(
+              Stream.concat(next({ turn: 1, totalTurns: state.totalTurns + 1 })),
+            )
           }
           if (state.turn === 1) {
-            return Stream.fromIterable([
-              value<Turn>({ kind: "tool", doc, tool: "search" }),
-              next({ turn: 2, totalTurns: state.totalTurns + 1 }),
-            ])
+            return Stream.succeed(value<Turn>({ kind: "tool", doc, tool: "search" })).pipe(
+              Stream.concat(next({ turn: 2, totalTurns: state.totalTurns + 1 })),
+            )
           }
-          // Final turn — `stopWith` emits the final value, advances state
+          // Final turn — `stop(state)` emits the final value, advances state
           // (reset turn to 0 for the next document, bump totalTurns), and
           // ends this document's inner loop in one shot.
-          return Stream.fromIterable([
-            value<Turn>({ kind: "text", doc, text: "final" }),
-            stopWith({ turn: 0, totalTurns: state.totalTurns + 1 }),
-          ])
+          return Stream.succeed(value<Turn>({ kind: "text", doc, text: "final" })).pipe(
+            Stream.concat(stop({ turn: 0, totalTurns: state.totalTurns + 1 })),
+          )
         }),
         Stream.runCollect,
       ),
@@ -693,10 +697,10 @@ describe("Loop.loopFrom", () => {
     // Single-input case: body advances via `next` then stops cleanly.
     const result = await Effect.runPromise(
       Stream.fromIterable(["only"]).pipe(
-        loopFrom(0, (turns: number, input: string) =>
+        loopOver(0, (turns: number, input: string) =>
           turns >= 2
-            ? Stream.fromIterable([stopEvent])
-            : Stream.fromIterable([value(`${input}:${turns}`), next(turns + 1)]),
+            ? stop()
+            : Stream.succeed(value(`${input}:${turns}`)).pipe(Stream.concat(next(turns + 1))),
         ),
         Stream.runCollect,
       ),
@@ -705,14 +709,14 @@ describe("Loop.loopFrom", () => {
     expect(result).toEqual(["only:0", "only:1"])
   })
 
-  it("body's `stop` advances to the next input (does NOT halt the whole stream)", async () => {
+  it("body's `stop()` advances to the next input (does NOT halt the whole stream)", async () => {
     // Three inputs, body always stops on its first emission. All three
-    // are processed — `stop` is per-input, not global. To halt the whole
+    // are processed — `stop()` is per-input, not global. To halt the whole
     // stream, end the INPUT stream upstream.
     const result = await Effect.runPromise(
       Stream.fromIterable([1, 2, 3]).pipe(
-        loopFrom(0, (_state: number, input: number) =>
-          Stream.fromIterable([value(input * 10), stopEvent]),
+        loopOver(0, (_state: number, input: number) =>
+          Stream.succeed(value(input * 10)).pipe(Stream.concat(stop())),
         ),
         Stream.runCollect,
       ),
@@ -725,10 +729,10 @@ describe("Loop.loopFrom", () => {
     const inputs = Stream.fromIterable([1, 2])
     const result = await Effect.runPromise(
       Stream.runCollect(
-        loopFrom(inputs, 0, (state: number, input: number) =>
+        loopOver(inputs, 0, (state: number, input: number) =>
           state >= input
-            ? Stream.fromIterable([stopEvent])
-            : Stream.fromIterable([value(state + input), next(state + 1)]),
+            ? stop()
+            : Stream.succeed(value(state + input)).pipe(Stream.concat(next(state + 1))),
         ),
       ),
     )
@@ -741,11 +745,11 @@ describe("Loop.loopFrom", () => {
   it("supports Effect-returning bodies (parity with loop)", async () => {
     const result = await Effect.runPromise(
       Stream.fromIterable(["a"]).pipe(
-        loopFrom(0, (turns: number, input: string) =>
+        loopOver(0, (turns: number, input: string) =>
           Effect.gen(function* () {
             const cur = yield* Effect.succeed(turns)
-            if (cur >= 2) return Stream.fromIterable([stopEvent])
-            return Stream.fromIterable([value(`${input}:${cur}`), next(cur + 1)])
+            if (cur >= 2) return stop()
+            return Stream.succeed(value(`${input}:${cur}`)).pipe(Stream.concat(next(cur + 1)))
           }),
         ),
         Stream.runCollect,
@@ -758,7 +762,7 @@ describe("Loop.loopFrom", () => {
   it("type: data-last (pipe) form preserves the body's E channel", () => {
     const result = pipe(
       Stream.fromIterable([1]),
-      loopFrom(0, (_state: number, _input: number) =>
+      loopOver(0, (_state: number, _input: number) =>
         Stream.fail(new AiError.RateLimited({ provider: "test", raw: null })),
       ),
     )
@@ -768,7 +772,7 @@ describe("Loop.loopFrom", () => {
 
   it("type: data-first form preserves the body's E channel and unifies with input's E", () => {
     const input: Stream.Stream<number, Error> = Stream.fail(new Error("boom"))
-    const result = loopFrom(input, 0, (_state: number, _i: number) =>
+    const result = loopOver(input, 0, (_state: number, _i: number) =>
       Stream.fail(new AiError.RateLimited({ provider: "test", raw: null })),
     )
     type E = typeof result extends Stream.Stream<unknown, infer X, unknown> ? X : never

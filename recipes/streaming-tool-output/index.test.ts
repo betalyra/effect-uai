@@ -6,10 +6,10 @@
 import { Effect, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
-import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import { type ToolResult, toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
-import { isIntermediate, isOutput } from "@effect-uai/core/ToolEvent"
+import { isProgress, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Turn from "@effect-uai/core/Turn"
 import {
   type DownloadEvent,
@@ -20,7 +20,7 @@ import {
   makeSubAgent,
 } from "./index.js"
 
-const fc = (call_id: string, name: string, args: unknown): Items.FunctionCall => ({
+const fc = (call_id: string, name: string, args: unknown): Items.ToolCall => ({
   type: "function_call",
   call_id,
   name,
@@ -67,7 +67,7 @@ describe("streaming-tool-output: sub-agent pattern", () => {
       ])
 
     const subAgent = makeSubAgent(mockedInner)
-    const allTools: ReadonlyArray<Tool.AnyKindTool> = [subAgent]
+    const allTools: ReadonlyArray<Tool.AnyTool> = [subAgent]
 
     const turn1: Turn.Turn = {
       stop_reason: "tool_calls",
@@ -87,7 +87,7 @@ describe("streaming-tool-output: sub-agent pattern", () => {
     )
 
     // 4 inner-stream events flow through as Intermediates.
-    const intermediates = collected.filter(isIntermediate)
+    const intermediates = collected.filter(isProgress)
     expect(intermediates).toHaveLength(4)
 
     const textDeltas = intermediates.filter((e) => (e.data as Turn.TurnEvent)._tag === "TextDelta")
@@ -97,7 +97,7 @@ describe("streaming-tool-output: sub-agent pattern", () => {
     const outputs: ReadonlyArray<ToolResult> = collected.filter(isOutput).map((e) => e.result)
     expect(outputs).toHaveLength(1)
     expect(outputs[0]).toMatchObject({
-      _tag: "Value",
+      _tag: "Ok",
       tool: "ask_subagent",
       value: {
         answer: 'Hmm, "What is the meaning of life?"... let me reason... the answer is 42.',
@@ -110,7 +110,7 @@ describe("streaming-tool-output: progress + result pattern", () => {
   it("progress events flow through; finalize picks the result", async () => {
     // Zero per-chunk delay for fast test execution.
     const downloadArtifact = makeDownloadTool("0 millis")
-    const allTools: ReadonlyArray<Tool.AnyKindTool> = [downloadArtifact]
+    const allTools: ReadonlyArray<Tool.AnyTool> = [downloadArtifact]
 
     const turn1: Turn.Turn = {
       stop_reason: "tool_calls",
@@ -130,7 +130,7 @@ describe("streaming-tool-output: progress + result pattern", () => {
     )
 
     // Intermediates: 3 progress + 1 result = 4.
-    const intermediates = collected.filter(isIntermediate)
+    const intermediates = collected.filter(isProgress)
     expect(intermediates).toHaveLength(4)
 
     const progressEvents = intermediates.filter(
@@ -145,7 +145,7 @@ describe("streaming-tool-output: progress + result pattern", () => {
     const outputs: ReadonlyArray<ToolResult> = collected.filter(isOutput).map((e) => e.result)
     expect(outputs).toHaveLength(1)
     expect(outputs[0]).toMatchObject({
-      _tag: "Value",
+      _tag: "Ok",
       tool: "download_artifact",
       value: {
         status: "completed",

@@ -2,7 +2,7 @@ import { Effect, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
+import { loop, next, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -12,7 +12,7 @@ describe("auto-compaction", () => {
     const KEEP_RECENT_ITEMS = 2
 
     interface State {
-      readonly history: ReadonlyArray<Items.Item>
+      readonly history: ReadonlyArray<Items.HistoryItem>
       readonly turnIndex: number
       readonly cumulativeInputTokens: number
       readonly pendingPrompts: ReadonlyArray<string>
@@ -113,7 +113,7 @@ describe("auto-compaction", () => {
                 onTurnComplete((turn) =>
                   Effect.sync(() => {
                     const summary = Turn.assistantTexts(turn).join(" ")
-                    return nextAfter(Stream.empty, withSummary(state, summary))
+                    return next(withSummary(state, summary))
                   }),
                 ),
               )
@@ -122,12 +122,12 @@ describe("auto-compaction", () => {
           return lm.streamTurn({ history: state.history, model: "mock", tools: [] }).pipe(
             onTurnComplete((turn) =>
               Effect.sync(() => {
-                const next = advance(state, turn)
-                if (state.pendingPrompts.length === 0) return stop
+                const nextState = advance(state, turn)
+                if (state.pendingPrompts.length === 0) return stop()
                 const [nextPrompt, ...rest] = state.pendingPrompts
-                return nextAfter(Stream.empty, {
-                  ...next,
-                  history: [...next.history, Items.userText(nextPrompt!)],
+                return next({
+                  ...nextState,
+                  history: [...nextState.history, Items.userText(nextPrompt!)],
                   pendingPrompts: rest,
                 })
               }),
@@ -149,7 +149,7 @@ describe("auto-compaction", () => {
 
     // Compaction calls are the ones whose final history message is the
     // summarization prompt.
-    const isCompactionCall = (history: ReadonlyArray<Items.Item>): boolean => {
+    const isCompactionCall = (history: ReadonlyArray<Items.HistoryItem>): boolean => {
       const last = history[history.length - 1]
       return (
         last !== undefined &&

@@ -25,7 +25,7 @@ describe("multi-model-compare", () => {
     return { streamTurn, turn: turnFromStream(streamTurn) }
   }
 
-  const history: ReadonlyArray<Items.Item> = [Items.userText("ping")]
+  const history: ReadonlyArray<Items.HistoryItem> = [Items.userText("ping")]
 
   it("tags each member's deltas and surfaces all three TurnCompletes", async () => {
     const { service: openai } = MockProvider.make([finalTurn("from-openai")])

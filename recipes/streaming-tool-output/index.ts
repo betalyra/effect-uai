@@ -10,7 +10,7 @@
  *       finalize: ignores progress; picks the result for the model
  *
  * Both flow inner events through to the consumer as
- * `ToolEvent.Intermediate`s in real time. The outer model only ever sees
+ * `ToolEvent.Progress`s in real time. The outer model only ever sees
  * `finalize(events)` as the structured `Output`. The dual-view pattern
  * (rich UI for the user, clean data for the model) is what makes
  * `Tool.streaming` worth its complexity.
@@ -21,7 +21,7 @@ import { Duration, Effect, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -126,12 +126,12 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
 // ---------------------------------------------------------------------------
 
 export interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly index: number
 }
 
 /** Build a conversation against the given toolkit. */
-export const buildConversation = (allTools: ReadonlyArray<Tool.AnyKindTool>, initial: State) =>
+export const buildConversation = (allTools: ReadonlyArray<Tool.AnyTool>, initial: State) =>
   pipe(
     initial,
     loop((state) =>
@@ -146,15 +146,15 @@ export const buildConversation = (allTools: ReadonlyArray<Tool.AnyKindTool>, ini
           .pipe(
             onTurnComplete((turn) =>
               Effect.sync(() => {
-                const calls = Turn.functionCalls(turn)
-                if (calls.length === 0) return stop
+                const calls = Turn.getToolCalls(turn)
+                if (calls.length === 0) return stop()
 
-                return Toolkit.executeAll(allTools, calls).pipe(
-                  Toolkit.continueWith((results) =>
-                    Turn.appendTurn(
+                return Toolkit.run(allTools, calls).pipe(
+                  Toolkit.continueWithResults((results) =>
+                    Turn.appendToHistory(
                       { ...state, index: state.index + 1 },
                       turn,
-                      results.map(toFunctionCallOutput),
+                      results.map(toToolCallOutput),
                     ),
                   ),
                 )

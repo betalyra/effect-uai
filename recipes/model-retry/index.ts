@@ -40,12 +40,12 @@
  *
  * `index.ts` exports the `conversation`; the runner lives in `run.ts`.
  */
-import { Data, Effect, Schedule, Stream, pipe } from "effect"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
+import { Data, Effect, Schedule, Stream, pipe } from "effect"
 
 // ---------------------------------------------------------------------------
 // Lifted item: every TurnEvent becomes an `Event`; non-retryable failures
@@ -80,7 +80,7 @@ const backoff = Schedule.exponential("200 millis", 2).pipe(
 // ---------------------------------------------------------------------------
 
 export interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
 }
 
 export const initial: State = {
@@ -108,7 +108,7 @@ export const conversation = pipe(
         Stream.flatMap((item) =>
           item._tag === "Event" ? Stream.succeed(item.event) : Stream.fail(item.cause),
         ),
-        onTurnComplete(() => Effect.sync(() => stop)),
+        onTurnComplete(() => Effect.sync(stop)),
       )
     }),
   ),

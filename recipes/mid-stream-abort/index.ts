@@ -11,19 +11,19 @@
  *
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/mid-stream-abort/index.ts`
  */
-import { Config, Deferred, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
+import { Config, Deferred, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
 }
 
 const initial: State = {
@@ -48,7 +48,7 @@ const conversation = pipe(
       // a short abort window can land before any delta arrives.
       return oai
         .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
-        .pipe(onTurnComplete(() => Effect.sync(() => stop)))
+        .pipe(onTurnComplete(() => Effect.sync(stop)))
     }),
   ),
 )

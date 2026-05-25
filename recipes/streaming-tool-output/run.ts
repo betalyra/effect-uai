@@ -14,7 +14,7 @@ import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { type State, buildConversation, makeDownloadTool } from "./index.js"
 
 const downloadArtifact = makeDownloadTool()
-const allTools: ReadonlyArray<Tool.AnyKindTool> = [downloadArtifact]
+const allTools: ReadonlyArray<Tool.AnyTool> = [downloadArtifact]
 
 const initial: State = {
   history: [Items.userText("Download https://example.com/big-blob and tell me the byte count.")],
@@ -23,7 +23,7 @@ const initial: State = {
 
 const program = Stream.runForEach(buildConversation(allTools, initial), (event) =>
   Match.value(event).pipe(
-    Match.when({ _tag: "Intermediate" }, (e) =>
+    Match.when({ _tag: "Progress" }, (e) =>
       Effect.logInfo("download progress", { call_id: e.call_id, data: e.data }),
     ),
     Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("download result", { result })),

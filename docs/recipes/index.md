@@ -33,6 +33,7 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Pause and resume](/recipes/pause-resume/)             | Pause between loop iterations with a latch; no provider call remains open.                                        |
 | [Mid-stream abort](/recipes/mid-stream-abort/)         | Cancel an in-flight turn through stream interruption and scope cleanup.                                           |
 | [Agentic loop](/recipes/agentic-loop/)                 | Drive a long-lived chat from a user-message queue while continuing model/tool work between clean turn boundaries. |
+| [Sleeper agent](/recipes/sleeper-agent/)               | Wait for a long-running tool call — the agent goes quiet while the work runs and wakes up when it's done.         |
 
 ## Transport
 

@@ -5,6 +5,7 @@ import {
   PiArrowsInLineHorizontal,
   PiChatCircleDots,
   PiClockCounterClockwise,
+  PiDetective,
   PiFlowArrow,
   PiGavel,
   PiGitFork,
@@ -84,6 +85,13 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Stop on a dime.** Cancel a running turn, drop the HTTP connection, and keep the partial output.",
     href: "/recipes/mid-stream-abort/",
     Icon: PiHandPalm,
+  },
+  {
+    title: "Sleeper agent",
+    description:
+      "**Wait for a long-running tool call.** The agent goes quiet while the work runs and wakes up the moment it's done.",
+    href: "/recipes/sleeper-agent/",
+    Icon: PiDetective,
   },
   {
     title: "Agentic loop",

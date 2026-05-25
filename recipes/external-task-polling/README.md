@@ -21,58 +21,73 @@ loop awaits that `Deferred` at the top of the next iteration.
   polling fiber. The deferred is a one-shot signal: set once by the
   poller, awaited once by the agent.
 - `forkPipelinePoller` as a self-contained primitive: create the
-  `Deferred`, fork the polling fiber, return the `Deferred` for the
-  caller to await.
-- A side-channel `Ref` that bridges the tool's `run` function (which
-  forks the poller) with the loop body (which captures the `Deferred`
-  into the next state).
+  `Deferred`, fork the polling fiber into an explicit scope with
+  `Effect.forkIn`, return the `Deferred` for the caller to await.
+- `Deferred.into` so the awaiter is **always** released — success,
+  check failure, or interruption all complete the `Deferred`.
+- A side-channel `Queue` that bridges the tool's `run` function (which
+  forks the poller) with the loop body (which drains the pending
+  `Deferred`s at the top of the next turn). A queue keeps every poller
+  even when the model triggers several deploys in one turn.
 - Polling with `Effect.repeat` + `Schedule.spaced`, stopping on a
-  predicate via the `until` option.
+  predicate via the `until` option, with `Schema.is` deriving the
+  terminal-state guard from a single `Schema.Literals` source of truth.
 
 ## The fork-and-return pattern
 
 ```ts
 export const forkPipelinePoller = (
   pipelineId: string,
-  checkStatus: (id: string) => Effect.Effect<PipelineStatus>,
+  checkStatus: CheckStatus,
+  scope: Scope.Scope,
   interval: Duration.Input = "2 seconds",
-): Effect.Effect<Deferred.Deferred<PipelineResult>> =>
+) =>
   Effect.gen(function* () {
-    const signal = yield* Deferred.make<PipelineResult>()
-    yield* Effect.forkDetach(pollPipeline(pipelineId, checkStatus, signal, interval))
+    const signal = yield* Deferred.make<PipelineResult, PipelineCheckError>()
+    yield* Effect.forkIn(pollPipeline(pipelineId, checkStatus, signal, interval), scope)
     return signal
   })
 ```
 
 The caller gets back a `Deferred` it can await at any point. The polling
-fiber is a child of the current scope — if the agent fiber is
-interrupted, the poller is interrupted too. No leaked fibers.
+fiber is forked into the scope passed as an explicit value — when that
+scope closes, the poller is interrupted too. No leaked fibers. The poll
+effect ends in `Deferred.into(signal)`, so whether the pipeline reaches a
+terminal state or `checkStatus` fails, the `Deferred` is completed and
+the awaiter is never left hanging.
 
 ## Coordination inside the loop
 
 ```ts
 loop((state) =>
   Effect.gen(function* () {
-    // Block until any pending pipeline resolves
-    const history = yield* Option.match(state.pendingPipeline, {
-      onNone: () => Effect.succeed(state.history),
-      onSome: (signal) =>
+    // Drain (non-blocking) any pipelines forked in prior turns and block
+    // on each before the next turn. `Queue.clear` returns immediately with
+    // an empty array when nothing is pending; `takeAll` would block.
+    const signals = yield* Queue.clear(pending)
+    const messages = yield* Effect.forEach(
+      signals,
+      (signal) =>
         Deferred.await(signal).pipe(
-          Effect.map((r) => [
-            ...state.history,
-            Items.userText(`Pipeline ${r.pipelineId} completed with status: ${r.status}`),
-          ]),
+          Effect.map((r) => Items.userText(`Pipeline ${r.pipelineId} completed with status: ${r.status}`)),
+          Effect.catch((e) =>
+            Effect.succeed(Items.userText(`Pipeline ${e.pipelineId} status check failed (${e._tag})`)),
+          ),
         ),
-    })
+      { concurrency: "unbounded" },
+    )
+    const history = [...state.history, ...messages]
 
     // ... normal model turn
   }),
 )
 ```
 
-When `pendingPipeline` is `None`, the loop runs a model turn immediately.
-When it's `Some(deferred)`, the loop blocks until the polling fiber
-resolves it — no provider call is open, no HTTP connection is held.
+When the queue is empty the loop runs a model turn immediately. When a
+pipeline is pending it blocks until the polling fiber resolves the
+`Deferred` — no provider call is open, no HTTP connection is held. Tool
+results are folded back into history with `Toolkit.continueWith` +
+`Turn.appendTurn`, the same pattern the other tool-using recipes share.
 
 ## Deferred vs Latch
 

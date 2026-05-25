@@ -1,6 +1,7 @@
 import { Array as Arr, Effect, Function, Ref, Schema, Stream } from "effect"
 import * as Loop from "../loop/Loop.js"
-import type { FunctionCall } from "../domain/Items.js"
+import type { FunctionCall, Item } from "../domain/Items.js"
+import { appendTurn, type Turn } from "../domain/Turn.js"
 import {
   type AnyKindTool,
   type AnyPlainTool,
@@ -10,7 +11,7 @@ import {
   type Tool,
   type ToolDescriptor,
 } from "./Tool.js"
-import { ToolResult, executionError, rejected } from "./Outcome.js"
+import { ToolResult, executionError, rejected, toFunctionCallOutput } from "./Outcome.js"
 import { ToolEvent } from "./ToolEvent.js"
 import { isOutput } from "./ToolEvent.js"
 
@@ -200,6 +201,64 @@ const runStreaming = <R>(
 // `stream.pipe(continueWith(build))` both work.
 // ---------------------------------------------------------------------------
 
+/**
+ * Append a completed turn plus tool results to a state's history, converting
+ * the results to wire-format `FunctionCallOutput`s. Curried so it slots
+ * directly into `Effect.map` after `collectResults`:
+ *
+ *   stream.pipe(
+ *     Toolkit.collectResults,
+ *     Effect.map(Toolkit.appendToolResults(state, turn)),
+ *     Loop.emitNext,
+ *   )
+ *
+ * Equivalent to `appendTurn(state, turn, results.map(toFunctionCallOutput))`
+ * — the helper just hides the wire-conversion step.
+ */
+export const appendToolResults = <S extends { readonly history: ReadonlyArray<Item> }>(
+  state: S,
+  turn: Turn,
+) =>
+  (results: ReadonlyArray<ToolResult>): S =>
+    appendTurn(state, turn, results.map(toFunctionCallOutput))
+
+/**
+ * Drain a `Stream<ToolEvent>` and return the accumulated `ToolResult`s
+ * from every `Output` event. One-shot — the type is `Effect<results>`,
+ * not a one-element stream — so it composes naturally with `Effect.map`
+ * to build state and `Loop.emitNext` to lift back into the loop emit
+ * shape when broadcasting.
+ *
+ * Counterpart to `continueWith`: `continueWith` bundles drain + emit Next
+ * into one bridge; this one is the right arm of a broadcast/fork-and-merge
+ * for callers that want to vary the left arm (e.g., filter/tap ToolEvents
+ * before forwarding).
+ */
+export const collectResults = <E, R>(
+  stream: Stream.Stream<ToolEvent, E, R>,
+): Effect.Effect<ReadonlyArray<ToolResult>, E, R> =>
+  stream.pipe(
+    Stream.filter(isOutput),
+    Stream.map((e) => e.result),
+    Stream.runCollect,
+  )
+
+/**
+ * Bridge from a `Stream<ToolEvent>` to the loop's emit shape. Forwards
+ * every ToolEvent downstream as a `Loop.value` and at end-of-stream emits
+ * one `Loop.next(build(results))` carrying the accumulated `ToolResult`s
+ * from terminal `Output` events.
+ *
+ * Conceptually a broadcast fork (one arm passes events through, the other
+ * drains them into a state). Implemented as a single-pass Ref tap + concat
+ * for zero buffering — the broadcast version is observationally equivalent
+ * but holds events in a PubSub until both arms drain. The public primitives
+ * (`Loop.emitValues`, `collectResults`, `Loop.emitNext`) compose the same
+ * pattern when you need to vary an arm.
+ *
+ * Dual: data-first `continueWith(stream, build)` and data-last
+ * `stream.pipe(continueWith(build))` both work.
+ */
 export const continueWith: {
   <S>(
     build: (results: ReadonlyArray<ToolResult>) => S,
@@ -216,10 +275,19 @@ export const continueWith: {
     stream: Stream.Stream<ToolEvent, never, R>,
     build: (results: ReadonlyArray<ToolResult>) => S,
   ): Stream.Stream<Loop.Event<ToolEvent, S>, never, R> =>
-    Loop.nextAfterFold(
-      stream,
-      [] as ReadonlyArray<ToolResult>,
-      (acc, e) => (isOutput(e) ? Arr.append(acc, e.result) : acc),
-      build,
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const ref = yield* Ref.make<ReadonlyArray<ToolResult>>([])
+        const tapped = stream.pipe(
+          Stream.tap((e) =>
+            isOutput(e) ? Ref.update(ref, (acc) => Arr.append(acc, e.result)) : Effect.void,
+          ),
+          Stream.map(Loop.value),
+        )
+        const continuation = Stream.fromEffect(
+          Ref.get(ref).pipe(Effect.map((acc) => Loop.next(build(acc)))),
+        )
+        return tapped.pipe(Stream.concat(continuation))
+      }),
     ),
 )

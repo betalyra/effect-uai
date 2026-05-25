@@ -54,13 +54,15 @@ Loop.stopWith(state) // end the loop AND surface a final state
 Loop.nextAfter(stream, s) // emit values from `stream`, then continue with state `s`
 Loop.stopAfter(stream) // emit values from `stream`, then end the loop
 Loop.stopWithAfter(stream, s) // emit values from `stream`, then end with final state `s`
-Loop.nextAfterFold(stream, b, fold, build) // drain stream, fold to acc, then continue with build(acc)
+Loop.emitValues(stream) // lift every element as Loop.value(a) — left arm of a fork
+Loop.emitNext(effect) // lift a one-shot Effect<S> as a single Loop.next(s) — right arm of a fork
 ```
 
-`nextAfter` / `stopAfter` are the everyday workhorses. `nextAfterFold`
-is the general primitive — drain a stream, fold its elements into an
-accumulator, then advance with state derived from the fold. The
-streaming-tool helper [`Toolkit.continueWith`](/concepts/tools/) is
+`nextAfter` / `stopAfter` are the everyday workhorses. `emitValues` /
+`emitNext` are the broadcast-fork building blocks — broadcast a source
+stream, pipe one arm through `emitValues` for pass-through, accumulate
+the other into an `Effect<S>` and lift via `emitNext`, then `Stream.merge`.
+The streaming-tool helper [`Toolkit.continueWith`](/concepts/tools/) is
 built on top.
 
 Reach for `stopWith` / `stopWithAfter` when the loop ending _is_ the

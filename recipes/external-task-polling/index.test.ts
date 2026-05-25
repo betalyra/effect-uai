@@ -42,28 +42,22 @@ const makeCheckStatus = (statuses: NonEmptyArray<PipelineStatus>) => {
 // forkPipelinePoller
 // ---------------------------------------------------------------------------
 
-const x = Effect.gen(function* () {
-  const checkStatus = makeCheckStatus(["pending", "running", "success"])
-
-  const signal = yield* forkPipelinePoller("pipeline-main", checkStatus, "10 millis")
-  const result = yield* Deferred.await(signal)
-  return result
-})
-
-it.effect("should work with Effects", () =>
-  Effect.gen(function* () {
-    const result = yield* TestClock.withLive(x)
-    expect(result).toEqual({ pipelineId: "pipeline-main", status: "success" })
-  }),
-)
+// Forks the poller into an explicit scope, awaits the signal, then lets the
+// scope close (interrupting the now-finished poller).
+const runPoller = (pipelineId: string, checkStatus: ReturnType<typeof makeCheckStatus>) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const scope = yield* Effect.scope
+      const signal = yield* forkPipelinePoller(pipelineId, checkStatus, scope, "10 millis")
+      return yield* Deferred.await(signal)
+    }),
+  )
 
 describe("forkPipelinePoller", () => {
   it.effect("resolves the deferred when pipeline reaches a terminal status", () =>
     Effect.gen(function* () {
       const checkStatus = makeCheckStatus(["pending", "running", "success"])
-
-      const signal = yield* forkPipelinePoller("pipeline-main", checkStatus, "10 millis")
-      const result = yield* Deferred.await(signal)
+      const result = yield* runPoller("pipeline-main", checkStatus)
       expect(result).toEqual({ pipelineId: "pipeline-main", status: "success" })
     }).pipe(TestClock.withLive),
   )
@@ -71,22 +65,17 @@ describe("forkPipelinePoller", () => {
   it.effect("resolves with failure when pipeline fails", () =>
     Effect.gen(function* () {
       const checkStatus = makeCheckStatus(["pending", "failure"])
-
-      const signal = yield* forkPipelinePoller("pipeline-feat", checkStatus, "10 millis")
-      yield* TestClock.adjust("10 millis")
-      const result = yield* Deferred.await(signal)
+      const result = yield* runPoller("pipeline-feat", checkStatus)
       expect(result).toEqual({ pipelineId: "pipeline-feat", status: "failure" })
-    }),
+    }).pipe(TestClock.withLive),
   )
 
   it.effect("resolves immediately when first check is already terminal", () =>
     Effect.gen(function* () {
       const checkStatus = makeCheckStatus(["success"])
-
-      const signal = yield* forkPipelinePoller("pipeline-fast", checkStatus, "10 millis")
-      const result = yield* Deferred.await(signal)
+      const result = yield* runPoller("pipeline-fast", checkStatus)
       expect(result).toEqual({ pipelineId: "pipeline-fast", status: "success" })
-    }),
+    }).pipe(TestClock.withLive),
   )
 })
 

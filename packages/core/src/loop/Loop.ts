@@ -141,50 +141,29 @@ export const stopWithAfter: {
 )
 
 /**
- * General `nextAfter` variant: drain `stream` to the consumer, fold elements
- * into an accumulator, and at end-of-stream emit one `next(build(finalAcc))`.
+ * Lift a raw `Stream<A>` into the loop's Value channel — every element
+ * becomes `value(a)`. The natural left arm of a broadcast/fork-and-merge
+ * into the loop emit shape: see `emitNext` for the right arm.
  *
- * Subsumes `nextAfter` when state is constant (`reduce: (s, _) => s`,
- * `build: (s) => s`). Used by `Toolkit.continueWith` to collect tool
- * results and build next state without exposing a Ref to recipes.
- *
- * Dual: data-first `nextAfterFold(stream, initial, reduce, build)` and
- * data-last `stream.pipe(nextAfterFold(initial, reduce, build))` both work.
+ * Equivalent to `Stream.map(stream, value)`; the name documents intent.
  */
-export const nextAfterFold: {
-  <A, B, S>(
-    initial: B,
-    reduce: (acc: B, a: A) => B,
-    build: (b: B) => S,
-  ): <E, R>(stream: Stream.Stream<A, E, R>) => Stream.Stream<Event<A, S>, E, R>
-  <A, B, S, E, R>(
-    stream: Stream.Stream<A, E, R>,
-    initial: B,
-    reduce: (acc: B, a: A) => B,
-    build: (b: B) => S,
-  ): Stream.Stream<Event<A, S>, E, R>
-} = Function.dual(
-  4,
-  <A, B, S, E, R>(
-    stream: Stream.Stream<A, E, R>,
-    initial: B,
-    reduce: (acc: B, a: A) => B,
-    build: (b: B) => S,
-  ): Stream.Stream<Event<A, S>, E, R> =>
-    Stream.unwrap(
-      Effect.gen(function* () {
-        const ref = yield* Ref.make(initial)
-        const tapped = stream.pipe(
-          Stream.tap((a) => Ref.update(ref, (acc) => reduce(acc, a))),
-          Stream.map(value),
-        )
-        const continuation = Stream.fromEffect(
-          Ref.get(ref).pipe(Effect.map((acc) => next(build(acc)))),
-        )
-        return tapped.pipe(Stream.concat(continuation))
-      }),
-    ),
-)
+export const emitValues = <A, E, R>(
+  stream: Stream.Stream<A, E, R>,
+): Stream.Stream<Event<A, never>, E, R> => Stream.map(stream, value)
+
+/**
+ * Lift a single `Effect<S>` into the loop's Next channel — one terminal
+ * `next(state)` produced from an effectful computation. The natural right
+ * arm of a broadcast/fork-and-merge: collect-then-emit-one-state.
+ *
+ * Pairs with `emitValues`: together they bridge a forked source stream
+ * into the loop emit shape without a Ref tap.
+ */
+export const emitNext = <S, E, R>(
+  effect: Effect.Effect<S, E, R>,
+): Stream.Stream<Event<never, S>, E, R> =>
+  Stream.fromEffect(Effect.map(effect, next))
+
 
 // ---------------------------------------------------------------------------
 // onTurnComplete - turn-aware stream operator for loop bodies
@@ -209,21 +188,33 @@ export const nextAfterFold: {
  * `deltas.pipe(onTurnComplete(then))` both work.
  */
 export const onTurnComplete: {
-  <S, A, E2 = never, R2 = never>(
-    then: (turn: Turn) => Effect.Effect<Stream.Stream<Event<A, S>, E2, R2>, E2, R2>,
+  <S, A, Es = never, Rs = never, Ee = never, Re = never>(
+    then: (turn: Turn) => Effect.Effect<Stream.Stream<Event<A, S>, Es, Rs>, Ee, Re>,
   ): <E, R>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-  ) => Stream.Stream<Event<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2>
-  <S, A, E, R, E2 = never, R2 = never>(
+  ) => Stream.Stream<
+    Event<TurnEvent | A, S>,
+    E | Es | Ee | IncompleteTurn,
+    R | Rs | Exclude<Re, Scope.Scope>
+  >
+  <S, A, E, R, Es = never, Rs = never, Ee = never, Re = never>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-    then: (turn: Turn) => Effect.Effect<Stream.Stream<Event<A, S>, E2, R2>, E2, R2>,
-  ): Stream.Stream<Event<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2>
+    then: (turn: Turn) => Effect.Effect<Stream.Stream<Event<A, S>, Es, Rs>, Ee, Re>,
+  ): Stream.Stream<
+    Event<TurnEvent | A, S>,
+    E | Es | Ee | IncompleteTurn,
+    R | Rs | Exclude<Re, Scope.Scope>
+  >
 } = Function.dual(
   2,
-  <S, A, E, R, E2, R2>(
+  <S, A, E, R, Es, Rs, Ee, Re>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-    then: (turn: Turn) => Effect.Effect<Stream.Stream<Event<A, S>, E2, R2>, E2, R2>,
-  ): Stream.Stream<Event<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2> =>
+    then: (turn: Turn) => Effect.Effect<Stream.Stream<Event<A, S>, Es, Rs>, Ee, Re>,
+  ): Stream.Stream<
+    Event<TurnEvent | A, S>,
+    E | Es | Ee | IncompleteTurn,
+    R | Rs | Exclude<Re, Scope.Scope>
+  > =>
     Stream.unwrap(
       Effect.gen(function* () {
         const turnRef = yield* Ref.make<Option.Option<Turn>>(Option.none())
@@ -235,6 +226,9 @@ export const onTurnComplete: {
           Stream.map(value),
         )
 
+        // Stream.unwrap consumes Scope from the inner Effect's R, so a
+        // `then` callback whose Effect needs Scope (e.g., via Stream.share)
+        // composes cleanly even when its returned Stream's R is narrower.
         const continuation = Stream.unwrap(
           Effect.gen(function* () {
             const opt = yield* Ref.get(turnRef)

@@ -7,8 +7,7 @@
  */
 import { DateTime, Effect, Option, pipe, Schema, Stream } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -93,18 +92,14 @@ export const conversation = pipe(
               // No tool calls - the assistant is done.
               if (calls.length === 0) return stop
 
-              // Streaming executor: tool intermediates flow through in
-              // real time, terminal Outputs carry structured ToolResults.
-              // `continueWith` collects the results and hands them to
-              // build for next-state construction; `toFunctionCallOutput`
-              // converts to wire form when appending to history.
+              // Stream tool events to the consumer; on end-of-stream
+              // emit one `Loop.next` carrying the appended turn.
+              // `continueWith` is the broadcast pattern bundled into one
+              // call - see `Loop.emitValues` / `Toolkit.collectResults` /
+              // `Loop.emitNext` if you ever need to vary an arm.
               return Toolkit.executeAll(toolkit.tools, calls).pipe(
-                Toolkit.continueWith((results) =>
-                  Turn.appendTurn(
-                    { ...state, index: state.index + 1 },
-                    turn,
-                    results.map(toFunctionCallOutput),
-                  ),
+                Toolkit.continueWith(
+                  Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
                 ),
               )
             }),

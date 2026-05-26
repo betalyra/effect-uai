@@ -8,43 +8,39 @@
  * Recipes thread `ToolEvent.Output.result` through `continueWithResults` and
  * apply `toToolCallOutput` when appending to history.
  */
-import { Schema } from "effect"
-import { ToolResult } from "./ToolResult.js"
+import { Data } from "effect"
+import type { ToolResult } from "./ToolResult.js"
 
-const ToolEventSchema = Schema.TaggedUnion({
+export type ToolEvent = Data.TaggedEnum<{
   ApprovalRequested: {
-    call_id: Schema.String,
-    tool: Schema.String,
-    arguments: Schema.String,
-  },
+    readonly call_id: string
+    readonly tool: string
+    readonly arguments: string
+  }
   Progress: {
-    call_id: Schema.String,
-    tool: Schema.String,
-    data: Schema.Unknown,
-  },
+    readonly call_id: string
+    readonly tool: string
+    readonly data: unknown
+  }
   Output: {
-    result: ToolResult,
-  },
-})
-
-export type ToolEvent = typeof ToolEventSchema.Type
+    readonly result: ToolResult
+  }
+}>
 
 /**
  * Namespace of constructors, type guards, and matchers for `ToolEvent`,
- * provided by `Schema.TaggedUnion`. Use `ToolEvent.Output({ result })` to build
- * an event, `ToolEvent.guards.Output` for type narrowing,
- * `ToolEvent.match({ ApprovalRequested, Progress, Output })` for
+ * provided by `Data.taggedEnum`. Use `ToolEvent.Output({ result })` to build
+ * an event, `ToolEvent.$is("Output")` for type narrowing,
+ * `ToolEvent.$match({ ApprovalRequested, Progress, Output })` for
  * exhaustive pattern matching.
  */
-export const ToolEvent = Object.assign(ToolEventSchema, {
-  ApprovalRequested: (input: Parameters<typeof ToolEventSchema.cases.ApprovalRequested.make>[0]) =>
-    ToolEventSchema.cases.ApprovalRequested.make(input),
-  Progress: (input: Parameters<typeof ToolEventSchema.cases.Progress.make>[0]) =>
-    ToolEventSchema.cases.Progress.make(input),
-  Output: (input: Parameters<typeof ToolEventSchema.cases.Output.make>[0]) =>
-    ToolEventSchema.cases.Output.make(input),
-})
+export const ToolEvent = Data.taggedEnum<ToolEvent>()
 
-export const isApprovalRequested = ToolEvent.guards.ApprovalRequested
-export const isProgress = ToolEvent.guards.Progress
-export const isOutput = ToolEvent.guards.Output
+export const isApprovalRequested: (
+  x: ToolEvent,
+) => x is Extract<ToolEvent, { readonly _tag: "ApprovalRequested" }> =
+  ToolEvent.$is("ApprovalRequested")
+export const isProgress: (x: ToolEvent) => x is Extract<ToolEvent, { readonly _tag: "Progress" }> =
+  ToolEvent.$is("Progress")
+export const isOutput: (x: ToolEvent) => x is Extract<ToolEvent, { readonly _tag: "Output" }> =
+  ToolEvent.$is("Output")

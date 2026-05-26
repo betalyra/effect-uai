@@ -51,10 +51,10 @@ export type CouncilEvent =
     }
 
 const judgeHistory = (
-  base: ReadonlyArray<Items.Item>,
+  base: ReadonlyArray<Items.HistoryItem>,
   subject: string,
   subjectAnswer: string,
-): ReadonlyArray<Items.Item> => [
+): ReadonlyArray<Items.HistoryItem> => [
   Items.systemText(
     'You are an impartial judge. Reply ONLY with a JSON object: {"score": number 0-10, "rationale": short string}.',
   ),
@@ -76,7 +76,7 @@ const judgeStream = (
   judge: Member,
   subject: string,
   subjectAnswer: string,
-  history: ReadonlyArray<Items.Item>,
+  history: ReadonlyArray<Items.HistoryItem>,
 ): Stream.Stream<CouncilEvent> =>
   judge.service
     .streamTurn({
@@ -129,7 +129,7 @@ const judgeStream = (
 const candidatePipeline = (
   member: Member,
   judges: ReadonlyArray<Member>,
-  history: ReadonlyArray<Items.Item>,
+  history: ReadonlyArray<Items.HistoryItem>,
 ): Stream.Stream<CouncilEvent> =>
   member.service.streamTurn({ history, model: member.model }).pipe(
     Stream.mapAccum(
@@ -230,7 +230,7 @@ const pickWinner = (tally: Tally): Winner | null =>
  */
 export const council = (
   members: ReadonlyArray<Member>,
-  history: ReadonlyArray<Items.Item>,
+  history: ReadonlyArray<Items.HistoryItem>,
 ): Stream.Stream<CouncilEvent> =>
   Stream.mergeAll(
     members.map((m) => candidatePipeline(m, members, history)),

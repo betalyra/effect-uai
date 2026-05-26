@@ -155,7 +155,7 @@ const program = (cheap: Tier, strong: Tier) =>
     yield* Effect.forkChild(readStdinInto(queue))
 
     const convo = conversation(cheap, strong)
-    const historyRef = yield* Ref.make<ReadonlyArray<Items.Item>>([])
+    const historyRef = yield* Ref.make<ReadonlyArray<Items.HistoryItem>>([])
 
     return yield* Effect.forever(
       Effect.gen(function* () {

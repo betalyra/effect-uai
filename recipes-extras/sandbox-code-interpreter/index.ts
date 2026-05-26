@@ -8,15 +8,15 @@
  * `index.ts` builds the conversation; `run.ts` wires the provider,
  * the Microsandbox layer, and runs it.
  */
-import { Array as Arr, Effect, Schema, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import type { SandboxInstance } from "@effect-uai/core/Sandbox"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
+import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
+import { Array as Arr, Effect, Schema, pipe } from "effect"
 
 // ---------------------------------------------------------------------------
 // The tool — give the model a Python runtime inside the sandbox
@@ -55,7 +55,7 @@ If the tool returns a non-zero exit code, read stderr, fix the code, and call th
 When you have a verified answer, reply with just the answer — no code, no commentary.`
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly index: number
 }
 
@@ -76,15 +76,15 @@ export const conversation = (service: LanguageModelService, model: string, sb: S
 
   // After each turn: tool calls → run them and continue; no tool calls → stop.
   const nextStep = (state: State, turn: Turn.Turn) =>
-    Arr.match(Turn.functionCalls(turn), {
-      onEmpty: () => stop,
+    Arr.match(Turn.getToolCalls(turn), {
+      onEmpty: () => stop(),
       onNonEmpty: (calls) =>
-        Toolkit.executeAll(toolkit.tools, calls).pipe(
-          Toolkit.continueWith((results) =>
-            Turn.appendTurn(
+        Toolkit.run(toolkit.tools, calls).pipe(
+          Toolkit.continueWithResults((results) =>
+            Turn.appendToHistory(
               { ...state, index: state.index + 1 },
               turn,
-              results.map(toFunctionCallOutput),
+              results.map(toToolCallOutput),
             ),
           ),
         ),

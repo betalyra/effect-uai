@@ -10,14 +10,14 @@
  * Run with:
  *   OPENAI_API_KEY=sk-... GOOGLE_API_KEY=... pnpm tsx recipes/multi-model-fallback/index.ts
  */
-import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
+import { loop, next, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 import { make as makeGemini } from "@effect-uai/google/Gemini"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
+import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
 
 // ---------------------------------------------------------------------------
 // State and types
@@ -30,7 +30,7 @@ interface Tier {
 }
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly tier: number
 }
 
@@ -52,19 +52,19 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
         const tier = tiers[state.tier]
         if (tier === undefined) {
           yield* Effect.logError("all tiers exhausted - no provider succeeded")
-          return stop
+          return stop()
         }
 
         yield* Effect.logInfo(`trying ${tier.name}`)
 
         const advanceTier = (reason: string) =>
           Effect.logWarning(`${tier.name}: ${reason} - falling back`).pipe(
-            Effect.as(nextAfter(Stream.empty, { ...state, tier: state.tier + 1 })),
+            Effect.as(next({ ...state, tier: state.tier + 1 })),
           )
 
         return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
           // Success path: first complete turn ends the whole loop.
-          onTurnComplete(() => Effect.sync(() => stop)),
+          onTurnComplete(() => Effect.sync(stop)),
           Stream.catchTag("RateLimited", () => Stream.unwrap(advanceTier("rate-limited"))),
           Stream.catchTag("Unavailable", () => Stream.unwrap(advanceTier("unavailable"))),
         )

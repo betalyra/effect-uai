@@ -100,7 +100,7 @@ const program = Effect.gen(function* () {
       Match.discriminators("_tag")({
         TurnComplete: ({ turn }) =>
           Effect.forEach(
-            Turn.functionCalls(turn),
+            Turn.getToolCalls(turn),
             (call) =>
               Effect.logInfo(`tool call: ${call.name}`, {
                 call_id: call.call_id,

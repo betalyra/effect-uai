@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import { type ToolResult, toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
 import { isOutput } from "@effect-uai/core/ToolEvent"
@@ -21,7 +21,7 @@ describe("basic-usage", () => {
       run: ({ name }) => Effect.succeed({ greeting: `Hello, ${name}!` }),
       strict: true,
     })
-    const toolkit = Toolkit.make([greet])
+    const allTools = [greet]
 
     // Script the model: turn 1 calls the tool, turn 2 produces a final answer.
     const turn1: Turn.Turn = {
@@ -49,7 +49,7 @@ describe("basic-usage", () => {
     }
 
     interface State {
-      readonly history: ReadonlyArray<Items.Item>
+      readonly history: ReadonlyArray<Items.HistoryItem>
       readonly index: number
     }
 
@@ -68,20 +68,20 @@ describe("basic-usage", () => {
             .streamTurn({
               history: state.history,
               model: "mock",
-              tools: Toolkit.toDescriptors(toolkit),
+              tools: Tool.toDescriptors(allTools),
             })
             .pipe(
               onTurnComplete((turn) =>
                 Effect.sync(() => {
-                  const calls = Turn.functionCalls(turn)
-                  if (calls.length === 0) return stop
+                  const calls = Turn.getToolCalls(turn)
+                  if (calls.length === 0) return stop()
 
-                  return Toolkit.executeAll(toolkit.tools, calls).pipe(
-                    Toolkit.continueWith((results) =>
-                      Turn.appendTurn(
+                  return Toolkit.run(allTools, calls).pipe(
+                    Toolkit.continueWithResults((results) =>
+                      Turn.appendToHistory(
                         { ...state, index: state.index + 1 },
                         turn,
-                        results.map(toFunctionCallOutput),
+                        results.map(toToolCallOutput),
                       ),
                     ),
                   )
@@ -105,7 +105,7 @@ describe("basic-usage", () => {
 
     expect(toolResults).toHaveLength(1)
     expect(toolResults[0]).toMatchObject({
-      _tag: "Value",
+      _tag: "Ok",
       call_id: "c1",
       tool: "greet",
       value: { greeting: "Hello, World!" },

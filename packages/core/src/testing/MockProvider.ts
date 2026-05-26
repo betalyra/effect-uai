@@ -1,6 +1,6 @@
 import { Array as Arr, Duration, Effect, Layer, Match, Option, Ref, Schedule, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
-import { type Item, isOutputText } from "../domain/Items.js"
+import { type HistoryItem, isOutputText } from "../domain/Items.js"
 import {
   LanguageModel,
   type LanguageModelService,
@@ -18,7 +18,7 @@ export type MockOptions = {
 }
 
 export type Call = {
-  readonly history: ReadonlyArray<Item>
+  readonly history: ReadonlyArray<HistoryItem>
   readonly turn: Turn
 }
 
@@ -36,7 +36,7 @@ export type MockRecorder = {
 // Pure projection: Turn → ReadonlyArray<TurnEvent>
 // ---------------------------------------------------------------------------
 
-const itemToDeltas: (item: Item) => ReadonlyArray<TurnEvent> = Match.type<Item>().pipe(
+const itemToDeltas: (item: HistoryItem) => ReadonlyArray<TurnEvent> = Match.type<HistoryItem>().pipe(
   Match.discriminators("type")({
     message: (m): ReadonlyArray<TurnEvent> =>
       m.role === "assistant"

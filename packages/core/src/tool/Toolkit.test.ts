@@ -1,12 +1,12 @@
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 import { describe, expect, expectTypeOf, it } from "vitest"
-import type { FunctionCall } from "../domain/Items.js"
+import type { ToolCall } from "../domain/Items.js"
 import { isOutput } from "./ToolEvent.js"
-import { isValue } from "./Outcome.js"
+import { isOk } from "./ToolResult.js"
 import * as Tool from "./Tool.js"
 import * as Toolkit from "./Toolkit.js"
 
-describe("Toolkit.toDescriptors", () => {
+describe("Tool.toDescriptors", () => {
   const GetWeatherInput = Schema.Struct({ city: Schema.String })
 
   const getWeather = Tool.make({
@@ -17,7 +17,7 @@ describe("Toolkit.toDescriptors", () => {
   })
 
   it("renders the input schema as a JSON Schema document", () => {
-    const [desc] = Toolkit.toDescriptors(Toolkit.make([getWeather]))
+    const [desc] = Tool.toDescriptors([getWeather])
     expect(desc?.name).toBe("get_weather")
     expect(desc?.description).toBe("Look up the current temperature for a city.")
     expect(desc?.inputSchema).toMatchObject({
@@ -41,16 +41,16 @@ describe("Toolkit.toDescriptors", () => {
       inputSchema: Tool.fromEffectSchema(GetWeatherInput),
       run: () => Effect.succeed({}),
     })
-    const [s, l] = Toolkit.toDescriptors(Toolkit.make([strictTool, looseTool]))
+    const [s, l] = Tool.toDescriptors([strictTool, looseTool])
     expect(s?.strict).toBe(true)
     expect(l).not.toHaveProperty("strict")
   })
 })
 
-describe("Toolkit.executeAll - tools with R requirements", () => {
+describe("Toolkit.run - tools with R requirements", () => {
   // Two distinct services, modelling the "typed per-tool context" use case
   // (cf. AI SDK 7's `toolsContext`). In Effect each tool declares its R, the
-  // compiler enforces it, and `executeAll` surfaces the union for the caller
+  // compiler enforces it, and `run` surfaces the union for the caller
   // to provide via Layer.
   type WeatherApiKeyShape = { readonly key: string }
   class WeatherApiKey extends Context.Service<WeatherApiKey, WeatherApiKeyShape>()(
@@ -84,7 +84,7 @@ describe("Toolkit.executeAll - tools with R requirements", () => {
       }),
   })
 
-  const call = (name: string, id: string): FunctionCall => ({
+  const call = (name: string, id: string): ToolCall => ({
     type: "function_call",
     call_id: id,
     name,
@@ -92,7 +92,7 @@ describe("Toolkit.executeAll - tools with R requirements", () => {
   })
 
   it("propagates each tool's R into the resulting Stream's requirements", () => {
-    const stream = Toolkit.executeAll([getWeather, getCoords], [])
+    const stream = Toolkit.run([getWeather, getCoords], [])
     expectTypeOf(stream).toEqualTypeOf<
       Stream.Stream<import("./ToolEvent.js").ToolEvent, never, WeatherApiKey | GeoApiKey>
     >()
@@ -104,7 +104,7 @@ describe("Toolkit.executeAll - tools with R requirements", () => {
       Layer.succeed(GeoApiKey, { key: "geo-456" }),
     )
 
-    const program = Toolkit.executeAll(
+    const program = Toolkit.run(
       [getWeather, getCoords],
       [call("get_weather", "c1"), call("get_coords", "c2")],
     ).pipe(Stream.runCollect, Effect.provide(layer))
@@ -115,11 +115,11 @@ describe("Toolkit.executeAll - tools with R requirements", () => {
 
     const w = byCall.get("c1")
     const g = byCall.get("c2")
-    expect(w !== undefined && isValue(w) && w.value).toEqual({
+    expect(w !== undefined && isOk(w) && w.value).toEqual({
       source: "weather",
       key: "weather-123",
     })
-    expect(g !== undefined && isValue(g) && g.value).toEqual({
+    expect(g !== undefined && isOk(g) && g.value).toEqual({
       source: "geo",
       key: "geo-456",
     })
@@ -132,7 +132,7 @@ describe("Toolkit.executeAll - tools with R requirements", () => {
       inputSchema: Tool.fromEffectSchema(Empty),
       run: () => Effect.succeed(0),
     })
-    const stream = Toolkit.executeAll([plain], [])
+    const stream = Toolkit.run([plain], [])
     expectTypeOf(stream).toEqualTypeOf<
       Stream.Stream<import("./ToolEvent.js").ToolEvent, never, never>
     >()

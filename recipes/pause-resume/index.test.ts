@@ -2,7 +2,7 @@ import { Effect, Fiber, Latch, Ref, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
+import { loop, next, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -10,7 +10,7 @@ describe("pause-resume", () => {
   const PROMPTS = ["prompt 1", "prompt 2", "prompt 3", "prompt 4", "prompt 5"]
 
   interface State {
-    readonly history: ReadonlyArray<Items.Item>
+    readonly history: ReadonlyArray<Items.HistoryItem>
     readonly pendingPrompts: ReadonlyArray<string>
   }
 
@@ -48,12 +48,12 @@ describe("pause-resume", () => {
             onTurnComplete((t) =>
               Effect.gen(function* () {
                 yield* Ref.update(turnsCompleted, (n) => n + 1)
-                const next = advance(state, t)
-                if (next.pendingPrompts.length === 0) return stop
-                const [nextPrompt, ...rest] = next.pendingPrompts
-                return nextAfter(Stream.empty, {
-                  ...next,
-                  history: [...next.history, Items.userText(nextPrompt!)],
+                const nextState = advance(state, t)
+                if (nextState.pendingPrompts.length === 0) return stop()
+                const [nextPrompt, ...rest] = nextState.pendingPrompts
+                return next({
+                  ...nextState,
+                  history: [...nextState.history, Items.userText(nextPrompt!)],
                   pendingPrompts: rest,
                 })
               }),

@@ -21,7 +21,7 @@ import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import * as Loop from "@effect-uai/core/Loop"
 import { loop } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -105,7 +105,7 @@ export const forkPipelinePoller = (
 // ---------------------------------------------------------------------------
 
 export interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
 }
 
 export const initial: State = {
@@ -130,7 +130,7 @@ export const conversation = (checkStatus: CheckStatus, pollInterval: Duration.In
       // Side channel: the trigger_deploy tool offers each forked Deferred
       // here; the loop body drains them at the top of the next turn. A Queue
       // (vs a single-slot Ref) keeps every poller when the model triggers
-      // several deploys in one turn — `executeAll` runs tools concurrently.
+      // several deploys in one turn — `Toolkit.run` runs tools concurrently.
       const pending = yield* Queue.unbounded<Deferred.Deferred<PipelineResult, PipelineCheckError>>()
 
       const triggerDeploy = Tool.make({
@@ -147,7 +147,7 @@ export const conversation = (checkStatus: CheckStatus, pollInterval: Duration.In
         strict: true,
       })
 
-      const tools: ReadonlyArray<Tool.AnyKindTool> = [triggerDeploy]
+      const tools: ReadonlyArray<Tool.AnyTool> = [triggerDeploy]
 
       return pipe(
         initial,
@@ -182,14 +182,14 @@ export const conversation = (checkStatus: CheckStatus, pollInterval: Duration.In
               .pipe(
                 Loop.onTurnComplete((turn) =>
                   Effect.sync(() => {
-                    const calls = Turn.functionCalls(turn)
-                    if (calls.length === 0) return Loop.stop
+                    const calls = Turn.getToolCalls(turn)
+                    if (calls.length === 0) return Loop.stop()
 
-                    // `continueWith` streams tool events to the consumer and
+                    // `continueWithResults` streams tool events to the consumer and
                     // folds their outputs into the next state's history.
-                    return Toolkit.executeAll(tools, calls).pipe(
-                      Toolkit.continueWith((results) =>
-                        Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
+                    return Toolkit.run(tools, calls).pipe(
+                      Toolkit.continueWithResults((results) =>
+                        Turn.appendToHistory({ history }, turn, results.map(toToolCallOutput)),
                       ),
                     )
                   }),

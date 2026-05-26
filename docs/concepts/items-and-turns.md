@@ -5,28 +5,28 @@ description: The flat conversation history, the assembled turn, and the event st
 
 One turn is a stream, but a conversation still needs durable data.
 
-Three primitives carry that data: **`Item`** (one entry in history),
+Three primitives carry that data: **`HistoryItem`** (one entry in history),
 **`Turn`** (the assembled result of one model call), and **`TurnEvent`**
 (the typed stream you consume while the turn is in flight). The same shapes
 are used for every provider. Anything provider-specific lives in that
 provider's wire layer, not in your agent harness.
 
-## `Item` - the conversation as a flat list
+## `HistoryItem` - the conversation as a flat list
 
-History is a `ReadonlyArray<Item>`. There is no nested message tree, no
-implicit "current turn", no provider-specific role enum. An `Item` is
+History is a `ReadonlyArray<HistoryItem>`. There is no nested message tree, no
+implicit "current turn", no provider-specific role enum. A `HistoryItem` is
 one of:
 
 ```ts
-type Item = Message | FunctionCall | FunctionCallOutput | Reasoning
+type HistoryItem = Message | ToolCall | ToolCallOutput | Reasoning
 ```
 
 - **`Message`** - a `role` (`user` / `assistant` / `system`) plus
   `content: ContentBlock[]`. Content blocks are `input_text`,
   `input_image`, `output_text`, or `refusal`.
-- **`FunctionCall`** - the assistant asking for a tool, with `call_id`,
+- **`ToolCall`** - the assistant asking for a tool, with `call_id`,
   `name`, and a JSON `arguments` string.
-- **`FunctionCallOutput`** - the result you feed back, keyed by
+- **`ToolCallOutput`** - the result you feed back, keyed by
   `call_id`.
 - **`Reasoning`** - extended-thinking blocks (Anthropic, OpenAI o-series).
   Surfaced by providers that emit them; a no-op for those that don't.
@@ -48,7 +48,7 @@ top-level `system` parameter, Gemini's `systemInstruction`) so you
 don't have to. Pass them in the order you want the model to see them.
 
 Discriminated unions get type guards: `Items.isMessage`,
-`Items.isFunctionCall`, `Items.isFunctionCallOutput`, `Items.isReasoning`.
+`Items.isToolCall`, `Items.isToolCallOutput`, `Items.isReasoning`.
 Use them with `array.filter` for narrowed slices.
 
 ## `Turn` - what one model call returns
@@ -57,7 +57,7 @@ A `Turn` is the assembled result of one round-trip:
 
 ```ts
 type Turn = {
-  readonly items: ReadonlyArray<Item> // assistant's outputs (Messages, FunctionCalls, Reasoning)
+  readonly items: ReadonlyArray<HistoryItem> // assistant's outputs (Messages, ToolCalls, Reasoning)
   readonly usage: Usage // token counts, cache stats
   readonly stop_reason: StopReason // "stop" | "tool_use" | "max_tokens" | "refusal" | "other"
 }
@@ -66,7 +66,7 @@ type Turn = {
 Helpers project specific item kinds:
 
 ```ts
-Turn.functionCalls(turn) // FunctionCall[] - the tool requests
+Turn.getToolCalls(turn) // ToolCall[] - the tool requests
 Turn.assistantMessages(turn) // Message[] with role: "assistant"
 Turn.assistantTexts(turn) // string[] - one per assistant output_text block
 Turn.assistantText(turn) // string - joined assistant text, for logging / display
@@ -77,30 +77,30 @@ Turn.reasonings(turn) // Reasoning[]
 said as a string"); reach for `assistantTexts` only when you need to
 keep block boundaries.
 
-`Turn.toStructured(turn, format)` decodes the assembled assistant text
+`Turn.decodeStructured(turn, format)` decodes the assembled assistant text
 against an Effect Schema and surfaces `RefusalRejected`,
 `JsonParseError`, or `StructuredDecodeError` in the failure channel.
 
-## `Turn.appendTurn` - append a completed turn
+## `Turn.appendToHistory` - append a completed turn
 
 After a turn, you need the new `history` for the next iteration.
-`Turn.appendTurn` appends the model's turn items plus any follow-up items:
+`Turn.appendToHistory` appends the model's turn items plus any follow-up items:
 
 ```ts
-const next = Turn.appendTurn(state, turn, toolOutputs)
+const next = Turn.appendToHistory(state, turn, toolOutputs)
 // { ...state, history: [...state.history, ...turn.items, ...toolOutputs] }
 ```
 
 The third argument is usually the tool outputs collected by
-`Toolkit.continueWith`, after applying `toFunctionCallOutput` at the wire
+`Toolkit.continueWithResults`, after applying `toToolCallOutput` at the wire
 boundary:
 
 ```ts
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 
-return Toolkit.executeAll(allTools, calls).pipe(
-  Toolkit.continueWith((results) =>
-    Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+return Toolkit.run(allTools, calls).pipe(
+  Toolkit.continueWithResults((results) =>
+    Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
   ),
 )
 ```
@@ -147,7 +147,7 @@ deltas) and `ToolEvent` (executor signals). The `ToolEvent` variants:
 ```ts
 type ToolEvent =
   | { _tag: "ApprovalRequested"; call_id; tool; arguments } // gated, before resolution
-  | { _tag: "Intermediate"; call_id; tool; data } // streaming-tool element
+  | { _tag: "Progress"; call_id; tool; data } // streaming-tool element
   | { _tag: "Output"; result: ToolResult } // terminal per-call result
 ```
 

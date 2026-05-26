@@ -1,15 +1,15 @@
-import { Effect, Fiber, Queue, Schema, Stream, pipe } from "effect"
-import { describe, expect, it } from "vitest"
+import * as Approval from "@effect-uai/core/Approval"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { type ToolResult, toFunctionCallOutput } from "@effect-uai/core/Outcome"
-import { type ToolCallDecision, type Verdict, fromVerdictQueue } from "@effect-uai/core/Resolvers"
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
 import { ToolEvent, isApprovalRequested, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
+import { type ToolResult, toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
+import { Effect, Fiber, Queue, Schema, Stream, pipe } from "effect"
+import { describe, expect, it } from "vitest"
 
 describe("tool-call-approval", () => {
   // --- Tools ---------------------------------------------------------------
@@ -44,27 +44,27 @@ describe("tool-call-approval", () => {
     strict: true,
   })
 
-  const allTools: ReadonlyArray<Tool.AnyKindTool> = [searchEmails, sendEmail, deleteUser]
+  const allTools: ReadonlyArray<Tool.AnyTool> = [searchEmails, sendEmail, deleteUser]
 
   // --- Approval policy ----------------------------------------------------
   const SENSITIVE: ReadonlySet<string> = new Set(["send_email", "delete_user"])
-  const isSensitive = (call: Items.FunctionCall): boolean => SENSITIVE.has(call.name)
+  const isSensitive = (call: Items.ToolCall): boolean => SENSITIVE.has(call.name)
 
-  const decisionEvents = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
+  const decisionEvents = (decision: Approval.ApprovalDecision): Stream.Stream<ToolEvent> =>
     decision._tag === "Approved"
-      ? Toolkit.executeAll(allTools, [decision.call])
+      ? Toolkit.run(allTools, [decision.call])
       : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
   // --- Loop builder (uses LanguageModel for testability) ------------------
   interface State {
-    readonly history: ReadonlyArray<Items.Item>
+    readonly history: ReadonlyArray<Items.HistoryItem>
   }
 
   const initial: State = {
     history: [Items.userText("ignored - mock decides what comes back")],
   }
 
-  const buildConversation = (verdicts: Queue.Queue<Verdict>) =>
+  const buildConversation = (verdicts: Queue.Queue<Approval.Verdict>) =>
     pipe(
       initial,
       loop((state) =>
@@ -79,19 +79,19 @@ describe("tool-call-approval", () => {
             .pipe(
               onTurnComplete((turn) =>
                 Effect.sync(() => {
-                  const calls = Turn.functionCalls(turn)
-                  if (calls.length === 0) return stop
+                  const calls = Turn.getToolCalls(turn)
+                  if (calls.length === 0) return stop()
 
                   const events = Stream.unwrap(
                     Effect.gen(function* () {
-                      const { approved, decisions, announce } = yield* fromVerdictQueue(
+                      const { approved, decisions, approvalRequests } = yield* Approval.fromQueue(
                         isSensitive,
                         verdicts,
                       )(calls)
                       return Stream.merge(
-                        announce,
+                        approvalRequests,
                         Stream.merge(
-                          Toolkit.executeAll(allTools, approved),
+                          Toolkit.run(allTools, approved),
                           decisions.pipe(Stream.flatMap(decisionEvents)),
                         ),
                       )
@@ -99,8 +99,8 @@ describe("tool-call-approval", () => {
                   )
 
                   return events.pipe(
-                    Toolkit.continueWith((results) =>
-                      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                    Toolkit.continueWithResults((results) =>
+                      Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
                     ),
                   )
                 }),
@@ -112,7 +112,7 @@ describe("tool-call-approval", () => {
 
   // ------------------------------------------------------------------------
 
-  const fc = (call_id: string, name: string, args: unknown): Items.FunctionCall => ({
+  const fc = (call_id: string, name: string, args: unknown): Items.ToolCall => ({
     type: "function_call",
     call_id,
     name,
@@ -152,13 +152,13 @@ describe("tool-call-approval", () => {
     }
 
     // Demo policy: approve send_email, deny delete_user.
-    const verdictFor = (e: Extract<ToolEvent, { _tag: "ApprovalRequested" }>): Verdict =>
+    const verdictFor = (e: Extract<ToolEvent, { _tag: "ApprovalRequested" }>): Approval.Verdict =>
       e.tool === "delete_user"
         ? { call_id: e.call_id, decision: "deny", reason: "Out of scope." }
         : { call_id: e.call_id, decision: "approve" }
 
     const program = Effect.gen(function* () {
-      const verdicts = yield* Queue.unbounded<Verdict>()
+      const verdicts = yield* Queue.unbounded<Approval.Verdict>()
 
       // Tap ApprovalRequested events and post verdicts onto the queue so
       // the gated decisions can resume.
@@ -190,12 +190,12 @@ describe("tool-call-approval", () => {
     expect(results.map((r) => r.call_id)).toEqual(["c-search", "c-send", "c-del"])
 
     expect(results[0]).toMatchObject({
-      _tag: "Value",
+      _tag: "Ok",
       tool: "search_emails",
       value: { query: "expense" },
     })
     expect(results[1]).toMatchObject({
-      _tag: "Value",
+      _tag: "Ok",
       tool: "send_email",
       value: { status: "sent", to: "alice@example.com" },
     })
@@ -236,7 +236,7 @@ describe("tool-call-approval", () => {
     const { layer, recorder } = MockProvider.layerWithRecorder([turn1, turn2])
 
     const program = Effect.gen(function* () {
-      const verdicts = yield* Queue.unbounded<Verdict>()
+      const verdicts = yield* Queue.unbounded<Approval.Verdict>()
 
       const fiber = yield* Effect.forkChild(Stream.runDrain(buildConversation(verdicts)))
 
@@ -246,7 +246,7 @@ describe("tool-call-approval", () => {
       expect(before.calls).toHaveLength(1)
 
       // Post one verdict; per-call deferreds mean call `a` resumes but `b`
-      // still parks - the turn's continueWith only completes when both
+      // still parks - the turn's continueWithResults only completes when both
       // gated calls have produced a result.
       yield* Queue.offer(verdicts, { call_id: "a", decision: "approve" })
       yield* Effect.sleep("20 millis")
@@ -272,7 +272,7 @@ describe("tool-call-approval", () => {
 // need to redefine the loop body inline.
 // ---------------------------------------------------------------------------
 
-import { type ApprovalMapEntry, fromApprovalMap } from "@effect-uai/core/Resolvers"
+import { type ApprovalMapEntry, fromMap } from "@effect-uai/core/Approval"
 
 describe("tool-call-approval (HTTP variant)", () => {
   const SearchEmailsInput = Schema.Struct({ query: Schema.String })
@@ -306,12 +306,12 @@ describe("tool-call-approval (HTTP variant)", () => {
     strict: true,
   })
 
-  const allTools: ReadonlyArray<Tool.AnyKindTool> = [searchEmails, sendEmail, deleteUser]
+  const allTools: ReadonlyArray<Tool.AnyTool> = [searchEmails, sendEmail, deleteUser]
   const SENSITIVE: ReadonlySet<string> = new Set(["send_email", "delete_user"])
-  const isSensitive = (call: Items.FunctionCall): boolean => SENSITIVE.has(call.name)
+  const isSensitive = (call: Items.ToolCall): boolean => SENSITIVE.has(call.name)
 
   interface State {
-    readonly history: ReadonlyArray<Items.Item>
+    readonly history: ReadonlyArray<Items.HistoryItem>
   }
 
   // HTTP loop body. Mirrors `httpConversation` from index.ts but against
@@ -334,18 +334,18 @@ describe("tool-call-approval (HTTP variant)", () => {
             .pipe(
               onTurnComplete((turn) =>
                 Effect.sync(() => {
-                  const calls = Turn.functionCalls(turn)
-                  if (calls.length === 0) return stop
+                  const calls = Turn.getToolCalls(turn)
+                  if (calls.length === 0) return stop()
 
-                  const plan = fromApprovalMap(isSensitive, approvals)(calls)
+                  const plan = fromMap(isSensitive, approvals)(calls)
                   return Stream.merge(
-                    Toolkit.executeAll(allTools, plan.approved),
+                    Toolkit.run(allTools, plan.approved),
                     Stream.fromIterable(
                       plan.rejected.map((result) => ToolEvent.Output({ result })),
                     ),
                   ).pipe(
-                    Toolkit.continueWith((results) =>
-                      Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                    Toolkit.continueWithResults((results) =>
+                      Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
                     ),
                   )
                 }),
@@ -355,7 +355,7 @@ describe("tool-call-approval (HTTP variant)", () => {
       ),
     )
 
-  const fc = (call_id: string, name: string, args: unknown): Items.FunctionCall => ({
+  const fc = (call_id: string, name: string, args: unknown): Items.ToolCall => ({
     type: "function_call",
     call_id,
     name,
@@ -413,9 +413,9 @@ describe("tool-call-approval (HTTP variant)", () => {
     expect(results.map((r) => r.call_id).sort()).toEqual(["c-del", "c-search", "c-send"])
 
     const byId = new Map(results.map((r) => [r.call_id, r]))
-    expect(byId.get("c-search")).toMatchObject({ _tag: "Value" })
+    expect(byId.get("c-search")).toMatchObject({ _tag: "Ok" })
     expect(byId.get("c-send")).toMatchObject({
-      _tag: "Value",
+      _tag: "Ok",
       value: { status: "sent" },
     })
     expect(byId.get("c-del")).toMatchObject({
@@ -446,7 +446,7 @@ describe("tool-call-approval (HTTP variant)", () => {
       .map((e) => e.result)
     const byId = new Map(results.map((r) => [r.call_id, r]))
 
-    expect(byId.get("c-search")).toMatchObject({ _tag: "Value" })
+    expect(byId.get("c-search")).toMatchObject({ _tag: "Ok" })
     expect(byId.get("c-send")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
     expect(byId.get("c-del")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
   })

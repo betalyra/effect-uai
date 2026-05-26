@@ -12,7 +12,7 @@
 import { Config, Effect, Layer, Logger, Match, References, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
+import { loop, next, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 
@@ -29,7 +29,7 @@ const KEEP_RECENT_ITEMS = 2
 // ---------------------------------------------------------------------------
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly turnIndex: number
   readonly cumulativeInputTokens: number
   readonly pendingPrompts: ReadonlyArray<string>
@@ -109,7 +109,7 @@ const conversation = pipe(
             onTurnComplete((turn) =>
               Effect.sync(() => {
                 const summary = Turn.assistantTexts(turn).join(" ")
-                return nextAfter(Stream.empty, withSummary(state, summary))
+                return next(withSummary(state, summary))
               }),
             ),
           )
@@ -130,12 +130,12 @@ const conversation = pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
           onTurnComplete((turn) =>
             Effect.sync(() => {
-              const next = advance(state, turn)
-              if (state.pendingPrompts.length === 0) return stop
+              const nextState = advance(state, turn)
+              if (state.pendingPrompts.length === 0) return stop()
               const [nextPrompt, ...rest] = state.pendingPrompts
-              return nextAfter(Stream.empty, {
-                ...next,
-                history: [...next.history, Items.userText(nextPrompt!)],
+              return next({
+                ...nextState,
+                history: [...nextState.history, Items.userText(nextPrompt!)],
                 pendingPrompts: rest,
               })
             }),

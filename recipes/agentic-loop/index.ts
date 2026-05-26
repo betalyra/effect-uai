@@ -24,7 +24,7 @@
 import { Duration, Effect, Queue, Stream, pipe } from "effect";
 import * as Items from "@effect-uai/core/Items";
 import { LanguageModel } from "@effect-uai/core/LanguageModel";
-import { loop, nextAfter, onTurnComplete } from "@effect-uai/core/Loop";
+import { loop, next, onTurnComplete } from "@effect-uai/core/Loop";
 import * as Tool from "@effect-uai/core/Tool";
 import * as Toolkit from "@effect-uai/core/Toolkit";
 import * as Turn from "@effect-uai/core/Turn";
@@ -59,7 +59,7 @@ export const drainBurst = <A>(
 // ---------------------------------------------------------------------------
 
 export interface State {
-  readonly history: ReadonlyArray<Items.Item>;
+  readonly history: ReadonlyArray<Items.HistoryItem>;
 }
 
 export const initial: State = { history: [] };
@@ -80,7 +80,7 @@ const needsUserInput = (state: State): boolean => {
 
 export const conversation = (
   queue: Queue.Queue<string>,
-  tools: ReadonlyArray<Tool.AnyKindTool>,
+  tools: ReadonlyArray<Tool.AnyTool>,
   settle: Duration.Input = "150 millis",
 ) => {
   const descriptors = Tool.toDescriptors(tools);
@@ -102,15 +102,13 @@ export const conversation = (
           .pipe(
             onTurnComplete((turn) =>
               Effect.sync(() => {
-                const calls = Turn.functionCalls(turn);
+                const calls = Turn.getToolCalls(turn);
 
                 // No tool calls - the assistant is done. Continue with
                 // the appended turn; the next iteration will block on
                 // the queue for the next user message.
                 if (calls.length === 0) {
-                  return nextAfter(
-                    Stream.empty,
-                    Turn.appendTurn({ history }, turn),
+                  return next(Turn.appendToHistory({ history }, turn),
                   );
                 }
 
@@ -118,8 +116,8 @@ export const conversation = (
                 // emit one `Loop.next` carrying the appended turn. The
                 // next iteration runs the model again to incorporate
                 // the outputs, skipping the queue check.
-                return Toolkit.executeAll(tools, calls).pipe(
-                  Toolkit.continueWith(Toolkit.appendToolResults({ history }, turn)),
+                return Toolkit.run(tools, calls).pipe(
+                  Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
                 );
               }),
             ),

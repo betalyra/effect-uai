@@ -90,7 +90,7 @@ const getTime = Tool.make({
   strict: true,
 })
 
-const fc = (call_id: string, args: unknown): Items.Item => ({
+const fc = (call_id: string, args: unknown): Items.HistoryItem => ({
   type: "function_call",
   call_id,
   name: "get_time",
@@ -153,7 +153,7 @@ describe("conversation", () => {
     // The mock should have been called exactly three times.
     expect(calls).toHaveLength(3)
 
-    const userTextsIn = (history: ReadonlyArray<Items.Item>) =>
+    const userTextsIn = (history: ReadonlyArray<Items.HistoryItem>) =>
       history
         .filter((i): i is Items.Message => i.type === "message" && i.role === "user")
         .flatMap((m) => m.content)

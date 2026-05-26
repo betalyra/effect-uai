@@ -1,7 +1,7 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
 import { Effect, Schema, Stream } from "effect"
-import type { FunctionCall, FunctionCallOutput } from "../domain/Items.js"
-import { functionCallOutput } from "../domain/Items.js"
+import type { ToolCall, ToolCallOutput } from "../domain/Items.js"
+import { toolCallOutput } from "../domain/Items.js"
 
 export class ToolError extends Schema.TaggedErrorClass<ToolError>("@betalyra/effect-uai/ToolError")(
   "ToolError",
@@ -73,7 +73,7 @@ export type Tool<Name extends string, Input, Output, R = never> = {
 /**
  * Provider-agnostic tool descriptor. Each provider maps `inputSchema`
  * to its own wire field (OpenAI → `parameters`, Anthropic →
- * `input_schema`). Built from a `Tool` by `Toolkit.toDescriptors`.
+ * `input_schema`). Built from a `Tool` by `Tool.toDescriptors`.
  */
 export type ToolDescriptor = {
   readonly name: string
@@ -90,7 +90,7 @@ export const make = <Name extends string, Input, Output, R = never>(
 // Streaming tools
 //
 // `run` returns a `Stream<Event>` instead of an `Effect<Output>`. Events
-// flow through to the consumer as `ToolEvent.Intermediate`s in real time;
+// flow through to the consumer as `ToolEvent.Progress`s in real time;
 // at end-of-stream `finalize(events)` reduces them to the model-facing
 // `Output`. Sub-agents, slow downloads with progress, recipe streamers.
 // ---------------------------------------------------------------------------
@@ -111,18 +111,18 @@ export const streaming = <Name extends string, Input, Event, Output, R = never>(
 
 export type AnyStreamingTool<R = any> = StreamingTool<string, any, any, any, R>
 export type AnyPlainTool<R = any> = Tool<string, any, any, R>
-export type AnyKindTool<R = any> = AnyStreamingTool<R> | AnyPlainTool<R>
+export type AnyTool<R = any> = AnyStreamingTool<R> | AnyPlainTool<R>
 
-export const isStreamingTool = <R>(t: AnyKindTool<R>): t is AnyStreamingTool<R> =>
+export const isStreamingTool = <R>(t: AnyTool<R>): t is AnyStreamingTool<R> =>
   "_kind" in t && t._kind === "streaming"
 
 /**
  * Render any-kind tools (mixed plain and streaming) to provider-agnostic
- * descriptors. Mirrors `Toolkit.toDescriptors` but accepts the union type
- * so a single list can carry both kinds.
+ * descriptors. Accepts the union type so a single list can carry both
+ * plain and streaming tools.
  */
 export const toDescriptors = <R>(
-  tools: ReadonlyArray<AnyKindTool<R>>,
+  tools: ReadonlyArray<AnyTool<R>>,
 ): ReadonlyArray<ToolDescriptor> =>
   tools.map((tool) => {
     const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
@@ -133,7 +133,7 @@ export const toDescriptors = <R>(
       : { name: tool.name, description: tool.description, inputSchema }
   })
 
-const toToolError = (call: FunctionCall, toolName: string, message: string) => (cause: unknown) =>
+const toToolError = (call: ToolCall, toolName: string, message: string) => (cause: unknown) =>
   new ToolError({ call_id: call.call_id, tool: toolName, message, cause })
 
 /**
@@ -143,8 +143,8 @@ const toToolError = (call: FunctionCall, toolName: string, message: string) => (
  */
 export const execute = <Name extends string, Input, Output, R>(
   tool: Tool<Name, Input, Output, R>,
-  call: FunctionCall,
-): Effect.Effect<FunctionCallOutput, ToolError, R> =>
+  call: ToolCall,
+): Effect.Effect<ToolCallOutput, ToolError, R> =>
   Effect.gen(function* () {
     const parsed = yield* Effect.try({
       try: () => JSON.parse(call.arguments) as unknown,
@@ -166,5 +166,5 @@ export const execute = <Name extends string, Input, Output, R>(
     const output = yield* tool
       .run(result.value)
       .pipe(Effect.mapError(toToolError(call, tool.name, "Tool execution failed")))
-    return functionCallOutput(call.call_id, JSON.stringify(output))
+    return toolCallOutput(call.call_id, JSON.stringify(output))
   })

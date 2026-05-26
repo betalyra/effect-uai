@@ -206,7 +206,7 @@ const runAssistantTurn = (
   cfg: PipelineConfig,
   sendStatus: SendStatus,
   sendAudio: (bytes: Uint8Array) => Effect.Effect<void>,
-  historyRef: Ref.Ref<ReadonlyArray<Items.Item>>,
+  historyRef: Ref.Ref<ReadonlyArray<Items.HistoryItem>>,
   userText: string,
 ) =>
   Effect.gen(function* () {
@@ -284,7 +284,7 @@ export const runPipeline = <E, R>(
       tts: `${cfg.tts.model} / ${cfg.tts.voiceId}`,
     })
 
-    const historyRef = yield* Ref.make<ReadonlyArray<Items.Item>>([
+    const historyRef = yield* Ref.make<ReadonlyArray<Items.HistoryItem>>([
       Items.systemText(cfg.llm.systemPrompt),
     ])
     const activeTurn = yield* Ref.make<Fiber.Fiber<void, AiError.AiError> | null>(null)

@@ -1,0 +1,26 @@
+.monaco-hover {
+  max-width: 900px !important;
+}
+
+.monaco-hover .hover-row .hover-contents {
+  max-width: 900px !important;
+}
+
+.monaco-hover .monaco-hover-content {
+  max-width: 900px !important;
+  max-height: 600px !important;
+}
+
+.monaco-hover .markdown-hover .hover-contents code {
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+}
+
+.parameter-hints-widget {
+  max-height: 500px !important;
+  max-width: 900px !important;
+}
+
+.parameter-hints-widget .markdown-docs {
+  max-height: 400px !important;
+}

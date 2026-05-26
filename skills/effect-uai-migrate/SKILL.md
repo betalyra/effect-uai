@@ -32,13 +32,14 @@ The full migration prose (with rationale and edge cases) lives in
 
 ---
 
-## 0.6 → 0.7
+## 0.5 → 0.6
 
-The "consistent naming" sweep. Almost entirely find-and-replace; the
-only judgement call is the `Loop` helper trim. **Wire literals
-(`"function_call"`, `"function_call_output"`) do not change** — only
-type and helper names do, so provider payloads and on-the-wire
-pattern matching stay identical.
+The "consistent naming" sweep (0.6 also adds multi-speaker dialogue and
+custom pronunciations on `SpeechSynthesizer` — additive, no rewrites).
+Almost entirely find-and-replace; the only judgement call is the `Loop`
+helper trim. **Wire literals (`"function_call"`, `"function_call_output"`)
+do not change** — only type and helper names do, so provider payloads
+and on-the-wire pattern matching stay identical.
 
 ### Required rewrites
 
@@ -153,16 +154,6 @@ onTurnComplete<State, ToolEvent>((turn) => {
 - [ ] No `ToolEvent.Intermediate` / `isIntermediate`
 - [ ] `pnpm typecheck` clean
 - [ ] Tests pass
-
----
-
-## 0.5 → 0.6
-
-**No rewrites needed.** 0.6 is additive: multi-speaker dialogue and
-custom pronunciations on `SpeechSynthesizer` (`synthesizeDialogue` /
-`streamSynthesizeDialogue`, the `MultiSpeakerTts` capability marker, and
-`pronunciations` on the synthesize request). Every existing call site
-keeps compiling. Bump dependencies, run typecheck, done.
 
 ---
 
@@ -531,7 +522,7 @@ ToolResult.$match({ Value: ..., Failure: ... })(result) // matcher
 
 ## See also
 
-- [Migration guide for 0.7](https://effect-uai.betalyra.com/migrations/v0-7/)
+- [Migration guide for 0.6](https://effect-uai.betalyra.com/migrations/v0-6/)
 - [Migration guide for 0.5](https://effect-uai.betalyra.com/migrations/v0-5/)
 - [Migration guide for 0.4](https://effect-uai.betalyra.com/migrations/v0-4/)
 - [Migration guide for 0.3](https://effect-uai.betalyra.com/migrations/v0-3/)

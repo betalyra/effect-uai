@@ -11,7 +11,7 @@
  * and `unknown` would invite non-serializable values (Date, Map, BigInt,
  * fn). Recipes that want structured detail JSON.stringify themselves.
  */
-import { Schema } from "effect"
+import { Data } from "effect"
 import type { ToolCall, ToolCallOutput } from "../domain/Items.js"
 import { toolCallOutput } from "../domain/Items.js"
 
@@ -19,39 +19,34 @@ import { toolCallOutput } from "../domain/Items.js"
 // ToolResult
 // ---------------------------------------------------------------------------
 
-const ToolResultSchema = Schema.TaggedUnion({
+export type ToolResult = Data.TaggedEnum<{
   Ok: {
-    call_id: Schema.String,
-    tool: Schema.String,
-    value: Schema.Unknown,
-  },
+    readonly call_id: string
+    readonly tool: string
+    readonly value: unknown
+  }
   Failure: {
-    call_id: Schema.String,
-    tool: Schema.String,
-    kind: Schema.String,
-    reason: Schema.optional(Schema.String),
-  },
-})
-
-export type ToolResult = typeof ToolResultSchema.Type
+    readonly call_id: string
+    readonly tool: string
+    readonly kind: string
+    readonly reason?: string
+  }
+}>
 
 /**
  * Namespace of constructors, type guards, and matchers for `ToolResult`,
- * provided by `Schema.TaggedUnion`. Use `ToolResult.guards.Ok` for type
- * narrowing and `ToolResult.match({ Ok, Failure })` for exhaustive
+ * provided by `Data.taggedEnum`. Use `ToolResult.$is("Ok")` for type
+ * narrowing and `ToolResult.$match({ Ok, Failure })` for exhaustive
  * pattern matching. Synthetic-result helpers (`denied`, `cancelled`,
  * `executionError`, `failed`) below are kinder constructors than the
  * raw `ToolResult.Failure(...)`.
  */
-export const ToolResult = Object.assign(ToolResultSchema, {
-  Ok: (input: Parameters<typeof ToolResultSchema.cases.Ok.make>[0]) =>
-    ToolResultSchema.cases.Ok.make(input),
-  Failure: (input: Parameters<typeof ToolResultSchema.cases.Failure.make>[0]) =>
-    ToolResultSchema.cases.Failure.make(input),
-})
+export const ToolResult = Data.taggedEnum<ToolResult>()
 
-export const isOk = ToolResult.guards.Ok
-export const isFailure = ToolResult.guards.Failure
+export const isOk: (x: ToolResult) => x is Extract<ToolResult, { readonly _tag: "Ok" }> =
+  ToolResult.$is("Ok")
+export const isFailure: (x: ToolResult) => x is Extract<ToolResult, { readonly _tag: "Failure" }> =
+  ToolResult.$is("Failure")
 
 // Synthesizers. `denied` and `cancelled` are operationally distinct;
 // anything else is just a recipe-chosen `kind` via `failed`.
@@ -82,7 +77,7 @@ export const executionError = (call: ToolCall, reason: string): ToolResult =>
 // ---------------------------------------------------------------------------
 
 export const toToolCallOutput = (r: ToolResult): ToolCallOutput =>
-  ToolResult.match(r, {
+  ToolResult.$match(r, {
     Ok: (v) => toolCallOutput(v.call_id, JSON.stringify(v.value)),
     Failure: (f) =>
       toolCallOutput(

@@ -45,34 +45,17 @@ export type Turn = typeof Turn.Type
  * `message_start` and `message_delta`; other providers may only deliver
  * usage via `TurnComplete.turn.usage`.
  */
-const TurnEventSchema = Schema.TaggedUnion({
-  TextDelta: { text: Schema.String },
-  ReasoningDelta: { text: Schema.String, kind: Schema.Literals(["trace", "summary"]) },
-  RefusalDelta: { text: Schema.String },
-  ToolCallStart: { call_id: Schema.String, name: Schema.String },
-  ToolCallArgsDelta: { call_id: Schema.String, delta: Schema.String },
-  UsageUpdate: { usage: Usage },
-  TurnComplete: { turn: Turn },
-})
+export type TurnEvent = Data.TaggedEnum<{
+  TextDelta: { readonly text: string }
+  ReasoningDelta: { readonly text: string; readonly kind: "trace" | "summary" }
+  RefusalDelta: { readonly text: string }
+  ToolCallStart: { readonly call_id: string; readonly name: string }
+  ToolCallArgsDelta: { readonly call_id: string; readonly delta: string }
+  UsageUpdate: { readonly usage: Usage }
+  TurnComplete: { readonly turn: Turn }
+}>
 
-export type TurnEvent = typeof TurnEventSchema.Type
-
-export const TurnEvent = Object.assign(TurnEventSchema, {
-  TextDelta: (input: Parameters<typeof TurnEventSchema.cases.TextDelta.make>[0]) =>
-    TurnEventSchema.cases.TextDelta.make(input),
-  ReasoningDelta: (input: Parameters<typeof TurnEventSchema.cases.ReasoningDelta.make>[0]) =>
-    TurnEventSchema.cases.ReasoningDelta.make(input),
-  RefusalDelta: (input: Parameters<typeof TurnEventSchema.cases.RefusalDelta.make>[0]) =>
-    TurnEventSchema.cases.RefusalDelta.make(input),
-  ToolCallStart: (input: Parameters<typeof TurnEventSchema.cases.ToolCallStart.make>[0]) =>
-    TurnEventSchema.cases.ToolCallStart.make(input),
-  ToolCallArgsDelta: (input: Parameters<typeof TurnEventSchema.cases.ToolCallArgsDelta.make>[0]) =>
-    TurnEventSchema.cases.ToolCallArgsDelta.make(input),
-  UsageUpdate: (input: Parameters<typeof TurnEventSchema.cases.UsageUpdate.make>[0]) =>
-    TurnEventSchema.cases.UsageUpdate.make(input),
-  TurnComplete: (input: Parameters<typeof TurnEventSchema.cases.TurnComplete.make>[0]) =>
-    TurnEventSchema.cases.TurnComplete.make(input),
-})
+export const TurnEvent = Data.taggedEnum<TurnEvent>()
 
 /**
  * What flows out of an agent loop body to its consumer per turn: every
@@ -82,7 +65,9 @@ export const TurnEvent = Object.assign(TurnEventSchema, {
  */
 export type InteractionEvent = TurnEvent | ToolCallOutput
 
-export const isTurnComplete = TurnEvent.guards.TurnComplete
+export const isTurnComplete: (
+  x: TurnEvent,
+) => x is Extract<TurnEvent, { readonly _tag: "TurnComplete" }> = TurnEvent.$is("TurnComplete")
 
 export const getToolCalls = (turn: Turn): ReadonlyArray<ToolCall> => turn.items.filter(isToolCall)
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="webpage/src/assets/effect-uai-logo.svg" alt="effect-uai" width="500" />
+  <img src="webpage/src/assets/effect-uai-logo-bg.png" alt="effect-uai" width="500" />
 </p>
 
 [![npm](https://img.shields.io/npm/v/@effect-uai/core?label=%40effect-uai%2Fcore)](https://www.npmjs.com/package/@effect-uai/core)

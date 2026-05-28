@@ -272,10 +272,7 @@ const { approved, decisions, approvalRequests } = yield * fromQueue(isSensitive,
 
 const events = Stream.merge(
   approvalRequests,
-  Stream.merge(
-    Toolkit.run(allTools, approved),
-    decisions.pipe(Stream.flatMap(decisionToEvents)),
-  ),
+  Stream.merge(Toolkit.run(allTools, approved), decisions.pipe(Stream.flatMap(decisionToEvents))),
 )
 ```
 

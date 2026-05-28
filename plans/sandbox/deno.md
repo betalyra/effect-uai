@@ -23,11 +23,11 @@ of 2026-05-23. Re-check before locking down the adapter.
 - **Lifecycle**: `Sandbox.create(opts)` returns an `await using` resource;
   `Sandbox.connect({ id })` re-acquires by id; `sandbox.kill()` terminates;
   `sandbox.extendTimeout("30m")` extends.
-- **Execution**: `sandbox.sh\`cmd\`` tagged-template (one-shot), the same
-  with `.spawn()` for long-running. Returns stdout/stderr/exit shapes
-  similar to `Deno.Command`.
+- **Execution**: `sandbox.sh\`cmd\``tagged-template (one-shot), the same
+with`.spawn()`for long-running. Returns stdout/stderr/exit shapes
+similar to`Deno.Command`.
 - **Filesystem**: `sandbox.fs.{writeTextFile, readTextFile, mkdir, remove,
-  readDir, …}` — Deno-`Deno.fs`-shaped.
+readDir, …}` — Deno-`Deno.fs`-shaped.
 - **Networking**: `allowNet: string[]` accepts hostnames (with wildcards
   like `*.anthropic.com`), `host:port` pairs, and exact IPv4/IPv6 literals.
   **No CIDR notation.**
@@ -72,21 +72,21 @@ The Deno layer registers these markers on `Sandbox`:
 
 ### Image (`ImageRef` → Deno `root`)
 
-| `ImageRef`              | Deno equivalent                                 |
-| ----------------------- | ----------------------------------------------- |
-| `Default`               | omit `root` (Deno's default base)               |
-| `Snapshot({ id })`      | `root: id` (snapshot slug)                      |
-| `Registry({ ref })`     | **reject** with `SandboxUnsupported`            |
-| `Dockerfile({ ... })`   | **reject** with `SandboxUnsupported`            |
+| `ImageRef`            | Deno equivalent                      |
+| --------------------- | ------------------------------------ |
+| `Default`             | omit `root` (Deno's default base)    |
+| `Snapshot({ id })`    | `root: id` (snapshot slug)           |
+| `Registry({ ref })`   | **reject** with `SandboxUnsupported` |
+| `Dockerfile({ ... })` | **reject** with `SandboxUnsupported` |
 
 ### Network (`NetworkPolicy` → `allowNet`)
 
-| `NetworkPolicy`                | Deno equivalent                                                              |
-| ------------------------------ | ---------------------------------------------------------------------------- |
-| `Open`                         | omit `allowNet`                                                              |
-| `Blocked`                      | `allowNet: []` (verify behaviour against docs; may need explicit deny flag)  |
-| `Allowlist({ hosts })`         | `allowNet: hosts`                                                            |
-| `Allowlist({ cidrs })`         | **reject** non-`/32`-`/128` ranges with `SandboxUnsupported` — Deno accepts only exact IP literals |
+| `NetworkPolicy`        | Deno equivalent                                                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `Open`                 | omit `allowNet`                                                                                    |
+| `Blocked`              | `allowNet: []` (verify behaviour against docs; may need explicit deny flag)                        |
+| `Allowlist({ hosts })` | `allowNet: hosts`                                                                                  |
+| `Allowlist({ cidrs })` | **reject** non-`/32`-`/128` ranges with `SandboxUnsupported` — Deno accepts only exact IP literals |
 
 The CIDR rejection mirrors the existing pattern in
 [`SandboxNetwork.ts`](../../packages/core/src/sandbox/SandboxNetwork.ts) —
@@ -96,10 +96,7 @@ we don't silently truncate.
 
 ```ts
 secrets: Object.fromEntries(
-  request.secrets.map((s) => [
-    s.name,
-    { hosts: s.hosts, value: Redacted.value(s.value) },
-  ]),
+  request.secrets.map((s) => [s.name, { hosts: s.hosts, value: Redacted.value(s.value) }]),
 )
 ```
 
@@ -123,9 +120,7 @@ microsandbox.
 ### Volumes (`VolumeMount[]` → `Record<string, slug>`)
 
 ```ts
-volumes: Object.fromEntries(
-  request.volumes.map((v) => [v.mountPath, v.id]),
-)
+volumes: Object.fromEntries(request.volumes.map((v) => [v.mountPath, v.id]))
 ```
 
 Deno's API has no readonly flag — if `v.readonly === true` we should
@@ -233,14 +228,14 @@ export type DenoSandboxBoundSecret = Omit<BoundSecret, "header">
 export type DenoSandboxCreateRequest = Omit<CommonCreateRequest, "secrets"> & {
   readonly secrets?: ReadonlyArray<DenoSandboxBoundSecret>
   readonly region?: "ams" | "ord"
-  readonly memoryMb?: number              // 768..4096
+  readonly memoryMb?: number // 768..4096
   readonly labels?: Readonly<Record<string, string>>
   /** Auto-expose this port at boot; `sandbox.url` returns the preview URL. */
   readonly port?: number
 }
 
 export type DenoSandboxConfig = {
-  readonly token?: Redacted.Redacted<string>  // overrides DENO_DEPLOY_TOKEN
+  readonly token?: Redacted.Redacted<string> // overrides DENO_DEPLOY_TOKEN
   readonly defaultRegion?: "ams" | "ord"
 }
 ```
@@ -274,8 +269,8 @@ need one (e.g. for Phase D).
   "peerDependencies": {
     "@effect-uai/core": "workspace:>=0.5.0 <1",
     "effect": "4.0.0-beta.57",
-    "@deno/sandbox": "^x.y.z"   // pin at implementation time
-  }
+    "@deno/sandbox": "^x.y.z", // pin at implementation time
+  },
 }
 ```
 

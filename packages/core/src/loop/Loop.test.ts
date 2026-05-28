@@ -71,9 +71,7 @@ describe("Loop.loop", () => {
     const stream = loop(
       0,
       (n: number): Stream.Stream<Step<number, number>, Error> =>
-        n === 2
-          ? Stream.fail(boom)
-          : Stream.succeed(value(n)).pipe(Stream.concat(next(n + 1))),
+        n === 2 ? Stream.fail(boom) : Stream.succeed(value(n)).pipe(Stream.concat(next(n + 1))),
     )
 
     const result = await Effect.runPromiseExit(Stream.runCollect(stream))

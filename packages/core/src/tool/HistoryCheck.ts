@@ -10,12 +10,7 @@
  * Recipe author calls these at known transition points (right before the
  * next provider request). Not invoked from inside the loop.
  */
-import {
-  type ToolCall,
-  type HistoryItem,
-  isToolCall,
-  isToolCallOutput,
-} from "../domain/Items.js"
+import { type ToolCall, type HistoryItem, isToolCall, isToolCallOutput } from "../domain/Items.js"
 import { type ToolResult, cancelled } from "./ToolResult.js"
 
 /**

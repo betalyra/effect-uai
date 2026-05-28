@@ -36,24 +36,25 @@ export type MockRecorder = {
 // Pure projection: Turn → ReadonlyArray<TurnEvent>
 // ---------------------------------------------------------------------------
 
-const itemToDeltas: (item: HistoryItem) => ReadonlyArray<TurnEvent> = Match.type<HistoryItem>().pipe(
-  Match.discriminators("type")({
-    message: (m): ReadonlyArray<TurnEvent> =>
-      m.role === "assistant"
-        ? m.content.filter(isOutputText).map((b) => TurnEvent.TextDelta({ text: b.text }))
-        : [],
-    function_call: (fc) => [
-      TurnEvent.ToolCallStart({ call_id: fc.call_id, name: fc.name }),
-      TurnEvent.ToolCallArgsDelta({ call_id: fc.call_id, delta: fc.arguments }),
-    ],
-    function_call_output: () => [],
-    reasoning: (r) =>
-      r.summary !== undefined
-        ? [TurnEvent.ReasoningDelta({ text: r.summary, kind: "summary" as const })]
-        : [],
-  }),
-  Match.exhaustive,
-)
+const itemToDeltas: (item: HistoryItem) => ReadonlyArray<TurnEvent> =
+  Match.type<HistoryItem>().pipe(
+    Match.discriminators("type")({
+      message: (m): ReadonlyArray<TurnEvent> =>
+        m.role === "assistant"
+          ? m.content.filter(isOutputText).map((b) => TurnEvent.TextDelta({ text: b.text }))
+          : [],
+      function_call: (fc) => [
+        TurnEvent.ToolCallStart({ call_id: fc.call_id, name: fc.name }),
+        TurnEvent.ToolCallArgsDelta({ call_id: fc.call_id, delta: fc.arguments }),
+      ],
+      function_call_output: () => [],
+      reasoning: (r) =>
+        r.summary !== undefined
+          ? [TurnEvent.ReasoningDelta({ text: r.summary, kind: "summary" as const })]
+          : [],
+    }),
+    Match.exhaustive,
+  )
 
 const turnToDeltas = (turn: Turn): ReadonlyArray<TurnEvent> => [
   ...turn.items.flatMap(itemToDeltas),

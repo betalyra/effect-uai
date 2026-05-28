@@ -259,7 +259,8 @@ const noop: Step = (p) => p
 const when = <A>(value: A | undefined, step: (a: A) => Step): Step =>
   value === undefined ? noop : step(value)
 
-const set = <K extends keyof SandboxOptions>(key: K, value: SandboxOptions[K]): Step =>
+const set =
+  <K extends keyof SandboxOptions>(key: K, value: SandboxOptions[K]): Step =>
   (p) => ({ ...p, [key]: value })
 
 // ---------------------------------------------------------------------------
@@ -278,12 +279,13 @@ const toDenoSeconds = (d: Duration.Input): `${number}s` => {
 // Dockerfile are unsupported and fail at decode.
 // ---------------------------------------------------------------------------
 
-const imageStep = (
-  image: ImageRef | undefined,
-): Effect.Effect<Step, SandboxError.SandboxError> => {
+const imageStep = (image: ImageRef | undefined): Effect.Effect<Step, SandboxError.SandboxError> => {
   if (image === undefined) return Effect.succeed(noop)
   return Match.value(image).pipe(
-    Match.tag("Default", (): Effect.Effect<Step, SandboxError.SandboxError> => Effect.succeed(noop)),
+    Match.tag(
+      "Default",
+      (): Effect.Effect<Step, SandboxError.SandboxError> => Effect.succeed(noop),
+    ),
     Match.tag(
       "Snapshot",
       ({ id }): Effect.Effect<Step, SandboxError.SandboxError> => Effect.succeed(set("root", id)),
@@ -321,9 +323,7 @@ const imageStep = (
 // encodes as empty allowlist; `Open` omits the field.
 // ---------------------------------------------------------------------------
 
-const networkStep = (
-  policy: NetworkPolicy,
-): Effect.Effect<Step, SandboxError.SandboxError> =>
+const networkStep = (policy: NetworkPolicy): Effect.Effect<Step, SandboxError.SandboxError> =>
   Match.value(policy).pipe(
     Match.tag("Open", (): Effect.Effect<Step, SandboxError.SandboxError> => Effect.succeed(noop)),
     Match.tag(
@@ -595,8 +595,7 @@ const adaptInstance = (
             catch: mapExecError,
           }),
         ),
-        (c) =>
-          Effect.promise(() => c.kill("SIGKILL").catch(() => undefined)).pipe(Effect.ignore),
+        (c) => Effect.promise(() => c.kill("SIGKILL").catch(() => undefined)).pipe(Effect.ignore),
       )
       if (request.stdin !== undefined) {
         if (stdinIsStream(request.stdin)) {
@@ -655,15 +654,13 @@ const adaptInstance = (
       ),
 
     files: {
-      read: (path) =>
-        Effect.tryPromise({ try: () => sdk.fs.readFile(path), catch: mapFsError }),
+      read: (path) => Effect.tryPromise({ try: () => sdk.fs.readFile(path), catch: mapFsError }),
       write: (path, contents) =>
         Effect.tryPromise({
           try: () => sdk.fs.writeFile(path, toBytes(contents)),
           catch: mapFsError,
         }),
-      remove: (path) =>
-        Effect.tryPromise({ try: () => sdk.fs.remove(path), catch: mapFsError }),
+      remove: (path) => Effect.tryPromise({ try: () => sdk.fs.remove(path), catch: mapFsError }),
       mkdir: (path) =>
         Effect.tryPromise({
           try: () => sdk.fs.mkdir(path, { recursive: true }),
@@ -712,7 +709,9 @@ const buildService = (config: DenoSandboxConfig): DenoSandboxService => {
   ): Effect.Effect<SandboxOptions, SandboxError.SandboxError> =>
     Effect.gen(function* () {
       const img = yield* imageStep(request.image)
-      const net = yield* (request.network === undefined ? Effect.succeed(noop) : networkStep(request.network))
+      const net = yield* request.network === undefined
+        ? Effect.succeed(noop)
+        : networkStep(request.network)
       const vols = yield* volumesStep(request.volumes)
 
       const steps: ReadonlyArray<Step> = [

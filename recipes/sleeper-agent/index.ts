@@ -25,7 +25,18 @@ import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
-import { Data, Deferred, Duration, Effect, Queue, Schedule, Schema, Scope, Stream, pipe } from "effect"
+import {
+  Data,
+  Deferred,
+  Duration,
+  Effect,
+  Queue,
+  Schedule,
+  Schema,
+  Scope,
+  Stream,
+  pipe,
+} from "effect"
 
 // ---------------------------------------------------------------------------
 // Pipeline types — a single source of truth shared as both a type and a
@@ -74,7 +85,9 @@ const pollPipeline = (
     Effect.flatMap((status) =>
       isTerminalStatus(status)
         ? Effect.succeed<PipelineResult>({ pipelineId, status })
-        : Effect.fail(new PipelineCheckError({ pipelineId, cause: `non-terminal status: ${status}` })),
+        : Effect.fail(
+            new PipelineCheckError({ pipelineId, cause: `non-terminal status: ${status}` }),
+          ),
     ),
     Deferred.into(signal),
     Effect.annotateLogs({ pipelineId }),
@@ -117,7 +130,10 @@ export const initial: State = {
 // before each turn.
 // ---------------------------------------------------------------------------
 
-export const conversation = (checkStatus: CheckStatus, pollInterval: Duration.Input = "2 seconds") =>
+export const conversation = (
+  checkStatus: CheckStatus,
+  pollInterval: Duration.Input = "2 seconds",
+) =>
   Stream.unwrap(
     Effect.gen(function* () {
       // The poller must outlive the tool call that forks it. `Stream.unwrap`
@@ -131,7 +147,8 @@ export const conversation = (checkStatus: CheckStatus, pollInterval: Duration.In
       // here; the loop body drains them at the top of the next turn. A Queue
       // (vs a single-slot Ref) keeps every poller when the model triggers
       // several deploys in one turn — `Toolkit.run` runs tools concurrently.
-      const pending = yield* Queue.unbounded<Deferred.Deferred<PipelineResult, PipelineCheckError>>()
+      const pending =
+        yield* Queue.unbounded<Deferred.Deferred<PipelineResult, PipelineCheckError>>()
 
       const triggerDeploy = Tool.make({
         name: "trigger_deploy",
@@ -140,7 +157,12 @@ export const conversation = (checkStatus: CheckStatus, pollInterval: Duration.In
         run: ({ branch }) =>
           Effect.gen(function* () {
             const pipelineId = `pipeline-${branch}`
-            const signal = yield* forkPipelinePoller(pipelineId, checkStatus, conversationScope, pollInterval)
+            const signal = yield* forkPipelinePoller(
+              pipelineId,
+              checkStatus,
+              conversationScope,
+              pollInterval,
+            )
             yield* Queue.offer(pending, signal)
             return { pipelineId, status: "triggered" }
           }),
@@ -167,9 +189,13 @@ export const conversation = (checkStatus: CheckStatus, pollInterval: Duration.In
                       Effect.annotateLogs({ pipelineId: r.pipelineId, status: r.status }),
                     ),
                   ),
-                  Effect.map((r) => Items.userText(`Pipeline ${r.pipelineId} completed with status: ${r.status}`)),
+                  Effect.map((r) =>
+                    Items.userText(`Pipeline ${r.pipelineId} completed with status: ${r.status}`),
+                  ),
                   Effect.catch((e) =>
-                    Effect.succeed(Items.userText(`Pipeline ${e.pipelineId} status check failed (${e._tag})`)),
+                    Effect.succeed(
+                      Items.userText(`Pipeline ${e.pipelineId} status check failed (${e._tag})`),
+                    ),
                   ),
                 ),
               { concurrency: "unbounded" },

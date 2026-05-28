@@ -36,11 +36,6 @@ export type ToolEvent = Data.TaggedEnum<{
  */
 export const ToolEvent = Data.taggedEnum<ToolEvent>()
 
-export const isApprovalRequested: (
-  x: ToolEvent,
-) => x is Extract<ToolEvent, { readonly _tag: "ApprovalRequested" }> =
-  ToolEvent.$is("ApprovalRequested")
-export const isProgress: (x: ToolEvent) => x is Extract<ToolEvent, { readonly _tag: "Progress" }> =
-  ToolEvent.$is("Progress")
-export const isOutput: (x: ToolEvent) => x is Extract<ToolEvent, { readonly _tag: "Output" }> =
-  ToolEvent.$is("Output")
+export const isApprovalRequested = ToolEvent.$is("ApprovalRequested")
+export const isProgress = ToolEvent.$is("Progress")
+export const isOutput = ToolEvent.$is("Output")

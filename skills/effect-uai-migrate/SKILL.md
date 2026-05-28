@@ -52,30 +52,30 @@ and on-the-wire pattern matching stay identical.
 
 #### Flat renames
 
-| Before                                       | After                               |
-| -------------------------------------------- | ----------------------------------- |
-| `Item`                                       | `HistoryItem`                       |
-| `FunctionCall`                               | `ToolCall`                          |
-| `FunctionCallOutput`                         | `ToolCallOutput`                    |
-| `Items.functionCallOutput(…)`                | `Items.toolCallOutput(…)`           |
-| `Items.isFunctionCall`                       | `Items.isToolCall`                  |
-| `Items.isFunctionCallOutput`                 | `Items.isToolCallOutput`            |
-| `Turn.functionCalls(turn)`                   | `Turn.getToolCalls(turn)`           |
-| `Turn.appendTurn(…)`                         | `Turn.appendToHistory(…)`           |
-| `Turn.toStructured(…)`                       | `Turn.decodeStructured(…)`          |
-| `ToolResult.Value` / `isValue`               | `ToolResult.Ok` / `isOk`            |
-| `rejected(call, kind, reason)`               | `failed(call, kind, reason)`        |
-| `toFunctionCallOutput(…)`                    | `toToolCallOutput(…)`               |
-| `Toolkit.executeAll(…)`                      | `Toolkit.run(…)`                    |
-| `Toolkit.continueWith(…)`                    | `Toolkit.continueWithResults(…)`    |
-| `Tool.AnyKindTool`                           | `Tool.AnyTool`                      |
-| `ToolEvent.Intermediate` / `isIntermediate`  | `ToolEvent.Progress` / `isProgress` |
-| `Loop.loopFrom(…)`                           | `Loop.loopOver(…)`                  |
-| `Loop.Event<A, S>`                           | `Loop.Step<A, S>`                   |
-| `ToolCallDecision`                           | `ApprovalDecision`                  |
-| `fromApprovalMap(…)`                         | `fromMap(…)`                        |
-| `fromVerdictQueue(…)`                        | `fromQueue(…)`                      |
-| `fromQueue(…).announce`                      | `fromQueue(…).approvalRequests`     |
+| Before                                      | After                               |
+| ------------------------------------------- | ----------------------------------- |
+| `Item`                                      | `HistoryItem`                       |
+| `FunctionCall`                              | `ToolCall`                          |
+| `FunctionCallOutput`                        | `ToolCallOutput`                    |
+| `Items.functionCallOutput(…)`               | `Items.toolCallOutput(…)`           |
+| `Items.isFunctionCall`                      | `Items.isToolCall`                  |
+| `Items.isFunctionCallOutput`                | `Items.isToolCallOutput`            |
+| `Turn.functionCalls(turn)`                  | `Turn.getToolCalls(turn)`           |
+| `Turn.appendTurn(…)`                        | `Turn.appendToHistory(…)`           |
+| `Turn.toStructured(…)`                      | `Turn.decodeStructured(…)`          |
+| `ToolResult.Value` / `isValue`              | `ToolResult.Ok` / `isOk`            |
+| `rejected(call, kind, reason)`              | `failed(call, kind, reason)`        |
+| `toFunctionCallOutput(…)`                   | `toToolCallOutput(…)`               |
+| `Toolkit.executeAll(…)`                     | `Toolkit.run(…)`                    |
+| `Toolkit.continueWith(…)`                   | `Toolkit.continueWithResults(…)`    |
+| `Tool.AnyKindTool`                          | `Tool.AnyTool`                      |
+| `ToolEvent.Intermediate` / `isIntermediate` | `ToolEvent.Progress` / `isProgress` |
+| `Loop.loopFrom(…)`                          | `Loop.loopOver(…)`                  |
+| `Loop.Event<A, S>`                          | `Loop.Step<A, S>`                   |
+| `ToolCallDecision`                          | `ApprovalDecision`                  |
+| `fromApprovalMap(…)`                        | `fromMap(…)`                        |
+| `fromVerdictQueue(…)`                       | `fromQueue(…)`                      |
+| `fromQueue(…).announce`                     | `fromQueue(…).approvalRequests`     |
 
 The `Failure` variant, the `denied` / `cancelled` / `executionError`
 synthesizers, `approve` / `reject`, and the `approved` / `decisions`
@@ -102,13 +102,13 @@ const descriptors = Tool.toDescriptors([getTime, lookupWeather])
 step. Concatenate your values in front of them; `stopWith(state)`
 collapses into `stop(state)`.
 
-| Before                            | After                                                            |
-| --------------------------------- | ---------------------------------------------------------------- |
-| `return stop`                     | `return stop()`                                                  |
-| `return stopWith(state)`          | `return stop(state)`                                             |
-| `return nextAfter(stream, s)`     | `return stream.pipe(Stream.map(value), Stream.concat(next(s)))`  |
-| `return stopAfter(stream)`        | `return stream.pipe(Stream.map(value), Stream.concat(stop()))`   |
-| `return stopWithAfter(stream, s)` | `return stream.pipe(Stream.map(value), Stream.concat(stop(s)))`  |
+| Before                            | After                                                           |
+| --------------------------------- | --------------------------------------------------------------- |
+| `return stop`                     | `return stop()`                                                 |
+| `return stopWith(state)`          | `return stop(state)`                                            |
+| `return nextAfter(stream, s)`     | `return stream.pipe(Stream.map(value), Stream.concat(next(s)))` |
+| `return stopAfter(stream)`        | `return stream.pipe(Stream.map(value), Stream.concat(stop()))`  |
+| `return stopWithAfter(stream, s)` | `return stream.pipe(Stream.map(value), Stream.concat(stop(s)))` |
 
 `stopEvent` and `nextAfterFold` are removed with no direct replacement —
 build the step stream from `value` / `next` / `stop` plus standard

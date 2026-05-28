@@ -1,5 +1,11 @@
 import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
-import type { ContentBlock, ToolCall, InputImage, HistoryItem, Message } from "@effect-uai/core/Items"
+import type {
+  ContentBlock,
+  ToolCall,
+  InputImage,
+  HistoryItem,
+  Message,
+} from "@effect-uai/core/Items"
 import type { ToolDescriptor } from "@effect-uai/core/Tool"
 import type { Turn } from "@effect-uai/core/Turn"
 
@@ -226,12 +232,13 @@ const parsedResponse = parsedJsonObject((raw) => ({ output: raw }))
  */
 const isFunctionCallItem = (item: HistoryItem): item is ToolCall => item.type === "function_call"
 
-const nameForCallId = (history: ReadonlyArray<HistoryItem>, call_id: string): Option.Option<string> =>
+const nameForCallId = (
+  history: ReadonlyArray<HistoryItem>,
+  call_id: string,
+): Option.Option<string> =>
   pipe(
     history,
-    Arr.findFirst(
-      (item): item is ToolCall => isFunctionCallItem(item) && item.call_id === call_id,
-    ),
+    Arr.findFirst((item): item is ToolCall => isFunctionCallItem(item) && item.call_id === call_id),
     Option.map((f) => f.name),
   )
 

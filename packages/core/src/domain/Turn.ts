@@ -65,9 +65,7 @@ export const TurnEvent = Data.taggedEnum<TurnEvent>()
  */
 export type InteractionEvent = TurnEvent | ToolCallOutput
 
-export const isTurnComplete: (
-  x: TurnEvent,
-) => x is Extract<TurnEvent, { readonly _tag: "TurnComplete" }> = TurnEvent.$is("TurnComplete")
+export const isTurnComplete = TurnEvent.$is("TurnComplete")
 
 export const getToolCalls = (turn: Turn): ReadonlyArray<ToolCall> => turn.items.filter(isToolCall)
 

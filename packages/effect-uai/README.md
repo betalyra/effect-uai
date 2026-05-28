@@ -19,5 +19,9 @@ packages live under the `@effect-uai/*` scope:
   Inworld speech.
 - [`@effect-uai/jina`](https://www.npmjs.com/package/@effect-uai/jina) —
   Jina embeddings (dense / sparse / multivector).
+- [`@effect-uai/microsandbox`](https://www.npmjs.com/package/@effect-uai/microsandbox) —
+  Local microVM sandboxes via [microsandbox](https://github.com/microsandbox/microsandbox).
+- [`@effect-uai/deno`](https://www.npmjs.com/package/@effect-uai/deno) —
+  Hosted Firecracker microVMs on Deno Deploy.
 
 Project repository: https://github.com/betalyra/effect-uai

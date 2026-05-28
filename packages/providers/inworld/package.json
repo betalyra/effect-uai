@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/inworld",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Inworld speech-to-text and text-to-speech provider for @effect-uai/core.",
   "keywords": [
     "ai",

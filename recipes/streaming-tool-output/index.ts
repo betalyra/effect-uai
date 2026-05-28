@@ -21,7 +21,6 @@ import { Duration, Effect, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -150,12 +149,8 @@ export const buildConversation = (allTools: ReadonlyArray<Tool.AnyTool>, initial
                 if (calls.length === 0) return stop()
 
                 return Toolkit.run(allTools, calls).pipe(
-                  Toolkit.continueWithResults((results) =>
-                    Turn.appendToHistory(
-                      { ...state, index: state.index + 1 },
-                      turn,
-                      results.map(toToolCallOutput),
-                    ),
+                  Toolkit.continueWithResults(
+                    Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
                   ),
                 )
               }),

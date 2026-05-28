@@ -1,12 +1,12 @@
-# @effect-uai
+<p align="center">
+  <img src="webpage/src/assets/effect-uai-logo.svg" alt="effect-uai" width="500" />
+</p>
 
 [![npm](https://img.shields.io/npm/v/@effect-uai/core?label=%40effect-uai%2Fcore)](https://www.npmjs.com/package/@effect-uai/core)
 [![CI](https://github.com/betalyra/effect-uai/actions/workflows/ci.yml/badge.svg)](https://github.com/betalyra/effect-uai/actions/workflows/ci.yml)
 [![License](https://img.shields.io/npm/l/@effect-uai/core)](./LICENSE)
 [![types](https://img.shields.io/npm/types/@effect-uai/core)](https://www.npmjs.com/package/@effect-uai/core)
 [![status](https://img.shields.io/badge/status-experimental-orange)](#status)
-
-_/ˈi.fɛkt ˈwaj/ — "effect-why"_
 
 > **_Uai_** \\ wai \\ — Mineiro Portuguese, all-purpose interjection.
 

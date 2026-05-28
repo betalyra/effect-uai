@@ -6,7 +6,7 @@ import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
 import { ToolEvent, isApprovalRequested, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-import { type ToolResult, toToolCallOutput } from "@effect-uai/core/ToolResult"
+import type { ToolResult } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
 import { Effect, Fiber, Queue, Schema, Stream, pipe } from "effect"
 import { describe, expect, it } from "vitest"
@@ -99,9 +99,7 @@ describe("tool-call-approval", () => {
                   )
 
                   return events.pipe(
-                    Toolkit.continueWithResults((results) =>
-                      Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
-                    ),
+                    Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
                   )
                 }),
               ),
@@ -343,11 +341,7 @@ describe("tool-call-approval (HTTP variant)", () => {
                     Stream.fromIterable(
                       plan.rejected.map((result) => ToolEvent.Output({ result })),
                     ),
-                  ).pipe(
-                    Toolkit.continueWithResults((results) =>
-                      Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
-                    ),
-                  )
+                  ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)))
                 }),
               ),
             )

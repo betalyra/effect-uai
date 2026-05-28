@@ -8,8 +8,8 @@ license: MIT
 
 `Tool.streaming` lets a tool emit a `Stream<Event>` from its `run`,
 plus a `finalize` that reduces the events into the model-facing
-output. Inner events flow to the user as `ToolEvent.Intermediate`s in
-real time; the model only ever sees `finalize(events)`.
+output. Inner events flow to the user as `ToolEvent.Progress` events
+in real time; the model only ever sees `finalize(events)`.
 
 Reach for this when the user says any of:
 
@@ -65,7 +65,7 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
   })
 ```
 
-The user sees four `Intermediate` events (progress × 3 + result × 1)
+The user sees four `Progress` events (progress × 3 + result × 1)
 followed by one `Output` carrying the structured `DownloadOutput`.
 
 ## Pattern 2: sub-agent (text streaming)
@@ -98,18 +98,16 @@ provider.
 ## How it slots into the loop
 
 Identical to the basic-usage shape; only the toolkit differs.
-`Toolkit.executeAll` dispatches streaming and plain tools uniformly:
+`Toolkit.run` dispatches streaming and plain tools uniformly:
 
 ```ts
 onTurnComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
-    const calls = Turn.functionCalls(turn)
-    if (calls.length === 0) return stop
+    const calls = Turn.getToolCalls(turn)
+    if (calls.length === 0) return stop()
 
-    return Toolkit.executeAll(allTools, calls).pipe(
-      Toolkit.continueWith((results) =>
-        Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
-      ),
+    return Toolkit.run(allTools, calls).pipe(
+      Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
     )
   }),
 )
@@ -118,11 +116,11 @@ onTurnComplete<State, ToolEvent>((turn) =>
 ## Consumer-side rendering
 
 ```ts
-import { isIntermediate, isOutput } from "@effect-uai/core/ToolEvent"
+import { isProgress, isOutput } from "@effect-uai/core/ToolEvent"
 
 Stream.runForEach(conversation, (event) =>
   "_tag" in event
-    ? isIntermediate(event)
+    ? isProgress(event)
       ? Effect.logInfo("progress", event.data)
       : isOutput(event)
         ? Effect.logInfo("result", event.result)

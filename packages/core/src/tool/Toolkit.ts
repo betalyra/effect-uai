@@ -75,10 +75,7 @@ const runOne = <R>(
 
 const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
 
-const runPlain = <R>(
-  tool: AnyPlainTool<R>,
-  call: ToolCall,
-): Stream.Stream<ToolEvent, never, R> =>
+const runPlain = <R>(tool: AnyPlainTool<R>, call: ToolCall): Stream.Stream<ToolEvent, never, R> =>
   Stream.fromEffect(
     Effect.gen(function* () {
       const parsed = yield* parseJsonUnknown(call.arguments).pipe(
@@ -177,10 +174,8 @@ const runStreaming = <R>(
  * Equivalent to `appendToHistory(state, turn, results.map(toToolCallOutput))`
  * — the helper just hides the wire-conversion step.
  */
-export const appendToolResults = <S extends { readonly history: ReadonlyArray<HistoryItem> }>(
-  state: S,
-  turn: Turn,
-) =>
+export const appendToolResults =
+  <S extends { readonly history: ReadonlyArray<HistoryItem> }>(state: S, turn: Turn) =>
   (results: ReadonlyArray<ToolResult>): S =>
     appendToHistory(state, turn, results.map(toToolCallOutput))
 

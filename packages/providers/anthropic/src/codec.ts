@@ -268,7 +268,10 @@ const appendAssistant = (
           assistantBuf: blocks,
         }
 
-const groupStep = (acc: GroupAcc, item: Items.HistoryItem): Result.Result<GroupAcc, JsonParseError> => {
+const groupStep = (
+  acc: GroupAcc,
+  item: Items.HistoryItem,
+): Result.Result<GroupAcc, JsonParseError> => {
   const bucket = roleBucket(item)
   if (bucket === "system") return Result.succeed(acc)
   if (bucket === "user") {
@@ -613,8 +616,9 @@ const mergeStep = (acc: MergeAcc, item: Items.HistoryItem): MergeAcc => {
   return { out: [...acc.out, item] }
 }
 
-const mergeAdjacentAssistantText = (items: ReadonlyArray<Items.HistoryItem>): ReadonlyArray<Items.HistoryItem> =>
-  Arr.reduce(items, { out: [] } as MergeAcc, mergeStep).out
+const mergeAdjacentAssistantText = (
+  items: ReadonlyArray<Items.HistoryItem>,
+): ReadonlyArray<Items.HistoryItem> => Arr.reduce(items, { out: [] } as MergeAcc, mergeStep).out
 
 export const accumulatorToTurn = (acc: Accumulator): Turn => ({
   items: pipe(blocksByIndex(acc), Arr.flatMap(blockToItems), mergeAdjacentAssistantText),

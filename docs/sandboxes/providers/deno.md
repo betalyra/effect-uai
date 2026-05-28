@@ -226,17 +226,17 @@ the extra round-trip.
 
 ## Capabilities
 
-| Marker                     | Shipped | Notes                                                                      |
-| -------------------------- | ------- | -------------------------------------------------------------------------- |
-| `SandboxHostnameAllowlist` | ✓       | Hostnames + wildcards + literal IPs. No CIDRs.                             |
-| `SandboxSecretInjection`   | ✓       | `Authorization: Bearer` only; see [secrets](#secrets).                     |
-| `SandboxSnapshots`         | ◐       | Read side only. `create(from)` fails — use `snapshotVolume(volumeId)`.     |
-| `SandboxVolumes`           | ✓       | Volumes live in `ord` at present; read-write mounts only.                  |
-| `SandboxPortExposure`      | ✓       | Runtime `exposeHttp` returns a public URL.                                 |
-| `SandboxPauseResume`       | —       | No in-place memory-preserving pause.                                       |
-| `SandboxCustomImage`       | —       | Default base or snapshots only — no Dockerfile, no OCI registry refs.      |
-| `SandboxKernelSession`     | —       | No Jupyter/REPL surface.                                                   |
-| `SandboxPty`               | —       | Use `execStream` for byte-oriented IO.                                     |
+| Marker                     | Shipped | Notes                                                                  |
+| -------------------------- | ------- | ---------------------------------------------------------------------- |
+| `SandboxHostnameAllowlist` | ✓       | Hostnames + wildcards + literal IPs. No CIDRs.                         |
+| `SandboxSecretInjection`   | ✓       | `Authorization: Bearer` only; see [secrets](#secrets).                 |
+| `SandboxSnapshots`         | ◐       | Read side only. `create(from)` fails — use `snapshotVolume(volumeId)`. |
+| `SandboxVolumes`           | ✓       | Volumes live in `ord` at present; read-write mounts only.              |
+| `SandboxPortExposure`      | ✓       | Runtime `exposeHttp` returns a public URL.                             |
+| `SandboxPauseResume`       | —       | No in-place memory-preserving pause.                                   |
+| `SandboxCustomImage`       | —       | Default base or snapshots only — no Dockerfile, no OCI registry refs.  |
+| `SandboxKernelSession`     | —       | No Jupyter/REPL surface.                                               |
+| `SandboxPty`               | —       | Use `execStream` for byte-oriented IO.                                 |
 
 Calling `snapshot(from)` or `exposePort(instance, port)` against an
 unmarked layer is a **compile-time** error, not a runtime
@@ -244,20 +244,20 @@ unmarked layer is a **compile-time** error, not a runtime
 
 ## Errors
 
-| SDK / runtime failure                                  | Mapped to                                    |
-| ------------------------------------------------------ | -------------------------------------------- |
-| `MissingTokenError` / `InvalidTokenError` / 401 / 403  | `SandboxAuthFailed`                          |
-| 429                                                    | `SandboxQuotaExceeded`                       |
-| 404 / `SANDBOX_ALREADY_TERMINATED`                     | `SandboxNotFound`                            |
-| `InvalidTimeoutError` / `InvalidMemoryError`           | `SandboxInvalidRequest`                      |
-| `SandboxCommandError` / `ConnectionClosedError`        | `SandboxExecFailed`                          |
-| `ImageRef.Registry` / `Dockerfile`                     | `SandboxUnsupported` (`image.*`)             |
-| `NetworkPolicy.Allowlist` with `cidrs`                 | `SandboxUnsupported` (`network.cidrs`)       |
-| Volume mount with `readonly: true`                     | `SandboxUnsupported` (`volumes.readonly`)    |
-| Custom secret `header` via generic surface             | `SandboxUnsupported` (`BoundSecret.header`)  |
-| `Sandbox.snapshots.create(from)` via generic surface   | `SandboxUnsupported` (`snapshots.create`)    |
-| Empty argv array                                       | `SandboxInvalidRequest`                      |
-| Anything else on create / lookup                       | `SandboxCreateFailed`                        |
+| SDK / runtime failure                                 | Mapped to                                   |
+| ----------------------------------------------------- | ------------------------------------------- |
+| `MissingTokenError` / `InvalidTokenError` / 401 / 403 | `SandboxAuthFailed`                         |
+| 429                                                   | `SandboxQuotaExceeded`                      |
+| 404 / `SANDBOX_ALREADY_TERMINATED`                    | `SandboxNotFound`                           |
+| `InvalidTimeoutError` / `InvalidMemoryError`          | `SandboxInvalidRequest`                     |
+| `SandboxCommandError` / `ConnectionClosedError`       | `SandboxExecFailed`                         |
+| `ImageRef.Registry` / `Dockerfile`                    | `SandboxUnsupported` (`image.*`)            |
+| `NetworkPolicy.Allowlist` with `cidrs`                | `SandboxUnsupported` (`network.cidrs`)      |
+| Volume mount with `readonly: true`                    | `SandboxUnsupported` (`volumes.readonly`)   |
+| Custom secret `header` via generic surface            | `SandboxUnsupported` (`BoundSecret.header`) |
+| `Sandbox.snapshots.create(from)` via generic surface  | `SandboxUnsupported` (`snapshots.create`)   |
+| Empty argv array                                      | `SandboxInvalidRequest`                     |
+| Anything else on create / lookup                      | `SandboxCreateFailed`                       |
 
 Recover per-tag with `Effect.catchTag` / `Stream.catchTag`. The
 transient WebSocket-handshake 500 the Deploy edge occasionally

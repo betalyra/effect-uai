@@ -121,9 +121,7 @@ export const isStreamingTool = <R>(t: AnyTool<R>): t is AnyStreamingTool<R> =>
  * descriptors. Accepts the union type so a single list can carry both
  * plain and streaming tools.
  */
-export const toDescriptors = <R>(
-  tools: ReadonlyArray<AnyTool<R>>,
-): ReadonlyArray<ToolDescriptor> =>
+export const toDescriptors = <R>(tools: ReadonlyArray<AnyTool<R>>): ReadonlyArray<ToolDescriptor> =>
   tools.map((tool) => {
     const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
       target: "draft-2020-12",

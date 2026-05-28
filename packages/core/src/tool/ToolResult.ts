@@ -43,10 +43,8 @@ export type ToolResult = Data.TaggedEnum<{
  */
 export const ToolResult = Data.taggedEnum<ToolResult>()
 
-export const isOk: (x: ToolResult) => x is Extract<ToolResult, { readonly _tag: "Ok" }> =
-  ToolResult.$is("Ok")
-export const isFailure: (x: ToolResult) => x is Extract<ToolResult, { readonly _tag: "Failure" }> =
-  ToolResult.$is("Failure")
+export const isOk = ToolResult.$is("Ok")
+export const isFailure = ToolResult.$is("Failure")
 
 // Synthesizers. `denied` and `cancelled` are operationally distinct;
 // anything else is just a recipe-chosen `kind` via `failed`.

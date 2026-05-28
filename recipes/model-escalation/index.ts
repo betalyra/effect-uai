@@ -118,7 +118,10 @@ export type ConversationEvent = Turn.TurnEvent | EscalationEvent
 // stored in history, so it doesn't bloat the accumulator.
 // ---------------------------------------------------------------------------
 
-export const initialState = (question: string, prior: ReadonlyArray<Items.HistoryItem> = []): State => ({
+export const initialState = (
+  question: string,
+  prior: ReadonlyArray<Items.HistoryItem> = [],
+): State => ({
   history: [...prior, Items.userText(question)],
   tier: 0,
 })

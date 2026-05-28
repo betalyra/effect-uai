@@ -321,10 +321,10 @@ not by every provider that has snapshots.
 
 ## Provider matrix
 
-| Provider      | Snapshots               | Volumes        | Secrets | Hostname allowlist | Pause/Resume | Custom image | Port exposure        |
-| ------------- | ----------------------- | -------------- | ------- | ------------------ | ------------ | ------------ | -------------------- |
-| Microsandbox  | ✓                       | ✓              | ✓       | ✓                  | —            | —            | — (create-time only) |
-| Deno Sandbox  | ◐ (volume-derived)      | ✓ (`ord` only) | ✓       | ✓ (no CIDRs)       | —            | —            | ✓                    |
+| Provider     | Snapshots          | Volumes        | Secrets | Hostname allowlist | Pause/Resume | Custom image | Port exposure        |
+| ------------ | ------------------ | -------------- | ------- | ------------------ | ------------ | ------------ | -------------------- |
+| Microsandbox | ✓                  | ✓              | ✓       | ✓                  | —            | —            | — (create-time only) |
+| Deno Sandbox | ◐ (volume-derived) | ✓ (`ord` only) | ✓       | ✓ (no CIDRs)       | —            | —            | ✓                    |
 
 More providers (Vercel, E2B, Modal, Cloudflare, Daytona) land as
 their adapters ship; the matrix grows downward, not the API surface.

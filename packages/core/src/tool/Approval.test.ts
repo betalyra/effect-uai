@@ -15,12 +15,7 @@ import { describe, expect, it } from "vitest"
 import * as Items from "../domain/Items.js"
 import { findUnansweredCalls, cancelAllPending, isReconciled } from "./HistoryCheck.js"
 import { type ToolResult, isFailure, isOk, toToolCallOutput } from "./ToolResult.js"
-import {
-  type ApprovalMapEntry,
-  type ApprovalDecision,
-  fromMap,
-  fromQueue,
-} from "./Approval.js"
+import { type ApprovalMapEntry, type ApprovalDecision, fromMap, fromQueue } from "./Approval.js"
 import { fromEffectSchema, make as makeTool, streaming } from "./Tool.js"
 import { run } from "./Toolkit.js"
 import { ToolEvent, isApprovalRequested, isProgress, isOutput } from "./ToolEvent.js"
@@ -295,11 +290,7 @@ describe("findUnansweredCalls / cancelAllPending / isReconciled", () => {
   it("follow-up: map closures to ToolCallOutput before appending new user message", () => {
     const stale = [Items.userText("first request"), orphan]
     const closures = cancelAllPending(stale, "user redirected")
-    const reconciled = [
-      ...stale,
-      ...closures.map(toToolCallOutput),
-      Items.userText("never mind"),
-    ]
+    const reconciled = [...stale, ...closures.map(toToolCallOutput), Items.userText("never mind")]
     expect(findUnansweredCalls(reconciled)).toHaveLength(0)
   })
 })

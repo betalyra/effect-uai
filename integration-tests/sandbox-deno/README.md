@@ -61,7 +61,7 @@ explained in [`recipes-extras/README.md`](../../recipes-extras/README.md).
 - Running a Deno TS script and parsing its JSON output.
 - Secret injection: real value never visible to in-VM env.
 - `BoundSecret.header` rejected at runtime via generic surface (row D)
-  + omitted from `DenoSandboxBoundSecret` at the type level (row B).
+  - omitted from `DenoSandboxBoundSecret` at the type level (row B).
 - Decode-time rejections: `ImageRef.Registry`, `ImageRef.Dockerfile`,
   `NetworkPolicy.Allowlist({ cidrs })`.
 - Generic `Sandbox.snapshots.create(from)` fails with

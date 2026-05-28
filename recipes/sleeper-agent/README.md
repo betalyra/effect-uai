@@ -69,9 +69,13 @@ loop((state) =>
       signals,
       (signal) =>
         Deferred.await(signal).pipe(
-          Effect.map((r) => Items.userText(`Pipeline ${r.pipelineId} completed with status: ${r.status}`)),
+          Effect.map((r) =>
+            Items.userText(`Pipeline ${r.pipelineId} completed with status: ${r.status}`),
+          ),
           Effect.catch((e) =>
-            Effect.succeed(Items.userText(`Pipeline ${e.pipelineId} status check failed (${e._tag})`)),
+            Effect.succeed(
+              Items.userText(`Pipeline ${e.pipelineId} status check failed (${e._tag})`),
+            ),
           ),
         ),
       { concurrency: "unbounded" },

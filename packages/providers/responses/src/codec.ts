@@ -200,8 +200,9 @@ const itemToInput = (item: HistoryItem): Record<string, unknown> =>
   )
 
 /** Convert our `HistoryItem[]` history into the Responses API `input` array. */
-export const itemsToInput = (items: ReadonlyArray<HistoryItem>): ReadonlyArray<Record<string, unknown>> =>
-  items.map(itemToInput)
+export const itemsToInput = (
+  items: ReadonlyArray<HistoryItem>,
+): ReadonlyArray<Record<string, unknown>> => items.map(itemToInput)
 
 // ---------------------------------------------------------------------------
 // Wire output items → our Items

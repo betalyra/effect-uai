@@ -1,3 +1,4 @@
+import type { Duration } from "effect"
 import type { MediaBase64, MediaBytes, MediaUrl } from "./Media.js"
 
 /**
@@ -84,5 +85,5 @@ export type AudioChunk = {
 export type AudioBlob = {
   readonly format: AudioFormat
   readonly bytes: Uint8Array
-  readonly durationSeconds?: number
+  readonly duration?: Duration.Duration
 }

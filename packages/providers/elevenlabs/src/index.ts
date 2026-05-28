@@ -1,3 +1,4 @@
+export * as ElevenLabsMusicGenerator from "./ElevenLabsMusicGenerator.js"
 export * as ElevenLabsSynthesizer from "./ElevenLabsSynthesizer.js"
 export * as ElevenLabsTranscriber from "./ElevenLabsTranscriber.js"
 export * as codec from "./codec.js"

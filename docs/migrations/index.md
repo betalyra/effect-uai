@@ -15,6 +15,22 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.7](/migrations/v0-7/) — the `MusicGenerator` revamp
+  and a new ElevenLabs music provider. Breaking but mechanical:
+  `prompts → prompt` (string only, no more `WeightedPrompt[]` form on
+  Common), `bpm` / `scale` / `instrumental` dropped from
+  `CommonGenerateMusicRequest` (moved to provider-typed extras),
+  `durationSeconds: number → duration: Duration.Duration` on the
+  request and on `AudioBlob`, `MusicResult` composes `AudioBlob`
+  instead of extending it (`result.bytes` → `result.audio.bytes`),
+  `generate` returns `GenerateResult` (`primary` + `variants[]`) to
+  expose Suno- / Mureka-style multi-track returns,
+  `MusicSessionInput.config` removed (Lyria-specific), playback
+  vocabulary `"reset_context" → "reset"`, `streamGenerationFrom`
+  yields `MusicStreamEvent` (audio / warning / filteredPrompt).
+  Additive (no migration needed): `@effect-uai/elevenlabs/ElevenLabsMusicGenerator`,
+  `@effect-uai/core/Capabilities` warn-and-drop helper, multi-provider
+  recipe runner via `--provider=`.
 - [Migrating to 0.6](/migrations/v0-6/) — the consistent-naming sweep
   plus additive speech features. Breaking but mechanical: "function
   call" → "tool call" terminology (`Item` → `HistoryItem`,

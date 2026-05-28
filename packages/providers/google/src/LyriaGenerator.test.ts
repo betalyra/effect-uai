@@ -1,80 +1,16 @@
-import { Effect, Layer, Redacted, Stream } from "effect"
+import { Duration, Effect, Layer, Redacted, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import { describe, expect, expectTypeOf, it } from "vitest"
 import type * as AiError from "@effect-uai/core/AiError"
-import * as MusicGenerator from "@effect-uai/core/MusicGenerator"
+import type { GenerateResult } from "@effect-uai/core/Music"
 import { promptsInput } from "@effect-uai/core/Music"
+import * as MusicGenerator from "@effect-uai/core/MusicGenerator"
 import * as LyriaGenerator from "./LyriaGenerator.js"
 
 const cfg: LyriaGenerator.Config = { apiKey: Redacted.make("test-key") }
 // FetchHttpClient is required for `make`, but these tests only exercise the
-// compile-time gating and runtime Unsupported branches — no real HTTP is made.
+// compile-time gating and runtime Unsupported branches, no real HTTP is made.
 const live = Layer.provide(LyriaGenerator.layer(cfg), FetchHttpClient.layer)
-
-describe("buildPrompt", () => {
-  it("returns a plain string when prompts is a string", () => {
-    const out = LyriaGenerator.buildPrompt({
-      model: "lyria-3-clip-preview",
-      prompts: "upbeat indie pop",
-    })
-    expect(out).toBe("upbeat indie pop")
-  })
-
-  it("joins weighted prompts with weight annotations", () => {
-    const out = LyriaGenerator.buildPrompt({
-      model: "lyria-3-clip-preview",
-      prompts: [
-        { text: "minimal techno", weight: 1.0 },
-        { text: "1980s synthwave", weight: 0.3 },
-      ],
-    })
-    expect(out).toContain("minimal techno")
-    expect(out).toContain("1980s synthwave (weight 0.3)")
-  })
-
-  it("omits the weight annotation for weight === 1", () => {
-    const out = LyriaGenerator.buildPrompt({
-      model: "lyria-3-clip-preview",
-      prompts: [{ text: "ambient", weight: 1 }],
-    })
-    expect(out).toBe("ambient")
-  })
-
-  it("splices in bpm, scale, duration, and instrumental hints", () => {
-    const out = LyriaGenerator.buildPrompt({
-      model: "lyria-3-clip-preview",
-      prompts: "house",
-      bpm: 124,
-      scale: "C_MAJOR",
-      durationSeconds: 30,
-      instrumental: true,
-    })
-    expect(out).toContain("Instrumental only")
-    expect(out).toContain("BPM: 124")
-    expect(out).toContain("Key/scale: C_MAJOR")
-    expect(out).toContain("Target duration: 30s")
-  })
-
-  it("appends a lyrics block when lyrics is set and instrumental is not true", () => {
-    const out = LyriaGenerator.buildPrompt({
-      model: "lyria-3-clip-preview",
-      prompts: "indie rock",
-      lyrics: "[Verse]\nhello world",
-    })
-    expect(out).toContain("Lyrics:")
-    expect(out).toContain("[Verse]")
-  })
-
-  it("drops the lyrics block when instrumental is true", () => {
-    const out = LyriaGenerator.buildPrompt({
-      model: "lyria-3-clip-preview",
-      prompts: "indie rock",
-      lyrics: "[Verse]\nhello world",
-      instrumental: true,
-    })
-    expect(out).not.toContain("Lyrics:")
-  })
-})
 
 describe("containerToMimeType", () => {
   it("maps mp3 and wav", async () => {
@@ -115,7 +51,7 @@ describe("LyriaGenerator capability guards (runtime)", () => {
       Stream.runDrain(
         s.streamGenerationFrom(Stream.fromIterable([promptsInput([{ text: "x" }])]), {
           model: "lyria-3-clip-preview",
-          prompts: "",
+          prompt: "",
         }),
       ),
     )
@@ -131,32 +67,52 @@ describe("LyriaGenerator capability guards (runtime)", () => {
 describe("LyriaGenerator Layer (compile-time)", () => {
   it("leaves `MusicInteractiveSession` unsatisfied when using `streamGenerationFrom` against this Layer", () => {
     const inputs = Stream.fromIterable([promptsInput([{ text: "techno" }])])
-    const audio = inputs.pipe(
+    const events = inputs.pipe(
       MusicGenerator.streamGenerationFrom({
         model: "lyria-3-clip-preview",
-        prompts: "",
+        prompt: "",
       }),
     )
-    const provided = Stream.runDrain(audio).pipe(Effect.provide(live))
+    const provided = Stream.runDrain(events).pipe(Effect.provide(live))
     expectTypeOf(provided).toEqualTypeOf<
       Effect.Effect<void, AiError.AiError, MusicGenerator.MusicInteractiveSession>
     >()
   })
 
-  it("sync `generate` and chunked `streamGeneration` require no marker", () => {
+  it("sync `generate` returns GenerateResult and requires no marker", () => {
     const gen = MusicGenerator.generate({
       model: "lyria-3-clip-preview",
-      prompts: "ambient",
+      prompt: "ambient",
     }).pipe(Effect.provide(live))
-    expectTypeOf(gen).toEqualTypeOf<
-      Effect.Effect<import("@effect-uai/core/Music").MusicResult, AiError.AiError, never>
-    >()
+    expectTypeOf(gen).toEqualTypeOf<Effect.Effect<GenerateResult, AiError.AiError, never>>()
+  })
+
+  it("chunked `streamGeneration` requires no marker", () => {
     const _stream = Stream.runCollect(
       MusicGenerator.streamGeneration({
         model: "lyria-3-clip-preview",
-        prompts: "ambient",
+        prompt: "ambient",
       }),
     ).pipe(Effect.provide(live))
     expect(_stream).toBeDefined()
+  })
+
+  it("Lyria-typed request accepts no `instrumental` field", () => {
+    const _req: LyriaGenerator.LyriaGenerateRequest = {
+      model: "lyria-3-clip-preview",
+      prompt: "ambient",
+      // @ts-expect-error: instrumental was removed from LyriaGenerateRequest in v0.7
+      instrumental: true,
+    }
+    expect(_req).toBeDefined()
+  })
+
+  it("Common request supports `duration: Duration.Duration`", () => {
+    const _req: MusicGenerator.CommonGenerateMusicRequest = {
+      model: "lyria-3-clip-preview",
+      prompt: "ambient",
+      duration: Duration.seconds(30),
+    }
+    expect(_req).toBeDefined()
   })
 })

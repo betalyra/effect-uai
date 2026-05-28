@@ -1,75 +1,51 @@
 /**
- * Generate a short clip with Lyria 3 (Google Gemini API). The recipe
- * stays runtime-agnostic — it returns Effects that read a `MusicGenerator`
- * from context. `run-node.ts` wires the real `@effect-uai/google` Layer;
- * `index.test.ts` swaps in a `MockMusicGenerator` Layer.
+ * Generate a short clip via the generic `MusicGenerator` service. The
+ * recipe body stays provider-agnostic: it returns Effects that read a
+ * `MusicGenerator` from context. `run-node.ts` dispatches between
+ * `@effect-uai/google/LyriaGenerator` and
+ * `@effect-uai/elevenlabs/ElevenLabsMusicGenerator` via the
+ * `--provider=` flag. `index.test.ts` swaps in a `MockMusicGenerator`
+ * Layer.
  *
- * Two flavours are shown:
- *
- * - `generateSimple` — single text prompt.
- * - `generateWeighted` — blended weighted prompts plus structured hints
- *   (bpm / scale / lyrics with `[Verse]` / `[Chorus]` section tags).
- *
- * `runSimple` and `runWeighted` accept user-supplied input, so the Node
- * runner can dispatch on a CLI-provided `.txt` (simple) or `.json`
- * (weighted) file.
+ * Only Common-request fields appear here. Provider-specific extras
+ * (Lyria's prompt-only structure tags, ElevenLabs's `compositionPlan`
+ * / `forceInstrumental` / `signWithC2pa`) live on each provider's
+ * typed service if you need them.
  */
+import { Duration } from "effect"
 import * as MusicGenerator from "@effect-uai/core/MusicGenerator"
-import type { CommonGenerateMusicRequest, WeightedPrompt } from "@effect-uai/core/Music"
 
-/**
- * JSON shape accepted by `.json` config files for the weighted variant.
- * Everything except the `prompts` blend is optional; the adapter defaults
- * the model to `lyria-3-clip-preview` and the format to mp3.
- */
-export type WeightedConfig = {
-  readonly prompts: ReadonlyArray<WeightedPrompt>
-  readonly lyrics?: string
-  readonly bpm?: number
-  readonly scale?: string
-  readonly durationSeconds?: number
-  readonly instrumental?: boolean
-  readonly model?: CommonGenerateMusicRequest["model"]
-}
-
-/** Built-in default prompt for the simple variant. */
-export const defaultSimplePrompt =
+/** Built-in default prompt. Plain text, no client-side construction. */
+export const defaultPrompt =
   "upbeat indie pop with prominent synths and a driving 4-on-the-floor beat"
 
-/** Built-in default config for the weighted variant. */
-export const defaultWeightedConfig: WeightedConfig = {
-  prompts: [
-    { text: "1980s synthwave", weight: 1.0 },
-    { text: "John Carpenter movie OST", weight: 0.4 },
-  ],
-  bpm: 100,
-  scale: "A_MINOR",
-  lyrics: "[Verse]\nNeon city, midnight drive\n[Chorus]\nKeep the dream alive",
+/**
+ * Per-provider default model. The Common request takes a `model`
+ * string; the runner resolves a sensible default per `--provider=`
+ * value before constructing the request.
+ */
+export type Provider = "google" | "elevenlabs"
+
+export const defaultModel: Record<Provider, string> = {
+  google: "lyria-3-clip-preview",
+  elevenlabs: "music_v1",
 }
 
-/** Run the simple (single-prompt) variant with arbitrary prompt text. */
-export const runSimple = (prompt: string) =>
+/**
+ * Run a generation against whatever `MusicGenerator` is in scope. The
+ * Lyria Layer (`@effect-uai/google/LyriaGenerator`) is fixed at 30 s
+ * for the clip model and ignores `duration`; ElevenLabs honors it.
+ */
+export const run = (input: { readonly model: string; readonly prompt: string }) =>
   MusicGenerator.generate({
-    model: "lyria-3-clip-preview",
-    prompts: prompt,
+    model: input.model,
+    prompt: input.prompt,
+    duration: Duration.seconds(30),
     outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 },
   })
 
-/** Run the weighted variant with a parsed `WeightedConfig`. */
-export const runWeighted = (config: WeightedConfig) =>
-  MusicGenerator.generate({
-    model: config.model ?? "lyria-3-clip-preview",
-    prompts: config.prompts,
-    outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 },
-    ...(config.lyrics !== undefined && { lyrics: config.lyrics }),
-    ...(config.bpm !== undefined && { bpm: config.bpm }),
-    ...(config.scale !== undefined && { scale: config.scale }),
-    ...(config.durationSeconds !== undefined && { durationSeconds: config.durationSeconds }),
-    ...(config.instrumental !== undefined && { instrumental: config.instrumental }),
-  })
-
-/** Convenience: the simple variant pre-bound to the built-in default prompt. */
-export const generateSimple = runSimple(defaultSimplePrompt)
-
-/** Convenience: the weighted variant pre-bound to the built-in default config. */
-export const generateWeighted = runWeighted(defaultWeightedConfig)
+/**
+ * Convenience: the default prompt + the provider-default model.
+ */
+export const runDefault = (provider: Provider) =>
+  run({ model: defaultModel[provider], prompt: defaultPrompt })

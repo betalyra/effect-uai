@@ -21,7 +21,6 @@ import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import * as Loop from "@effect-uai/core/Loop"
 import { loop } from "@effect-uai/core/Loop"
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -214,9 +213,7 @@ export const conversation = (
                     // `continueWithResults` streams tool events to the consumer and
                     // folds their outputs into the next state's history.
                     return Toolkit.run(tools, calls).pipe(
-                      Toolkit.continueWithResults((results) =>
-                        Turn.appendToHistory({ history }, turn, results.map(toToolCallOutput)),
-                      ),
+                      Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
                     )
                   }),
                 ),

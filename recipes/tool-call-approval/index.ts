@@ -27,7 +27,6 @@ import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
 import { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses } from "@effect-uai/responses/Responses"
 import { Effect, Queue, Schema, Stream, pipe } from "effect"
@@ -153,11 +152,7 @@ export const httpConversation = (
                 return Stream.merge(
                   Toolkit.run(allTools, plan.approved),
                   Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
-                ).pipe(
-                  Toolkit.continueWithResults((results) =>
-                    Turn.appendToHistory(current, turn, results.map(toToolCallOutput)),
-                  ),
-                )
+                ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
               }),
             ),
           )
@@ -212,9 +207,7 @@ export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State =
                 )
 
                 return events.pipe(
-                  Toolkit.continueWithResults((results) =>
-                    Turn.appendToHistory(current, turn, results.map(toToolCallOutput)),
-                  ),
+                  Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)),
                 )
               }),
             ),

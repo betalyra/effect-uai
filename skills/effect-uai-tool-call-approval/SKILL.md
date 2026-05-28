@@ -20,10 +20,10 @@ Reach for this when the user says any of:
 
 ## Two transport flavors
 
-| Flavor               | When to use                                               | Planner                                        |
-| -------------------- | --------------------------------------------------------- | ---------------------------------------------- |
-| HTTP (synchronous)   | Stateless request-shaped server; approvals arrive in body | `fromApprovalMap(predicate, approvals)(calls)` |
-| Queue (asynchronous) | Long-lived WebSocket / SSE; verdicts arrive later         | `fromVerdictQueue(predicate, queue)(calls)`    |
+| Flavor               | When to use                                               | Planner                                         |
+| -------------------- | --------------------------------------------------------- | ----------------------------------------------- |
+| HTTP (synchronous)   | Stateless request-shaped server; approvals arrive in body | `Approval.fromMap(predicate, approvals)(calls)` |
+| Queue (asynchronous) | Long-lived WebSocket / SSE; verdicts arrive later         | `Approval.fromQueue(predicate, queue)(calls)`   |
 
 Pick HTTP if your transport is request-shaped. Pick Queue if you've
 got a persistent connection and want a streaming UI.
@@ -32,19 +32,19 @@ got a persistent connection and want a streaming UI.
 
 ```ts
 import { Effect, Stream, pipe } from "effect"
+import * as Approval from "@effect-uai/core/Approval"
 import * as Items from "@effect-uai/core/Items"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
-import { fromApprovalMap, type ApprovalMapEntry } from "@effect-uai/core/Resolvers"
+import { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
 const SENSITIVE = new Set(["send_email", "delete_user"])
-const isSensitive = (call: Items.FunctionCall) => SENSITIVE.has(call.name)
+const isSensitive = (call: Items.ToolCall) => SENSITIVE.has(call.name)
 
 export const httpConversation = (
-  approvals: ReadonlyMap<string, ApprovalMapEntry>,
-  state: { history: ReadonlyArray<Items.Item> },
+  approvals: ReadonlyMap<string, Approval.ApprovalMapEntry>,
+  state: { history: ReadonlyArray<Items.HistoryItem> },
 ) =>
   pipe(
     state,
@@ -54,18 +54,14 @@ export const httpConversation = (
         return oai.streamTurn({ history: current.history, model: "gpt-5.4-mini", tools }).pipe(
           onTurnComplete<typeof state, ToolEvent>((turn) =>
             Effect.sync(() => {
-              const calls = Turn.functionCalls(turn)
-              if (calls.length === 0) return stop
+              const calls = Turn.getToolCalls(turn)
+              if (calls.length === 0) return stop()
 
-              const plan = fromApprovalMap(isSensitive, approvals)(calls)
+              const plan = Approval.fromMap(isSensitive, approvals)(calls)
               return Stream.merge(
-                Toolkit.executeAll(allTools, plan.approved),
+                Toolkit.run(allTools, plan.approved),
                 Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
-              ).pipe(
-                Toolkit.continueWith((results) =>
-                  Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
-                ),
-              )
+              ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
             }),
           ),
         )
@@ -77,24 +73,27 @@ export const httpConversation = (
 `approvals` is keyed by `call_id`. Entries are
 `{ decision: "approve" }` or `{ decision: "deny", reason?: string }`.
 Missing entries become `cancelled` outputs synthesized by
-`fromApprovalMap`.
+`Approval.fromMap`.
 
 ## Queue variant
 
 ```ts
-import { fromVerdictQueue, type Verdict } from "@effect-uai/core/Resolvers"
+import * as Approval from "@effect-uai/core/Approval"
 
 const events = Stream.unwrap(
   Effect.gen(function* () {
-    const { approved, decisions, announce } = yield* fromVerdictQueue(isSensitive, verdicts)(calls)
+    const { approved, decisions, approvalRequests } = yield* Approval.fromQueue(
+      isSensitive,
+      verdicts,
+    )(calls)
     return Stream.merge(
-      announce, // ApprovalRequested events drive the UI
+      approvalRequests, // ApprovalRequested events drive the UI
       Stream.merge(
-        Toolkit.executeAll(allTools, approved),
+        Toolkit.run(allTools, approved),
         decisions.pipe(
           Stream.flatMap((d) =>
             d._tag === "Approved"
-              ? Toolkit.executeAll(allTools, [d.call])
+              ? Toolkit.run(allTools, [d.call])
               : Stream.succeed(ToolEvent.Output({ result: d.result })),
           ),
         ),
@@ -127,12 +126,12 @@ request:
 
 ```ts
 import { cancelAllPending } from "@effect-uai/core/HistoryCheck"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 
 const closures = cancelAllPending(stored, "user moved on")
 const reconciledHistory = [
   ...stored,
-  ...closures.map(toFunctionCallOutput),
+  ...closures.map(toToolCallOutput),
   Items.userText(req.body.message),
 ]
 ```

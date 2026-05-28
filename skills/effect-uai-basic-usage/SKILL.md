@@ -22,7 +22,6 @@ Reach for this when the user says any of:
 import { Effect, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
@@ -30,14 +29,14 @@ import * as Turn from "@effect-uai/core/Turn"
 import { Responses } from "@effect-uai/responses"
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
 }
 
 const initial: State = {
   history: [Items.userText("What time is it in Lisbon and Tokyo right now?")],
 }
 
-const tools: ReadonlyArray<Tool.AnyKindTool> = [
+const tools: ReadonlyArray<Tool.AnyTool> = [
   /* getCurrentTime, ... */
 ]
 const descriptors = Tool.toDescriptors(tools)
@@ -57,16 +56,14 @@ export const conversation = pipe(
         .pipe(
           onTurnComplete<State, ToolEvent>((turn) =>
             Effect.sync(() => {
-              const calls = Turn.functionCalls(turn)
+              const calls = Turn.getToolCalls(turn)
 
               // No tool calls -> assistant is done.
-              if (calls.length === 0) return stop
+              if (calls.length === 0) return stop()
 
               // Tool calls -> execute, append outputs, loop again.
-              return Toolkit.executeAll(tools, calls).pipe(
-                Toolkit.continueWith((results) =>
-                  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
-                ),
+              return Toolkit.run(tools, calls).pipe(
+                Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
               )
             }),
           ),
@@ -127,8 +124,8 @@ await Effect.runPromise(Stream.runDrain(conversation).pipe(Effect.provide(mainLa
 ## Anti-patterns
 
 - **Don't manually build `function_call_output` items.** Use
-  `Toolkit.executeAll` + `toFunctionCallOutput` so output formats stay
-  provider-correct.
+  `Toolkit.run` + `Toolkit.appendToolResults` (or `toToolCallOutput`
+  directly) so output formats stay provider-correct.
 - **Don't run tools outside the loop body.** They need to be part of
   the same iteration so their outputs are visible in `state.history`
   before the next turn.

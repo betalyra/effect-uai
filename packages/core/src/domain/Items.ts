@@ -117,7 +117,7 @@ export const Message = Schema.Struct({
 })
 export type Message = typeof Message.Type
 
-export const FunctionCall = Schema.Struct({
+export const ToolCall = Schema.Struct({
   type: Schema.Literal("function_call"),
   call_id: Schema.String,
   name: Schema.String,
@@ -125,15 +125,15 @@ export const FunctionCall = Schema.Struct({
   arguments: Schema.String,
   providerData: ProviderData,
 })
-export type FunctionCall = typeof FunctionCall.Type
+export type ToolCall = typeof ToolCall.Type
 
-export const FunctionCallOutput = Schema.Struct({
+export const ToolCallOutput = Schema.Struct({
   type: Schema.Literal("function_call_output"),
   call_id: Schema.String,
   output: Schema.String,
   providerData: ProviderData,
 })
-export type FunctionCallOutput = typeof FunctionCallOutput.Type
+export type ToolCallOutput = typeof ToolCallOutput.Type
 
 /**
  * Reasoning item - top-level, mirrors OpenAI Responses API. Common shape
@@ -150,8 +150,8 @@ export const Reasoning = Schema.Struct({
 })
 export type Reasoning = typeof Reasoning.Type
 
-export const Item = Schema.Union([Message, FunctionCall, FunctionCallOutput, Reasoning])
-export type Item = typeof Item.Type
+export const HistoryItem = Schema.Union([Message, ToolCall, ToolCallOutput, Reasoning])
+export type HistoryItem = typeof HistoryItem.Type
 
 // ---------------------------------------------------------------------------
 // Type guards
@@ -163,8 +163,8 @@ export const isOutputText = Schema.is(OutputText)
 export const isRefusal = Schema.is(Refusal)
 
 export const isMessage = Schema.is(Message)
-export const isFunctionCall = Schema.is(FunctionCall)
-export const isFunctionCallOutput = Schema.is(FunctionCallOutput)
+export const isToolCall = Schema.is(ToolCall)
+export const isToolCallOutput = Schema.is(ToolCallOutput)
 export const isReasoning = Schema.is(Reasoning)
 
 // ---------------------------------------------------------------------------
@@ -224,7 +224,7 @@ export const assistantText = (text: string): Message => ({
   content: [{ type: "output_text", text }],
 })
 
-export const functionCallOutput = (call_id: string, output: string): FunctionCallOutput => ({
+export const toolCallOutput = (call_id: string, output: string): ToolCallOutput => ({
   type: "function_call_output",
   call_id,
   output,

@@ -6,7 +6,7 @@ description: State, body, and a stream of events - the three things an agent loo
 An agent is a loop over your state.
 
 In `effect-uai`, that loop is not hidden inside an `Agent` class. State is a
-plain record, the body is a `Stream`, and a small tagged event type
+plain record, the body is a `Stream`, and a small tagged step type
 (`Value` / `Next` / `Stop`) controls iteration. Each turn, tool call,
 fallback, compaction, or pause is just ordinary Effect code in that body.
 
@@ -20,7 +20,7 @@ Effect `Stream` semantics.
 ```ts
 loop<S, A, E, R>(
   initial: S,
-  body: (state: S) => Stream<Event<A, S>, E, R>,
+  body: (state: S) => Stream<Step<A, S>, E, R>,
 ): Stream<A, E, R>
 ```
 
@@ -29,15 +29,16 @@ Both data-first (`loop(initial, body)`) and data-last
 `Effect<Stream<...>>` so it can yield services before producing the
 stream.
 
-## The event type
+## The step type
 
-Each pull, the body emits a chunk of `Event<A, S>`:
+Each pull, the body emits a chunk of `Step<A, S>`:
 
 ```ts
-type Event<A, S> =
+type Step<A, S> =
   | { _tag: "Value"; value: A } // flows downstream
   | { _tag: "Next"; state: S } // end this iteration, continue with new state
   | { _tag: "Stop" } // end the loop entirely
+  | { _tag: "StopWith"; state: S } // end the loop AND surface a final state
 ```
 
 A `Next` or `Stop` is **terminal for the iteration**. Anything emitted
@@ -47,26 +48,28 @@ over building events by hand.
 ## Helpers
 
 ```ts
-Loop.value(a) // wrap a value
-Loop.next(state) // signal continuation
-Loop.stop // a single-element stream that ends the loop
-Loop.stopWith(state) // end the loop AND surface a final state
-Loop.nextAfter(stream, s) // emit values from `stream`, then continue with state `s`
-Loop.stopAfter(stream) // emit values from `stream`, then end the loop
-Loop.stopWithAfter(stream, s) // emit values from `stream`, then end with final state `s`
-Loop.nextAfterFold(stream, b, fold, build) // drain stream, fold to acc, then continue with build(acc)
+Loop.value(a) // wrap a value as a Step (use inside Stream.map)
+Loop.next(state) // single-element stream: end this iteration, continue with new state
+Loop.stop() // single-element stream that ends the loop
+Loop.stop(state) // end the loop AND surface a final state
+Loop.emitValues(stream) // lift every element as Loop.value(a) — left arm of a fork
+Loop.emitNext(effect) // lift a one-shot Effect<S> as a single Loop.next(s) — right arm of a fork
 ```
 
-`nextAfter` / `stopAfter` are the everyday workhorses. `nextAfterFold`
-is the general primitive — drain a stream, fold its elements into an
-accumulator, then advance with state derived from the fold. The
-streaming-tool helper [`Toolkit.continueWith`](/concepts/tools/) is
+`next` and `stop` each emit a single terminal step, so concatenate your
+values before them: emit a run of values then continue with
+`values.pipe(Stream.map(Loop.value), Stream.concat(Loop.next(state)))`,
+or just `Loop.next(state)` when there were no values. `emitValues` /
+`emitNext` are the broadcast-fork building blocks — broadcast a source
+stream, pipe one arm through `emitValues` for pass-through, accumulate
+the other into an `Effect<S>` and lift via `emitNext`, then `Stream.merge`.
+The streaming-tool helper [`Toolkit.continueWithResults`](/concepts/tools/) is
 built on top.
 
-Reach for `stopWith` / `stopWithAfter` when the loop ending _is_ the
-result you care about — a summarised state, a tallied result, a
-final checkpoint. `loopWithState` exposes that final state to the
-caller; with plain `stop` it's discarded.
+Reach for `stop(state)` when the loop ending _is_ the result you care
+about — a summarised state, a tallied result, a final checkpoint.
+`loopWithState` exposes that final state to the caller; with plain
+`stop()` it's discarded.
 
 ## `onTurnComplete`
 
@@ -78,7 +81,7 @@ always the same: forward events to the consumer, wait for the terminal
 ```ts
 import { Effect } from "effect"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
@@ -100,15 +103,15 @@ pipe(
         .pipe(
           onTurnComplete<State, ToolEvent>((turn) =>
             Effect.gen(function* () {
-              const calls = Turn.functionCalls(turn)
+              const calls = Turn.getToolCalls(turn)
 
               // No tool calls means there is nothing to feed back.
-              if (calls.length === 0) return stop
+              if (calls.length === 0) return stop()
 
-              return Toolkit.executeAll(allTools, calls).pipe(
-                Toolkit.continueWith((results) =>
+              return Toolkit.run(allTools, calls).pipe(
+                Toolkit.continueWithResults((results) =>
                   // Build the next state only after every tool call has an output.
-                  Turn.appendTurn(state, turn, results.map(toFunctionCallOutput)),
+                  Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
                 ),
               )
             }),
@@ -125,9 +128,9 @@ What it does:
   the terminal `TurnComplete`, so the consumer sees turn boundaries.
 - Once the terminal arrives, the callback runs with the assembled
   `Turn` and its returned event-stream is concatenated. Typically that
-  stream comes from `Toolkit.executeAll` threaded through `continueWith`
-  to advance — or just `stop`.
-- `ToolEvent`s emitted by the executor (`Intermediate`, `Output`,
+  stream comes from `Toolkit.run` threaded through `continueWithResults`
+  to advance — or just `stop()`.
+- `ToolEvent`s emitted by the executor (`Progress`, `Output`,
   `ApprovalRequested`) flow through alongside the `TurnEvent`s.
 - Pre-pipe transforms work as you'd expect: `Stream.tap` for logging,
   `Stream.filter` to drop events you don't care about, `Stream.map` to

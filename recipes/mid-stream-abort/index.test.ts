@@ -1,9 +1,9 @@
-import { Deferred, Effect, Ref, Schedule, Stream, pipe } from "effect"
-import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { type LanguageModelService, turnFromStream } from "@effect-uai/core/LanguageModel"
-import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Turn from "@effect-uai/core/Turn"
+import { Deferred, Effect, Ref, Schedule, Stream, pipe } from "effect"
+import { describe, expect, it } from "vitest"
 
 describe("mid-stream-abort", () => {
   /**
@@ -59,7 +59,7 @@ describe("mid-stream-abort", () => {
           Effect.gen(function* () {
             return service
               .streamTurn({ history: state.history, model: "mock" })
-              .pipe(onTurnComplete(() => Effect.sync(() => stop)))
+              .pipe(onTurnComplete(() => Effect.sync(stop)))
           }),
         ),
         Stream.interruptWhen(Deferred.await(abort)),
@@ -105,7 +105,7 @@ describe("mid-stream-abort", () => {
           Effect.gen(function* () {
             return service
               .streamTurn({ history: state.history, model: "mock" })
-              .pipe(onTurnComplete(() => Effect.sync(() => stop)))
+              .pipe(onTurnComplete(() => Effect.sync(stop)))
           }),
         ),
         Stream.interruptWhen(Deferred.await(abort)),

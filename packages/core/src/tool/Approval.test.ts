@@ -1,7 +1,7 @@
 /**
  * Tests for approval planners + history-reconciliation primitives. Exercises
  * the full HITL + streaming-tool stack end-to-end by composing approval plans
- * with `executeAll`, with the four wire-shaped scenarios:
+ * with `run`, with the four wire-shaped scenarios:
  *
  *   1. Approval        : gated calls approved → tools execute, structured Values
  *   2. Denial          : gated calls denied   → Failure(denied) results
@@ -14,16 +14,11 @@ import { Effect, Queue, Schema, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "../domain/Items.js"
 import { findUnansweredCalls, cancelAllPending, isReconciled } from "./HistoryCheck.js"
-import { type ToolResult, isFailure, isValue, toFunctionCallOutput } from "./Outcome.js"
-import {
-  type ApprovalMapEntry,
-  type ToolCallDecision,
-  fromApprovalMap,
-  fromVerdictQueue,
-} from "./Resolvers.js"
+import { type ToolResult, isFailure, isOk, toToolCallOutput } from "./ToolResult.js"
+import { type ApprovalMapEntry, type ApprovalDecision, fromMap, fromQueue } from "./Approval.js"
 import { fromEffectSchema, make as makeTool, streaming } from "./Tool.js"
-import { executeAll } from "./Toolkit.js"
-import { ToolEvent, isApprovalRequested, isIntermediate, isOutput } from "./ToolEvent.js"
+import { run } from "./Toolkit.js"
+import { ToolEvent, isApprovalRequested, isProgress, isOutput } from "./ToolEvent.js"
 
 // ---------------------------------------------------------------------------
 // Three demo tools covering the matrix:
@@ -71,9 +66,9 @@ const deleteDatabase = makeTool({
 
 const allTools = [webSearch, bulkEmail, deleteDatabase]
 const SENSITIVE = new Set(["bulk_email", "delete_database"])
-const isSensitive = (call: Items.FunctionCall) => SENSITIVE.has(call.name)
+const isSensitive = (call: Items.ToolCall) => SENSITIVE.has(call.name)
 
-const fc = (call_id: string, name: string, args: unknown): Items.FunctionCall => ({
+const fc = (call_id: string, name: string, args: unknown): Items.ToolCall => ({
   type: "function_call",
   call_id,
   name,
@@ -95,20 +90,20 @@ const rejectedStream = (rejected: ReadonlyArray<ToolResult>) =>
   Stream.fromIterable(rejected.map((result) => ToolEvent.Output({ result })))
 
 const eventsFromApprovalMap = (approvals: ReadonlyMap<string, ApprovalMapEntry>) => {
-  const plan = fromApprovalMap(isSensitive, approvals)(calls)
-  return Stream.merge(executeAll(allTools, plan.approved), rejectedStream(plan.rejected))
+  const plan = fromMap(isSensitive, approvals)(calls)
+  return Stream.merge(run(allTools, plan.approved), rejectedStream(plan.rejected))
 }
 
-const eventsFromDecision = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
+const eventsFromDecision = (decision: ApprovalDecision): Stream.Stream<ToolEvent> =>
   decision._tag === "Approved"
-    ? executeAll(allTools, [decision.call])
+    ? run(allTools, [decision.call])
     : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
 // ---------------------------------------------------------------------------
-// fromApprovalMap: HTTP-style scenarios
+// fromMap: HTTP-style scenarios
 // ---------------------------------------------------------------------------
 
-describe("fromApprovalMap + executeAll", () => {
+describe("fromMap + run", () => {
   it("approval: all gated approved → tools execute, structured Values", async () => {
     const approvals = new Map<string, ApprovalMapEntry>([
       ["c2", { decision: "approve" }],
@@ -116,13 +111,13 @@ describe("fromApprovalMap + executeAll", () => {
     ])
     const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(approvals)))
     const by = byCallId(resultsFrom(collected))
-    expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
+    expect(by.get("c1")).toMatchObject({ _tag: "Ok", value: { count: 3 } })
     expect(by.get("c2")).toMatchObject({
-      _tag: "Value",
+      _tag: "Ok",
       value: { status: "sent", delivered: 2 },
     })
     expect(by.get("c3")).toMatchObject({
-      _tag: "Value",
+      _tag: "Ok",
       value: { status: "dropped", name: "prod" },
     })
 
@@ -138,7 +133,7 @@ describe("fromApprovalMap + executeAll", () => {
     const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(approvals)))
 
     // bulk_email never ran.
-    expect(collected.filter(isIntermediate).filter((e) => e.tool === "bulk_email")).toHaveLength(0)
+    expect(collected.filter(isProgress).filter((e) => e.tool === "bulk_email")).toHaveLength(0)
 
     const by = byCallId(resultsFrom(collected))
     expect(by.get("c2")).toMatchObject({
@@ -156,7 +151,7 @@ describe("fromApprovalMap + executeAll", () => {
   it("cancellation: missing verdicts → Failure(cancelled)", async () => {
     const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(new Map())))
     const by = byCallId(resultsFrom(collected))
-    expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
+    expect(by.get("c1")).toMatchObject({ _tag: "Ok", value: { count: 3 } })
     expect(by.get("c2")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
     expect(by.get("c3")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
   })
@@ -168,8 +163,8 @@ describe("fromApprovalMap + executeAll", () => {
     ])
     const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(approvals)))
     const by = byCallId(resultsFrom(collected))
-    expect(by.get("c1")).toMatchObject({ _tag: "Value", value: { count: 3 } })
-    expect(by.get("c2")).toMatchObject({ _tag: "Value", value: { status: "sent" } })
+    expect(by.get("c1")).toMatchObject({ _tag: "Ok", value: { count: 3 } })
+    expect(by.get("c2")).toMatchObject({ _tag: "Ok", value: { status: "sent" } })
     expect(by.get("c3")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
   })
 })
@@ -178,7 +173,7 @@ describe("fromApprovalMap + executeAll", () => {
 // Graceful degradation: hallucinated tool name doesn't kill the turn.
 // ---------------------------------------------------------------------------
 
-describe("executeAll: graceful degradation", () => {
+describe("run: graceful degradation", () => {
   it("unknown tool name → Failure(unknown_tool); other calls still execute", async () => {
     const callsWithBogus = [
       fc("c1", "web_search", { query: "x" }),
@@ -188,26 +183,26 @@ describe("executeAll: graceful degradation", () => {
     const collected = await Effect.runPromise(
       Stream.runCollect(
         (() => {
-          const plan = fromApprovalMap(
+          const plan = fromMap(
             isSensitive,
             new Map([["c3", { decision: "approve" }]]),
           )(callsWithBogus)
-          return Stream.merge(executeAll(allTools, plan.approved), rejectedStream(plan.rejected))
+          return Stream.merge(run(allTools, plan.approved), rejectedStream(plan.rejected))
         })(),
       ),
     )
     const by = byCallId(resultsFrom(collected))
-    expect(by.get("c1")).toMatchObject({ _tag: "Value" })
+    expect(by.get("c1")).toMatchObject({ _tag: "Ok" })
     expect(by.get("c2")).toMatchObject({ _tag: "Failure", kind: "unknown_tool" })
-    expect(by.get("c3")).toMatchObject({ _tag: "Value", value: { status: "dropped" } })
+    expect(by.get("c3")).toMatchObject({ _tag: "Ok", value: { status: "dropped" } })
   })
 })
 
 // ---------------------------------------------------------------------------
-// fromVerdictQueue: WebSocket-style scenarios
+// fromQueue: WebSocket-style scenarios
 // ---------------------------------------------------------------------------
 
-describe("fromVerdictQueue + executeAll", () => {
+describe("fromQueue + run", () => {
   it("queue-driven: approve + deny resolve correctly with ApprovalRequested events", async () => {
     const collected = await Effect.runPromise(
       Effect.gen(function* () {
@@ -223,17 +218,17 @@ describe("fromVerdictQueue + executeAll", () => {
           reason: "too risky",
         })
 
-        // Stream.unwrap supplies the Scope for fromVerdictQueue's router.
+        // Stream.unwrap supplies the Scope for fromQueue's router.
         const events = Stream.unwrap(
           Effect.gen(function* () {
-            const { approved, decisions, announce } = yield* fromVerdictQueue(
+            const { approved, decisions, approvalRequests } = yield* fromQueue(
               isSensitive,
               verdicts,
             )(calls)
             return Stream.merge(
-              announce,
+              approvalRequests,
               Stream.merge(
-                executeAll(allTools, approved),
+                run(allTools, approved),
                 decisions.pipe(Stream.flatMap(eventsFromDecision)),
               ),
             )
@@ -246,7 +241,7 @@ describe("fromVerdictQueue + executeAll", () => {
     expect(collected.filter(isApprovalRequested)).toHaveLength(2)
 
     const by = byCallId(resultsFrom(collected))
-    expect(by.get("c2")).toMatchObject({ _tag: "Value", value: { status: "sent" } })
+    expect(by.get("c2")).toMatchObject({ _tag: "Ok", value: { status: "sent" } })
     expect(by.get("c3")).toMatchObject({
       _tag: "Failure",
       kind: "denied",
@@ -262,7 +257,7 @@ describe("fromVerdictQueue + executeAll", () => {
 describe("findUnansweredCalls / cancelAllPending / isReconciled", () => {
   const orphan = fc("c99", "delete_database", { name: "prod" })
   const answered = fc("c98", "web_search", { query: "x" })
-  const answeredOutput = Items.functionCallOutput("c98", JSON.stringify({ count: 0 }))
+  const answeredOutput = Items.toolCallOutput("c98", JSON.stringify({ count: 0 }))
 
   it("findUnansweredCalls returns only orphans", () => {
     const history = [Items.userText("hi"), answered, orphan, answeredOutput]
@@ -274,7 +269,7 @@ describe("findUnansweredCalls / cancelAllPending / isReconciled", () => {
   it("isReconciled is false when orphans exist, true otherwise", () => {
     const stale = [Items.userText("hi"), orphan]
     expect(isReconciled(stale)).toBe(false)
-    const reconciled = [...stale, ...cancelAllPending(stale).map(toFunctionCallOutput)]
+    const reconciled = [...stale, ...cancelAllPending(stale).map(toToolCallOutput)]
     expect(isReconciled(reconciled)).toBe(true)
   })
 
@@ -292,14 +287,10 @@ describe("findUnansweredCalls / cancelAllPending / isReconciled", () => {
     })
   })
 
-  it("follow-up: map closures to FunctionCallOutput before appending new user message", () => {
+  it("follow-up: map closures to ToolCallOutput before appending new user message", () => {
     const stale = [Items.userText("first request"), orphan]
     const closures = cancelAllPending(stale, "user redirected")
-    const reconciled = [
-      ...stale,
-      ...closures.map(toFunctionCallOutput),
-      Items.userText("never mind"),
-    ]
+    const reconciled = [...stale, ...closures.map(toToolCallOutput), Items.userText("never mind")]
     expect(findUnansweredCalls(reconciled)).toHaveLength(0)
   })
 })
@@ -308,15 +299,15 @@ describe("findUnansweredCalls / cancelAllPending / isReconciled", () => {
 // Wire conversion
 // ---------------------------------------------------------------------------
 
-describe("toFunctionCallOutput", () => {
+describe("toToolCallOutput", () => {
   it("round-trips a Value result", () => {
     const r: ToolResult = {
-      _tag: "Value",
+      _tag: "Ok",
       call_id: "c1",
       tool: "web_search",
       value: { count: 3 },
     }
-    const out = toFunctionCallOutput(r)
+    const out = toToolCallOutput(r)
     expect(out.call_id).toBe("c1")
     expect(JSON.parse(out.output)).toEqual({ count: 3 })
   })
@@ -329,7 +320,7 @@ describe("toFunctionCallOutput", () => {
       kind: "denied",
       reason: "spam concern",
     }
-    const out = toFunctionCallOutput(r)
+    const out = toToolCallOutput(r)
     expect(JSON.parse(out.output)).toEqual({ kind: "denied", reason: "spam concern" })
   })
 
@@ -340,19 +331,19 @@ describe("toFunctionCallOutput", () => {
       tool: "delete_database",
       kind: "cancelled",
     }
-    const out = toFunctionCallOutput(r)
+    const out = toToolCallOutput(r)
     expect(JSON.parse(out.output)).toEqual({ kind: "cancelled" })
   })
 })
 
 // ---------------------------------------------------------------------------
-// executeAll
+// run
 // ---------------------------------------------------------------------------
 
-describe("executeAll", () => {
+describe("run", () => {
   it("runs all calls passed to it", async () => {
-    const collected = await Effect.runPromise(Stream.runCollect(executeAll(allTools, calls)))
+    const collected = await Effect.runPromise(Stream.runCollect(run(allTools, calls)))
     expect(collected.filter(isOutput)).toHaveLength(3)
-    expect(collected.filter(isOutput).every((e) => isValue(e.result))).toBe(true)
+    expect(collected.filter(isOutput).every((e) => isOk(e.result))).toBe(true)
   })
 })

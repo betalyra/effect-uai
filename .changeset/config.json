@@ -12,7 +12,9 @@
       "@effect-uai/jina",
       "@effect-uai/openai",
       "@effect-uai/elevenlabs",
-      "@effect-uai/inworld"
+      "@effect-uai/inworld",
+      "@effect-uai/microsandbox",
+      "@effect-uai/deno"
     ]
   ],
   "linked": [],

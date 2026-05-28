@@ -28,7 +28,7 @@ describe("model-council", () => {
     return { streamTurn, turn: turnFromStream(streamTurn) }
   }
 
-  const history: ReadonlyArray<Items.Item> = [Items.userText("compare these")]
+  const history: ReadonlyArray<Items.HistoryItem> = [Items.userText("compare these")]
 
   it("generates candidates, cross-evaluates, and streams the winner with no self-judging", async () => {
     // Each member is called 3x: 1 generate + 2 judge (one per other subject).

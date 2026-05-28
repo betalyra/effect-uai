@@ -39,6 +39,8 @@ that double as living regression tests for the primitive surface.
   multiple providers and isolate per-member failures.
 - [`model-council/`](./model-council/) - stream candidate answers, judge them
   cross-model, and emit a winner.
+- [`external-task-polling/`](./external-task-polling/) - pause for an external
+  task (CI pipeline); a forked polling fiber resolves a Deferred the loop awaits.
 
 Each recipe folder contains its own `README.md` describing the scenario.
 Implementations live in `index.ts`; tests in `index.test.ts`.

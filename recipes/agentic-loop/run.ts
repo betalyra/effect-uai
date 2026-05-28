@@ -61,7 +61,7 @@ const rollDice = Tool.make({
   strict: true,
 })
 
-const tools: ReadonlyArray<Tool.AnyKindTool> = [getCurrentTime, rollDice]
+const tools: ReadonlyArray<Tool.AnyTool> = [getCurrentTime, rollDice]
 
 // ---------------------------------------------------------------------------
 // stdin -> queue. `Effect.async` registers the readline listener and
@@ -112,7 +112,7 @@ const renderConversation = (queue: Queue.Queue<string>, streaming: Ref.Ref<boole
     Match.value(event).pipe(
       Match.discriminators("_tag")({
         Output: ({ result }) =>
-          result._tag === "Value"
+          result._tag === "Ok"
             ? write(`\n  [${result.tool} → ${JSON.stringify(result.value)}]\n`)
             : Effect.void,
         TextDelta: ({ text }) => Ref.set(streaming, true).pipe(Effect.andThen(write(text))),

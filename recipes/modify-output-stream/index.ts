@@ -13,12 +13,12 @@
  *
  * `index.ts` exports the building blocks; the runner lives in `run.ts`.
  */
-import { Effect, Result, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import type * as SSE from "@effect-uai/core/SSE"
 import * as Turn from "@effect-uai/core/Turn"
+import { Effect, Result, Stream, pipe } from "effect"
 
 // ---------------------------------------------------------------------------
 // Local transport projections
@@ -73,7 +73,7 @@ export const asJSONL: <E, R>(
 // ---------------------------------------------------------------------------
 
 export interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
 }
 
 export const initial: State = {
@@ -92,7 +92,7 @@ export const conversation = pipe(
       const lm = yield* LanguageModel
       return lm
         .streamTurn({ history: state.history, model: "gpt-5.4-mini" })
-        .pipe(onTurnComplete(() => Effect.sync(() => stop)))
+        .pipe(onTurnComplete(() => Effect.sync(stop)))
     }),
   ),
 )

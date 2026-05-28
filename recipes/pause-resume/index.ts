@@ -10,6 +10,10 @@
  *
  * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/pause-resume/index.ts`
  */
+import * as Items from "@effect-uai/core/Items"
+import { loop, next, onTurnComplete, stop } from "@effect-uai/core/Loop"
+import * as Turn from "@effect-uai/core/Turn"
+import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 import {
   Config,
   Effect,
@@ -24,10 +28,6 @@ import {
   pipe,
 } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import * as Items from "@effect-uai/core/Items"
-import { loop, nextAfter, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import * as Turn from "@effect-uai/core/Turn"
-import { Responses, layer as responsesLayer } from "@effect-uai/responses/Responses"
 
 // ---------------------------------------------------------------------------
 // Demo configuration
@@ -43,19 +43,19 @@ const PROMPT_BANK = [
   "Now Paris.",
   "Now Cairo.",
   "Now London.",
-]
+] as const
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly pendingPrompts: ReadonlyArray<string>
 }
 
 const initial: State = {
-  history: [Items.userText(PROMPT_BANK[0]!)],
+  history: [Items.userText(PROMPT_BANK[0])],
   pendingPrompts: PROMPT_BANK.slice(1),
 }
 
@@ -88,12 +88,12 @@ const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) 
             onTurnComplete((turn) =>
               Effect.gen(function* () {
                 yield* Ref.update(turnsCompleted, (n) => n + 1)
-                const next = advance(state, turn)
-                if (next.pendingPrompts.length === 0) return stop
-                const [nextPrompt, ...rest] = next.pendingPrompts
-                return nextAfter(Stream.empty, {
-                  ...next,
-                  history: [...next.history, Items.userText(nextPrompt!)],
+                const nextState = advance(state, turn)
+                if (nextState.pendingPrompts.length === 0) return stop()
+                const [nextPrompt, ...rest] = nextState.pendingPrompts
+                return next({
+                  ...nextState,
+                  history: [...nextState.history, Items.userText(nextPrompt!)],
                   pendingPrompts: rest,
                 })
               }),
@@ -143,7 +143,7 @@ const program = Effect.gen(function* () {
 
   yield* Stream.runForEach(conversation(pauseLatch, turnsCompleted), (event) =>
     Match.value(event).pipe(
-      Match.discriminators("_tag")({
+      Match.tags({
         TurnComplete: ({ turn }) =>
           Effect.logInfo("turn complete", {
             assistant: Turn.assistantTexts(turn).join(" "),

@@ -6,13 +6,13 @@
  * Two transport flavors. Same primitives, different approval planner:
  *
  *   - HTTP (primary)         : approvals arrive synchronously bundled
- *                              with the next request. `fromApprovalMap`
+ *                              with the next request. `fromMap`
  *                              splits calls into `approved` and `rejected`;
  *                              missing entries synthesize `cancelled`
  *                              outputs.
  *
  *   - Queue (enhancement)    : long-lived channel (WebSocket / SSE).
- *                              `fromVerdictQueue` returns safe calls
+ *                              `fromQueue` returns safe calls
  *                              immediately and a stream of later decisions
  *                              for gated calls; `ApprovalRequested` events
  *                              drive the UI.
@@ -20,22 +20,16 @@
  * `index.ts` exports the building blocks for both. The runner in
  * `run.ts` drives the queue variant (more visual demo).
  */
-import { Effect, Queue, Schema, Stream, pipe } from "effect"
+import * as Approval from "@effect-uai/core/Approval"
+import { type ApprovalMapEntry, type Verdict } from "@effect-uai/core/Approval"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
-import {
-  type ApprovalMapEntry,
-  type ToolCallDecision,
-  type Verdict,
-  fromApprovalMap,
-  fromVerdictQueue,
-} from "@effect-uai/core/Resolvers"
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
 import { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses } from "@effect-uai/responses/Responses"
+import { Effect, Queue, Schema, Stream, pipe } from "effect"
 
 // ---------------------------------------------------------------------------
 // Tools - one safe, two sensitive.
@@ -81,12 +75,12 @@ const deleteUser = Tool.make({
   strict: true,
 })
 
-export const allTools: ReadonlyArray<Tool.AnyKindTool> = [searchEmails, sendEmail, deleteUser]
+export const allTools: ReadonlyArray<Tool.AnyTool> = [searchEmails, sendEmail, deleteUser]
 const tools = Tool.toDescriptors(allTools)
 
-const decisionEvents = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
+const decisionEvents = (decision: Approval.ApprovalDecision): Stream.Stream<ToolEvent> =>
   decision._tag === "Approved"
-    ? Toolkit.executeAll(allTools, [decision.call])
+    ? Toolkit.run(allTools, [decision.call])
     : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
 // ---------------------------------------------------------------------------
@@ -95,7 +89,7 @@ const decisionEvents = (decision: ToolCallDecision): Stream.Stream<ToolEvent> =>
 // ---------------------------------------------------------------------------
 
 const SENSITIVE_TOOLS: ReadonlySet<string> = new Set(["send_email", "delete_user"])
-export const isSensitive: (call: Items.FunctionCall) => boolean = (call) =>
+export const isSensitive: (call: Items.ToolCall) => boolean = (call) =>
   SENSITIVE_TOOLS.has(call.name)
 
 // ---------------------------------------------------------------------------
@@ -103,7 +97,7 @@ export const isSensitive: (call: Items.FunctionCall) => boolean = (call) =>
 // ---------------------------------------------------------------------------
 
 export interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
 }
 
 export const initial: State = {
@@ -118,7 +112,7 @@ export const initial: State = {
 // ---------------------------------------------------------------------------
 // HTTP variant (primary). Approvals are a synchronous map keyed by
 // `call_id`; missing entries become `cancelled`. Pure planner, no
-// announce stream, no router fiber - the request payload IS the answer.
+// approvalRequests stream, no router fiber - the request payload IS the answer.
 //
 // Typical usage in an HTTP handler:
 //
@@ -126,7 +120,7 @@ export const initial: State = {
 //     parseApprovalsFromRequestBody(req)
 //   const reconciledHistory = [
 //     ...storedHistory,
-//     ...cancelAllPending(storedHistory).map(toFunctionCallOutput),
+//     ...cancelAllPending(storedHistory).map(toToolCallOutput),
 //     Items.userText(req.body.message),
 //   ]
 //   return httpConversation(approvals, { history: reconciledHistory })
@@ -151,18 +145,14 @@ export const httpConversation = (
           .pipe(
             onTurnComplete((turn) =>
               Effect.sync(() => {
-                const calls = Turn.functionCalls(turn)
-                if (calls.length === 0) return stop
+                const calls = Turn.getToolCalls(turn)
+                if (calls.length === 0) return stop()
 
-                const plan = fromApprovalMap(isSensitive, approvals)(calls)
+                const plan = Approval.fromMap(isSensitive, approvals)(calls)
                 return Stream.merge(
-                  Toolkit.executeAll(allTools, plan.approved),
+                  Toolkit.run(allTools, plan.approved),
                   Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
-                ).pipe(
-                  Toolkit.continueWith((results) =>
-                    Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
-                  ),
-                )
+                ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
               }),
             ),
           )
@@ -172,7 +162,7 @@ export const httpConversation = (
 
 // ---------------------------------------------------------------------------
 // Queue variant (enhancement). Long-lived channel; verdicts arrive over
-// time. `fromVerdictQueue` returns safe calls up-front, plus an `announce`
+// time. `fromQueue` returns safe calls up-front, plus an `approvalRequests`
 // stream of `ApprovalRequested` events and a decision stream for gated calls.
 // The recipe explicitly chooses what to execute and which rejected results
 // to return to the model.
@@ -194,22 +184,22 @@ export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State =
           .pipe(
             onTurnComplete((turn) =>
               Effect.sync(() => {
-                const calls = Turn.functionCalls(turn)
-                if (calls.length === 0) return stop
+                const calls = Turn.getToolCalls(turn)
+                if (calls.length === 0) return stop()
 
-                // Stream.unwrap supplies the Scope that fromVerdictQueue's
+                // Stream.unwrap supplies the Scope that fromQueue's
                 // router fiber lives in. Router stays alive as long as the
                 // consumer is pulling from `events`.
                 const events = Stream.unwrap(
                   Effect.gen(function* () {
-                    const { approved, decisions, announce } = yield* fromVerdictQueue(
+                    const { approved, decisions, approvalRequests } = yield* Approval.fromQueue(
                       isSensitive,
                       verdicts,
                     )(calls)
                     return Stream.merge(
-                      announce,
+                      approvalRequests,
                       Stream.merge(
-                        Toolkit.executeAll(allTools, approved),
+                        Toolkit.run(allTools, approved),
                         decisions.pipe(Stream.flatMap(decisionEvents)),
                       ),
                     )
@@ -217,9 +207,7 @@ export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State =
                 )
 
                 return events.pipe(
-                  Toolkit.continueWith((results) =>
-                    Turn.appendTurn(current, turn, results.map(toFunctionCallOutput)),
-                  ),
+                  Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)),
                 )
               }),
             ),

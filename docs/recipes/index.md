@@ -17,11 +17,11 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Tools and HITL
 
-| Recipe                                                               | One-line                                                                                         |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| [Tool call approval](/recipes/tool-call-approval/)                   | Gate sensitive calls before `executeAll`; still return one result per model-requested tool call. |
-| [Streaming tool output](/recipes/streaming-tool-output/)             | Show inner tool work to the user while returning one clean output to the model.                  |
-| [Streaming structured output](/recipes/streaming-structured-output/) | Validate prompted JSONL one object at a time as the model streams.                               |
+| Recipe                                                               | One-line                                                                                          |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [Tool call approval](/recipes/tool-call-approval/)                   | Gate sensitive calls before `Toolkit.run`; still return one result per model-requested tool call. |
+| [Streaming tool output](/recipes/streaming-tool-output/)             | Show inner tool work to the user while returning one clean output to the model.                   |
+| [Streaming structured output](/recipes/streaming-structured-output/) | Validate prompted JSONL one object at a time as the model streams.                                |
 
 ## Reliability and lifecycle
 
@@ -33,6 +33,7 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Pause and resume](/recipes/pause-resume/)             | Pause between loop iterations with a latch; no provider call remains open.                                        |
 | [Mid-stream abort](/recipes/mid-stream-abort/)         | Cancel an in-flight turn through stream interruption and scope cleanup.                                           |
 | [Agentic loop](/recipes/agentic-loop/)                 | Drive a long-lived chat from a user-message queue while continuing model/tool work between clean turn boundaries. |
+| [Sleeper agent](/recipes/sleeper-agent/)               | Wait for a long-running tool call — the agent goes quiet while the work runs and wakes up when it's done.         |
 
 ## Transport
 
@@ -63,3 +64,9 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | Recipe                                                     | One-line                                                                                             |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | [Basic music generation](/recipes/basic-music-generation/) | Generate a 30-second clip with Lyria 3; simple prompt or weighted prompts with lyrics and BPM hints. |
+
+## Sandboxes
+
+| Recipe                                                 | One-line                                                                                                                |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| [Run, fix, repeat](/recipes/sandbox-code-interpreter/) | LLMs are bad at exact computation — give them Python. Tracebacks from a sandboxed microVM feed back into the next turn. |

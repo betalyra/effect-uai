@@ -158,7 +158,7 @@ const parseJson = (s: string): Result.Result<unknown, JsonParseError> =>
 
 type RoleBucket = "user" | "assistant" | "system"
 
-const roleBucket = (item: Items.Item): RoleBucket =>
+const roleBucket = (item: Items.HistoryItem): RoleBucket =>
   Match.value(item).pipe(
     Match.discriminatorsExhaustive("type")({
       message: (m) => m.role,
@@ -168,7 +168,7 @@ const roleBucket = (item: Items.Item): RoleBucket =>
     }),
   )
 
-const itemToUserBlocks = (item: Items.Item): ReadonlyArray<RequestUserContentBlock> =>
+const itemToUserBlocks = (item: Items.HistoryItem): ReadonlyArray<RequestUserContentBlock> =>
   Match.value(item).pipe(
     Match.discriminatorsExhaustive("type")({
       message: (m): ReadonlyArray<RequestUserContentBlock> =>
@@ -182,7 +182,7 @@ const itemToUserBlocks = (item: Items.Item): ReadonlyArray<RequestUserContentBlo
   )
 
 const itemToAssistantBlocks = (
-  item: Items.Item,
+  item: Items.HistoryItem,
 ): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> =>
   Match.value(item).pipe(
     Match.discriminatorsExhaustive("type")({
@@ -268,7 +268,10 @@ const appendAssistant = (
           assistantBuf: blocks,
         }
 
-const groupStep = (acc: GroupAcc, item: Items.Item): Result.Result<GroupAcc, JsonParseError> => {
+const groupStep = (
+  acc: GroupAcc,
+  item: Items.HistoryItem,
+): Result.Result<GroupAcc, JsonParseError> => {
   const bucket = roleBucket(item)
   if (bucket === "system") return Result.succeed(acc)
   if (bucket === "user") {
@@ -288,7 +291,7 @@ const groupStep = (acc: GroupAcc, item: Items.Item): Result.Result<GroupAcc, Jso
  * requires an object input.
  */
 const groupedMessages = (
-  history: ReadonlyArray<Items.Item>,
+  history: ReadonlyArray<Items.HistoryItem>,
 ): Result.Result<ReadonlyArray<RequestMessage>, JsonParseError> => {
   const initial: Result.Result<GroupAcc, JsonParseError> = Result.succeed({
     messages: [],
@@ -302,10 +305,10 @@ const groupedMessages = (
   )
 }
 
-const isSystemMessage = (item: Items.Item): item is Items.Message =>
+const isSystemMessage = (item: Items.HistoryItem): item is Items.Message =>
   item.type === "message" && item.role === "system"
 
-const systemFromHistory = (history: ReadonlyArray<Items.Item>): Option.Option<string> => {
+const systemFromHistory = (history: ReadonlyArray<Items.HistoryItem>): Option.Option<string> => {
   const texts = pipe(
     history,
     Arr.filterMap((item) =>
@@ -340,7 +343,7 @@ export type RequestBody = {
 
 export const buildRequestBody = (params: {
   readonly model: string
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly maxTokens: number
   readonly temperature: Option.Option<number>
   readonly topP: Option.Option<number>
@@ -406,7 +409,7 @@ export const buildRequestBody = (params: {
 
 // ---------------------------------------------------------------------------
 // Stream-level state - assemble content blocks index-by-index, then emit
-// our `Items.Item[]` when `message_stop` lands.
+// our `Items.HistoryItem[]` when `message_stop` lands.
 // ---------------------------------------------------------------------------
 
 type BlockBuffer = {
@@ -540,11 +543,11 @@ const blocksByIndex = (acc: Accumulator): ReadonlyArray<BlockBuffer> =>
     Arr.map((i) => acc.blocks[i]!),
   )
 
-const blockToItems = (block: BlockBuffer): ReadonlyArray<Items.Item> =>
+const blockToItems = (block: BlockBuffer): ReadonlyArray<Items.HistoryItem> =>
   Match.value(block.type).pipe(
     Match.when(
       "text",
-      (): ReadonlyArray<Items.Item> =>
+      (): ReadonlyArray<Items.HistoryItem> =>
         block.text.length === 0
           ? []
           : [
@@ -557,7 +560,7 @@ const blockToItems = (block: BlockBuffer): ReadonlyArray<Items.Item> =>
     ),
     Match.when(
       "tool_use",
-      (): ReadonlyArray<Items.Item> => [
+      (): ReadonlyArray<Items.HistoryItem> => [
         {
           type: "function_call",
           call_id: Option.getOrElse(block.id, () => ""),
@@ -568,7 +571,7 @@ const blockToItems = (block: BlockBuffer): ReadonlyArray<Items.Item> =>
     ),
     Match.when(
       "thinking",
-      (): ReadonlyArray<Items.Item> => [
+      (): ReadonlyArray<Items.HistoryItem> => [
         {
           type: "reasoning",
           ...(block.thinking.length > 0 && { summary: block.thinking }),
@@ -578,7 +581,7 @@ const blockToItems = (block: BlockBuffer): ReadonlyArray<Items.Item> =>
     ),
     Match.when(
       "redacted_thinking",
-      (): ReadonlyArray<Items.Item> => [
+      (): ReadonlyArray<Items.HistoryItem> => [
         {
           type: "reasoning",
           ...Option.match(block.redactedData, {
@@ -592,10 +595,10 @@ const blockToItems = (block: BlockBuffer): ReadonlyArray<Items.Item> =>
   )
 
 type MergeAcc = {
-  readonly out: ReadonlyArray<Items.Item>
+  readonly out: ReadonlyArray<Items.HistoryItem>
 }
 
-const mergeStep = (acc: MergeAcc, item: Items.Item): MergeAcc => {
+const mergeStep = (acc: MergeAcc, item: Items.HistoryItem): MergeAcc => {
   const last = Arr.last(acc.out)
   if (
     Option.isSome(last) &&
@@ -613,8 +616,9 @@ const mergeStep = (acc: MergeAcc, item: Items.Item): MergeAcc => {
   return { out: [...acc.out, item] }
 }
 
-const mergeAdjacentAssistantText = (items: ReadonlyArray<Items.Item>): ReadonlyArray<Items.Item> =>
-  Arr.reduce(items, { out: [] } as MergeAcc, mergeStep).out
+const mergeAdjacentAssistantText = (
+  items: ReadonlyArray<Items.HistoryItem>,
+): ReadonlyArray<Items.HistoryItem> => Arr.reduce(items, { out: [] } as MergeAcc, mergeStep).out
 
 export const accumulatorToTurn = (acc: Accumulator): Turn => ({
   items: pipe(blocksByIndex(acc), Arr.flatMap(blockToItems), mergeAdjacentAssistantText),

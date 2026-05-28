@@ -7,8 +7,7 @@
  */
 import { DateTime, Effect, Option, pipe, Schema, Stream } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
-import { toFunctionCallOutput } from "@effect-uai/core/Outcome"
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -47,15 +46,15 @@ const getCurrentTime = Tool.make({
   strict: true,
 })
 
-const toolkit = Toolkit.make([getCurrentTime])
-const tools = Toolkit.toDescriptors(toolkit)
+const allTools = [getCurrentTime]
+const tools = Tool.toDescriptors(allTools)
 
 // ---------------------------------------------------------------------------
 // State and types
 // ---------------------------------------------------------------------------
 
 interface State {
-  readonly history: ReadonlyArray<Items.Item>
+  readonly history: ReadonlyArray<Items.HistoryItem>
   readonly index: number
 }
 
@@ -88,23 +87,19 @@ export const conversation = pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
           onTurnComplete((turn) =>
             Effect.sync(() => {
-              const calls = Turn.functionCalls(turn)
+              const calls = Turn.getToolCalls(turn)
 
               // No tool calls - the assistant is done.
-              if (calls.length === 0) return stop
+              if (calls.length === 0) return stop()
 
-              // Streaming executor: tool intermediates flow through in
-              // real time, terminal Outputs carry structured ToolResults.
-              // `continueWith` collects the results and hands them to
-              // build for next-state construction; `toFunctionCallOutput`
-              // converts to wire form when appending to history.
-              return Toolkit.executeAll(toolkit.tools, calls).pipe(
-                Toolkit.continueWith((results) =>
-                  Turn.appendTurn(
-                    { ...state, index: state.index + 1 },
-                    turn,
-                    results.map(toFunctionCallOutput),
-                  ),
+              // Stream tool events to the consumer; on end-of-stream
+              // emit one `Loop.next` carrying the appended turn.
+              // `continueWithResults` is the broadcast pattern bundled into one
+              // call - see `Loop.value` / `Toolkit.collectResults` /
+              // `Loop.next` if you ever need to vary an arm.
+              return Toolkit.run(allTools, calls).pipe(
+                Toolkit.continueWithResults(
+                  Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
                 ),
               )
             }),

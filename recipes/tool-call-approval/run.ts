@@ -6,7 +6,7 @@
  */
 import { Config, Effect, Layer, Logger, Match, Queue, References, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
-import type { Verdict } from "@effect-uai/core/Resolvers"
+import type { Verdict } from "@effect-uai/core/Approval"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { demoVerdict, queueConversation } from "./index.js"
 
@@ -29,12 +29,12 @@ const program = Effect.gen(function* () {
         Effect.logInfo("tool result", {
           call_id: result.call_id,
           tool: result.tool,
-          ...(result._tag === "Value"
+          ...(result._tag === "Ok"
             ? { value: result.value }
             : { kind: result.kind, reason: result.reason }),
         }),
       ),
-      Match.when({ _tag: "Intermediate" }, () => Effect.void),
+      Match.when({ _tag: "Progress" }, () => Effect.void),
       Match.discriminators("_tag")({
         TurnComplete: ({ turn }) =>
           Effect.logInfo("turn complete", { stop_reason: turn.stop_reason }),

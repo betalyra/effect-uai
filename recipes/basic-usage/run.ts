@@ -19,7 +19,6 @@ const program = Stream.runForEach(conversation, (event) =>
         }),
     }),
     Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("tool result", { result })),
-    Match.when({ _tag: "Intermediate" }, () => Effect.void),
     Match.orElse(() => Effect.logDebug("delta", { event })),
   ),
 )

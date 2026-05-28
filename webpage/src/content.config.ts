@@ -11,13 +11,16 @@ export const collections = {
   docs: defineCollection({
     loader: glob({
       base: "..",
-      pattern: ["docs/**/*.{md,mdx}", "recipes/*/README.md"],
+      pattern: ["docs/**/*.{md,mdx}", "recipes/*/README.md", "recipes-extras/*/README.md"],
       generateId: ({ entry }) => {
         if (entry.startsWith("docs/")) {
           const id = entry.replace(/^docs\//, "").replace(/\.(md|mdx)$/, "")
           return id === "index" ? "index" : id.replace(/\/index$/, "")
         }
-        return entry.replace(/\/README\.md$/, "")
+        // Both `recipes/<name>/README.md` and `recipes-extras/<name>/README.md`
+        // map to `/recipes/<name>/` — the on-disk split is an install-isolation
+        // detail, not a docs-IA distinction.
+        return entry.replace(/\/README\.md$/, "").replace(/^recipes-extras\//, "recipes/")
       },
     }),
     schema: docsSchema({

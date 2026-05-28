@@ -1,5 +1,11 @@
 import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
-import type { ContentBlock, FunctionCall, InputImage, Item, Message } from "@effect-uai/core/Items"
+import type {
+  ContentBlock,
+  ToolCall,
+  InputImage,
+  HistoryItem,
+  Message,
+} from "@effect-uai/core/Items"
 import type { ToolDescriptor } from "@effect-uai/core/Tool"
 import type { Turn } from "@effect-uai/core/Turn"
 
@@ -183,7 +189,7 @@ const systemMessageText = (message: Message): Result.Result<string, void> => {
   return text.length === 0 ? Result.failVoid : Result.succeed(text)
 }
 
-const allMessages = (history: ReadonlyArray<Item>): ReadonlyArray<Message> =>
+const allMessages = (history: ReadonlyArray<HistoryItem>): ReadonlyArray<Message> =>
   pipe(
     history,
     Arr.filterMap((item) => (item.type === "message" ? Result.succeed(item) : Result.failVoid)),
@@ -192,7 +198,7 @@ const allMessages = (history: ReadonlyArray<Item>): ReadonlyArray<Message> =>
 // ---------------------------------------------------------------------------
 // Function-call round-trip
 //
-// `FunctionCall.arguments` and `FunctionCallOutput.output` are JSON-encoded
+// `ToolCall.arguments` and `ToolCallOutput.output` are JSON-encoded
 // strings; Gemini's `functionCall.args` and `functionResponse.response`
 // expect parsed JSON *objects*. Decode via Schema:
 //   - object payload → use as-is
@@ -218,20 +224,21 @@ const parsedArgs = parsedJsonObject(() => ({}))
 const parsedResponse = parsedJsonObject((raw) => ({ output: raw }))
 
 /**
- * `FunctionCallOutput` only carries `call_id`; Gemini's `functionResponse`
+ * `ToolCallOutput` only carries `call_id`; Gemini's `functionResponse`
  * requires the declared function `name`. Resolve the name by scanning prior
  * `function_call` items in the history for a matching `call_id`. If we
  * cannot resolve, fall back to `call_id` as the name - imperfect but
  * preserves stream shape so the model sees *some* response.
  */
-const isFunctionCallItem = (item: Item): item is FunctionCall => item.type === "function_call"
+const isFunctionCallItem = (item: HistoryItem): item is ToolCall => item.type === "function_call"
 
-const nameForCallId = (history: ReadonlyArray<Item>, call_id: string): Option.Option<string> =>
+const nameForCallId = (
+  history: ReadonlyArray<HistoryItem>,
+  call_id: string,
+): Option.Option<string> =>
   pipe(
     history,
-    Arr.findFirst(
-      (item): item is FunctionCall => isFunctionCallItem(item) && item.call_id === call_id,
-    ),
+    Arr.findFirst((item): item is ToolCall => isFunctionCallItem(item) && item.call_id === call_id),
     Option.map((f) => f.name),
   )
 
@@ -244,7 +251,7 @@ const ProviderDataWithGeminiId = Schema.Struct({
 })
 const decodeProviderId = Schema.decodeUnknownResult(ProviderDataWithGeminiId)
 
-const providerIdFor = (item: FunctionCall): Option.Option<string> =>
+const providerIdFor = (item: ToolCall): Option.Option<string> =>
   pipe(
     decodeProviderId(item.providerData),
     Result.match({
@@ -254,8 +261,8 @@ const providerIdFor = (item: FunctionCall): Option.Option<string> =>
   )
 
 const itemToContent =
-  (history: ReadonlyArray<Item>) =>
-  (item: Item): Result.Result<RequestContent, void> =>
+  (history: ReadonlyArray<HistoryItem>) =>
+  (item: HistoryItem): Result.Result<RequestContent, void> =>
     Match.value(item).pipe(
       Match.discriminatorsExhaustive("type")({
         message: messageToContent,
@@ -335,7 +342,7 @@ const toolDescriptorsToTools = (tools: ReadonlyArray<ToolDescriptor>): ReadonlyA
       ]
 
 export const buildRequestBody = (
-  history: ReadonlyArray<Item>,
+  history: ReadonlyArray<HistoryItem>,
   generationConfig: Option.Option<GenerationConfig>,
   tools: ReadonlyArray<ToolDescriptor> = [],
 ): RequestBody => {
@@ -377,7 +384,7 @@ export type AccumulatedFunctionCall = {
   readonly name: string
   /** Wire id from Gemini 3, when present - echoed back on `functionResponse`. */
   readonly providerId: Option.Option<string>
-  /** Args as JSON-encoded string, mirroring `Items.FunctionCall.arguments`. */
+  /** Args as JSON-encoded string, mirroring `Items.ToolCall.arguments`. */
   readonly arguments: string
 }
 
@@ -530,10 +537,10 @@ export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => 
   }
 }
 
-const reasoningItems = (acc: Accumulator): ReadonlyArray<Item> =>
+const reasoningItems = (acc: Accumulator): ReadonlyArray<HistoryItem> =>
   acc.reasoning.length > 0 ? [{ type: "reasoning", summary: acc.reasoning }] : []
 
-const assistantMessageItems = (acc: Accumulator): ReadonlyArray<Item> =>
+const assistantMessageItems = (acc: Accumulator): ReadonlyArray<HistoryItem> =>
   acc.text.length === 0
     ? []
     : [
@@ -544,7 +551,7 @@ const assistantMessageItems = (acc: Accumulator): ReadonlyArray<Item> =>
         },
       ]
 
-const functionCallItems = (acc: Accumulator): ReadonlyArray<Item> =>
+const functionCallItems = (acc: Accumulator): ReadonlyArray<HistoryItem> =>
   pipe(
     acc.functionCalls,
     Arr.map((c) => ({

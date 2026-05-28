@@ -82,6 +82,26 @@
       "types": "./dist/music-generator/MusicGenerator.d.mts",
       "import": "./dist/music-generator/MusicGenerator.mjs"
     },
+    "./Memory": {
+      "types": "./dist/sandbox/Memory.d.mts",
+      "import": "./dist/sandbox/Memory.mjs"
+    },
+    "./Sandbox": {
+      "types": "./dist/sandbox/Sandbox.d.mts",
+      "import": "./dist/sandbox/Sandbox.mjs"
+    },
+    "./SandboxError": {
+      "types": "./dist/sandbox/SandboxError.d.mts",
+      "import": "./dist/sandbox/SandboxError.mjs"
+    },
+    "./SandboxImage": {
+      "types": "./dist/sandbox/SandboxImage.d.mts",
+      "import": "./dist/sandbox/SandboxImage.mjs"
+    },
+    "./SandboxNetwork": {
+      "types": "./dist/sandbox/SandboxNetwork.d.mts",
+      "import": "./dist/sandbox/SandboxNetwork.mjs"
+    },
     "./SpeechSynthesizer": {
       "types": "./dist/speech-synthesizer/SpeechSynthesizer.d.mts",
       "import": "./dist/speech-synthesizer/SpeechSynthesizer.mjs"
@@ -110,17 +130,17 @@
       "types": "./dist/tool/Toolkit.d.mts",
       "import": "./dist/tool/Toolkit.mjs"
     },
-    "./Outcome": {
-      "types": "./dist/tool/Outcome.d.mts",
-      "import": "./dist/tool/Outcome.mjs"
+    "./ToolResult": {
+      "types": "./dist/tool/ToolResult.d.mts",
+      "import": "./dist/tool/ToolResult.mjs"
     },
     "./ToolEvent": {
       "types": "./dist/tool/ToolEvent.d.mts",
       "import": "./dist/tool/ToolEvent.mjs"
     },
-    "./Resolvers": {
-      "types": "./dist/tool/Resolvers.d.mts",
-      "import": "./dist/tool/Resolvers.mjs"
+    "./Approval": {
+      "types": "./dist/tool/Approval.d.mts",
+      "import": "./dist/tool/Approval.mjs"
     },
     "./HistoryCheck": {
       "types": "./dist/tool/HistoryCheck.d.mts",
@@ -157,6 +177,10 @@
     "./testing/MockSpeechSynthesizer": {
       "types": "./dist/testing/MockSpeechSynthesizer.d.mts",
       "import": "./dist/testing/MockSpeechSynthesizer.mjs"
+    },
+    "./testing/MockSandbox": {
+      "types": "./dist/testing/MockSandbox.d.mts",
+      "import": "./dist/testing/MockSandbox.mjs"
     },
     "./testing/MockTranscriber": {
       "types": "./dist/testing/MockTranscriber.d.mts",

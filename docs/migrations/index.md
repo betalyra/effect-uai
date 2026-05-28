@@ -15,6 +15,16 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.6](/migrations/v0-6/) — the consistent-naming sweep
+  plus additive speech features. Breaking but mechanical: "function
+  call" → "tool call" terminology (`Item` → `HistoryItem`,
+  `FunctionCall` → `ToolCall`), modules `Outcome` → `ToolResult` and
+  `Resolvers` → `Approval`, `Toolkit.executeAll` → `run`,
+  `Tool.AnyKindTool` → `AnyTool`, `ToolEvent.Intermediate` → `Progress`,
+  and a trimmed `Loop` surface (`loopFrom` → `loopOver`,
+  `stop()` / `stop(state)`, `nextAfter` / `stopAfter` removed); the wire
+  format is unchanged. Additive (no migration needed): multi-speaker
+  dialogue and custom pronunciations on `SpeechSynthesizer`.
 - [Migrating to 0.5](/migrations/v0-5/) — `TurnEvent` migrated to
   `Data.TaggedEnum` (`type` → `_tag`, snake_case → PascalCase),
   `Encoding` → `EmbedEncoding`, generic `EmbedResponse<E>`,

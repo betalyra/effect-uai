@@ -1,0 +1,29 @@
+{
+  "name": "@effect-uai/recipe-sandbox-code-interpreter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect-uai/anthropic": "link:../../packages/providers/anthropic",
+    "@effect-uai/core": "link:../../packages/core",
+    "@effect-uai/google": "link:../../packages/providers/google",
+    "@effect-uai/microsandbox": "link:../../packages/providers/microsandbox",
+    "@effect-uai/responses": "link:../../packages/providers/responses",
+    "effect": "link:../../packages/core/node_modules/effect",
+    "microsandbox": "^0.4.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

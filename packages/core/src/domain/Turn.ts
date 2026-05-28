@@ -1,15 +1,17 @@
 import { Data, Effect, Result, Schema, Stream, pipe } from "effect"
 import * as StructuredFormat from "../structured-format/StructuredFormat.js"
 import {
-  FunctionCall,
-  FunctionCallOutput,
-  Item,
-  isOutputText,
-  isRefusal,
+  HistoryItem,
   Message,
   Reasoning,
   StopReason,
+  ToolCall,
+  ToolCallOutput,
   Usage,
+  isOutputText,
+  isReasoning,
+  isRefusal,
+  isToolCall,
 } from "./Items.js"
 
 /**
@@ -18,7 +20,7 @@ import {
  * and reports usage + a stop reason.
  */
 export const Turn = Schema.Struct({
-  items: Schema.Array(Item),
+  items: Schema.Array(HistoryItem),
   usage: Usage,
   stop_reason: StopReason,
 })
@@ -61,15 +63,13 @@ export const TurnEvent = Data.taggedEnum<TurnEvent>()
  * carrying the assembled `Turn`), plus the output of any tool the loop ran.
  * Both variants carry a `_tag` discriminator.
  */
-export type InteractionEvent = TurnEvent | FunctionCallOutput
+export type InteractionEvent = TurnEvent | ToolCallOutput
 
 export const isTurnComplete = TurnEvent.$is("TurnComplete")
 
-export const functionCalls = (turn: Turn): ReadonlyArray<FunctionCall> =>
-  turn.items.filter((i): i is FunctionCall => i.type === "function_call")
+export const getToolCalls = (turn: Turn): ReadonlyArray<ToolCall> => turn.items.filter(isToolCall)
 
-export const reasonings = (turn: Turn): ReadonlyArray<Reasoning> =>
-  turn.items.filter((i): i is Reasoning => i.type === "reasoning")
+export const reasonings = (turn: Turn): ReadonlyArray<Reasoning> => turn.items.filter(isReasoning)
 
 export const assistantMessages = (turn: Turn): ReadonlyArray<Message> =>
   turn.items.filter((i): i is Message => i.type === "message" && i.role === "assistant")
@@ -97,12 +97,12 @@ export const assistantText = (turn: Turn): string => assistantTexts(turn).join("
 /**
  * Append a completed turn and optional follow-up items to a state record's
  * history. Recipes use this at the point where structured tool results are
- * converted to model-facing `FunctionCallOutput`s.
+ * converted to model-facing `ToolCallOutput`s.
  */
-export const appendTurn = <S extends { readonly history: ReadonlyArray<Item> }>(
+export const appendToHistory = <S extends { readonly history: ReadonlyArray<HistoryItem> }>(
   state: S,
   turn: Turn,
-  items: ReadonlyArray<Item> = [],
+  items: ReadonlyArray<HistoryItem> = [],
 ): S => ({
   ...state,
   history: [...state.history, ...turn.items, ...items],
@@ -130,7 +130,7 @@ export const textDeltas = <E, R>(
 
 /**
  * The assistant message on the just-completed turn was a refusal block,
- * not an `output_text` payload. Returned by `toStructured` to short-circuit
+ * not an `output_text` payload. Returned by `decodeStructured` to short-circuit
  * decoding before `JSON.parse` / schema validation runs.
  */
 export class RefusalRejected extends Data.TaggedError("RefusalRejected")<{
@@ -159,7 +159,7 @@ const lastAssistantContent = (turn: Turn): { readonly text: string; readonly ref
  * - `JsonParseError` — the assembled text wasn't valid JSON.
  * - `StructuredDecodeError` — the JSON didn't match the schema.
  */
-export const toStructured = <A>(
+export const decodeStructured = <A>(
   turn: Turn,
   format: StructuredFormat.StructuredFormat<A>,
 ): Effect.Effect<

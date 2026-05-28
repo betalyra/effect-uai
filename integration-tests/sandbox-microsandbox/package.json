@@ -1,0 +1,26 @@
+{
+  "name": "@effect-uai/integration-sandbox-microsandbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect-uai/core": "link:../../packages/core",
+    "@effect-uai/microsandbox": "link:../../packages/providers/microsandbox",
+    "effect": "link:../../packages/core/node_modules/effect",
+    "microsandbox": "^0.4.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

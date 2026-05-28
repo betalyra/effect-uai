@@ -5,6 +5,7 @@ import {
   PiArrowsInLineHorizontal,
   PiChatCircleDots,
   PiClockCounterClockwise,
+  PiDetective,
   PiFlowArrow,
   PiGavel,
   PiGitFork,
@@ -15,6 +16,7 @@ import {
   PiPulse,
   PiShieldCheck,
   PiStairs,
+  PiTerminalWindow,
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
 
@@ -85,6 +87,13 @@ const recipes: ReadonlyArray<Recipe> = [
     Icon: PiHandPalm,
   },
   {
+    title: "Sleeper agent",
+    description:
+      "**Wait for a long-running tool call.** The agent goes quiet while the work runs and wakes up the moment it's done.",
+    href: "/recipes/sleeper-agent/",
+    Icon: PiDetective,
+  },
+  {
     title: "Agentic loop",
     description:
       "**Stay online for the whole chat.** Pull user messages from a queue; debounce bursts into one batch.",
@@ -125,6 +134,13 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/voice-loop/",
     Icon: PiMicrophone,
   },
+  {
+    title: "Run, fix, repeat",
+    description:
+      "**Let the model run its own code.** It writes Python; the sandbox runs it; tracebacks feed back into the next turn until the answer's right.",
+    href: "/recipes/sandbox-code-interpreter/",
+    Icon: PiTerminalWindow,
+  },
 ]
 
 const markdownComponents: Components = {
@@ -138,7 +154,12 @@ export default function RecipesSection() {
     <section className="not-content border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12">
       <div style={{ marginBottom: "2.5rem" }} className="flex items-baseline justify-between gap-4">
         <div className="flex flex-col gap-1.5">
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
+            <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
+              26 and counting
+            </span>
+          </div>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
             Each recipe shows how to solve a common agent problem with the primitives.
           </p>

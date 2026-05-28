@@ -2,9 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -28,5 +27,6 @@ jobs:
       - run: pnpm build
 
       - run: pnpm typecheck
+      - run: pnpm typecheck:recipes
 
       - run: pnpm test

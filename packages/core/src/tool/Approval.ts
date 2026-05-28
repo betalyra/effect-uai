@@ -3,31 +3,31 @@
  *
  * These helpers only decide which calls are approved and which synthetic
  * results must be returned to the model. Tool execution stays explicit at
- * the recipe boundary via `Toolkit.executeAll`.
+ * the recipe boundary via `Toolkit.run`.
  */
 import { Data, Deferred, Effect, Queue, Scope, Stream } from "effect"
-import type { FunctionCall } from "../domain/Items.js"
-import { type ToolResult, cancelled, denied } from "./Outcome.js"
+import type { ToolCall } from "../domain/Items.js"
+import { type ToolResult, cancelled, denied } from "./ToolResult.js"
 import { ToolEvent } from "./ToolEvent.js"
 
 export type ToolCallPlan = {
-  readonly approved: ReadonlyArray<FunctionCall>
+  readonly approved: ReadonlyArray<ToolCall>
   readonly rejected: ReadonlyArray<ToolResult>
 }
 
-export type ToolCallDecision = Data.TaggedEnum<{
-  Approved: { readonly call: FunctionCall }
+export type ApprovalDecision = Data.TaggedEnum<{
+  Approved: { readonly call: ToolCall }
   Rejected: { readonly result: ToolResult }
 }>
 
-export const ToolCallDecision = Data.taggedEnum<ToolCallDecision>()
+export const ApprovalDecision = Data.taggedEnum<ApprovalDecision>()
 
-export const approve = (call: FunctionCall): ToolCallDecision => ToolCallDecision.Approved({ call })
+export const approve = (call: ToolCall): ApprovalDecision => ApprovalDecision.Approved({ call })
 
-export const reject = (result: ToolResult): ToolCallDecision =>
-  ToolCallDecision.Rejected({ result })
+export const reject = (result: ToolResult): ApprovalDecision =>
+  ApprovalDecision.Rejected({ result })
 
-export const splitToolCallDecisions = (decisions: ReadonlyArray<ToolCallDecision>): ToolCallPlan =>
+export const splitApprovalDecisions = (decisions: ReadonlyArray<ApprovalDecision>): ToolCallPlan =>
   decisions.reduce<ToolCallPlan>(
     (acc, decision) =>
       decision._tag === "Approved"
@@ -36,7 +36,7 @@ export const splitToolCallDecisions = (decisions: ReadonlyArray<ToolCallDecision
     { approved: [], rejected: [] },
   )
 
-export const approvalRequested = (call: FunctionCall): ToolEvent =>
+export const approvalRequested = (call: ToolCall): ToolEvent =>
   ToolEvent.ApprovalRequested({
     call_id: call.call_id,
     tool: call.name,
@@ -56,17 +56,17 @@ export type Verdict = {
 /**
  * Queue-backed approval planner. Safe calls are returned immediately in
  * `approved`; gated calls emit `ApprovalRequested` events and later produce
- * one `ToolCallDecision` when their matching verdict arrives.
+ * one `ApprovalDecision` when their matching verdict arrives.
  */
-export const fromVerdictQueue =
-  (predicate: (call: FunctionCall) => boolean, verdicts: Queue.Dequeue<Verdict>) =>
+export const fromQueue =
+  (predicate: (call: ToolCall) => boolean, verdicts: Queue.Dequeue<Verdict>) =>
   (
-    calls: ReadonlyArray<FunctionCall>,
+    calls: ReadonlyArray<ToolCall>,
   ): Effect.Effect<
     {
-      readonly approved: ReadonlyArray<FunctionCall>
-      readonly decisions: Stream.Stream<ToolCallDecision>
-      readonly announce: Stream.Stream<ToolEvent>
+      readonly approved: ReadonlyArray<ToolCall>
+      readonly decisions: Stream.Stream<ApprovalDecision>
+      readonly approvalRequests: Stream.Stream<ToolEvent>
     },
     never,
     Scope.Scope
@@ -109,9 +109,9 @@ export const fromVerdictQueue =
         ),
       )
 
-      const announce = Stream.fromIterable<ToolEvent>(gated.map(approvalRequested))
+      const approvalRequests = Stream.fromIterable<ToolEvent>(gated.map(approvalRequested))
 
-      return { approved, decisions, announce }
+      return { approved, decisions, approvalRequests }
     })
 
 // ---------------------------------------------------------------------------
@@ -123,10 +123,10 @@ export type ApprovalMapEntry =
   | { readonly decision: "approve" }
   | { readonly decision: "deny"; readonly reason?: string }
 
-export const fromApprovalMap =
-  (predicate: (call: FunctionCall) => boolean, approvals: ReadonlyMap<string, ApprovalMapEntry>) =>
-  (calls: ReadonlyArray<FunctionCall>): ToolCallPlan =>
-    splitToolCallDecisions(
+export const fromMap =
+  (predicate: (call: ToolCall) => boolean, approvals: ReadonlyMap<string, ApprovalMapEntry>) =>
+  (calls: ReadonlyArray<ToolCall>): ToolCallPlan =>
+    splitApprovalDecisions(
       calls.map((call) => {
         if (!predicate(call)) return approve(call)
         const v = approvals.get(call.call_id)

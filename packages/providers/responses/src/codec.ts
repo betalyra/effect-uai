@@ -1,5 +1,5 @@
 import { Encoding, Match, Option, Schema } from "effect"
-import type { ContentBlock, InputImage, Item } from "@effect-uai/core/Items"
+import type { ContentBlock, InputImage, HistoryItem } from "@effect-uai/core/Items"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ export type WireResponseCompleted = typeof WireResponseCompleted.Type
  * verbatim - preserves `encrypted_content`, item ids, and any field this
  * codec doesn't model.
  */
-const passthrough = (item: Item): Record<string, unknown> | undefined =>
+const passthrough = (item: HistoryItem): Record<string, unknown> | undefined =>
   item.providerData !== undefined &&
   typeof item.providerData === "object" &&
   item.providerData !== null
@@ -168,7 +168,7 @@ const contentBlockToInput = Match.type<ContentBlock>().pipe(
   }),
 )
 
-const itemToInput = (item: Item): Record<string, unknown> =>
+const itemToInput = (item: HistoryItem): Record<string, unknown> =>
   passthrough(item) ??
   Match.value(item).pipe(
     Match.discriminatorsExhaustive("type")({
@@ -199,9 +199,10 @@ const itemToInput = (item: Item): Record<string, unknown> =>
     }),
   )
 
-/** Convert our `Item[]` history into the Responses API `input` array. */
-export const itemsToInput = (items: ReadonlyArray<Item>): ReadonlyArray<Record<string, unknown>> =>
-  items.map(itemToInput)
+/** Convert our `HistoryItem[]` history into the Responses API `input` array. */
+export const itemsToInput = (
+  items: ReadonlyArray<HistoryItem>,
+): ReadonlyArray<Record<string, unknown>> => items.map(itemToInput)
 
 // ---------------------------------------------------------------------------
 // Wire output items → our Items
@@ -218,7 +219,7 @@ const wireMessageContentToBlock = Match.type<typeof WireMessageContent.Type>().p
   }),
 )
 
-export const wireItemToItem = (wire: WireOutputItem): Item =>
+export const wireItemToItem = (wire: WireOutputItem): HistoryItem =>
   Match.value(wire).pipe(
     Match.discriminatorsExhaustive("type")({
       message: (m) => ({

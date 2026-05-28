@@ -56,8 +56,6 @@
     `continueWithResults` body that folds tool results into history.
   - `Toolkit.collectResults` — lower-level drain of a `Stream<ToolEvent>`
     to its `ToolResult`s without advancing the loop.
-  - `Loop.emitValues(stream)` / `Loop.emitNext(effect)` — fork-helper
-    building blocks behind `Toolkit.continueWithResults`.
 
   ### Additive: sandboxes
 
@@ -78,7 +76,5 @@
   ### Additive: new recipes
   - `sleeper-agent` — long-lived background agent waking on scheduled
     triggers.
-  - `external-task-polling` — drive the loop from an external task
-    queue.
   - `sandbox-code-interpreter` (in `recipes-extras/`) — agent writes
     Python, sandbox runs it, stderr feeds back into the next turn.

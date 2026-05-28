@@ -49,9 +49,7 @@ export type CapabilityWarning = {
  * }
  * ```
  */
-export const warnDropped = (
-  warning: Omit<CapabilityWarning, "_tag">,
-): Effect.Effect<void> =>
+export const warnDropped = (warning: Omit<CapabilityWarning, "_tag">): Effect.Effect<void> =>
   Effect.logWarning("Capability dropped", { ...warning, _tag: "CapabilityWarning" })
 
 /**
@@ -80,5 +78,4 @@ export const warnDropped = (
 export const warnDroppedWhen = <T>(
   value: T | undefined,
   warning: Omit<CapabilityWarning, "_tag" | "value">,
-): Effect.Effect<void> =>
-  value === undefined ? Effect.void : warnDropped({ ...warning, value })
+): Effect.Effect<void> => (value === undefined ? Effect.void : warnDropped({ ...warning, value }))

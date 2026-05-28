@@ -172,12 +172,7 @@ const trackStream = (
 const prefetchToDisk = (plan: TrackPlan, index: number, cfg: RunStationConfig) =>
   trackStream(plan, index, cfg.tracksDir, cfg.musicModel, cfg.fs).pipe(Stream.runDrain)
 
-const sendToClient = (
-  plan: TrackPlan,
-  index: number,
-  cycle: number,
-  cfg: RunStationConfig,
-) =>
+const sendToClient = (plan: TrackPlan, index: number, cycle: number, cfg: RunStationConfig) =>
   Effect.gen(function* () {
     yield* cfg.send({ type: "track-start", index, cycle, title: plan.title })
     yield* trackStream(plan, index, cfg.tracksDir, cfg.musicModel, cfg.fs).pipe(
@@ -249,4 +244,3 @@ export const runStation = (cfg: RunStationConfig) =>
       }),
     )
   })
-

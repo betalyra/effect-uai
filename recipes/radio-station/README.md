@@ -75,12 +75,10 @@ Two consumers, neither inside the producer:
 
 ```ts
 // Foreground: chunk → WS, every byte flows the moment it arrives.
-const sendToClient = (plan, i) =>
-  trackStream(plan, i).pipe(Stream.tap(sendBytes), Stream.runDrain)
+const sendToClient = (plan, i) => trackStream(plan, i).pipe(Stream.tap(sendBytes), Stream.runDrain)
 
 // Background: same stream, no destination. Cache side effect only.
-const prefetchToDisk = (plan, i) =>
-  trackStream(plan, i).pipe(Stream.runDrain)
+const prefetchToDisk = (plan, i) => trackStream(plan, i).pipe(Stream.runDrain)
 ```
 
 ## Just-in-time planning
@@ -91,41 +89,48 @@ prefetch fiber for the next track, racing against the music gen of the
 current one.
 
 ```ts
-yield* Effect.forever(
-  Effect.gen(function* () {
-    const { cycle, idx } = yield* Ref.get(state)
+yield *
+  Effect.forever(
+    Effect.gen(function* () {
+      const { cycle, idx } = yield* Ref.get(state)
 
-    // 1. Wait for THIS track's prefetch (plan + gen) to land.
-    yield* Ref.get(prefetch).pipe(
-      Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: Fiber.join })),
-    )
+      // 1. Wait for THIS track's prefetch (plan + gen) to land.
+      yield* Ref.get(prefetch).pipe(
+        Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: Fiber.join })),
+      )
 
-    // 2. Kick prefetch for the NEXT track: plan (cycle 0 only) + gen.
-    const nextIdx = (idx + 1) % cfg.trackCount
-    const fiber = yield* Effect.forkChild(
-      Effect.gen(function* () {
-        const soFar = yield* Ref.get(plans)
-        if (nextIdx >= soFar.length) {
-          const plan = yield* planTrack(cfg.brief, nextIdx, cfg.trackCount, soFar, cfg.plannerModel)
-          yield* Ref.update(plans, (ps) => [...ps, plan])
-          yield* cfg.send({ type: "track-planned", index: nextIdx, title: plan.title })
-        }
-        const ps = yield* Ref.get(plans)
-        yield* prefetchToDisk(ps[nextIdx]!, nextIdx, cfg.tracksDir, cfg.musicModel)
-      }),
-    )
-    yield* Ref.set(prefetch, Option.some(fiber))
+      // 2. Kick prefetch for the NEXT track: plan (cycle 0 only) + gen.
+      const nextIdx = (idx + 1) % cfg.trackCount
+      const fiber = yield* Effect.forkChild(
+        Effect.gen(function* () {
+          const soFar = yield* Ref.get(plans)
+          if (nextIdx >= soFar.length) {
+            const plan = yield* planTrack(
+              cfg.brief,
+              nextIdx,
+              cfg.trackCount,
+              soFar,
+              cfg.plannerModel,
+            )
+            yield* Ref.update(plans, (ps) => [...ps, plan])
+            yield* cfg.send({ type: "track-planned", index: nextIdx, title: plan.title })
+          }
+          const ps = yield* Ref.get(plans)
+          yield* prefetchToDisk(ps[nextIdx]!, nextIdx, cfg.tracksDir, cfg.musicModel)
+        }),
+      )
+      yield* Ref.set(prefetch, Option.some(fiber))
 
-    // 3. Stream THIS track to the client.
-    const ps = yield* Ref.get(plans)
-    yield* sendToClient(ps[idx]!, idx, cycle, cfg)
+      // 3. Stream THIS track to the client.
+      const ps = yield* Ref.get(plans)
+      yield* sendToClient(ps[idx]!, idx, cycle, cfg)
 
-    // 4. Backpressure on actual listening time.
-    yield* cfg.waitTrackEnded
+      // 4. Backpressure on actual listening time.
+      yield* cfg.waitTrackEnded
 
-    yield* Ref.set(state, { cycle: nextIdx === 0 ? cycle + 1 : cycle, idx: nextIdx })
-  }),
-)
+      yield* Ref.set(state, { cycle: nextIdx === 0 ? cycle + 1 : cycle, idx: nextIdx })
+    }),
+  )
 ```
 
 `waitTrackEnded` is a per-connection `Queue.take`; the WS message

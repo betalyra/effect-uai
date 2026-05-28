@@ -48,9 +48,9 @@ Does **not** register `MusicInteractiveSession` — calling
 
 ## Models
 
-| Model      | Status                    | Notes                                                                  |
-| ---------- | ------------------------- | ---------------------------------------------------------------------- |
-| `music_v1` | API default (May 2026)    | The model the API exposes today.                                       |
+| Model      | Status                    | Notes                                                                 |
+| ---------- | ------------------------- | --------------------------------------------------------------------- |
+| `music_v1` | API default (May 2026)    | The model the API exposes today.                                      |
 | `music_v2` | UI default; API in flight | ElevenLabs Music v2 launched 2026-05-26; `model_id` plumbing pending. |
 
 `ElevenLabsMusicModel` is a literal union with `(string & {})` tail
@@ -67,14 +67,16 @@ endpoints.
 import { Duration } from "effect"
 import * as MusicGenerator from "@effect-uai/core/MusicGenerator"
 
-const result = yield* MusicGenerator.generate({
-  model: "music_v1",
-  prompt: "Lo-fi piano with brushed drums, 70 BPM, melancholic",
-  duration: Duration.seconds(60),
-  outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, bitRate: 128 },
-})
+const result =
+  yield *
+  MusicGenerator.generate({
+    model: "music_v1",
+    prompt: "Lo-fi piano with brushed drums, 70 BPM, melancholic",
+    duration: Duration.seconds(60),
+    outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, bitRate: 128 },
+  })
 
-yield* writeFile("out.mp3", result.primary.audio.bytes)
+yield * writeFile("out.mp3", result.primary.audio.bytes)
 ```
 
 Bucket-2 fields the Common request carries but ElevenLabs cannot
@@ -93,34 +95,36 @@ expressive enough.
 import { Duration } from "effect"
 import * as ElevenLabsMusicGenerator from "@effect-uai/elevenlabs/ElevenLabsMusicGenerator"
 
-const result = yield* ElevenLabsMusicGenerator.ElevenLabsMusicGenerator.use((s) =>
-  s.generate({
-    model: "music_v1",
-    prompt: "", // must be empty when compositionPlan is set
-    compositionPlan: {
-      positiveGlobalStyles: ["lo-fi", "warm", "vintage tape"],
-      negativeGlobalStyles: ["distorted", "harsh"],
-      sections: [
-        {
-          sectionName: "Intro",
-          positiveLocalStyles: ["solo piano", "soft"],
-          negativeLocalStyles: [],
-          duration: Duration.seconds(12),
-          lines: [],
-        },
-        {
-          sectionName: "Verse",
-          positiveLocalStyles: ["brushed drums enter", "upright bass"],
-          negativeLocalStyles: [],
-          duration: Duration.seconds(24),
-          lines: ["A late train hums beneath the city"],
-        },
-      ],
-    },
-    forceInstrumental: false,
-    signWithC2pa: true,
-  }),
-)
+const result =
+  yield *
+  ElevenLabsMusicGenerator.ElevenLabsMusicGenerator.use((s) =>
+    s.generate({
+      model: "music_v1",
+      prompt: "", // must be empty when compositionPlan is set
+      compositionPlan: {
+        positiveGlobalStyles: ["lo-fi", "warm", "vintage tape"],
+        negativeGlobalStyles: ["distorted", "harsh"],
+        sections: [
+          {
+            sectionName: "Intro",
+            positiveLocalStyles: ["solo piano", "soft"],
+            negativeLocalStyles: [],
+            duration: Duration.seconds(12),
+            lines: [],
+          },
+          {
+            sectionName: "Verse",
+            positiveLocalStyles: ["brushed drums enter", "upright bass"],
+            negativeLocalStyles: [],
+            duration: Duration.seconds(24),
+            lines: ["A late train hums beneath the city"],
+          },
+        ],
+      },
+      forceInstrumental: false,
+      signWithC2pa: true,
+    }),
+  )
 ```
 
 `prompt` and `compositionPlan` are mutually exclusive on the wire;
@@ -134,17 +138,21 @@ Turn a prompt into a structured plan you can then edit and feed back
 into `generate`:
 
 ```ts
-const plan = yield* ElevenLabsMusicGenerator.ElevenLabsMusicGenerator.use((s) =>
-  s.createCompositionPlan({
-    prompt: "Lo-fi piano with brushed drums, intro then verse, 60 s",
-    duration: Duration.seconds(60),
-  }),
-)
+const plan =
+  yield *
+  ElevenLabsMusicGenerator.ElevenLabsMusicGenerator.use((s) =>
+    s.createCompositionPlan({
+      prompt: "Lo-fi piano with brushed drums, intro then verse, 60 s",
+      duration: Duration.seconds(60),
+    }),
+  )
 
 // Mutate or augment plan, then:
-const result = yield* MusicGenerator.generate({
-  /* … */ compositionPlan: plan,
-})
+const result =
+  yield *
+  MusicGenerator.generate({
+    /* … */ compositionPlan: plan,
+  })
 ```
 
 The plan endpoint is free (rate-limited only, no credit cost). Use it
@@ -165,7 +173,7 @@ const chunks = MusicGenerator.streamGeneration({
 })
 
 // Stream<AudioChunk> straight to a sink:
-yield* Stream.run(chunks, fileSink)
+yield * Stream.run(chunks, fileSink)
 ```
 
 Each `AudioChunk` is raw bytes in your requested `output_format`
@@ -176,11 +184,11 @@ adapter forwards the SSE-encoded byte stream as-is.
 
 ```ts
 type ElevenLabsMusicGenerateRequest = Omit<CommonGenerateMusicRequest, "model"> & {
-  readonly model?: ElevenLabsMusicModel        // default "music_v1"
+  readonly model?: ElevenLabsMusicModel // default "music_v1"
   readonly compositionPlan?: ElevenLabsCompositionPlan
   readonly forceInstrumental?: boolean
-  readonly signWithC2pa?: boolean              // MP3 output only
-  readonly respectSectionsDurations?: boolean  // composition-plan mode only
+  readonly signWithC2pa?: boolean // MP3 output only
+  readonly respectSectionsDurations?: boolean // composition-plan mode only
 }
 ```
 
@@ -190,7 +198,7 @@ type ElevenLabsMusicGenerateRequest = Omit<CommonGenerateMusicRequest, "model"> 
 type MusicResult = {
   readonly audio: AudioBlob
   readonly provider?: "elevenlabs-music"
-  readonly songId?: string      // ElevenLabs song_id, when returned in headers
+  readonly songId?: string // ElevenLabs song_id, when returned in headers
   readonly watermark?: Watermark // "c2pa" when signWithC2pa: true
 }
 ```
@@ -203,14 +211,14 @@ apply to MP3 output only. Surfaced as `result.primary.watermark === "c2pa"`.
 
 `outputFormat` is encoded as ElevenLabs's `?output_format=` slug:
 
-| Container | Encoding   | Sample rates                          | Bitrates (mp3 / opus)        |
-| --------- | ---------- | ------------------------------------- | ---------------------------- |
-| mp3       | mp3        | 22050, 24000, 44100                   | 32, 48, 64, 96, 128, 192     |
-| opus      | opus       | 48000                                 | 32, 64, 96, 128, 192         |
-| wav       | pcm_s16le  | 48000                                 | n/a                          |
-| raw       | pcm_s16le  | any (8000 / 16000 / 22050 / 24000 / 32000 / 44100 / 48000) | n/a |
-| raw       | pcm_mulaw  | 8000                                  | n/a                          |
-| raw       | pcm_alaw   | 8000                                  | n/a                          |
+| Container | Encoding  | Sample rates                                               | Bitrates (mp3 / opus)    |
+| --------- | --------- | ---------------------------------------------------------- | ------------------------ |
+| mp3       | mp3       | 22050, 24000, 44100                                        | 32, 48, 64, 96, 128, 192 |
+| opus      | opus      | 48000                                                      | 32, 64, 96, 128, 192     |
+| wav       | pcm_s16le | 48000                                                      | n/a                      |
+| raw       | pcm_s16le | any (8000 / 16000 / 22050 / 24000 / 32000 / 44100 / 48000) | n/a                      |
+| raw       | pcm_mulaw | 8000                                                       | n/a                      |
+| raw       | pcm_alaw  | 8000                                                       | n/a                      |
 
 Unencodable formats fail `AiError.Unsupported` at the adapter,
 matching the rest of the ElevenLabs codec surface. Tier gates apply
@@ -218,11 +226,11 @@ matching the rest of the ElevenLabs codec surface. Tier gates apply
 
 ## Wire / auth notes
 
-| Endpoint                         | Use                                              |
-| -------------------------------- | ------------------------------------------------ |
-| `POST /v1/music`                 | Sync. Binary audio response in requested format. |
-| `POST /v1/music/stream`          | Chunked HTTP stream. Same body as sync.          |
-| `POST /v1/music/plan`            | Free composition-plan generator. Returns JSON.   |
+| Endpoint                | Use                                              |
+| ----------------------- | ------------------------------------------------ |
+| `POST /v1/music`        | Sync. Binary audio response in requested format. |
+| `POST /v1/music/stream` | Chunked HTTP stream. Same body as sync.          |
+| `POST /v1/music/plan`   | Free composition-plan generator. Returns JSON.   |
 
 Auth: `xi-api-key` header — same key as TTS / STT. Regional bases
 honored via the `region` field on `Config` (default / `eu` / `in`),
@@ -232,13 +240,13 @@ shared with the rest of `@effect-uai/elevenlabs`.
 
 Standard HTTP → `AiError` mapping. ElevenLabs-music-specific:
 
-| Request shape                              | Error                                       |
-| ------------------------------------------ | ------------------------------------------- |
-| `prompt` non-empty AND `compositionPlan`   | `AiError.InvalidRequest` (mutually excl.)   |
-| `duration` set AND `compositionPlan` set   | `AiError.InvalidRequest`                    |
-| Output format the codec can't encode       | `AiError.Unsupported`                       |
-| 422 validation error from the API          | `AiError.InvalidRequest` (with raw body)    |
-| `streamGenerationFrom` call                | Compile-time error (no marker, no bidi)     |
+| Request shape                            | Error                                     |
+| ---------------------------------------- | ----------------------------------------- |
+| `prompt` non-empty AND `compositionPlan` | `AiError.InvalidRequest` (mutually excl.) |
+| `duration` set AND `compositionPlan` set | `AiError.InvalidRequest`                  |
+| Output format the codec can't encode     | `AiError.Unsupported`                     |
+| 422 validation error from the API        | `AiError.InvalidRequest` (with raw body)  |
+| `streamGenerationFrom` call              | Compile-time error (no marker, no bidi)   |
 
 ## See also
 

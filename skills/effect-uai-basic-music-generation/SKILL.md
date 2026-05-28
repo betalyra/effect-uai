@@ -27,25 +27,25 @@ import * as MusicGenerator from "@effect-uai/core/MusicGenerator"
 
 type CommonGenerateMusicRequest = {
   readonly model: string
-  readonly prompt: string                  // single string only; no client-side construction
-  readonly lyrics?: string                 // routed to a wire field where the provider has one
-  readonly duration?: Duration.Duration    // hint vs hard limit, per provider
-  readonly seed?: number                   // silently ignored where the provider doesn't expose one
+  readonly prompt: string // single string only; no client-side construction
+  readonly lyrics?: string // routed to a wire field where the provider has one
+  readonly duration?: Duration.Duration // hint vs hard limit, per provider
+  readonly seed?: number // silently ignored where the provider doesn't expose one
   readonly outputFormat?: AudioFormat
 }
 
 type GenerateResult = {
-  readonly primary: MusicResult            // convenience; equals variants[0]
-  readonly variants: ReadonlyArray<MusicResult>  // Suno / Mureka return 2; others return 1
+  readonly primary: MusicResult // convenience; equals variants[0]
+  readonly variants: ReadonlyArray<MusicResult> // Suno / Mureka return 2; others return 1
 }
 
 type MusicResult = {
-  readonly audio: AudioBlob                // composition, not extension
+  readonly audio: AudioBlob // composition, not extension
   readonly provider?: string
   readonly songId?: string
   readonly lyrics?: string
   readonly sections?: ReadonlyArray<MusicSection>
-  readonly watermark?: Watermark           // "synthid" | "c2pa" | (string & {})
+  readonly watermark?: Watermark // "synthid" | "c2pa" | (string & {})
 }
 ```
 
@@ -61,7 +61,7 @@ import { Duration } from "effect"
 import * as MusicGenerator from "@effect-uai/core/MusicGenerator"
 
 export const generate = MusicGenerator.generate({
-  model: "music_v1",   // or "lyria-3-clip-preview" for Google
+  model: "music_v1", // or "lyria-3-clip-preview" for Google
   prompt: "Lo-fi piano with brushed drums, 70 BPM, melancholic",
   duration: Duration.seconds(30),
   outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 },
@@ -82,11 +82,11 @@ doesn't care which one you provided.
 
 Removed in 0.7 because they didn't earn cross-provider weight:
 
-| Removed         | Reach for                                                         |
-| --------------- | ----------------------------------------------------------------- |
-| `bpm`, `scale`  | Mention in your prompt text, or the typed Lyria RealTime surface. |
-| `WeightedPrompt[]` blend | Lyria RealTime's `LyriaRealtimeSessionInput.prompts`.     |
-| `instrumental`  | `ElevenLabsMusicGenerateRequest.forceInstrumental`, equivalent provider-typed field. |
+| Removed                  | Reach for                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| `bpm`, `scale`           | Mention in your prompt text, or the typed Lyria RealTime surface.                    |
+| `WeightedPrompt[]` blend | Lyria RealTime's `LyriaRealtimeSessionInput.prompts`.                                |
+| `instrumental`           | `ElevenLabsMusicGenerateRequest.forceInstrumental`, equivalent provider-typed field. |
 
 Setting `lyrics` on the Common request against Lyria 3 sync (which
 has no wire field for lyrics) logs a structured `CapabilityWarning`
@@ -106,27 +106,29 @@ positive / negative styles, and durations:
 import { Duration } from "effect"
 import * as ElevenLabsMusicGenerator from "@effect-uai/elevenlabs/ElevenLabsMusicGenerator"
 
-const result = yield* ElevenLabsMusicGenerator.ElevenLabsMusicGenerator.use((s) =>
-  s.generate({
-    model: "music_v1",
-    prompt: "",   // must be empty when compositionPlan is set
-    compositionPlan: {
-      positiveGlobalStyles: ["lo-fi", "warm"],
-      negativeGlobalStyles: ["distorted"],
-      sections: [
-        {
-          sectionName: "Verse",
-          positiveLocalStyles: ["brushed drums", "upright bass"],
-          negativeLocalStyles: [],
-          duration: Duration.seconds(24),
-          lines: ["A late train hums beneath the city"],
-        },
-      ],
-    },
-    forceInstrumental: false,
-    signWithC2pa: true,
-  }),
-)
+const result =
+  yield *
+  ElevenLabsMusicGenerator.ElevenLabsMusicGenerator.use((s) =>
+    s.generate({
+      model: "music_v1",
+      prompt: "", // must be empty when compositionPlan is set
+      compositionPlan: {
+        positiveGlobalStyles: ["lo-fi", "warm"],
+        negativeGlobalStyles: ["distorted"],
+        sections: [
+          {
+            sectionName: "Verse",
+            positiveLocalStyles: ["brushed drums", "upright bass"],
+            negativeLocalStyles: [],
+            duration: Duration.seconds(24),
+            lines: ["A late train hums beneath the city"],
+          },
+        ],
+      },
+      forceInstrumental: false,
+      signWithC2pa: true,
+    }),
+  )
 ```
 
 `prompt` and `compositionPlan` are mutually exclusive; setting both

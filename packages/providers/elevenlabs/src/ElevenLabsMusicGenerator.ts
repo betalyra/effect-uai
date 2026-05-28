@@ -316,9 +316,7 @@ export const make = (
     generate: (request) =>
       generateImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
     streamGeneration: (request) =>
-      streamGenerationImpl(cfg)(request).pipe(
-        Stream.provideService(HttpClient.HttpClient, client),
-      ),
+      streamGenerationImpl(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client)),
     streamGenerationFrom: streamGenerationFromUnsupported,
     createCompositionPlan: (request) =>
       createCompositionPlanImpl(cfg)(request).pipe(

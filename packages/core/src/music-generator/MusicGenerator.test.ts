@@ -172,9 +172,7 @@ describe("MusicGenerator.streamGenerationFrom", () => {
       ]),
     ])
     const events = inputs.pipe(MusicGenerator.streamGenerationFrom(sgfReq))
-    const out = await Effect.runPromise(
-      Stream.runCollect(events).pipe(Effect.provide(mock.layer)),
-    )
+    const out = await Effect.runPromise(Stream.runCollect(events).pipe(Effect.provide(mock.layer)))
     const audioChunks = out.flatMap((e) => (e._tag === "audio" ? [e.chunk] : []))
     expect(audioChunks.map((c) => Array.from(c.bytes))).toEqual([[10], [20]])
   })

@@ -58,10 +58,10 @@ import type { Duration } from "effect"
 
 type CommonGenerateMusicRequest = {
   readonly model: string
-  readonly prompt: string                  // single string; no client-side construction
-  readonly lyrics?: string                 // routed to a wire field when the provider has one
-  readonly duration?: Duration.Duration    // hint vs hard limit, per provider
-  readonly seed?: number                   // tuning hint; bucket 3, silently ignored where unsupported
+  readonly prompt: string // single string; no client-side construction
+  readonly lyrics?: string // routed to a wire field when the provider has one
+  readonly duration?: Duration.Duration // hint vs hard limit, per provider
+  readonly seed?: number // tuning hint; bucket 3, silently ignored where unsupported
   readonly outputFormat?: AudioFormat
 }
 ```
@@ -93,7 +93,7 @@ on exactly one provider.
 ```ts
 type GenerateResult = {
   readonly primary: MusicResult
-  readonly variants: ReadonlyArray<MusicResult>  // length ≥ 1
+  readonly variants: ReadonlyArray<MusicResult> // length ≥ 1
 }
 
 type MusicResult = {
@@ -102,7 +102,7 @@ type MusicResult = {
   readonly songId?: string
   readonly lyrics?: string
   readonly sections?: ReadonlyArray<MusicSection>
-  readonly watermark?: Watermark  // "synthid" | "c2pa" | (string & {})
+  readonly watermark?: Watermark // "synthid" | "c2pa" | (string & {})
 }
 ```
 
@@ -164,10 +164,10 @@ Same phantom-marker pattern as
 
 ## Provider matrix
 
-| Provider                                                                | Sync         | Chunked stream          | Bidi session                |
-| ----------------------------------------------------------------------- | ------------ | ----------------------- | --------------------------- |
-| [Google Lyria](/music-generation/providers/gemini/)                     | ✓ (clip+pro) | ✓ (single-chunk emul.)  | — (planned: Lyria RealTime) |
-| [ElevenLabs Music](/music-generation/providers/elevenlabs/)             | ✓            | ✓ (native HTTP chunked) | —                           |
+| Provider                                                    | Sync         | Chunked stream          | Bidi session                |
+| ----------------------------------------------------------- | ------------ | ----------------------- | --------------------------- |
+| [Google Lyria](/music-generation/providers/gemini/)         | ✓ (clip+pro) | ✓ (single-chunk emul.)  | — (planned: Lyria RealTime) |
+| [ElevenLabs Music](/music-generation/providers/elevenlabs/) | ✓            | ✓ (native HTTP chunked) | —                           |
 
 Both providers also expose typed-surface extras (`LyriaGenerator`,
 `ElevenLabsMusicGenerator`) for provider-specific wire fields the

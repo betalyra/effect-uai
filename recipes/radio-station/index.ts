@@ -14,26 +14,12 @@
  * are the only places where bytes flow out (drain to WS or to /dev/null).
  */
 import { Effect, Exit, Fiber, Option, Ref, Schema, Stream } from "effect"
-import * as AiError from "@effect-uai/core/AiError"
+import type * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
 import { turn } from "@effect-uai/core/LanguageModel"
 import * as MusicGenerator from "@effect-uai/core/MusicGenerator"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import * as Turn from "@effect-uai/core/Turn"
-import { rename, unlink } from "node:fs/promises"
-
-// Bun-only file API surface used by `trackStream`. Mirrors the local
-// declares in `run-bun.ts` across the other Bun recipes.
-declare const Bun: {
-  readonly file: (p: string) => {
-    readonly exists: () => Promise<boolean>
-    readonly stream: () => ReadableStream<Uint8Array>
-    readonly writer: () => {
-      readonly write: (chunk: Uint8Array) => number
-      readonly end: () => Promise<number>
-    }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Planner — one LLM call per track, just-in-time. Previous tracks are
@@ -105,12 +91,29 @@ export type ServerEvent =
 
 export type ClientEvent = { readonly type: "track-ended" }
 
+// Runtime-specific file ops. The runner (`run-bun.ts`, future
+// `run-node.ts`, ...) supplies an implementation; the recipe body
+// never touches `Bun.*` / `node:fs/promises` directly.
+export type FileWriter = {
+  readonly write: (chunk: Uint8Array) => void
+  readonly end: Effect.Effect<void>
+}
+
+export type FileSystemHooks = {
+  readonly exists: (path: string) => Effect.Effect<boolean>
+  readonly readStream: (path: string) => Stream.Stream<Uint8Array, AiError.AiError>
+  readonly openWriter: (path: string) => Effect.Effect<FileWriter>
+  readonly rename: (from: string, to: string) => Effect.Effect<void>
+  readonly unlink: (path: string) => Effect.Effect<void>
+}
+
 export type RunStationConfig = {
   readonly brief: string
   readonly trackCount: number
   readonly tracksDir: string
   readonly plannerModel: string
   readonly musicModel: string
+  readonly fs: FileSystemHooks
   readonly send: (event: ServerEvent) => Effect.Effect<void>
   readonly sendBytes: (bytes: Uint8Array) => Effect.Effect<void>
   /** Resolves once when the client posts `{type:"track-ended"}`. */
@@ -121,36 +124,34 @@ export type RunStationConfig = {
 // Producer: returns a Stream<Uint8Array>. Does not drain.
 //
 // Cache lives inside the stream: file exists → read it; otherwise →
-// generate, tee'd into a Bun FileSink as chunks flow. The sink is a
-// scoped resource — on success the .partial file is renamed to the
-// final path; on failure/interrupt it's removed so the next attempt
-// doesn't read a half-written file as a cache hit.
+// generate, tee'd into the runtime's writer as chunks flow. The writer
+// is a scoped resource — on success the .partial file is renamed to
+// the final path; on failure/interrupt it's removed so the next
+// attempt doesn't read a half-written file as a cache hit.
 // ---------------------------------------------------------------------------
 
-const trackStream = (plan: TrackPlan, index: number, tracksDir: string, musicModel: string) =>
+const trackStream = (
+  plan: TrackPlan,
+  index: number,
+  tracksDir: string,
+  musicModel: string,
+  fs: FileSystemHooks,
+) =>
   Stream.unwrap(
     Effect.gen(function* () {
       const file = `${tracksDir}/track-${index}.mp3`
 
-      if (yield* Effect.promise(() => Bun.file(file).exists())) {
-        return Stream.fromReadableStream<Uint8Array, AiError.AiError>({
-          evaluate: () => Bun.file(file).stream(),
-          onError: (e) => new AiError.Unavailable({ provider: "disk-cache", raw: e }),
-        })
+      if (yield* fs.exists(file)) {
+        return fs.readStream(file)
       }
 
       const partial = `${file}.partial`
-      const writer = yield* Effect.acquireRelease(
-        Effect.sync(() => Bun.file(partial).writer()),
-        (w, exit) =>
-          Effect.promise(async () => {
-            await w.end()
-            if (Exit.isSuccess(exit)) {
-              await rename(partial, file)
-            } else {
-              await unlink(partial).catch(() => {})
-            }
-          }),
+      const writer = yield* Effect.acquireRelease(fs.openWriter(partial), (w, exit) =>
+        w.end.pipe(
+          Effect.flatMap(() =>
+            Exit.isSuccess(exit) ? fs.rename(partial, file) : fs.unlink(partial),
+          ),
+        ),
       )
 
       return MusicGenerator.streamGeneration({
@@ -168,8 +169,8 @@ const trackStream = (plan: TrackPlan, index: number, tracksDir: string, musicMod
 // Two consumers. Neither lives inside the producer.
 // ---------------------------------------------------------------------------
 
-const prefetchToDisk = (plan: TrackPlan, index: number, tracksDir: string, musicModel: string) =>
-  trackStream(plan, index, tracksDir, musicModel).pipe(Stream.runDrain)
+const prefetchToDisk = (plan: TrackPlan, index: number, cfg: RunStationConfig) =>
+  trackStream(plan, index, cfg.tracksDir, cfg.musicModel, cfg.fs).pipe(Stream.runDrain)
 
 const sendToClient = (
   plan: TrackPlan,
@@ -179,7 +180,7 @@ const sendToClient = (
 ) =>
   Effect.gen(function* () {
     yield* cfg.send({ type: "track-start", index, cycle, title: plan.title })
-    yield* trackStream(plan, index, cfg.tracksDir, cfg.musicModel).pipe(
+    yield* trackStream(plan, index, cfg.tracksDir, cfg.musicModel, cfg.fs).pipe(
       Stream.tap(cfg.sendBytes),
       Stream.runDrain,
     )
@@ -232,7 +233,7 @@ export const runStation = (cfg: RunStationConfig) =>
               yield* cfg.send({ type: "track-planned", index: nextIdx, title: plan.title })
             }
             const ps = yield* Ref.get(plans)
-            yield* prefetchToDisk(ps[nextIdx]!, nextIdx, cfg.tracksDir, cfg.musicModel)
+            yield* prefetchToDisk(ps[nextIdx]!, nextIdx, cfg)
           }),
         )
         yield* Ref.set(prefetch, Option.some(fiber))

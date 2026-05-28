@@ -20,7 +20,7 @@
  *                          generation against actual listening time).
  */
 import * as path from "node:path"
-import { mkdir } from "node:fs/promises"
+import { mkdir, rename, unlink } from "node:fs/promises"
 import {
   Cause,
   Config,
@@ -31,12 +31,14 @@ import {
   Match,
   Queue,
   References,
+  Stream,
 } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
+import * as AiError from "@effect-uai/core/AiError"
 import { layer as elevenlabsMusicLayer } from "@effect-uai/elevenlabs/ElevenLabsMusicGenerator"
 import { layer as lyriaLayer } from "@effect-uai/google/LyriaGenerator"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
-import { runStation, type ServerEvent } from "./index.js"
+import { runStation, type FileSystemHooks, type ServerEvent } from "./index.js"
 
 // ---------------------------------------------------------------------------
 // Provider selection — `PROVIDER=google|elevenlabs` (default elevenlabs).
@@ -115,6 +117,33 @@ const tracksDir = path.join(recipeDir, "tracks", provider)
 await mkdir(tracksDir, { recursive: true })
 
 // ---------------------------------------------------------------------------
+// Runtime-specific file ops, supplied to runStation via config. Swapping
+// runtimes (a future run-node.ts, run-deno.ts, ...) means only this value
+// changes — the recipe body is runtime-agnostic.
+// ---------------------------------------------------------------------------
+
+const bunFs: FileSystemHooks = {
+  exists: (filePath) => Effect.promise(() => Bun.file(filePath).exists()),
+  readStream: (filePath) =>
+    Stream.fromReadableStream({
+      evaluate: () => Bun.file(filePath).stream(),
+      onError: (e) => new AiError.Unavailable({ provider: "disk-cache", raw: e }),
+    }),
+  openWriter: (filePath) =>
+    Effect.sync(() => {
+      const w = Bun.file(filePath).writer()
+      return {
+        write: (chunk) => {
+          w.write(chunk)
+        },
+        end: Effect.promise(() => w.end()).pipe(Effect.asVoid),
+      }
+    }),
+  rename: (from, to) => Effect.promise(() => rename(from, to)),
+  unlink: (filePath) => Effect.promise(() => unlink(filePath)).pipe(Effect.ignore),
+}
+
+// ---------------------------------------------------------------------------
 // Per-connection pipeline
 // ---------------------------------------------------------------------------
 
@@ -132,6 +161,7 @@ const pipelineFor = (
     plannerModel: process.env["PLANNER_MODEL"] ?? "gpt-5.4-mini",
     musicModel: process.env["MUSIC_MODEL"] ?? defaults[provider].model,
     tracksDir,
+    fs: bunFs,
     send: (event: ServerEvent) => Effect.sync(() => sendText(JSON.stringify(event))),
     sendBytes: (bytes) => Effect.sync(() => sendBinary(bytes)),
     // Queue.take fails with `Done` when the queue is ended (WS close);
@@ -185,7 +215,15 @@ declare const Bun: {
     readonly logs: ReadonlyArray<unknown>
     readonly outputs: ReadonlyArray<{ readonly text: () => Promise<string> }>
   }>
-  readonly file: (p: string) => { readonly text: () => Promise<string> }
+  readonly file: (p: string) => {
+    readonly text: () => Promise<string>
+    readonly exists: () => Promise<boolean>
+    readonly stream: () => ReadableStream<Uint8Array>
+    readonly writer: () => {
+      readonly write: (chunk: Uint8Array) => number
+      readonly end: () => Promise<number>
+    }
+  }
   readonly serve: <D>(config: {
     readonly port: number
     readonly routes: Record<

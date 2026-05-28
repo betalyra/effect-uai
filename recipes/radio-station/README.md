@@ -22,50 +22,47 @@ twice and the second pass costs nothing.
 ## The shape
 
 ```
-[brief]
-  │
-  ▼  plan track 0 (LLM, one call)
-{ title, prompt }
-  │
-  ▼  generation pipeline
-                ┌────────────────────────────────────────────────────┐
-                │ prefetch fiber: plan track N+1 → gen track N+1 → disk │
-                └────────────────────────────────────────────────────┘
-                ┌────────────────────────────────────────────────────┐
-                │ sender:      track N stream chunks → WS              │
-                └────────────────────────────────────────────────────┘
-  │
-  ▼  WebSocket (MP3 binary + JSON control frames)
-[browser] MediaSource ← appendBuffer ← chunk → <audio> → speakers
+                            [brief]
+                               │
+                               ▼  plan track 0
+                         { title, prompt }
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│  prefetch fiber : plan track N+1 → gen track N+1 → disk      │
+│  sender fiber   : track N → WS chunks → browser MediaSource  │
+└─────────────────────────────────────────────────────────────┘
+                               │
+                               ▼  WebSocket
+              MediaSource ← chunk → <audio> → speakers
 ```
 
 ## End-to-end streaming
 
-`trackStream(plan, i, dir)` returns a `Stream<Uint8Array>`. It never
-drains itself. Cache policy lives inside:
+`trackStream(plan, i)` returns a `Stream<Uint8Array>`. It never drains
+itself. Cache policy lives inside: hit the file if it's already on
+disk, otherwise generate and tee chunks into the file as they flow.
 
 ```ts
-const trackStream = (plan, i, tracksDir, musicModel) =>
+const trackStream = (plan, i) =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const file = `${tracksDir}/track-${i}.mp3`
-      if (yield* Effect.promise(() => Bun.file(file).exists())) {
-        return Stream.fromReadableStream({
-          evaluate: () => Bun.file(file).stream(),
-          onError: ...,
-        })
-      }
-      // Open a Bun FileSink scoped to the stream's lifetime. On success
-      // the `.partial` file is renamed; on failure / interrupt it's
-      // unlinked so the next attempt doesn't read a half-written file.
+      const file = `tracks/track-${i}.mp3`
+      if (yield* fileExists(file)) return readFileStream(file)
+
+      // On success the `.partial` file is renamed; on failure /
+      // interrupt it's unlinked so the next attempt doesn't read a
+      // half-written file as a cache hit.
       const writer = yield* Effect.acquireRelease(
-        Effect.sync(() => Bun.file(`${file}.partial`).writer()),
-        (w, exit) => Effect.promise(async () => {
-          await w.end()
-          if (Exit.isSuccess(exit)) await rename(`${file}.partial`, file)
-          else await unlink(`${file}.partial`).catch(() => {})
-        }),
+        openWriter(`${file}.partial`),
+        (w, exit) =>
+          w.end.pipe(
+            Effect.flatMap(() =>
+              Exit.isSuccess(exit) ? rename(`${file}.partial`, file) : unlink(`${file}.partial`),
+            ),
+          ),
       )
+
       return MusicGenerator.streamGeneration({...}).pipe(
         Stream.map((c) => c.bytes),
         Stream.tap((bytes) => Effect.sync(() => writer.write(bytes))),
@@ -78,15 +75,12 @@ Two consumers, neither inside the producer:
 
 ```ts
 // Foreground: chunk → WS, every byte flows the moment it arrives.
-const sendToClient = (plan, i, cycle, cfg) =>
-  trackStream(plan, i, cfg.tracksDir, cfg.musicModel).pipe(
-    Stream.tap(cfg.sendBytes),
-    Stream.runDrain,
-  )
+const sendToClient = (plan, i) =>
+  trackStream(plan, i).pipe(Stream.tap(sendBytes), Stream.runDrain)
 
 // Background: same stream, no destination. Cache side effect only.
-const prefetchToDisk = (plan, i, tracksDir, musicModel) =>
-  trackStream(plan, i, tracksDir, musicModel).pipe(Stream.runDrain)
+const prefetchToDisk = (plan, i) =>
+  trackStream(plan, i).pipe(Stream.runDrain)
 ```
 
 ## Just-in-time planning

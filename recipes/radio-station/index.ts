@@ -13,10 +13,10 @@
  * returns a `Stream<Uint8Array>`; the WS sender and the prefetcher
  * are the only places where bytes flow out (drain to WS or to /dev/null).
  */
-import { Effect, Exit, Fiber, Option, Ref, Result, Schema, Stream } from "effect"
+import { Effect, Exit, Fiber, Option, Ref, Schema, Stream } from "effect"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
-import { streamTurn } from "@effect-uai/core/LanguageModel"
+import { turn } from "@effect-uai/core/LanguageModel"
 import * as MusicGenerator from "@effect-uai/core/MusicGenerator"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import * as Turn from "@effect-uai/core/Turn"
@@ -63,7 +63,7 @@ export const planTrack = (
           .map((p, i) => `${i + 1}. ${p.title} — ${p.prompt}`)
           .join("\n")}`
 
-  return streamTurn({
+  return turn({
     model,
     structured: trackFormat,
     history: [
@@ -81,17 +81,7 @@ export const planTrack = (
         ].join("\n"),
       ),
     ],
-  }).pipe(
-    Stream.filterMap((e) => (Turn.isTurnComplete(e) ? Result.succeed(e.turn) : Result.failVoid)),
-    Stream.runHead,
-    Effect.flatMap(
-      Option.match({
-        onSome: Effect.succeed,
-        onNone: () => Effect.fail(new AiError.IncompleteTurn({})),
-      }),
-    ),
-    Effect.flatMap((turn) => Turn.decodeStructured(turn, trackFormat)),
-  )
+  }).pipe(Effect.flatMap((t) => Turn.decodeStructured(t, trackFormat)))
 }
 
 // ---------------------------------------------------------------------------

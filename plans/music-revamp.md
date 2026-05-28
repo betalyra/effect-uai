@@ -51,12 +51,12 @@ to worry about.
 `bpm`, `scale`, `lyrics`, `WeightedPrompt[]` on the Common surface.
 Cross-provider research (§3) shows:
 
-| Field | Providers with a structured wire field |
-| --- | --- |
-| `WeightedPrompt[]` blend | 2 / 10 (Lyria RealTime, Riffusion `/compose`) |
-| `bpm` | 1 / 10 (Lyria RealTime; Tencent has it as free-form description prose) |
-| `scale` | 1 / 10 (Lyria RealTime enum, 12 keys) |
-| `lyrics` (structured field) | 6 / 10 (ElevenLabs, MiniMax, Mureka, Suno, Riffusion, Tencent) |
+| Field                       | Providers with a structured wire field                                 |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `WeightedPrompt[]` blend    | 2 / 10 (Lyria RealTime, Riffusion `/compose`)                          |
+| `bpm`                       | 1 / 10 (Lyria RealTime; Tencent has it as free-form description prose) |
+| `scale`                     | 1 / 10 (Lyria RealTime enum, 12 keys)                                  |
+| `lyrics` (structured field) | 6 / 10 (ElevenLabs, MiniMax, Mureka, Suno, Riffusion, Tencent)         |
 
 Today, [LyriaGenerator.buildPrompt:119](../packages/providers/google/src/LyriaGenerator.ts#L119)
 silently splices `bpm`, `scale`, `instrumental`, `durationSeconds`,
@@ -145,12 +145,12 @@ export type CommonGenerateMusicRequest = {
 
 Removed from Common (now provider-typed extras):
 
-| Field | Reason | Where it lives now |
-| --- | --- | --- |
-| `prompts: string \| WeightedPrompt[]` | Multi-shape unhelpful when 8 / 10 only take a string | `LyriaRealtimeGenerator.streamGenerationFrom` input |
-| `bpm` | Structured on 1 / 10 | `LyriaRealtimeMusicConfig.bpm` |
-| `scale` | Structured on 1 / 10 (enum) | `LyriaRealtimeMusicConfig.scale` |
-| `instrumental` | Split 4 ways (see below), silent lie on "always instrumental" providers | provider-typed extras per adapter |
+| Field                                 | Reason                                                                  | Where it lives now                                  |
+| ------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| `prompts: string \| WeightedPrompt[]` | Multi-shape unhelpful when 8 / 10 only take a string                    | `LyriaRealtimeGenerator.streamGenerationFrom` input |
+| `bpm`                                 | Structured on 1 / 10                                                    | `LyriaRealtimeMusicConfig.bpm`                      |
+| `scale`                               | Structured on 1 / 10 (enum)                                             | `LyriaRealtimeMusicConfig.scale`                    |
+| `instrumental`                        | Split 4 ways (see below), silent lie on "always instrumental" providers | provider-typed extras per adapter                   |
 
 **Why `instrumental` moves off Common.** Cross-provider behavior splits
 four ways:
@@ -188,7 +188,7 @@ Change [Audio.ts:84-88](../packages/core/src/domain/Audio.ts#L84-L88):
 export type AudioBlob = {
   readonly format: AudioFormat
   readonly bytes: Uint8Array
-  readonly duration?: Duration.Duration   // was: durationSeconds?: number
+  readonly duration?: Duration.Duration // was: durationSeconds?: number
 }
 ```
 
@@ -328,8 +328,8 @@ use the generic one and live with `unknown` config.
 
 ### 2.6 Capability markers
 
-| Marker | Status | Justification |
-| --- | --- | --- |
+| Marker                    | Status   | Justification                                                            |
+| ------------------------- | -------- | ------------------------------------------------------------------------ |
 | `MusicInteractiveSession` | Existing | Service-level; gates `streamGenerationFrom`. Per capabilities §7 Tier 1. |
 
 No per-modifier markers, no new service-level markers. Per
@@ -398,14 +398,14 @@ you can't ask for vocals you can't get.
 
 ### 2.7 Wire-format conversions per adapter
 
-| Common field | Lyria 3 (Gemini) | ElevenLabs | MiniMax | Mureka | Stable Audio | Suno | MusicGen |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `prompt` | `contents.parts[0].text` | `prompt` | `prompt` | `prompt` (`desc`) | `prompt` | `prompt` | `prompt` |
-| `lyrics` | embed in prompt + warn | embed in prompt (or use `compositionPlan.lines` via typed extra) + warn | `lyrics` field | `lyrics` field (required) | n/a — warn-and-drop | `prompt` field in custom mode | n/a — warn-and-drop |
-| `durationSeconds` | n/a — warn (clip fixed 30 s; pro derived) | `music_length_ms = s * 1000` | n/a — derived from lyrics | `duration` (max 240) | `seconds_total = s` (max 180; 360 on 3.0) | model-determined — warn | `duration = s` |
-| `seed` | n/a — warn (Lyria 3 Gemini lacks seed) | only when `compositionPlan` set | n/a — warn | n/a — warn | `seed` | n/a — warn | `seed` |
-| `instrumental` | embed `"no vocals."` + warn | `force_instrumental` | `is_instrumental` | use `/instrumental/generate` endpoint | n/a (always inst) | `instrumental` | n/a (always inst) |
-| `outputFormat` | `mimeType` (mp3 or wav-pro-only) | `?output_format=` slug | `audio_setting.{sample_rate, bitrate, format}` | per `choices[]` format | `output_format` (wav or mp3) | fixed mp3 — warn | `output_format` (wav or mp3) |
+| Common field      | Lyria 3 (Gemini)                          | ElevenLabs                                                              | MiniMax                                        | Mureka                                | Stable Audio                              | Suno                          | MusicGen                     |
+| ----------------- | ----------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------- | ----------------------------------------- | ----------------------------- | ---------------------------- |
+| `prompt`          | `contents.parts[0].text`                  | `prompt`                                                                | `prompt`                                       | `prompt` (`desc`)                     | `prompt`                                  | `prompt`                      | `prompt`                     |
+| `lyrics`          | embed in prompt + warn                    | embed in prompt (or use `compositionPlan.lines` via typed extra) + warn | `lyrics` field                                 | `lyrics` field (required)             | n/a — warn-and-drop                       | `prompt` field in custom mode | n/a — warn-and-drop          |
+| `durationSeconds` | n/a — warn (clip fixed 30 s; pro derived) | `music_length_ms = s * 1000`                                            | n/a — derived from lyrics                      | `duration` (max 240)                  | `seconds_total = s` (max 180; 360 on 3.0) | model-determined — warn       | `duration = s`               |
+| `seed`            | n/a — warn (Lyria 3 Gemini lacks seed)    | only when `compositionPlan` set                                         | n/a — warn                                     | n/a — warn                            | `seed`                                    | n/a — warn                    | `seed`                       |
+| `instrumental`    | embed `"no vocals."` + warn               | `force_instrumental`                                                    | `is_instrumental`                              | use `/instrumental/generate` endpoint | n/a (always inst)                         | `instrumental`                | n/a (always inst)            |
+| `outputFormat`    | `mimeType` (mp3 or wav-pro-only)          | `?output_format=` slug                                                  | `audio_setting.{sample_rate, bitrate, format}` | per `choices[]` format                | `output_format` (wav or mp3)              | fixed mp3 — warn              | `output_format` (wav or mp3) |
 
 All warn-and-drop cells become `Effect.logWarning` today, migrating
 to `dropUnsupported` when capabilities Phase 0 ships.
@@ -418,24 +418,24 @@ Source: two parallel research agents, May 2026. Full results in
 research transcript. Cells: **S** structured wire field, **P**
 prompt-embedded, **—** unsupported, **?** unknown.
 
-| Capability | Lyria 3 | Lyria RT | ElevenLabs | MiniMax | Stable Audio | Mureka | Suno | MusicGen | Riffusion | Tencent |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Single text prompt | S | — | S | S | S | S | S | S | S | S |
-| Weighted blend | — | S | — | — | — | — | — | — | S | — |
-| Structured lyrics | P | — | S | S | — | S | S | — | S | S |
-| BPM control | P | S (60-200) | P | P | P | P | P | P | P | P (in description) |
-| Scale / key | P | S (12 enum) | P | P | P | P | P | P | P | P |
-| Instrumental flag | P | (forced) | S | S | (forced) | (endpoint) | S | (forced) | P | S |
-| Duration | S (fixed 30 s clip) | session | S (3-600 s) | derived | S (1-180 s, 360 on v3) | S (max 240 s) | model-determined | S | ? | derived |
-| Seed | — | S | S (plan only) | — | S | — | — | S | ? | ? |
-| Reference audio | — | — | S (inpainting; enterprise) | S (covers) | S (init_audio + mask) | S (ref_id / melody_id) | S (extend / cover) | S (input_audio + continuation) | ? | S (10 s prompt_audio) |
-| Output format choice | partial (mp3 vs wav-pro) | fixed PCM 48k stereo | S (~20 slugs) | S | S (wav / mp3) | S | fixed mp3 CDN | S (wav / mp3) | fixed m4a | ? |
-| Variants per call | 1 | stream | 1 | 1 | 1 | **2** | **2** | 1 | 1 | 1 |
-| Composition plan | — | — | S | — | — | — | — | — | S (compose endpoint) | S (lyric labels) |
-| Streaming output | — | S (WS bidi) | S (SSE) | S (`stream:true` hex) | — | — | S (separate URL) | — | — | — |
-| Bidi / interactive | — | S | — | — | — | — | — | — | — | — |
-| Watermark | S (SynthID forced) | S (SynthID forced) | S (C2PA opt-in) | — | — | — | — | — | — | — |
-| Async + poll | — | — | — | (status field) | S (Stability platform) | S (`/song/query/{id}`) | S (`record-info`) | S (Replicate predictions) | ? | S (WaveSpeed task) |
+| Capability           | Lyria 3                  | Lyria RT             | ElevenLabs                 | MiniMax               | Stable Audio           | Mureka                 | Suno               | MusicGen                       | Riffusion            | Tencent               |
+| -------------------- | ------------------------ | -------------------- | -------------------------- | --------------------- | ---------------------- | ---------------------- | ------------------ | ------------------------------ | -------------------- | --------------------- |
+| Single text prompt   | S                        | —                    | S                          | S                     | S                      | S                      | S                  | S                              | S                    | S                     |
+| Weighted blend       | —                        | S                    | —                          | —                     | —                      | —                      | —                  | —                              | S                    | —                     |
+| Structured lyrics    | P                        | —                    | S                          | S                     | —                      | S                      | S                  | —                              | S                    | S                     |
+| BPM control          | P                        | S (60-200)           | P                          | P                     | P                      | P                      | P                  | P                              | P                    | P (in description)    |
+| Scale / key          | P                        | S (12 enum)          | P                          | P                     | P                      | P                      | P                  | P                              | P                    | P                     |
+| Instrumental flag    | P                        | (forced)             | S                          | S                     | (forced)               | (endpoint)             | S                  | (forced)                       | P                    | S                     |
+| Duration             | S (fixed 30 s clip)      | session              | S (3-600 s)                | derived               | S (1-180 s, 360 on v3) | S (max 240 s)          | model-determined   | S                              | ?                    | derived               |
+| Seed                 | —                        | S                    | S (plan only)              | —                     | S                      | —                      | —                  | S                              | ?                    | ?                     |
+| Reference audio      | —                        | —                    | S (inpainting; enterprise) | S (covers)            | S (init_audio + mask)  | S (ref_id / melody_id) | S (extend / cover) | S (input_audio + continuation) | ?                    | S (10 s prompt_audio) |
+| Output format choice | partial (mp3 vs wav-pro) | fixed PCM 48k stereo | S (~20 slugs)              | S                     | S (wav / mp3)          | S                      | fixed mp3 CDN      | S (wav / mp3)                  | fixed m4a            | ?                     |
+| Variants per call    | 1                        | stream               | 1                          | 1                     | 1                      | **2**                  | **2**              | 1                              | 1                    | 1                     |
+| Composition plan     | —                        | —                    | S                          | —                     | —                      | —                      | —                  | —                              | S (compose endpoint) | S (lyric labels)      |
+| Streaming output     | —                        | S (WS bidi)          | S (SSE)                    | S (`stream:true` hex) | —                      | —                      | S (separate URL)   | —                              | —                    | —                     |
+| Bidi / interactive   | —                        | S                    | —                          | —                     | —                      | —                      | —                  | —                              | —                    | —                     |
+| Watermark            | S (SynthID forced)       | S (SynthID forced)   | S (C2PA opt-in)            | —                     | —                      | —                      | —                  | —                              | —                    | —                     |
+| Async + poll         | —                        | —                    | —                          | (status field)        | S (Stability platform) | S (`/song/query/{id}`) | S (`record-info`)  | S (Replicate predictions)      | ?                    | S (WaveSpeed task)    |
 
 **Patterns confirmed:**
 
@@ -463,17 +463,17 @@ prompt-embedded, **—** unsupported, **?** unknown.
 
 ### 4.1 Breaking changes vs v0.6
 
-| Change | Mechanical? |
-| --- | --- |
-| `prompts → prompt`, drop `WeightedPrompt[]` array form | yes, one rename |
-| `bpm`, `scale`, `instrumental` removed from `CommonGenerateMusicRequest` | yes, deletions; `instrumental` reappears on Lyria-typed and ElevenLabs-typed requests |
-| `durationSeconds: number → duration: Duration.Duration` on request + `AudioBlob` | yes, mechanical (`Duration.seconds(n)`) |
-| `MusicResult = AudioBlob & { … }` → `MusicResult = { audio: AudioBlob, … }` | callers swap `result.bytes` → `result.audio.bytes` |
-| `generate` returns `GenerateResult` not `MusicResult` | callers add `.primary` |
-| `streamGenerationFrom` yields `MusicStreamEvent` not `AudioChunk` | callers `filterMap` for `_tag: "audio"` or add `Loop.value` handling |
-| `MusicSessionInput.config` is `unknown` on the generic surface; narrowed on `LyriaRealtimeGenerator` | code using config knobs switches to the typed Lyria service |
-| `MusicSessionInput.control` is `string` on the generic surface; enum on `LyriaRealtimeGenerator` | same |
-| `Watermark` extracted as named type (string-literal union) | import name only |
+| Change                                                                                               | Mechanical?                                                                           |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `prompts → prompt`, drop `WeightedPrompt[]` array form                                               | yes, one rename                                                                       |
+| `bpm`, `scale`, `instrumental` removed from `CommonGenerateMusicRequest`                             | yes, deletions; `instrumental` reappears on Lyria-typed and ElevenLabs-typed requests |
+| `durationSeconds: number → duration: Duration.Duration` on request + `AudioBlob`                     | yes, mechanical (`Duration.seconds(n)`)                                               |
+| `MusicResult = AudioBlob & { … }` → `MusicResult = { audio: AudioBlob, … }`                          | callers swap `result.bytes` → `result.audio.bytes`                                    |
+| `generate` returns `GenerateResult` not `MusicResult`                                                | callers add `.primary`                                                                |
+| `streamGenerationFrom` yields `MusicStreamEvent` not `AudioChunk`                                    | callers `filterMap` for `_tag: "audio"` or add `Loop.value` handling                  |
+| `MusicSessionInput.config` is `unknown` on the generic surface; narrowed on `LyriaRealtimeGenerator` | code using config knobs switches to the typed Lyria service                           |
+| `MusicSessionInput.control` is `string` on the generic surface; enum on `LyriaRealtimeGenerator`     | same                                                                                  |
+| `Watermark` extracted as named type (string-literal union)                                           | import name only                                                                      |
 
 Lyria is the only provider in tree today. The `recipes/basic-music-generation`
 recipe needs short updates (`.primary.audio.bytes`, drop `bpm` /
@@ -571,13 +571,13 @@ Apply during Phase 0.
 
 ## 7. Effort
 
-| Phase | Surface | Effort |
-| --- | --- | --- |
-| 0 — Domain types + mock | ~150 LOC across `Music.ts`, `Audio.ts` (Duration migration), `MusicGenerator.ts`, `MockMusicGenerator.ts` | half-day |
-| 1 — Lyria adapter cleanup | ~80 LOC in `LyriaGenerator.ts` + tests; `LyriaGenerateRequest` typed-extras for `instrumental` | half-day |
-| 2 — ElevenLabs adapter | per [plans/elevenlabs-music.md](./elevenlabs-music.md), simplified by trimmed Common; `forceInstrumental` on typed request | ~1 day |
-| 3 — Recipe refactor | `--provider=` flag, dual outputs | 1 hour |
-| 4 — Migration doc + changeset | mechanical | 2 hours |
+| Phase                         | Surface                                                                                                                    | Effort   |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------- |
+| 0 — Domain types + mock       | ~150 LOC across `Music.ts`, `Audio.ts` (Duration migration), `MusicGenerator.ts`, `MockMusicGenerator.ts`                  | half-day |
+| 1 — Lyria adapter cleanup     | ~80 LOC in `LyriaGenerator.ts` + tests; `LyriaGenerateRequest` typed-extras for `instrumental`                             | half-day |
+| 2 — ElevenLabs adapter        | per [plans/elevenlabs-music.md](./elevenlabs-music.md), simplified by trimmed Common; `forceInstrumental` on typed request | ~1 day   |
+| 3 — Recipe refactor           | `--provider=` flag, dual outputs                                                                                           | 1 hour   |
+| 4 — Migration doc + changeset | mechanical                                                                                                                 | 2 hours  |
 
 Total: ~2.5 days for a coherent v0.7 release. (`extend` and the
 Lyria-RealTime typed surface deferred.)

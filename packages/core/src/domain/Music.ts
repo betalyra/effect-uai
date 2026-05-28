@@ -176,9 +176,8 @@ export const filteredPromptEvent = (prompt: string, reason: string): MusicStream
 
 export const isAudioEvent = (e: MusicStreamEvent): e is MusicStreamEvent & { _tag: "audio" } =>
   e._tag === "audio"
-export const isWarningEvent = (
-  e: MusicStreamEvent,
-): e is MusicStreamEvent & { _tag: "warning" } => e._tag === "warning"
+export const isWarningEvent = (e: MusicStreamEvent): e is MusicStreamEvent & { _tag: "warning" } =>
+  e._tag === "warning"
 export const isFilteredPromptEvent = (
   e: MusicStreamEvent,
 ): e is MusicStreamEvent & { _tag: "filteredPrompt" } => e._tag === "filteredPrompt"

@@ -21,14 +21,16 @@ providers do with the same prompt.
 import { Duration } from "effect"
 import { generate } from "@effect-uai/core/MusicGenerator"
 
-const result = yield* generate({
-  model: "music_v1",      // or "lyria-3-clip-preview"
-  prompt: "Lo-fi piano with brushed drums, 70 BPM, melancholic",
-  duration: Duration.seconds(30),
-  outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 },
-})
+const result =
+  yield *
+  generate({
+    model: "music_v1", // or "lyria-3-clip-preview"
+    prompt: "Lo-fi piano with brushed drums, 70 BPM, melancholic",
+    duration: Duration.seconds(30),
+    outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 },
+  })
 
-yield* writeFile("out.mp3", result.primary.audio.bytes)
+yield * writeFile("out.mp3", result.primary.audio.bytes)
 ```
 
 The recipe yields the generic `MusicGenerator` service. The runner
@@ -57,14 +59,14 @@ Writes `out-google.mp3` or `out-elevenlabs.mp3` next to the recipe.
 The shared `MusicGenerator` surface intentionally hides most
 differences. The ones worth knowing:
 
-| Capability                                                  | Lyria 3 sync                                  | ElevenLabs Music                                                                    |
-| ----------------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Duration                                                    | Fixed 30 s for `clip`, controllable on `pro`. | Honored. `music_length_ms` 3 s – 10 min.                                            |
-| Streaming                                                   | Single chunk after sync (fake stream).        | Native chunked HTTP via `POST /v1/music/stream`.                                    |
-| Lyrics                                                      | No structured wire field; embed in prompt.    | Per-section `lines` in composition plan, or embed in prompt.                        |
-| Watermark                                                   | Always `"synthid"` (mandatory).               | Opt-in `"c2pa"` via `signWithC2pa: true` (MP3 only).                                |
-| Vocals control                                              | Embed `"no vocals"` in your prompt.           | `forceInstrumental` on the typed request.                                           |
-| Composition plan (per-section lyrics + styles + durations)  | —                                             | Yes (`compositionPlan`). Free plan-generator at `POST /v1/music/plan`.              |
+| Capability                                                 | Lyria 3 sync                                  | ElevenLabs Music                                                       |
+| ---------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------- |
+| Duration                                                   | Fixed 30 s for `clip`, controllable on `pro`. | Honored. `music_length_ms` 3 s – 10 min.                               |
+| Streaming                                                  | Single chunk after sync (fake stream).        | Native chunked HTTP via `POST /v1/music/stream`.                       |
+| Lyrics                                                     | No structured wire field; embed in prompt.    | Per-section `lines` in composition plan, or embed in prompt.           |
+| Watermark                                                  | Always `"synthid"` (mandatory).               | Opt-in `"c2pa"` via `signWithC2pa: true` (MP3 only).                   |
+| Vocals control                                             | Embed `"no vocals"` in your prompt.           | `forceInstrumental` on the typed request.                              |
+| Composition plan (per-section lyrics + styles + durations) | —                                             | Yes (`compositionPlan`). Free plan-generator at `POST /v1/music/plan`. |
 
 These provider-specific knobs live on the **typed** services
 (`LyriaGenerator`, `ElevenLabsMusicGenerator`), not on the

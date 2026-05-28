@@ -61,11 +61,11 @@ string for models the SDK hasn't been updated for.
 ```ts
 type LyriaGenerateRequest = {
   readonly model: LyriaModel
-  readonly prompt: string                  // single string; forwarded verbatim
-  readonly lyrics?: string                 // dropped with a logged warning
-  readonly duration?: Duration.Duration    // dropped with a logged warning
-  readonly seed?: number                   // dropped with a logged warning
-  readonly outputFormat?: AudioFormat      // mp3 or wav (pro only)
+  readonly prompt: string // single string; forwarded verbatim
+  readonly lyrics?: string // dropped with a logged warning
+  readonly duration?: Duration.Duration // dropped with a logged warning
+  readonly seed?: number // dropped with a logged warning
+  readonly outputFormat?: AudioFormat // mp3 or wav (pro only)
 }
 ```
 
@@ -89,8 +89,8 @@ its own service tag.
 type MusicResult = {
   readonly audio: AudioBlob
   readonly provider?: "lyria"
-  readonly lyrics?: string                 // text part when Lyria returned one
-  readonly watermark?: Watermark           // always "synthid"
+  readonly lyrics?: string // text part when Lyria returned one
+  readonly watermark?: Watermark // always "synthid"
 }
 ```
 
@@ -113,12 +113,12 @@ Same `GOOGLE_API_KEY` as the language-model and speech Gemini layers.
 
 Standard HTTP → `AiError` mapping. Lyria-specific:
 
-| Request shape                              | Error                                       |
-| ------------------------------------------ | ------------------------------------------- |
-| WAV requested on `lyria-3-clip-preview`    | `AiError.Unsupported` (clip is MP3-only)    |
-| Output container ≠ mp3 / wav               | `AiError.Unsupported`                       |
-| Empty audio part in the response           | `AiError.GenerationFailed` (likely a prompt-filter rejection — Lyria filters artist names and copyrighted lyrics) |
-| `streamGenerationFrom` call                | Compile-time error (no marker)              |
+| Request shape                           | Error                                                                                                             |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| WAV requested on `lyria-3-clip-preview` | `AiError.Unsupported` (clip is MP3-only)                                                                          |
+| Output container ≠ mp3 / wav            | `AiError.Unsupported`                                                                                             |
+| Empty audio part in the response        | `AiError.GenerationFailed` (likely a prompt-filter rejection — Lyria filters artist names and copyrighted lyrics) |
+| `streamGenerationFrom` call             | Compile-time error (no marker)                                                                                    |
 
 ## See also
 

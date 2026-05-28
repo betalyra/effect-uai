@@ -40,29 +40,29 @@ Sources:
 
 ### Endpoints
 
-| Method + path                     | Purpose                                                                | Response                                              |
-| --------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------- |
-| `POST /v1/music`                  | Sync compose. Returns full audio bytes.                                | Binary audio in `output_format` (default mp3 44.1k).  |
-| `POST /v1/music/stream`           | Streaming compose. Chunked progressive audio.                          | `text/event-stream` chunked binary.                   |
-| `POST /v1/music/detailed`         | Sync compose returning audio + metadata.                               | `multipart/mixed` (JSON metadata + binary audio).     |
-| `POST /v1/music/plan`             | Turn a prompt into a structured `MusicPrompt` composition plan. Free. | JSON `MusicPrompt`.                                   |
+| Method + path             | Purpose                                                               | Response                                             |
+| ------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------- |
+| `POST /v1/music`          | Sync compose. Returns full audio bytes.                               | Binary audio in `output_format` (default mp3 44.1k). |
+| `POST /v1/music/stream`   | Streaming compose. Chunked progressive audio.                         | `text/event-stream` chunked binary.                  |
+| `POST /v1/music/detailed` | Sync compose returning audio + metadata.                              | `multipart/mixed` (JSON metadata + binary audio).    |
+| `POST /v1/music/plan`     | Turn a prompt into a structured `MusicPrompt` composition plan. Free. | JSON `MusicPrompt`.                                  |
 
 Auth: same `xi-api-key` header as TTS. Host resolved via existing
 `resolveHost` (default / `eu` / `in` residency hosts).
 
 ### Request body (compose + stream)
 
-| Field                       | Type                         | Default     | Notes                                                                |
-| --------------------------- | ---------------------------- | ----------- | -------------------------------------------------------------------- |
-| `prompt`                    | `string \| null`             |             | Mutually exclusive with `composition_plan`.                          |
-| `composition_plan`          | `MusicPrompt \| null`        |             | Mutually exclusive with `prompt`.                                    |
-| `music_length_ms`           | `integer \| null`            |             | `3000`-`600000`. Only with `prompt`.                                 |
-| `model_id`                  | `string`                     | `music_v1`  | UI exposes `music_v2`; API default is still `v1`.                    |
-| `seed`                      | `integer \| null`            |             | Determinism. Incompatible with prompt-only mode (docs not explicit). |
-| `force_instrumental`        | `boolean`                    | `false`     | Hard switch.                                                         |
-| `respect_sections_durations`| `boolean`                    | `true`      | Plan mode only.                                                      |
-| `store_for_inpainting`      | `boolean`                    | `false`     | Enterprise.                                                          |
-| `sign_with_c2pa`            | `boolean`                    | `false`     | Embeds C2PA signature in mp3 output.                                 |
+| Field                        | Type                  | Default    | Notes                                                                |
+| ---------------------------- | --------------------- | ---------- | -------------------------------------------------------------------- |
+| `prompt`                     | `string \| null`      |            | Mutually exclusive with `composition_plan`.                          |
+| `composition_plan`           | `MusicPrompt \| null` |            | Mutually exclusive with `prompt`.                                    |
+| `music_length_ms`            | `integer \| null`     |            | `3000`-`600000`. Only with `prompt`.                                 |
+| `model_id`                   | `string`              | `music_v1` | UI exposes `music_v2`; API default is still `v1`.                    |
+| `seed`                       | `integer \| null`     |            | Determinism. Incompatible with prompt-only mode (docs not explicit). |
+| `force_instrumental`         | `boolean`             | `false`    | Hard switch.                                                         |
+| `respect_sections_durations` | `boolean`             | `true`     | Plan mode only.                                                      |
+| `store_for_inpainting`       | `boolean`             | `false`    | Enterprise.                                                          |
+| `sign_with_c2pa`             | `boolean`             | `false`    | Embeds C2PA signature in mp3 output.                                 |
 
 Output format is a query string (`?output_format=mp3_44100_128`) just
 like TTS. Supported: mp3 / wav / pcm / opus / mulaw / alaw at the usual
@@ -74,16 +74,16 @@ sample-rate matrix. `formatToOutputSlug` already covers all of them.
 type MusicPrompt = {
   positive_global_styles: ReadonlyArray<string>
   negative_global_styles: ReadonlyArray<string>
-  sections: ReadonlyArray<SongSection>  // up to 30
+  sections: ReadonlyArray<SongSection> // up to 30
 }
 
 type SongSection = {
-  section_name: string                          // 1-100 chars
+  section_name: string // 1-100 chars
   positive_local_styles: ReadonlyArray<string>
   negative_local_styles: ReadonlyArray<string>
-  duration_ms: number                           // 3000-120000
-  lines: ReadonlyArray<string>                  // lyrics, max 200 chars / line
-  source_from?: SectionSource                   // enterprise inpainting
+  duration_ms: number // 3000-120000
+  lines: ReadonlyArray<string> // lyrics, max 200 chars / line
+  source_from?: SectionSource // enterprise inpainting
 }
 ```
 
@@ -128,24 +128,25 @@ export type ElevenLabsCompositionPlan = {
   }>
 }
 
-export type ElevenLabsMusicGenerateRequest =
-  Omit<CommonGenerateMusicRequest, "model"> & {
-    readonly model?: ElevenLabsMusicModel
-    readonly compositionPlan?: ElevenLabsCompositionPlan
-    readonly seed?: number
-    readonly signWithC2pa?: boolean
-    readonly respectSectionsDurations?: boolean
-  }
+export type ElevenLabsMusicGenerateRequest = Omit<CommonGenerateMusicRequest, "model"> & {
+  readonly model?: ElevenLabsMusicModel
+  readonly compositionPlan?: ElevenLabsCompositionPlan
+  readonly seed?: number
+  readonly signWithC2pa?: boolean
+  readonly respectSectionsDurations?: boolean
+}
 
 export type ElevenLabsMusicGeneratorService = {
-  readonly generate: (r: ElevenLabsMusicGenerateRequest)
-    => Effect.Effect<MusicResult, AiError.AiError>
-  readonly streamGeneration: (r: ElevenLabsMusicGenerateRequest)
-    => Stream.Stream<AudioChunk, AiError.AiError>
+  readonly generate: (
+    r: ElevenLabsMusicGenerateRequest,
+  ) => Effect.Effect<MusicResult, AiError.AiError>
+  readonly streamGeneration: (
+    r: ElevenLabsMusicGenerateRequest,
+  ) => Stream.Stream<AudioChunk, AiError.AiError>
   readonly streamGenerationFrom: <E, R>(
     input: Stream.Stream<MusicSessionInput, E, R>,
     request: CommonStreamGenerateMusicRequest,
-  ) => Stream.Stream<AudioChunk, AiError.AiError | E, R>  // always Unsupported
+  ) => Stream.Stream<AudioChunk, AiError.AiError | E, R> // always Unsupported
   /** Free helper: turn a prompt into a structured composition plan. */
   readonly createCompositionPlan: (input: {
     readonly prompt: string
@@ -157,16 +158,16 @@ export type ElevenLabsMusicGeneratorService = {
 
 Mapping `CommonGenerateMusicRequest` → wire body:
 
-| Common field             | Wire field            | Rule                                                                                                |
-| ------------------------ | --------------------- | --------------------------------------------------------------------------------------------------- |
-| `prompts: string`        | `prompt`              | Pass through.                                                                                       |
-| `prompts: WeightedPrompt[]` | `prompt`           | Flatten like Lyria's `buildPrompt` (`"text (weight N)"` join). No weighted-blend field on the wire. |
-| `lyrics`                 | `prompt` suffix       | Append `Lyrics:\n…` like Lyria. Or if `compositionPlan` is set, ignore (caller owns `lines`).       |
-| `durationSeconds`        | `music_length_ms`     | `* 1000`. Reject when `compositionPlan` is also set.                                                |
-| `bpm`, `scale`           | `prompt` suffix       | Inline hints. No structured fields exist.                                                           |
-| `instrumental`           | `force_instrumental`  | Direct.                                                                                             |
-| `outputFormat`           | `?output_format=…`    | Reuse `formatToOutputSlug`.                                                                         |
-| `model`                  | `model_id`            | Default to `music_v1`.                                                                              |
+| Common field                | Wire field           | Rule                                                                                                |
+| --------------------------- | -------------------- | --------------------------------------------------------------------------------------------------- |
+| `prompts: string`           | `prompt`             | Pass through.                                                                                       |
+| `prompts: WeightedPrompt[]` | `prompt`             | Flatten like Lyria's `buildPrompt` (`"text (weight N)"` join). No weighted-blend field on the wire. |
+| `lyrics`                    | `prompt` suffix      | Append `Lyrics:\n…` like Lyria. Or if `compositionPlan` is set, ignore (caller owns `lines`).       |
+| `durationSeconds`           | `music_length_ms`    | `* 1000`. Reject when `compositionPlan` is also set.                                                |
+| `bpm`, `scale`              | `prompt` suffix      | Inline hints. No structured fields exist.                                                           |
+| `instrumental`              | `force_instrumental` | Direct.                                                                                             |
+| `outputFormat`              | `?output_format=…`   | Reuse `formatToOutputSlug`.                                                                         |
+| `model`                     | `model_id`           | Default to `music_v1`.                                                                              |
 
 Errors:
 
@@ -251,10 +252,10 @@ pnpm tsx run-node.ts --provider=elevenlabs ./my-track.json
 
 Per-provider wiring inside the runner:
 
-| Branch                  | Layer                                  | Env var              | Default model         |
-| ----------------------- | -------------------------------------- | -------------------- | --------------------- |
-| `--provider=google`     | `@effect-uai/google/LyriaGenerator`    | `GOOGLE_API_KEY`     | `lyria-3-clip-preview`|
-| `--provider=elevenlabs` | `@effect-uai/elevenlabs/ElevenLabsMusicGenerator` | `ELEVENLABS_API_KEY` | `music_v1`            |
+| Branch                  | Layer                                             | Env var              | Default model          |
+| ----------------------- | ------------------------------------------------- | -------------------- | ---------------------- |
+| `--provider=google`     | `@effect-uai/google/LyriaGenerator`               | `GOOGLE_API_KEY`     | `lyria-3-clip-preview` |
+| `--provider=elevenlabs` | `@effect-uai/elevenlabs/ElevenLabsMusicGenerator` | `ELEVENLABS_API_KEY` | `music_v1`             |
 
 Output filenames are suffixed with the provider for easy A/B
 comparison: `out-simple-google.mp3`, `out-simple-elevenlabs.mp3`,

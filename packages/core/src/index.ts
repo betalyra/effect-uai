@@ -1,5 +1,6 @@
 export * as AiError from "./domain/AiError.js"
 export * as Audio from "./domain/Audio.js"
+export * as Capabilities from "./capabilities/Capabilities.js"
 export * as Image from "./domain/Image.js"
 export * as Items from "./domain/Items.js"
 export * as Media from "./domain/Media.js"

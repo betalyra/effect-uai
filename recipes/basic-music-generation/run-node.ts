@@ -1,157 +1,197 @@
 /**
- * Node-specific runner for the basic-music-generation recipe.
+ * Node runner for the basic-music-generation recipe. Dispatches
+ * between Google Lyria and ElevenLabs Music via `--provider=`.
  *
- * Modes:
+ * Usage:
  *
- * - No argument → runs both built-in variants and writes
- *   `out-simple.mp3` + `out-weighted.mp3` next to the recipe.
- * - One positional path argument →
- *   - `*.txt`  → reads the file as a single prompt, runs only the
- *               simple variant, writes `out-simple.mp3`.
- *   - `*.json` → parses the file as a `WeightedConfig`, runs only the
- *               weighted variant, writes `out-weighted.mp3`.
+ *   # Default: Google Lyria with the built-in prompt.
+ *   GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts
  *
- * Run with:
- *   `GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts`
- *   `GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts my-prompt.txt`
+ *   # Explicit provider:
+ *   GOOGLE_API_KEY=...     pnpm tsx recipes/basic-music-generation/run-node.ts --provider=google
+ *   ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts --provider=elevenlabs
  *
- * Cost note: `lyria-3-clip-preview` is fixed at 30 s of MP3 output.
+ *   # Provider + custom prompt from a .txt file:
+ *   ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts --provider=elevenlabs ./my-prompt.txt
+ *
+ * Writes `out-{provider}.mp3` next to the recipe.
+ *
+ * Cost note:
+ * - `lyria-3-clip-preview` is fixed at 30 s of MP3.
+ * - ElevenLabs `music_v1` honors `music_length_ms`; billed per
+ *   generation per the active plan.
  */
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import { Config, Effect, Layer, Logger, Match, References } from "effect"
+import { Array as Arr, Config, Effect, Layer, Logger, Match, Option, References } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
+import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsMusicGenerator"
 import { layer as lyriaLayer } from "@effect-uai/google/LyriaGenerator"
-import {
-  defaultSimplePrompt,
-  defaultWeightedConfig,
-  runSimple,
-  runWeighted,
-  type WeightedConfig,
-} from "./index.js"
+import { defaultModel, defaultPrompt, run, type Provider } from "./index.js"
 
 const outDir = path.dirname(new URL(import.meta.url).pathname)
 
-type Mode =
-  | { readonly _tag: "both" }
-  | { readonly _tag: "simple"; readonly prompt: string }
-  | { readonly _tag: "weighted"; readonly config: WeightedConfig }
+// ---------------------------------------------------------------------------
+// Argv parsing (pure)
+// ---------------------------------------------------------------------------
 
-const usage = (): never => {
-  console.error(
-    `Usage: pnpm tsx recipes/basic-music-generation/run-node.ts [<file>]
-  no args               run both built-in variants
-  <file>.txt            run the simple variant with the file contents as prompt
-  <file>.json           run the weighted variant with the file as WeightedConfig`,
-  )
-  process.exit(1)
+type Args = {
+  readonly provider: Provider
+  readonly promptPath: Option.Option<string>
 }
 
-const parseMode = (argPath: string | undefined): Effect.Effect<Mode> =>
-  Effect.gen(function* () {
-    if (argPath === undefined) {
-      return { _tag: "both" } satisfies Mode
-    }
-    const abs = path.resolve(process.cwd(), argPath)
-    const ext = path.extname(abs).toLowerCase()
-    return yield* Match.value(ext).pipe(
-      Match.when(".txt", () =>
-        Effect.tryPromise(() => fs.readFile(abs, "utf8")).pipe(
-          Effect.map((contents): Mode => ({ _tag: "simple", prompt: contents.trim() })),
-          Effect.orDie,
+const isProvider = (s: string): s is Provider => s === "google" || s === "elevenlabs"
+
+const expectProvider = (v: string): Effect.Effect<Provider> =>
+  isProvider(v)
+    ? Effect.succeed(v)
+    : Effect.die(`Unknown provider: ${v}. Use --provider=google or --provider=elevenlabs.`)
+
+/**
+ * Token = `{ provider }` from `--provider=X`, or `{ providerNext }` to
+ * signal the next bare token should be parsed as the provider value
+ * (handles space-separated `--provider X`), or a `{ path }` for the
+ * positional prompt-file argument.
+ */
+type Token =
+  | { readonly _tag: "provider"; readonly provider: Provider }
+  | { readonly _tag: "providerNext" }
+  | { readonly _tag: "path"; readonly path: string }
+
+const tokenize = (arg: string): Effect.Effect<Token> =>
+  arg === "--provider"
+    ? Effect.succeed<Token>({ _tag: "providerNext" })
+    : arg.startsWith("--provider=")
+      ? expectProvider(arg.slice("--provider=".length)).pipe(
+          Effect.map((provider): Token => ({ _tag: "provider", provider })),
+        )
+      : Effect.succeed<Token>({ _tag: "path", path: arg })
+
+type ParseState = { readonly args: Args; readonly awaitingProvider: boolean }
+
+const initialState: ParseState = {
+  args: { provider: "google", promptPath: Option.none() },
+  awaitingProvider: false,
+}
+
+const step = (state: ParseState, token: Token): Effect.Effect<ParseState> =>
+  state.awaitingProvider && token._tag === "path"
+    ? expectProvider(token.path).pipe(
+        Effect.map((provider) => ({
+          args: { ...state.args, provider },
+          awaitingProvider: false,
+        })),
+      )
+    : Match.value(token).pipe(
+        Match.tag("provider", ({ provider }) =>
+          Effect.succeed<ParseState>({
+            args: { ...state.args, provider },
+            awaitingProvider: false,
+          }),
         ),
-      ),
-      Match.when(".json", () =>
-        Effect.tryPromise(() => fs.readFile(abs, "utf8")).pipe(
-          Effect.map(
-            (contents): Mode => ({
-              _tag: "weighted",
-              config: JSON.parse(contents) as WeightedConfig,
-            }),
-          ),
-          Effect.orDie,
+        Match.tag("providerNext", () =>
+          Effect.succeed<ParseState>({ ...state, awaitingProvider: true }),
         ),
+        Match.tag("path", ({ path }) =>
+          Effect.succeed<ParseState>({
+            args: { ...state.args, promptPath: Option.some(path) },
+            awaitingProvider: false,
+          }),
+        ),
+        Match.exhaustive,
+      )
+
+const parseArgs = (argv: ReadonlyArray<string>): Effect.Effect<Args> =>
+  Effect.forEach(argv, tokenize).pipe(
+    Effect.flatMap((tokens) =>
+      Arr.reduce(tokens, Effect.succeed(initialState), (accEff, token) =>
+        accEff.pipe(Effect.flatMap((acc) => step(acc, token))),
       ),
-      Match.orElse((): Effect.Effect<Mode> => Effect.sync(usage)),
-    )
-  })
-
-const runSimplePath = (prompt: string) => () =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("running simple variant", { promptPreview: prompt.slice(0, 80) })
-    const result = yield* runSimple(prompt)
-    yield* Effect.logInfo("simple generation complete", {
-      bytes: result.bytes.length,
-      format: result.format,
-      watermark: result.watermark,
-    })
-    yield* Effect.tryPromise(() => fs.writeFile(path.join(outDir, "out-simple.mp3"), result.bytes))
-    yield* Effect.logInfo("wrote out-simple.mp3 alongside this recipe")
-  })
-
-const runWeightedPath = (config: WeightedConfig) => () =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("running weighted variant", {
-      promptCount: config.prompts.length,
-      bpm: config.bpm,
-      scale: config.scale,
-      hasLyrics: config.lyrics !== undefined,
-    })
-    const result = yield* runWeighted(config)
-    yield* Effect.logInfo("weighted generation complete", {
-      bytes: result.bytes.length,
-      format: result.format,
-      lyrics: result.lyrics?.slice(0, 80),
-      watermark: result.watermark,
-    })
-    yield* Effect.tryPromise(() =>
-      fs.writeFile(path.join(outDir, "out-weighted.mp3"), result.bytes),
-    )
-    yield* Effect.logInfo("wrote out-weighted.mp3 alongside this recipe")
-  })
-
-const runMode = (
-  mode: Mode,
-): Effect.Effect<
-  void,
-  unknown,
-  ReturnType<typeof lyriaLayer> extends Layer.Layer<infer A, any, any> ? A : never
-> =>
-  Match.value(mode).pipe(
-    Match.tag("both", () =>
-      Effect.gen(function* () {
-        yield* runSimplePath(defaultSimplePrompt)()
-        yield* runWeightedPath(defaultWeightedConfig)()
-      }),
     ),
-    Match.tag("simple", ({ prompt }) => runSimplePath(prompt)()),
-    Match.tag("weighted", ({ config }) => runWeightedPath(config)()),
-    Match.exhaustive,
+    Effect.map((state) => state.args),
   )
 
-const program = Effect.gen(function* () {
-  const mode = yield* parseMode(process.argv[2])
-  yield* runMode(mode)
-})
+// ---------------------------------------------------------------------------
+// IO
+// ---------------------------------------------------------------------------
 
-const apiKeyLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
-    return lyriaLayer({ apiKey })
-  }),
-)
+const loadPrompt = (promptPath: Option.Option<string>): Effect.Effect<string> =>
+  Option.match(promptPath, {
+    onNone: () => Effect.succeed(defaultPrompt),
+    onSome: (p) =>
+      Effect.tryPromise(() => fs.readFile(path.resolve(process.cwd(), p), "utf8")).pipe(
+        Effect.map((s) => s.trim()),
+        Effect.orDie,
+      ),
+  })
 
-const mainLayer = Layer.mergeAll(
-  apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
-  Logger.layer([Logger.consolePretty()]),
-)
+const writeOutput = (provider: Provider, bytes: Uint8Array): Effect.Effect<void> =>
+  Effect.tryPromise(() => fs.writeFile(path.join(outDir, `out-${provider}.mp3`), bytes)).pipe(
+    Effect.orDie,
+  )
 
-Effect.runPromise(
-  program.pipe(
-    Effect.provide(mainLayer),
-    Effect.provideService(References.MinimumLogLevel, "Info"),
+// ---------------------------------------------------------------------------
+// Provider Layer dispatch
+// ---------------------------------------------------------------------------
+
+const providerLayer = Match.type<Provider>().pipe(
+  Match.when("google", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
+        return lyriaLayer({ apiKey })
+      }),
+    ),
   ),
-).catch((err) => {
+  Match.when("elevenlabs", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
+        return elevenlabsLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.exhaustive,
+)
+
+// ---------------------------------------------------------------------------
+// Program
+// ---------------------------------------------------------------------------
+
+const program = ({ provider, promptPath }: Args) =>
+  Effect.gen(function* () {
+    const prompt = yield* loadPrompt(promptPath)
+    yield* Effect.logInfo(`generating with ${provider}`, {
+      promptPreview: prompt.slice(0, 80),
+      model: defaultModel[provider],
+    })
+    const result = yield* run({ model: defaultModel[provider], prompt })
+    yield* Effect.logInfo("generation complete", {
+      bytes: result.primary.audio.bytes.length,
+      format: result.primary.audio.format,
+      provider: result.primary.provider,
+      watermark: result.primary.watermark,
+      songId: result.primary.songId,
+      variants: result.variants.length,
+    })
+    yield* writeOutput(provider, result.primary.audio.bytes)
+    yield* Effect.logInfo(`wrote out-${provider}.mp3 alongside this recipe`)
+  })
+
+// ---------------------------------------------------------------------------
+// Entrypoint
+// ---------------------------------------------------------------------------
+
+const main = Effect.gen(function* () {
+  const args = yield* parseArgs(Arr.fromIterable(process.argv.slice(2)))
+  const layer = Layer.mergeAll(
+    providerLayer(args.provider).pipe(Layer.provide(FetchHttpClient.layer)),
+    Logger.layer([Logger.consolePretty()]),
+  )
+  return yield* program(args).pipe(Effect.provide(layer))
+}).pipe(Effect.provideService(References.MinimumLogLevel, "Info"))
+
+Effect.runPromise(main).catch((err) => {
   console.error("recipe failed:", err)
   process.exit(1)
 })

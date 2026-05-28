@@ -1,11 +1,10 @@
 import {
-  Array as Arr,
   Context,
+  Duration,
   Effect,
   Encoding,
   Layer,
   Match,
-  Option,
   Redacted,
   Result,
   Schema,
@@ -14,13 +13,16 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
+import { warnDroppedWhen } from "@effect-uai/core/Capabilities"
 import type {
   CommonGenerateMusicRequest,
   CommonStreamGenerateMusicRequest,
+  GenerateResult,
   MusicResult,
   MusicSessionInput,
-  WeightedPrompt,
+  MusicStreamEvent,
 } from "@effect-uai/core/Music"
+import { singleVariant } from "@effect-uai/core/Music"
 import { MusicGenerator, type MusicGeneratorService } from "@effect-uai/core/MusicGenerator"
 import type { LyriaModel } from "./models.js"
 
@@ -29,25 +31,34 @@ import type { LyriaModel } from "./models.js"
 // ---------------------------------------------------------------------------
 
 /**
- * Lyria-typed generate request. Narrows `model` to `LyriaModel`. The
- * Lyria sync API (`generateContent`) accepts only `audio/mp3` and
- * `audio/wav` output; `bpm`, `scale`, `instrumental` etc. on the
- * `CommonGenerateMusicRequest` are flattened into the prompt text
- * because the public API does not expose them as structured fields.
+ * Lyria-typed generate request. Narrows `model` to `LyriaModel`.
+ *
+ * Lyria 3 sync `generateContent` has no structured wire fields for
+ * `lyrics` / `duration` / `seed` / `instrumental` / `bpm` / `scale` /
+ * etc. Those fields on the Common request are logged as
+ * dropped-bucket-2 hints; the adapter never rewrites or augments the
+ * caller's prompt on their behalf. If you want lyrics or vocal
+ * suppression, include them in your `prompt` text yourself.
+ *
+ * Output format: only `audio/mp3` and `audio/wav` are accepted; other
+ * containers fail `Unsupported`. The Clip model variant is fixed at
+ * `audio/mp3`.
  */
 export type LyriaGenerateRequest = Omit<CommonGenerateMusicRequest, "model"> & {
   readonly model: LyriaModel
 }
 
 export type LyriaGeneratorService = {
-  readonly generate: (request: LyriaGenerateRequest) => Effect.Effect<MusicResult, AiError.AiError>
+  readonly generate: (
+    request: LyriaGenerateRequest,
+  ) => Effect.Effect<GenerateResult, AiError.AiError>
   readonly streamGeneration: (
     request: LyriaGenerateRequest,
   ) => Stream.Stream<AudioChunk, AiError.AiError>
   readonly streamGenerationFrom: <E, R>(
     input: Stream.Stream<MusicSessionInput, E, R>,
     request: CommonStreamGenerateMusicRequest,
-  ) => Stream.Stream<AudioChunk, AiError.AiError | E, R>
+  ) => Stream.Stream<MusicStreamEvent, AiError.AiError | E, R>
 }
 
 export class LyriaGenerator extends Context.Service<LyriaGenerator, LyriaGeneratorService>()(
@@ -60,7 +71,7 @@ export type Config = {
 }
 
 // ---------------------------------------------------------------------------
-// Codec — request → prompt text + response_format
+// Codec: AudioFormat → Lyria mimeType
 // ---------------------------------------------------------------------------
 
 export type LyriaResponseMimeType = "audio/mp3" | "audio/wav"
@@ -85,10 +96,10 @@ export const containerToMimeType: (
 )
 
 /**
- * Is this a Lyria 3 Clip model variant? Clip is fixed at 30 s MP3 — it
+ * Is this a Lyria 3 Clip model variant? Clip is fixed at 30 s MP3, it
  * does not accept a `responseFormat` on `generationConfig` (the live
- * API rejects unknown fields, despite what the docs imply). Pro
- * accepts the documented `responseFormat` knob.
+ * API rejects unknown fields). Pro accepts the documented
+ * `responseFormat` knob.
  */
 const isClipModel = (model: string): boolean => model.includes("clip")
 
@@ -110,38 +121,51 @@ export const realizedFormat: (mime: LyriaResponseMimeType) => AudioFormat =
     Match.exhaustive,
   )
 
+// ---------------------------------------------------------------------------
+// Bucket-2 warn-and-drop for Common fields Lyria 3 can't honor
+// ---------------------------------------------------------------------------
+
 /**
- * Collapse `prompts | WeightedPrompt[]` into a single prompt string and
- * splice in non-structural hints (`lyrics`, `bpm`, `scale`,
- * `instrumental`, `durationSeconds`). The Lyria 3 sync API only takes
- * one text part — every condition lives inline.
+ * Warn (don't fail) when the caller passed Common fields Lyria 3 has
+ * no wire field for. Bucket-2 per capabilities policy: provider has
+ * no structured interpretation; the output is still valid music, just
+ * less aligned with the caller's hint. We never embed these into the
+ * prompt on the caller's behalf, prompt construction is the
+ * developer's job.
  */
-export const buildPrompt = (request: CommonGenerateMusicRequest): string => {
-  const promptText = Match.value(request.prompts).pipe(
-    Match.when(Match.string, (s) => s),
-    Match.orElse((ws: ReadonlyArray<WeightedPrompt>) =>
-      Arr.map(ws, (w) =>
-        w.weight !== undefined && w.weight !== 1 ? `${w.text} (weight ${w.weight})` : w.text,
-      ).join(". "),
-    ),
+const warnDroppedHints = (request: LyriaGenerateRequest): Effect.Effect<void> =>
+  Effect.all(
+    [
+      warnDroppedWhen(request.lyrics, {
+        provider: "lyria",
+        capability: "lyrics",
+        field: "lyrics",
+        reason:
+          "Lyria 3 sync has no `lyrics` wire field. If you want vocals to follow specific lyrics, embed them in your prompt yourself (e.g. with `[Verse]` / `[Chorus]` tags).",
+      }),
+      warnDroppedWhen(
+        request.duration !== undefined ? Duration.toMillis(request.duration) : undefined,
+        {
+          provider: "lyria",
+          capability: "duration",
+          field: "duration",
+          reason:
+            "Lyria 3 clip is fixed at 30 s; pro derives duration from prompt content. There is no wire field for duration. If you want to steer length, mention it in your prompt.",
+        },
+      ),
+      warnDroppedWhen(request.seed, {
+        provider: "lyria",
+        capability: "seed",
+        field: "seed",
+        reason:
+          "Lyria 3 (Gemini surface) does not expose a seed parameter. Output is non-deterministic across identical prompts. Use Lyria 2 (Vertex) for seeded generation.",
+      }),
+    ],
+    { discard: true },
   )
-  const hints = Arr.getSomes([
-    request.instrumental === true ? Option.some("Instrumental only — no vocals.") : Option.none(),
-    request.bpm !== undefined ? Option.some(`BPM: ${request.bpm}.`) : Option.none(),
-    request.scale !== undefined ? Option.some(`Key/scale: ${request.scale}.`) : Option.none(),
-    request.durationSeconds !== undefined
-      ? Option.some(`Target duration: ${request.durationSeconds}s.`)
-      : Option.none(),
-  ])
-  const lyricsBlock =
-    request.lyrics !== undefined && request.instrumental !== true
-      ? `\n\nLyrics:\n${request.lyrics}`
-      : ""
-  return [promptText, ...hints].join(" ") + lyricsBlock
-}
 
 // ---------------------------------------------------------------------------
-// Wire response schema — just enough to find audio + optional lyrics text
+// Wire response schema
 // ---------------------------------------------------------------------------
 
 const InlineData = Schema.Struct({
@@ -245,14 +269,12 @@ const generateImpl =
   (cfg: Config) =>
   (
     request: LyriaGenerateRequest,
-  ): Effect.Effect<MusicResult, AiError.AiError, HttpClient.HttpClient> =>
+  ): Effect.Effect<GenerateResult, AiError.AiError, HttpClient.HttpClient> =>
     Effect.gen(function* () {
       const client = yield* HttpClient.HttpClient
       const requestedContainer = (request.outputFormat?.container ??
         "mp3") satisfies AudioFormat["container"]
       const mimeType = yield* containerToMimeType(requestedContainer)
-      // Clip is fixed 30 s mp3 — reject wav up front rather than sending
-      // a `responseFormat` that the live API ignores or rejects.
       if (isClipModel(request.model) && mimeType === "audio/wav") {
         return yield* new AiError.Unsupported({
           provider: "lyria",
@@ -260,11 +282,11 @@ const generateImpl =
           reason: `lyria-3-clip-preview is fixed at audio/mp3. Use lyria-3-pro-preview for audio/wav output.`,
         })
       }
-      const promptText = buildPrompt(request)
+      yield* warnDroppedHints(request)
       const body = isClipModel(request.model)
-        ? { contents: [{ parts: [{ text: promptText }] }] }
+        ? { contents: [{ parts: [{ text: request.prompt }] }] }
         : {
-            contents: [{ parts: [{ text: promptText }] }],
+            contents: [{ parts: [{ text: request.prompt }] }],
             generationConfig: {
               responseModalities: ["AUDIO", "TEXT"],
               responseFormat: { audio: { mimeType } },
@@ -290,10 +312,6 @@ const generateImpl =
       )
       const { inline, text } = extractParts(wire)
       if (inline === undefined) {
-        // No audio came back. Most common cause: Lyria filtered the prompt
-        // (named-artist references, copyrighted lyrics, etc.). Surface the
-        // full response body — text parts, finish reasons, prompt-feedback
-        // blocks — so the caller can see why.
         return yield* new AiError.GenerationFailed({
           provider: "lyria",
           raw: {
@@ -305,12 +323,13 @@ const generateImpl =
         })
       }
       const bytes = yield* decodeBase64ToBytes(inline.data)
-      return {
-        format: realizedFormat(mimeType),
-        bytes,
+      const result: MusicResult = {
+        audio: { format: realizedFormat(mimeType), bytes },
+        provider: "lyria",
         ...(text !== undefined && { lyrics: text }),
-        watermark: { kind: "synthid" },
-      } satisfies MusicResult
+        watermark: "synthid",
+      }
+      return singleVariant(result)
     })
 
 const streamGenerationImpl =
@@ -320,22 +339,22 @@ const streamGenerationImpl =
   ): Stream.Stream<AudioChunk, AiError.AiError, HttpClient.HttpClient> =>
     Stream.unwrap(
       Effect.map(generateImpl(cfg)(request), (result) =>
-        Stream.succeed<AudioChunk>({ bytes: result.bytes }),
+        Stream.succeed<AudioChunk>({ bytes: result.primary.audio.bytes }),
       ),
     )
 
 /**
- * Lyria 3 sync has no bidirectional session at the wire level — that's
- * Lyria RealTime (Phase 1b, separate Layer). The provider Layer here
- * also does NOT register `MusicInteractiveSession`, so callers using
+ * Lyria 3 sync has no bidirectional session at the wire level, that's
+ * Lyria RealTime (separate Layer). The provider Layer here also does
+ * NOT register `MusicInteractiveSession`, so callers using
  * `MusicGenerator.streamGenerationFrom` against only this Layer get a
  * compile-time error before this runtime fallback ever fires.
  */
 const streamGenerationFromUnsupported = <E, R>(
   _input: Stream.Stream<MusicSessionInput, E, R>,
   _request: CommonStreamGenerateMusicRequest,
-): Stream.Stream<AudioChunk, AiError.AiError | E, R> => {
-  const fail: Stream.Stream<AudioChunk, AiError.AiError | E, R> = Stream.fail(
+): Stream.Stream<MusicStreamEvent, AiError.AiError | E, R> => {
+  const fail: Stream.Stream<MusicStreamEvent, AiError.AiError | E, R> = Stream.fail(
     new AiError.Unsupported({
       provider: "lyria",
       capability: "streamGenerationFrom",
@@ -365,7 +384,7 @@ export const make = (
  * Layer that registers both the provider-specific `LyriaGenerator` tag
  * and the generic `MusicGenerator` tag.
  *
- * Does NOT register the `MusicInteractiveSession` capability marker —
+ * Does NOT register the `MusicInteractiveSession` capability marker,
  * Lyria 3 sync has no bidirectional session at the wire level. Code
  * calling `MusicGenerator.streamGenerationFrom` will fail to typecheck
  * against this Layer alone, which is the intended UX.
@@ -380,9 +399,10 @@ export const layer = (
       Effect.map(
         make(cfg),
         (s): MusicGeneratorService => ({
-          generate: (req: CommonGenerateMusicRequest) => s.generate(req as LyriaGenerateRequest),
+          generate: (req: CommonGenerateMusicRequest) =>
+            s.generate({ ...req, model: req.model as LyriaModel }),
           streamGeneration: (req: CommonStreamGenerateMusicRequest) =>
-            s.streamGeneration(req as LyriaGenerateRequest),
+            s.streamGeneration({ ...req, model: req.model as LyriaModel }),
           streamGenerationFrom: s.streamGenerationFrom,
         }),
       ),

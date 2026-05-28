@@ -44,3 +44,20 @@ export type ElevenLabsSttModel =
  * full catalog is fetched dynamically via `GET /v1/voices`.
  */
 export type ElevenLabsVoiceId = string
+
+/**
+ * Known ElevenLabs music model identifiers.
+ *
+ * - `music_v1` — current API default (as of May 2026). General-purpose
+ *   music composition.
+ * - `music_v2` — UI default; API plumbing in progress per the
+ *   May 26 2026 v2 launch blog. Include in the literal union so
+ *   callers can opt in when it ships.
+ *
+ * Reference: https://elevenlabs.io/docs/api-reference/music/compose
+ */
+export type ElevenLabsMusicModel =
+  | "music_v1"
+  | "music_v2"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})

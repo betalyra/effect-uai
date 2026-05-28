@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Duration, Effect } from "effect"
 import { describe, expect, it } from "vitest"
 import * as MockSpeechSynthesizer from "@effect-uai/core/testing/MockSpeechSynthesizer"
 import { synthesizeOneShot, synthesizeStreaming, type Provider } from "./index.js"
@@ -15,7 +15,7 @@ describe.each(providers)("basic-speech-synthesis (%s)", (provider) => {
         {
           format: { container: "raw", encoding: "pcm_s16le", sampleRate: 24000 },
           bytes: fakeBytes(0, 16),
-          durationSeconds: 2,
+          duration: Duration.seconds(2),
         },
       ],
     })
@@ -23,7 +23,7 @@ describe.each(providers)("basic-speech-synthesis (%s)", (provider) => {
       synthesizeOneShot(provider).pipe(Effect.provide(mock.layer)),
     )
     expect(result.bytes.length).toBe(16)
-    expect(result.durationSeconds).toBe(2)
+    expect(result.duration).toEqual(Duration.seconds(2))
   })
 
   it("concatenates chunked stream output into a single Uint8Array", async () => {

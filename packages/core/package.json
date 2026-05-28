@@ -146,6 +146,10 @@
       "types": "./dist/tool/HistoryCheck.d.mts",
       "import": "./dist/tool/HistoryCheck.mjs"
     },
+    "./Capabilities": {
+      "types": "./dist/capabilities/Capabilities.d.mts",
+      "import": "./dist/capabilities/Capabilities.mjs"
+    },
     "./JSONL": {
       "types": "./dist/streaming/JSONL.d.mts",
       "import": "./dist/streaming/JSONL.mjs"

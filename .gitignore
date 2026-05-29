@@ -26,6 +26,7 @@ yarn-error.log*
 dist/
 build/
 out/
+*.tsbuildinfo
 
 # Environment files
 .env

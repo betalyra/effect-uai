@@ -46,7 +46,7 @@ type Session = {
   readonly ws: WebSocket
   readonly audio: HTMLAudioElement
   readonly sourceBuffer: SourceBuffer
-  readonly appendQueue: Array<Uint8Array>
+  readonly appendQueue: Array<ArrayBuffer>
   readonly trackEndMarkers: Array<{ readonly index: number; readonly endSec: number }>
   pendingEndIndex: number | null
 }
@@ -176,7 +176,7 @@ const start = async () => {
       }
       return
     }
-    s.appendQueue.push(new Uint8Array(e.data as ArrayBuffer))
+    s.appendQueue.push(e.data as ArrayBuffer)
     processNextAppend(s)
   })
   ws.addEventListener("close", () => setStatus("disconnected"))

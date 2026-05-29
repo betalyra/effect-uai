@@ -4,6 +4,9 @@
  *   OPENAI_API_KEY=... ELEVENLABS_API_KEY=... \
  *     bun recipes/radio-station/run-bun.ts
  *
+ *   # Switch provider via argv (matches basic-music-generation):
+ *   GOOGLE_API_KEY=... bun recipes/radio-station/run-bun.ts --provider=google
+ *
  *   # Optional: custom station brief
  *   STATION_BRIEF="synthwave roadtrip, neon and fast" bun ...
  *
@@ -41,21 +44,35 @@ import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { runStation, type FileSystemHooks, type ServerEvent } from "./index.js"
 
 // ---------------------------------------------------------------------------
-// Provider selection — `PROVIDER=google|elevenlabs` (default elevenlabs).
+// Provider selection — `--provider=google|elevenlabs` (default elevenlabs).
 // Both register the generic `MusicGenerator` service tag, so the recipe
-// body in index.ts doesn't change.
+// body in index.ts doesn't change. Mirrors the argv style used in
+// recipes/basic-music-generation/run-node.ts.
 // ---------------------------------------------------------------------------
 
 type Provider = "elevenlabs" | "google"
 
-const providerFromEnv = (): Provider => {
-  const raw = (process.env["PROVIDER"] ?? "elevenlabs").toLowerCase()
-  if (raw === "google" || raw === "lyria") return "google"
-  if (raw === "elevenlabs" || raw === "eleven") return "elevenlabs"
-  throw new Error(`unknown PROVIDER: ${raw} (expected: elevenlabs | google)`)
+const normalizeProvider = (raw: string): Provider => {
+  const v = raw.toLowerCase()
+  if (v === "google" || v === "lyria") return "google"
+  if (v === "elevenlabs" || v === "eleven") return "elevenlabs"
+  throw new Error(`unknown provider: ${raw} (expected: elevenlabs | google)`)
 }
 
-const provider = providerFromEnv()
+const providerFromArgv = (argv: ReadonlyArray<string>): Provider | undefined => {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!
+    if (a.startsWith("--provider=")) return normalizeProvider(a.slice("--provider=".length))
+    if (a === "--provider") {
+      const next = argv[i + 1]
+      if (next === undefined) throw new Error("--provider requires a value")
+      return normalizeProvider(next)
+    }
+  }
+  return undefined
+}
+
+const provider: Provider = providerFromArgv(process.argv.slice(2)) ?? "elevenlabs"
 
 const defaults = {
   elevenlabs: { model: "music_v1", keyEnv: "ELEVENLABS_API_KEY" },
@@ -136,7 +153,12 @@ const bunFs: FileSystemHooks = {
         write: (chunk) => {
           w.write(chunk)
         },
-        end: Effect.promise(() => w.end()).pipe(Effect.asVoid),
+        // Bun's FileSink.end() is documented as Promise<number> but
+        // returns synchronously in 1.3.x — wrap in an async fn so the
+        // result is always a thenable Effect.promise can resolve.
+        end: Effect.promise(async () => {
+          await w.end()
+        }),
       }
     }),
   rename: (from, to) => Effect.promise(() => rename(from, to)),
@@ -221,7 +243,7 @@ declare const Bun: {
     readonly stream: () => ReadableStream<Uint8Array>
     readonly writer: () => {
       readonly write: (chunk: Uint8Array) => number
-      readonly end: () => Promise<number>
+      readonly end: () => number | Promise<number>
     }
   }
   readonly serve: <D>(config: {

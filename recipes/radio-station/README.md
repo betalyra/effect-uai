@@ -148,8 +148,8 @@ GOOGLE_API_KEY=...     # music (Google Lyria) — alternative
 # ElevenLabs (default, native chunked streaming, full-length tracks)
 bun recipes/radio-station/run-bun.ts
 
-# Google Lyria (30s clips, fake streaming — same pipeline)
-PROVIDER=google bun recipes/radio-station/run-bun.ts
+# Google Lyria (30s clips, fake streaming, same pipeline)
+bun recipes/radio-station/run-bun.ts --provider=google
 
 # Custom brief, custom track count
 STATION_BRIEF="synthwave roadtrip, neon and fast" \

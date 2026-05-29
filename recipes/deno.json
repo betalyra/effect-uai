@@ -1,4 +1,5 @@
 {
   "nodeModulesDir": "manual",
-  "unstable": ["node-globals", "sloppy-imports"]
+  "unstable": ["node-globals", "sloppy-imports"],
+  "exclude": ["**/client/**"]
 }

@@ -17,7 +17,7 @@ import { Config, Effect, Layer } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as HttpServer from "effect/unstable/http/HttpServer"
 import { BunFileSystem, BunHttpServer, BunPath, BunRuntime } from "@effect/platform-bun"
-import { appLayer, main } from "./app.ts"
+import { appLayer, main } from "./app.js"
 
 const platformLayer = Layer.mergeAll(
   Layer.unwrap(

@@ -21,6 +21,12 @@ twice and the second pass costs nothing.
 
 ## The shape
 
+`runStation` is a single `Stream<ServerEvent>` that interleaves
+control events (`track-start`, `track-end`, `track-planned`) with raw
+audio chunks (a `{ type: "data", bytes }` variant). One prefetch fiber
+always runs for the next track, so by the time the current one ends
+the next is on disk.
+
 ```
                             [brief]
                                │
@@ -30,113 +36,99 @@ twice and the second pass costs nothing.
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  prefetch fiber : plan track N+1 → gen track N+1 → disk      │
-│  sender fiber   : track N → WS chunks → browser MediaSource  │
+│  main loop      : emit events + audio as ServerEvent         │
 └─────────────────────────────────────────────────────────────┘
                                │
-                               ▼  WebSocket
-              MediaSource ← chunk → <audio> → speakers
+                               ▼  Stream<ServerEvent>
 ```
 
 ## End-to-end streaming
 
 `trackStream(plan, i)` returns a `Stream<Uint8Array>`. It never drains
 itself. Cache policy lives inside: hit the file if it's already on
-disk, otherwise generate and tee chunks into the file as they flow.
+disk, otherwise generate and tee chunks into a `.partial` file that
+gets renamed on success or removed on failure.
 
 ```ts
 const trackStream = (plan, i) =>
   Stream.unwrap(
     Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
       const file = `tracks/track-${i}.mp3`
-      if (yield* fileExists(file)) return readFileStream(file)
 
-      // On success the `.partial` file is renamed; on failure /
-      // interrupt it's unlinked so the next attempt doesn't read a
-      // half-written file as a cache hit.
-      const writer = yield* Effect.acquireRelease(
-        openWriter(`${file}.partial`),
-        (w, exit) =>
-          w.end.pipe(
-            Effect.flatMap(() =>
-              Exit.isSuccess(exit) ? rename(`${file}.partial`, file) : unlink(`${file}.partial`),
-            ),
-          ),
+      if (yield* fs.exists(file).pipe(Effect.orDie)) {
+        return fs.stream(file).pipe(Stream.orDie)
+      }
+
+      const partial = `${file}.partial`
+      const handle = yield* fs.open(partial, { flag: "w" }).pipe(Effect.orDie)
+      yield* Effect.addFinalizer((exit) =>
+        Exit.isSuccess(exit)
+          ? fs.rename(partial, file).pipe(Effect.orDie)
+          : fs.remove(partial, { force: true }).pipe(Effect.ignore),
       )
 
-      return MusicGenerator.streamGeneration({...}).pipe(
+      return MusicGenerator.streamGeneration({ ... }).pipe(
         Stream.map((c) => c.bytes),
-        Stream.tap((bytes) => Effect.sync(() => writer.write(bytes))),
+        Stream.tap((bytes) => handle.writeAll(bytes).pipe(Effect.orDie)),
       )
     }),
   )
 ```
 
-Two consumers, neither inside the producer:
+The same producer feeds both the main loop (which forwards bytes
+downstream as `{ type: "data", bytes }`) and the prefetcher (which
+just drains it — the cache file is the side-effect that matters).
+
+## The loop
+
+The radio runs through the `loop` primitive. State (`cycle`, `idx`,
+the current prefetch fiber, the plans seen so far) threads through
+`next(...)`; the body emits a stream of events for one track and ends
+with the new state.
 
 ```ts
-// Foreground: chunk → WS, every byte flows the moment it arrives.
-const sendToClient = (plan, i) => trackStream(plan, i).pipe(Stream.tap(sendBytes), Stream.runDrain)
-
-// Background: same stream, no destination. Cache side effect only.
-const prefetchToDisk = (plan, i) => trackStream(plan, i).pipe(Stream.runDrain)
-```
-
-## Just-in-time planning
-
-The planner is one LLM call per track, not one per station. Plan 0
-runs upfront so there's something to play; plans 1..N-1 run inside the
-prefetch fiber for the next track, racing against the music gen of the
-current one.
-
-```ts
-yield *
-  Effect.forever(
+const body = (state: LoopState) =>
+  Stream.unwrap(
     Effect.gen(function* () {
-      const { cycle, idx } = yield* Ref.get(state)
+      // 1. Wait for THIS track's prefetch (gen + maybe a fresh plan).
+      const { newPlan } = yield* Option.match(state.prefetch, {
+        onNone: () => Effect.succeed({ newPlan: Option.none<TrackPlan>() }),
+        onSome: Fiber.join,
+      })
+      const plans = Option.match(newPlan, {
+        onNone: () => state.plans,
+        onSome: (p) => [...state.plans, p],
+      })
 
-      // 1. Wait for THIS track's prefetch (plan + gen) to land.
-      yield* Ref.get(prefetch).pipe(
-        Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: Fiber.join })),
+      // 2. Kick prefetch for the NEXT track. Plan in cycle 0; cached
+      //    plan in cycle 1+.
+      const nextIdx = (state.idx + 1) % cfg.trackCount
+      const fiber = yield* Effect.forkChild(prefetch(cfg, nextIdx, plans))
+
+      // 3. Emit: optional track-planned (when the just-joined fiber
+      //    returned a fresh plan), track-start, audio chunks,
+      //    track-end, await ack, then advance state.
+      const currentPlan = plans[state.idx]!
+      return Stream.fromIterable(upfrontEvents).pipe(
+        Stream.map(v),
+        Stream.concat(
+          trackStream(currentPlan, state.idx, ...).pipe(
+            Stream.map((bytes) => v({ type: "data", bytes })),
+          ),
+        ),
+        Stream.concat(Stream.succeed(v({ type: "track-end", index: state.idx }))),
+        Stream.concat(Stream.fromEffect(cfg.waitTrackEnded).pipe(Stream.drain)),
+        Stream.concat(next<LoopState>({ ...nextState })),
       )
-
-      // 2. Kick prefetch for the NEXT track: plan (cycle 0 only) + gen.
-      const nextIdx = (idx + 1) % cfg.trackCount
-      const fiber = yield* Effect.forkChild(
-        Effect.gen(function* () {
-          const soFar = yield* Ref.get(plans)
-          if (nextIdx >= soFar.length) {
-            const plan = yield* planTrack(
-              cfg.brief,
-              nextIdx,
-              cfg.trackCount,
-              soFar,
-              cfg.plannerModel,
-            )
-            yield* Ref.update(plans, (ps) => [...ps, plan])
-            yield* cfg.send({ type: "track-planned", index: nextIdx, title: plan.title })
-          }
-          const ps = yield* Ref.get(plans)
-          yield* prefetchToDisk(ps[nextIdx]!, nextIdx, cfg.tracksDir, cfg.musicModel)
-        }),
-      )
-      yield* Ref.set(prefetch, Option.some(fiber))
-
-      // 3. Stream THIS track to the client.
-      const ps = yield* Ref.get(plans)
-      yield* sendToClient(ps[idx]!, idx, cycle, cfg)
-
-      // 4. Backpressure on actual listening time.
-      yield* cfg.waitTrackEnded
-
-      yield* Ref.set(state, { cycle: nextIdx === 0 ? cycle + 1 : cycle, idx: nextIdx })
     }),
   )
 ```
 
-`waitTrackEnded` is a per-connection `Queue.take`; the WS message
-handler offers to it when the browser posts `{type:"track-ended"}`
-(sent when the `<audio>`'s `currentTime` crosses the track's end
-position in the MediaSource buffer).
+`waitTrackEnded` is the recipe's only external input: an `Effect<void>`
+that resolves when the consumer signals the track finished playing.
+That's the backpressure — generation runs at most one track ahead of
+actual listening.
 
 ## Run it
 
@@ -145,22 +137,23 @@ OPENAI_API_KEY=...     # planner (Responses)
 ELEVENLABS_API_KEY=... # music (ElevenLabs Music) — default
 GOOGLE_API_KEY=...     # music (Google Lyria) — alternative
 
-# ElevenLabs (default, native chunked streaming, full-length tracks)
 bun recipes/radio-station/run-bun.ts
 
-# Google Lyria (30s clips, fake streaming, same pipeline)
+# Pick a provider; switch via argv:
 bun recipes/radio-station/run-bun.ts --provider=google
 
-# Custom brief, custom track count
+# Custom brief, custom track count:
 STATION_BRIEF="synthwave roadtrip, neon and fast" \
 TRACK_COUNT=8 \
   bun recipes/radio-station/run-bun.ts
 ```
 
 Open `http://localhost:3000`, click **Start**. Tracks land in
-`recipes/radio-station/tracks/{provider}/` (gitignored via `*.mp3`).
-Delete the per-provider folder to force fresh generation with a new
-plan; tracks are reused across runs.
+`recipes/radio-station/tracks/{provider}/`. Delete the folder to
+force fresh generation with a new plan; tracks are reused across runs.
+
+There are equivalent `run-node.ts` and `run-deno.ts` runners next to
+`run-bun.ts` — same recipe body, swapped platform layers.
 
 ## Cost shape
 
@@ -169,18 +162,16 @@ plan; tracks are reused across runs.
 - **Cycle 1+**: zero. The plan list and the audio files are both
   cached.
 - **Pipeline depth**: max 2 generations in flight at any time (one
-  for the sender, one prefetch). Bounded by `Fiber.join` at the top
-  of each loop iteration.
+  playing, one prefetching). Bounded by `Fiber.join` at the top of
+  each loop iteration.
 
 ## What this generalises to
 
-The producer / consumer / prefetcher split is the pattern any time
-you want to stream a generated resource to a live consumer while
-caching the bytes for replay, with the planner running concurrently
-with the previous resource's playback. The shape stays the same
-whether the producer is music, video, image variants, or LLM tool
-output — only the call inside `Stream.unwrap` changes.
+The Stream-as-output / cache-tee / next-fiber pattern is the shape
+any time you want to stream a generated resource to a live consumer
+while caching the bytes for replay, with the planner running
+concurrently with the previous resource's playback. Substitute music
+for video, image variants, or LLM tool output — only the call inside
+`Stream.unwrap` changes.
 
-Source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/radio-station/index.ts)
-and [`run-bun.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/radio-station/run-bun.ts).
+Source: [`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/radio-station/recipe.ts).

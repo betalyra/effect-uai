@@ -8,7 +8,9 @@ state**.
 
 **Starting baseline (verified):**
 
-- No `dropUnsupported` / `CapabilityWarning` helpers in core.
+- `warnDropped` / `warnDroppedWhen` helpers + `CapabilityWarning` type
+  now exist in `packages/core/src/capabilities/Capabilities.ts` (Phase 0
+  landed with the MusicGenerator work). The original baseline had none.
 - No per-modifier markers in `Transcriber.ts` (only the existing
   service-level `SttStreaming` at line 80).
 - `GeminiTranscribeRequest` and `OpenAITranscribeRequest` do **not**
@@ -51,7 +53,7 @@ This branch starts from zero capability work. There is no
 
 Four phases:
 
-- **Phase 0 — Prerequisites.** `dropUnsupported` helper +
+- **Phase 0 — Prerequisites (DONE).** `warnDropped` helper +
   `CapabilityWarning` event in core; lock in the §2.3
   policy ("translate provider errors, don't maintain per-model
   tables").
@@ -64,7 +66,7 @@ Four phases:
 - **Phase 2 — STT per-modifier markers.** `DiarizationGuarantee`,
   `WordTimestampsGuarantee`, the `requireX` combinators, the
   `fallback` combinator. Promote silent bucket-2 drops to
-  `dropUnsupported`. Remove per-model variance checks.
+  `warnDropped`. Remove per-model variance checks.
 - **Phase 3 — TTS.** `fallback` combinator on SpeechSynthesizer.
   Promote silent pronunciation drops to `Unsupported`. No new
   per-modifier markers.
@@ -98,16 +100,23 @@ single `fallback` combinator.
 Unblocks Phase 2's STT-prompt warn-and-drop AND Phase 3's
 pronunciation rejection logging. Small, mechanical, lands first.
 
+**Status: DONE.** Landed alongside the MusicGenerator redesign. Both
+the `CapabilityWarning` type and the helpers live in a single file,
+`packages/core/src/capabilities/Capabilities.ts` (not the separate
+`domain/CapabilityWarning.ts` + `capabilities/dropUnsupported.ts` this
+plan originally sketched), and the helper is named `warnDropped` (not
+`dropUnsupported`). There is also a `warnDroppedWhen` shorthand.
+
 ### 1.1 `CapabilityWarning` event
 
 ```ts
-// packages/core/src/domain/CapabilityWarning.ts
+// packages/core/src/capabilities/Capabilities.ts
 export type CapabilityWarning = {
   readonly _tag: "CapabilityWarning"
   readonly provider: string
   readonly capability: string
   readonly field: string
-  readonly value: unknown
+  readonly value?: unknown
   readonly reason: string
 }
 ```
@@ -115,14 +124,22 @@ export type CapabilityWarning = {
 Log-only for now (no API surface). Promote to typed `AiError`
 variant only if a consumer needs to pattern-match.
 
-### 1.2 `dropUnsupported` helper
+### 1.2 `warnDropped` helper
 
 ```ts
-// packages/core/src/capabilities/dropUnsupported.ts
-export const dropUnsupported = (
+// packages/core/src/capabilities/Capabilities.ts
+export const warnDropped = (
   warning: Omit<CapabilityWarning, "_tag">,
 ): Effect.Effect<void> =>
   Effect.logWarning("Capability dropped", { ...warning, _tag: "CapabilityWarning" })
+
+// Shorthand: warn-and-drop when a specific field is set; the value
+// is attached automatically.
+export const warnDroppedWhen = <T>(
+  value: T | undefined,
+  warning: Omit<CapabilityWarning, "_tag" | "value">,
+): Effect.Effect<void> =>
+  value === undefined ? Effect.void : warnDropped({ ...warning, value })
 ```
 
 That's the whole API. Used by adapters at the point where they drop
@@ -141,10 +158,11 @@ responses).
 
 ### 1.4 Phase 0 deliverables
 
-- [ ] `packages/core/src/domain/CapabilityWarning.ts`
-- [ ] `packages/core/src/capabilities/dropUnsupported.ts`
-- [ ] Re-exports from `packages/core/src/index.ts`
-- [ ] Smoke test that `dropUnsupported(...)` emits the structured log entry
+- [x] `packages/core/src/capabilities/Capabilities.ts` (holds both the
+      `CapabilityWarning` type and the `warnDropped` / `warnDroppedWhen`
+      helpers)
+- [x] Re-exports from `packages/core/src/index.ts`
+- [ ] Smoke test that `warnDropped(...)` emits the structured log entry
 - [ ] No changes to any provider yet — that's Phase 2 / Phase 3
 
 ---
@@ -483,11 +501,11 @@ Per-provider audit:
 |---|---|---|
 | OpenAI Whisper | Yes (`prompt` field) | No change |
 | AssemblyAI | Partial (`word_boost`) | No change if mapped; warn if not |
-| ElevenLabs | No native equivalent | `dropUnsupported({field: "prompt", ...})` when caller provides it |
+| ElevenLabs | No native equivalent | `warnDropped({field: "prompt", ...})` when caller provides it |
 | Inworld | Has `prompts` array | No change |
 | Gemini | Built into prompt template | No change |
 
-Net work: one `dropUnsupported` call in `ElevenLabsTranscriber` (and
+Net work: one `warnDropped` call in `ElevenLabsTranscriber` (and
 any other adapter that lacks a biasing equivalent — quick audit
 during implementation).
 
@@ -586,7 +604,7 @@ per memory.
 - [ ] Lyria clip × wav runtime check removed; provider error
       translation verified.
 - [ ] ElevenLabs (and any other) STT `prompt` →
-      `dropUnsupported` when no biasing equivalent.
+      `warnDropped` when no biasing equivalent.
 - [ ] Gemini transcriber runtime guards retained as
       defense-in-depth, comment added pointing at §5.
 - [ ] MockTranscriber: `layer` ships all three markers (one new
@@ -647,7 +665,7 @@ Per guideline §14.5:
 
 - [OpenAISynthesizer.ts:30-31](../packages/providers/openai/src/OpenAISynthesizer.ts#L30) —
   `instructions` silently ignored on `tts-1` / `tts-1-hd`.
-  **Fix:** `dropUnsupported` when caller provides `instructions`
+  **Fix:** `warnDropped` when caller provides `instructions`
   against a non-mini-tts model.
 
 Per §2.3 of the guideline, this is per-model variance. Strictly we
@@ -671,7 +689,7 @@ TTS modifier surface against the §4 failure-vs-degradation rule:
 | `pronunciations` | bucket 1 — `Unsupported` (§4.2 above); not a marker |
 | `speed` | bucket 3 — silent (clamp) |
 | `languageCode` | bucket 3 — silent (inferred from voice) |
-| `instructions` (OpenAI) | bucket 2 — `dropUnsupported` (§4.3 above) |
+| `instructions` (OpenAI) | bucket 2 — `warnDropped` (§4.3 above) |
 | `outputFormat` | bucket 1 — already `Unsupported` on Gemini |
 
 None of these is a marker candidate. No new markers in Phase 3.
@@ -684,7 +702,7 @@ Revisit when a TTS feature with a real compliance use case lands
 - [ ] `SpeechSynthesizer.fallback` with marker-intersection tests.
 - [ ] Inworld pronunciation: silent drop → `Unsupported`.
 - [ ] ElevenLabs pronunciation: two silent drops → `Unsupported`.
-- [ ] OpenAI `instructions`: silent → `dropUnsupported` on
+- [ ] OpenAI `instructions`: silent → `warnDropped` on
       non-mini-tts models.
 - [ ] Mocks (`MockSpeechSynthesizer`) unchanged — Phase 3 adds no
       new markers.
@@ -767,7 +785,7 @@ don't get re-litigated mid-implementation.
 |---|---|---|
 | Phase 0 | 2 small new core files, 1 smoke test | 0.5 day |
 | Phase 1 | 2 typed-request `Omit`s, `DialogueTurn` cleanup, 2 embedding error-tag changes, updated tests | 0.5 day |
-| Phase 2 (STT) | Inline additions to `Transcriber.ts`, ~5 provider Layer blocks, 2 runtime check removals (OpenAI + Lyria), 1-2 `dropUnsupported` calls, mock + tests, 1 recipe | 1.5-2 days |
+| Phase 2 (STT) | Inline additions to `Transcriber.ts`, ~5 provider Layer blocks, 2 runtime check removals (OpenAI + Lyria), 1-2 `warnDropped` calls, mock + tests, 1 recipe | 1.5-2 days |
 | Phase 3 (TTS) | 1 core function + type helper lift, 2 provider pronunciation fixes, 1 instructions fix, tests | 1 day |
 | Phases 4-7 | Separate plans | — |
 

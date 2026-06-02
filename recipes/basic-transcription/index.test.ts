@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Duration, Effect } from "effect"
 import { describe, expect, it } from "vitest"
 import type { AudioSource } from "@effect-uai/core/Audio"
 import * as MockTranscriber from "@effect-uai/core/testing/MockTranscriber"
@@ -10,7 +10,7 @@ const dummyAudio: AudioSource = {
   mimeType: "audio/wav",
 }
 
-const providers: ReadonlyArray<Provider> = ["openai", "gemini"]
+const providers: ReadonlyArray<Provider> = ["openai", "elevenlabs"]
 
 describe.each(providers)("basic-transcription fast (%s)", (provider) => {
   it("returns the scripted transcript", async () => {
@@ -29,7 +29,7 @@ describe("basic-transcription verbose (openai-only)", () => {
         {
           text: "Hello world",
           languageCode: "en",
-          durationSeconds: 1.2,
+          duration: Duration.seconds(1.2),
           words: [
             { text: "Hello", startSeconds: 0.0, endSeconds: 0.5 },
             { text: "world", startSeconds: 0.6, endSeconds: 1.1 },
@@ -54,14 +54,14 @@ describe("basic-transcription provider dispatch", () => {
     })
     const program = Effect.gen(function* () {
       yield* transcribeFast("openai", dummyAudio)
-      yield* transcribeFast("gemini", dummyAudio)
+      yield* transcribeFast("elevenlabs", dummyAudio)
       yield* transcribeVerbose(dummyAudio)
       return yield* mock.recorder
     })
     const rec = await Effect.runPromise(program.pipe(Effect.provide(mock.layer)))
     expect(rec.transcribeCalls.map((c) => c.model)).toEqual([
       "gpt-4o-transcribe",
-      "gemini-2.5-flash",
+      "scribe_v2",
       "whisper-1",
     ])
     expect(rec.transcribeCalls[2]?.wordTimestamps).toBe(true)

@@ -1,7 +1,12 @@
+import type { Duration } from "effect"
+
 /**
  * Per-word timing + metadata. `confidence` and `speakerId` are optional
  * because providers vary widely in what they emit and when (some only on
  * final, some only with diarization enabled, some not at all).
+ *
+ * `startSeconds` / `endSeconds` stay raw `number` offsets (not `Duration`)
+ * — they're positions in the audio, not durations.
  */
 export type WordTimestamp = {
   readonly text: string
@@ -20,7 +25,8 @@ export type WordTimestamp = {
 export type TranscriptResult = {
   readonly text: string
   readonly languageCode?: string
-  readonly durationSeconds?: number
+  /** Total audio duration. (Word offsets stay raw seconds on `WordTimestamp`.) */
+  readonly duration?: Duration.Duration
   readonly words?: ReadonlyArray<WordTimestamp>
   readonly raw?: unknown
 }

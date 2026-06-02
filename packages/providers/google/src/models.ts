@@ -45,23 +45,6 @@ export type GeminiTtsModel =
   | (string & {})
 
 /**
- * Known Gemini models that accept audio input via `inlineData` /
- * `fileData` on `generateContent`. Used by `GeminiTranscriber` —
- * transcription is prompt-driven on top of these models, not a
- * dedicated endpoint.
- *
- * Reference: https://ai.google.dev/gemini-api/docs/audio
- */
-export type GeminiSttModel =
-  | "gemini-3-flash-preview"
-  | "gemini-3.1-pro-preview"
-  | "gemini-3.1-flash-lite-preview"
-  | "gemini-2.5-flash"
-  | "gemini-2.5-pro"
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  | (string & {})
-
-/**
  * 30 prebuilt voice names for Gemini TTS. No custom-voice / cloning path
  * is exposed on this surface, so the tail is stock-only (no
  * `(string & {})` escape).

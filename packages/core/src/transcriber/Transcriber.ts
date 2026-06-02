@@ -15,12 +15,13 @@ export type CommonTranscribeRequest = {
   readonly model: string
   /** ISO-639-1 / BCP-47. Omit for autodetection (where supported). */
   readonly language?: string
-  /**
-   * Vocab biasing. Single-string covers OpenAI/Whisper-style prompts;
-   * `terms[]` covers Deepgram `keyterm`, Google adaptation phrases, AWS
-   * `vocabularyName`. Providers ignore what they don't support.
-   */
-  readonly prompt?: string | { readonly terms: ReadonlyArray<string> }
+  /** Free-form context / style hint (Whisper-style prose). OpenAI honors
+   *  it; providers without a prompt field `warnDropped`. */
+  readonly prompt?: string
+  /** Vocabulary biasing — discrete terms to boost (names, jargon). Maps to
+   *  Deepgram `keyterm`, ElevenLabs `keyterms`, Google `adaptation`,
+   *  Inworld `prompts`; others `warnDropped`. */
+  readonly biasingTerms?: ReadonlyArray<string>
   readonly diarization?: boolean
   readonly wordTimestamps?: boolean
 }
@@ -28,7 +29,9 @@ export type CommonTranscribeRequest = {
 /**
  * Streaming-transcription request. `inputFormat` declares what the
  * bytes in the input stream will look like — providers reject
- * mismatches at stream startup with `AiError.InvalidRequest`.
+ * formats they can't ingest at stream startup with
+ * `AiError.Unsupported` (a per-Layer capability gap, not a wire-shape
+ * mismatch).
  */
 export type CommonStreamTranscribeRequest = Omit<CommonTranscribeRequest, "audio"> & {
   readonly inputFormat: AudioFormat

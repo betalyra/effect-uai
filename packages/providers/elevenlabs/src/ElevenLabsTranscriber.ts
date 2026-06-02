@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import type { TranscriptResult, WordTimestamp } from "@effect-uai/core/Transcript"
 import {
   type CommonTranscribeRequest,
@@ -101,6 +102,16 @@ const buildForm = (request: ElevenLabsTranscribeRequest) =>
     if (request.numSpeakers !== undefined) form.set("num_speakers", String(request.numSpeakers))
     if (request.audioEvents !== undefined)
       form.set("tag_audio_events", request.audioEvents ? "true" : "false")
+    // Vocab biasing → Scribe `keyterms` (≤1000 terms, ≤50 chars). Each
+    // term is a repeated form field (`keyterms=a&keyterms=b`), matching
+    // the ElevenLabs SDK. Scribe has no free-form prompt field.
+    for (const term of request.biasingTerms ?? []) form.append("keyterms", term)
+    yield* Capabilities.warnDroppedWhen(request.prompt, {
+      provider: "elevenlabs",
+      capability: "prompt",
+      field: "prompt",
+      reason: "ElevenLabs Scribe has no free-form prompt field; bias via `biasingTerms`.",
+    })
     return form
   })
 

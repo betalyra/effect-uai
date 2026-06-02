@@ -20,19 +20,19 @@
  * (e.g. `gemini-embedding-001` or Jina v3/v5) and pass `task: "query"` /
  * `task: "document"`.
  */
-import { Config, Effect, Layer, Logger, Match, References } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
-import * as Vector from "@effect-uai/core/Vector"
-import { layer as geminiEmbeddingLayer } from "@effect-uai/google/GeminiEmbedding"
-import { layer as jinaEmbeddingLayer } from "@effect-uai/jina/JinaEmbedding"
-import { layer as openaiEmbeddingLayer } from "@effect-uai/responses/OpenAIEmbedding"
+import { Config, Effect, Layer, Logger, Match, References } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import { embed, embedMany } from "@effect-uai/core/EmbeddingModel";
+import * as Vector from "@effect-uai/core/Vector";
+import { layer as geminiEmbeddingLayer } from "@effect-uai/google/GeminiEmbedding";
+import { layer as jinaEmbeddingLayer } from "@effect-uai/jina/JinaEmbedding";
+import { layer as openaiEmbeddingLayer } from "@effect-uai/responses/OpenAIEmbedding";
 
 // ---------------------------------------------------------------------------
 // Corpus
 // ---------------------------------------------------------------------------
 
-const query = "How do I make sourdough bread at home?"
+const query = "How do I make sourdough bread at home?";
 
 const documents = [
   "A classic guide to baking artisan sourdough loaves with a wild yeast starter.",
@@ -40,7 +40,7 @@ const documents = [
   "Bread machines automate kneading, proofing, and baking for everyday loaves.",
   "Effect is a TypeScript library for typed errors and resource management.",
   "Hydration ratios above 75% give sourdough an open, airy crumb.",
-]
+];
 
 // ---------------------------------------------------------------------------
 // Program - provider-agnostic. Picks the model name as a parameter; the
@@ -56,39 +56,42 @@ const program = (model: string) =>
     const [queryResult, docsResult] = yield* Effect.all(
       [embed({ model, input: query }), embedMany({ model, inputs: documents })],
       { concurrency: "unbounded" },
-    )
+    );
 
-    const qVec = queryResult.embedding.vector
-    const docVecs = docsResult.embeddings.map((e) => e.vector)
+    const qVec = queryResult.embedding.vector;
+    const docVecs = docsResult.embeddings.map((e) => e.vector);
 
     const ranked = documents
       .map((doc, i) => ({ doc, score: Vector.cosine(qVec, docVecs[i]!) }))
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => b.score - a.score);
 
-    yield* Effect.logInfo("query", { query })
+    yield* Effect.logInfo("query", { query });
     yield* Effect.forEach(ranked, ({ doc, score }, i) =>
       Effect.logInfo(`#${i + 1}  score=${score.toFixed(4)}`, { doc }),
-    )
-  })
+    );
+  });
 
 // ---------------------------------------------------------------------------
 // Provider selection
 // ---------------------------------------------------------------------------
 
-type Provider = "gemini" | "openai" | "jina"
+type Provider = "gemini" | "openai" | "jina";
 
-const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefined => {
-  const i = argv.indexOf(name)
-  return i >= 0 ? argv[i + 1] : undefined
-}
+const flagValue = (
+  argv: ReadonlyArray<string>,
+  name: string,
+): string | undefined => {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : undefined;
+};
 
 const parseProvider = (argv: ReadonlyArray<string>): Provider =>
   Match.value(flagValue(argv, "--provider") ?? "gemini").pipe(
     Match.whenOr("gemini", "openai", "jina", (p): Provider => p),
     Match.orElse((raw) => {
-      throw new Error(`unknown provider: ${raw} (expected gemini|openai|jina)`)
+      throw new Error(`unknown provider: ${raw} (expected gemini|openai|jina)`);
     }),
-  )
+  );
 
 const modelFor = (provider: Provider): string =>
   Match.value(provider).pipe(
@@ -96,47 +99,47 @@ const modelFor = (provider: Provider): string =>
     Match.when("openai", () => "text-embedding-3-small"),
     Match.when("jina", () => "jina-embeddings-v4"),
     Match.exhaustive,
-  )
+  );
 
 const layerFor = (provider: Provider) =>
   Match.value(provider).pipe(
     Match.when("gemini", () =>
       Layer.unwrap(
         Effect.gen(function* () {
-          const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
-          return geminiEmbeddingLayer({ apiKey })
+          const apiKey = yield* Config.redacted("GOOGLE_API_KEY");
+          return geminiEmbeddingLayer({ apiKey });
         }),
       ),
     ),
     Match.when("openai", () =>
       Layer.unwrap(
         Effect.gen(function* () {
-          const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-          return openaiEmbeddingLayer({ apiKey })
+          const apiKey = yield* Config.redacted("OPENAI_API_KEY");
+          return openaiEmbeddingLayer({ apiKey });
         }),
       ),
     ),
     Match.when("jina", () =>
       Layer.unwrap(
         Effect.gen(function* () {
-          const apiKey = yield* Config.redacted("JINA_API_KEY")
-          return jinaEmbeddingLayer({ apiKey })
+          const apiKey = yield* Config.redacted("JINA_API_KEY");
+          return jinaEmbeddingLayer({ apiKey });
         }),
       ),
     ),
     Match.exhaustive,
-  )
+  );
 
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
-const provider = parseProvider(process.argv.slice(2))
+const provider = parseProvider(process.argv.slice(2));
 
 const mainLayer = Layer.mergeAll(
   layerFor(provider).pipe(Layer.provide(FetchHttpClient.layer)),
   Logger.layer([Logger.consolePretty()]),
-)
+);
 
 Effect.runPromise(
   program(modelFor(provider)).pipe(
@@ -145,6 +148,6 @@ Effect.runPromise(
     Effect.provideService(References.MinimumLogLevel, "Info"),
   ),
 ).catch((err) => {
-  console.error("recipe failed:", err)
-  process.exit(1)
-})
+  console.error("recipe failed:", err);
+  process.exit(1);
+});

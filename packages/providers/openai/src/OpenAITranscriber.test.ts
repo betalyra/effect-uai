@@ -12,44 +12,6 @@ const cfg: OpenAITranscriber.Config = { apiKey: Redacted.make("test-key") }
 const live = Layer.provide(OpenAITranscriber.layer(cfg), FetchHttpClient.layer)
 
 describe("OpenAITranscriber capability guards (runtime)", () => {
-  const audio = {
-    _tag: "bytes",
-    bytes: new Uint8Array([0]),
-    mimeType: "audio/wav",
-  } as const
-
-  it("fails Unsupported when wordTimestamps is requested with a non-whisper model", async () => {
-    const program = OpenAITranscriber.OpenAITranscriber.use((t) =>
-      t.transcribe({
-        audio,
-        model: "gpt-4o-transcribe",
-        wordTimestamps: true,
-      }),
-    )
-    const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(live)))
-    expect(exit._tag).toBe("Failure")
-    if (exit._tag === "Failure") {
-      expect(JSON.stringify(exit.cause)).toContain("Unsupported")
-      expect(JSON.stringify(exit.cause)).toContain("wordTimestamps")
-    }
-  })
-
-  it("fails Unsupported when diarization is requested", async () => {
-    const program = OpenAITranscriber.OpenAITranscriber.use((t) =>
-      t.transcribe({
-        audio,
-        model: "whisper-1",
-        diarization: true,
-      }),
-    )
-    const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(live)))
-    expect(exit._tag).toBe("Failure")
-    if (exit._tag === "Failure") {
-      expect(JSON.stringify(exit.cause)).toContain("Unsupported")
-      expect(JSON.stringify(exit.cause)).toContain("diarization")
-    }
-  })
-
   it("streamTranscriptionFrom returns an Unsupported stream", async () => {
     const program = OpenAITranscriber.OpenAITranscriber.use((t) =>
       Stream.runDrain(

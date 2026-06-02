@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect"
+import { Duration, Effect, Stream } from "effect"
 import { describe, expect, expectTypeOf, it } from "vitest"
 import type * as AiError from "../domain/AiError.js"
 import type { TranscriptEvent, TranscriptResult } from "../domain/Transcript.js"
@@ -8,7 +8,7 @@ import * as Transcriber from "./Transcriber.js"
 describe("Transcriber.transcribe", () => {
   it("returns the scripted TranscriptResult", async () => {
     const mock = MockTranscriber.layer({
-      transcripts: [{ text: "hello world", durationSeconds: 1.23 }],
+      transcripts: [{ text: "hello world", duration: Duration.seconds(1.23) }],
     })
     const program = Transcriber.transcribe({
       audio: { _tag: "bytes", bytes: new Uint8Array([0]), mimeType: "audio/wav" },
@@ -16,7 +16,7 @@ describe("Transcriber.transcribe", () => {
     })
     const result = await Effect.runPromise(program.pipe(Effect.provide(mock.layer)))
     expect(result.text).toBe("hello world")
-    expect(result.durationSeconds).toBe(1.23)
+    expect(result.duration).toStrictEqual(Duration.seconds(1.23))
   })
 
   it("records each transcribe call", async () => {

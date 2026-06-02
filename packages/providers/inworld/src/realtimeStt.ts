@@ -22,6 +22,7 @@ import { Cause, Effect, Encoding, Match, Queue, Redacted, Schema, Stream } from 
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent, WordTimestamp } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
@@ -67,14 +68,8 @@ const buildWsUrl = (cfg: Config) => {
   return `${wsBase}/stt/v1/transcribe:streamBidirectional`
 }
 
-const promptToTerms = (
-  prompt: string | { readonly terms: ReadonlyArray<string> } | undefined,
-): ReadonlyArray<string> | undefined =>
-  prompt === undefined ? undefined : typeof prompt === "string" ? [prompt] : prompt.terms
-
-const configFrame = (encoding: WireEncoding, request: CommonStreamTranscribeRequest) => {
-  const prompts = promptToTerms(request.prompt)
-  return JSON.stringify({
+const configFrame = (encoding: WireEncoding, request: CommonStreamTranscribeRequest) =>
+  JSON.stringify({
     transcribeConfig: {
       modelId: request.model,
       audioEncoding: encoding,
@@ -83,11 +78,11 @@ const configFrame = (encoding: WireEncoding, request: CommonStreamTranscribeRequ
       // Inworld's sample includes `language` even though docs mark it optional.
       // Default to en-US to match the sample's behavior; caller can override.
       language: request.language ?? "en-US",
-      ...(prompts !== undefined && { prompts }),
+      // `prompts` is a vocab-biasing term list — maps from `biasingTerms`.
+      ...(request.biasingTerms !== undefined && { prompts: request.biasingTerms }),
       ...(request.wordTimestamps === true && { includeWordTimestamps: true }),
     },
   })
-}
 
 const audioChunkFrame = (bytes: Uint8Array) =>
   JSON.stringify({ audioChunk: { content: Encoding.encodeBase64(bytes) } })
@@ -204,6 +199,12 @@ export const streamTranscription =
   ): Stream.Stream<TranscriptEvent, AiError.AiError | E, R> =>
     Stream.unwrap(
       Effect.gen(function* () {
+        yield* Capabilities.warnDroppedWhen(request.prompt, {
+          provider: "inworld",
+          capability: "prompt",
+          field: "prompt",
+          reason: "Inworld STT has no free-form prompt field; bias via `biasingTerms`.",
+        })
         const encoding = yield* inputFormatToWire(request.inputFormat)
         const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg), {
           // Effect's Socket treats all close codes as errors by default —

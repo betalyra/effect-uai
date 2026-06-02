@@ -13,7 +13,7 @@ between them.
 fields; callers narrow at the call site. Provider adapters translate
 gaps into one of three runtime behaviors based on caller intent: shape
 mismatches → `AiError.Unsupported`; explicit features the provider
-drops on the floor → `dropUnsupported` (structured warning); tuning
+drops on the floor → `warnDropped` (structured warning); tuning
 knobs the provider always interprets → silent. This covers ~90% of
 real use and works against every provider including aggregators.
 
@@ -86,7 +86,7 @@ provider can't honor the field.
 | Bucket | Test | Behavior |
 |---|---|---|
 | **Shape / dimension / count** | Caller's downstream code structurally depends on the value being honored exactly (output format, dim, image count, exact pronunciation, what the vector represents). Silent drop = visibly / audibly **broken** output. | **`AiError.Unsupported`** — prefer pass-through provider error |
-| **Explicit feature, provider has no interpretation** | Caller wrote structured / discrete content (`thinking: true`, `cacheControl: true`, `task: "search_query"`, `prompt: { terms: [...] }`, `negativePrompt: "..."`). Provider drops it on the floor entirely. Silent drop = **less good** output, caller chose this on purpose. | **`dropUnsupported`** — structured warning via `Effect.logWarning`, see §2.4 |
+| **Explicit feature, provider has no interpretation** | Caller wrote structured / discrete content (`thinking: true`, `cacheControl: true`, `task: "search_query"`, `prompt: { terms: [...] }`, `negativePrompt: "..."`). Provider drops it on the floor entirely. Silent drop = **less good** output, caller chose this on purpose. | **`warnDropped`** — structured warning via `Effect.logWarning`, see §2.4 |
 | **Tuning hint, provider always interprets** | Continuous knob or hint where the provider has *some* response (clamp, approximate, partial honor). "Ignoring entirely" isn't a meaningful option — every provider applies some temperature, some language hint. | **Silent** |
 
 ### 2.1 The discriminator between bucket 2 and bucket 3
@@ -146,26 +146,35 @@ cost zero to support.
 The cost: errors surface one wire round-trip later for per-model
 gaps. Acceptable.
 
-### 2.4 `dropUnsupported` + `CapabilityWarning`
+### 2.4 `warnDropped` + `CapabilityWarning`
 
-For bucket 2, provide a structured warning rather than true silence:
+For bucket 2, provide a structured warning rather than true silence.
+Both the `CapabilityWarning` type and the helpers live in
+`packages/core/src/capabilities/Capabilities.ts`:
 
 ```ts
-// packages/core/src/domain/CapabilityWarning.ts
+// packages/core/src/capabilities/Capabilities.ts
 export type CapabilityWarning = {
   readonly _tag: "CapabilityWarning"
   readonly provider: string
   readonly capability: string
   readonly field: string
-  readonly value: unknown
+  readonly value?: unknown
   readonly reason: string
 }
 
-// packages/core/src/capabilities/dropUnsupported.ts
-export const dropUnsupported = (
+export const warnDropped = (
   warning: Omit<CapabilityWarning, "_tag">,
 ): Effect.Effect<void> =>
   Effect.logWarning("Capability dropped", { ...warning, _tag: "CapabilityWarning" })
+
+// Shorthand for the common "warn when this field is set" shape;
+// the value is attached automatically.
+export const warnDroppedWhen = <T>(
+  value: T | undefined,
+  warning: Omit<CapabilityWarning, "_tag" | "value">,
+): Effect.Effect<void> =>
+  value === undefined ? Effect.void : warnDropped({ ...warning, value })
 ```
 
 Start log-side (no API surface change). Promote to typed
@@ -562,7 +571,7 @@ The bar for adding to this list:
   service-level marker information — kept anyway for dynamic-dispatch
   safety.
 
-### `dropUnsupported` / warn-and-drop (§2.4)
+### `warnDropped` / warn-and-drop (§2.4)
 
 **Pros**
 
@@ -694,7 +703,7 @@ doesn't change the runtime model.
 3. **Bucket 1** (shape / dim / count / load-bearing content) →
    `AiError.Unsupported`. Prefer pass-through provider error.
 4. **Bucket 2** (explicit feature the provider ignores entirely) →
-   `dropUnsupported` with structured warning.
+   `warnDropped` with structured warning.
 5. **Bucket 3** (tuning hint the provider always interprets) →
    silent.
 6. **Wire genuinely can't carry the shape** → `InvalidRequest`
@@ -785,7 +794,7 @@ provider's error and translate.
 ### 14.5 Bucket-2 fields silently dropped → warn-and-drop
 
 Field is honored by some models, ignored by others; today the
-ignore is silent. Add `Effect.logWarning` via `dropUnsupported`.
+ignore is silent. Add `Effect.logWarning` via `warnDropped`.
 
 - [GeminiEmbedding.ts:29-30](../packages/providers/google/src/GeminiEmbedding.ts#L29) — `task` ignored on `gemini-embedding-2`.
 - [OpenAIEmbedding.ts:27-31](../packages/providers/responses/src/OpenAIEmbedding.ts#L27) — `task` silently ignored on the generic surface.
@@ -856,14 +865,16 @@ for their respective service-area phases and documented consumers.
 | Per-model checks to remove (14.4) | 2 sites | Mechanical |
 | Bucket 2 silent → warn (14.5) | 5+ sites | Add helper + call sites |
 | Per-modifier markers Phase 1 (14.11) | 2 markers, `@experimental` | Moderate |
-| Core additions: `dropUnsupported` + `CapabilityWarning` | — | Small |
+| Core additions: `warnDropped` + `CapabilityWarning` (done — `capabilities/Capabilities.ts`) | — | Small |
 
 ---
 
 ## 15. Suggested adoption order
 
-1. Land `dropUnsupported` helper + `CapabilityWarning` event in core.
-   Unlocks §14.5.
+1. Land `warnDropped` helper + `CapabilityWarning` event in core.
+   Unlocks §14.5. **Done** — lives in
+   `packages/core/src/capabilities/Capabilities.ts` (also exports the
+   `warnDroppedWhen` shorthand).
 2. Promote 14.2 from WIP to merged.
 3. Apply 14.3 — narrow `wordTimestamps` / `diarization` out of Gemini
    and OpenAI typed transcribers. WIP work.

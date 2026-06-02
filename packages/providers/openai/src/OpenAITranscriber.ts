@@ -1,6 +1,7 @@
-import { Context, Effect, Layer, Match, Redacted, Schema, Stream } from "effect"
+import { Context, Duration, Effect, Layer, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import type { TranscriptEvent, TranscriptResult, WordTimestamp } from "@effect-uai/core/Transcript"
 import {
   type CommonStreamTranscribeRequest,
@@ -22,12 +23,16 @@ import { type OpenAiRegion, resolveHost } from "./region.js"
  * upload's `filename` (OpenAI uses the extension to detect format).
  *
  * Field caveats:
- * - `wordTimestamps` requires `whisper-1`. GPT-4o models don't return
- *   per-word timing; combining them with `wordTimestamps: true` fails
- *   with `AiError.Unsupported`.
- * - `diarization` is not offered by OpenAI's transcription endpoint.
+ * - `diarization` is narrowed off — OpenAI's transcription endpoint
+ *   doesn't offer it. On the generic surface it's GATE-ONLY (lax-silent
+ *   absence; no marker shipped).
+ * - `wordTimestamps` stays — it works on `whisper-1`. We don't keep a
+ *   per-model table (capabilities §2.3): a non-whisper-1 model rejects
+ *   `verbose_json` at the wire, surfacing as the generic 400
+ *   `AiError.InvalidRequest`. We don't reclassify it to `Unsupported`
+ *   (would need fragile body inspection — deliberately skipped).
  */
-export type OpenAITranscribeRequest = Omit<CommonTranscribeRequest, "model"> & {
+export type OpenAITranscribeRequest = Omit<CommonTranscribeRequest, "model" | "diarization"> & {
   readonly model: OpenAITranscribeModel
   readonly temperature?: number
   readonly fileName?: string
@@ -55,57 +60,16 @@ export type Config = {
 }
 
 // ---------------------------------------------------------------------------
-// Codec — prompt collapse
-// ---------------------------------------------------------------------------
-
-/**
- * OpenAI takes `prompt` as a single string. Collapse `{ terms }` to a
- * comma-separated hint; OpenAI uses it as style/context, not strict
- * vocab biasing.
- */
-const promptToString: (prompt: string | { readonly terms: ReadonlyArray<string> }) => string =
-  Match.type<string | { readonly terms: ReadonlyArray<string> }>().pipe(
-    Match.when(Match.string, (s) => s),
-    Match.orElse(({ terms }) => terms.join(", ")),
-  )
-
-// ---------------------------------------------------------------------------
 // Codec — request → FormData
 // ---------------------------------------------------------------------------
 
 const wantsVerboseJson = (request: OpenAITranscribeRequest): boolean =>
   request.wordTimestamps === true
 
-/** Capability guards: gate request-data-dependent gaps with `Unsupported`. */
-const guardCapabilities = (
-  request: OpenAITranscribeRequest,
-): Effect.Effect<void, AiError.AiError> => {
-  if (wantsVerboseJson(request) && request.model !== "whisper-1") {
-    return Effect.fail(
-      new AiError.Unsupported({
-        provider: "openai",
-        capability: "wordTimestamps",
-        reason: `wordTimestamps requires model "whisper-1"; got "${request.model}". OpenAI's GPT-4o transcribe models do not return per-word timing.`,
-      }),
-    )
-  }
-  if (request.diarization === true) {
-    return Effect.fail(
-      new AiError.Unsupported({
-        provider: "openai",
-        capability: "diarization",
-        reason: "OpenAI's transcription endpoint does not offer speaker diarization.",
-      }),
-    )
-  }
-  return Effect.void
-}
-
 const buildFormData = (
   request: OpenAITranscribeRequest,
 ): Effect.Effect<FormData, AiError.AiError> =>
   Effect.gen(function* () {
-    yield* guardCapabilities(request)
     const blob = yield* audioToBlob(request.audio)
     const fd = new FormData()
     fd.set("file", blob, request.fileName ?? defaultFileName(blob.type))
@@ -113,7 +77,17 @@ const buildFormData = (
     fd.set("response_format", wantsVerboseJson(request) ? "verbose_json" : "json")
     if (wantsVerboseJson(request)) fd.set("timestamp_granularities[]", "word")
     if (request.language !== undefined) fd.set("language", request.language)
-    if (request.prompt !== undefined) fd.set("prompt", promptToString(request.prompt))
+    if (request.prompt !== undefined) fd.set("prompt", request.prompt)
+    // OpenAI has no structured keyterm field — the prose `prompt` is its
+    // only biasing surface. Don't stuff terms into it (prompt-building);
+    // warn instead.
+    yield* Capabilities.warnDroppedWhen(request.biasingTerms, {
+      provider: "openai",
+      capability: "biasing",
+      field: "biasingTerms",
+      reason:
+        "OpenAI transcription has no keyterm field. Use `prompt` for light vocab hints, or a provider with structured biasing (Deepgram, ElevenLabs, Google).",
+    })
     if (request.temperature !== undefined) fd.set("temperature", String(request.temperature))
     return fd
   })
@@ -152,7 +126,7 @@ const verboseToResult = (
 ): TranscriptResult => ({
   text: decoded.text,
   ...(decoded.language !== undefined && { languageCode: decoded.language }),
-  ...(decoded.duration !== undefined && { durationSeconds: decoded.duration }),
+  ...(decoded.duration !== undefined && { duration: Duration.seconds(decoded.duration) }),
   ...(decoded.words !== undefined && { words: decoded.words.map(wireWordToCommon) }),
   raw,
 })

@@ -4,7 +4,7 @@ import type { AudioBlob, AudioChunk } from "@effect-uai/core/Audio"
 import * as MockSpeechSynthesizer from "@effect-uai/core/testing/MockSpeechSynthesizer"
 import {
   dialogueTurns,
-  pronunciations,
+  spellingVariants,
   synthesizeDialogueOneShot,
   synthesizeDialogueStreaming,
 } from "./index.js"
@@ -18,7 +18,7 @@ const mp3Blob = (label: number, length: number): AudioBlob => ({
 })
 
 describe("advanced-speech-synthesis", () => {
-  it("sends every turn + pronunciations on synthesizeDialogue", async () => {
+  it("sends every turn on synthesizeDialogue", async () => {
     const mock = MockSpeechSynthesizer.layer({ dialogueBlobs: [mp3Blob(0, 8)] })
     const program = Effect.gen(function* () {
       const blob = yield* synthesizeDialogueOneShot()
@@ -30,17 +30,15 @@ describe("advanced-speech-synthesis", () => {
     const call = rec.synthesizeDialogueCalls[0]!
     expect(call.model).toBe("eleven_v3")
     expect(call.turns).toEqual(dialogueTurns)
-    expect(call.pronunciations).toEqual(pronunciations)
   })
 
-  it("keys each pronunciation on a per-turn spelling variant", () => {
-    // Each turn's text contains exactly one of the four spelling variants
-    // (except the closer), so the per-spelling map produces per-voice
-    // accents rather than one uniform pronunciation.
-    const phrases = pronunciations.map((p) => p.phrase)
-    expect(phrases).toEqual(["to-MAY-to", "to-MAH-to", "po-TAY-to", "po-TAH-to"])
-    for (const phrase of phrases) {
-      const occurrences = dialogueTurns.filter((t) => t.text.includes(phrase))
+  it("places each spelling variant in exactly one turn", () => {
+    // Each turn's text carries one of the four hyphenated variants
+    // (except the closer), so each voice gets its own accent in the
+    // text itself, no phoneme API needed.
+    expect(spellingVariants).toEqual(["to-MAY-to", "to-MAH-to", "po-TAY-to", "po-TAH-to"])
+    for (const variant of spellingVariants) {
+      const occurrences = dialogueTurns.filter((t) => t.text.includes(variant))
       expect(occurrences.length).toBe(1)
     }
   })

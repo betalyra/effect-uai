@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Match, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import {
   type CommonSynthesizeRequest,
   SpeechSynthesizer,
@@ -125,6 +126,31 @@ const baseUrl = (cfg: Config) => cfg.baseUrl ?? "https://generativelanguage.goog
 
 const synthesizeImpl = (cfg: Config) => (request: GeminiSynthesizeRequest) =>
   Effect.gen(function* () {
+    // Gemini `:generateContent` TTS has no phoneme field. Pronunciations
+    // are load-bearing (bucket 1), so reject rather than mispronounce.
+    if (request.pronunciations !== undefined && request.pronunciations.length > 0) {
+      return yield* Effect.fail(
+        new AiError.Unsupported({
+          provider: "gemini",
+          capability: "pronunciations",
+          reason:
+            "Gemini `:generateContent` TTS has no phoneme field. Use Cloud Text-to-Speech (Chirp 3 HD) or a provider with inline phonemes (Inworld) for pronunciation overrides.",
+        }),
+      )
+    }
+    // No speaking-rate or language parameters on this endpoint; bucket 2.
+    yield* Capabilities.warnDroppedWhen(request.speed, {
+      provider: "gemini",
+      capability: "speed",
+      field: "speed",
+      reason: "Gemini `:generateContent` TTS has no speaking-rate parameter.",
+    })
+    yield* Capabilities.warnDroppedWhen(request.languageCode, {
+      provider: "gemini",
+      capability: "languageCode",
+      field: "languageCode",
+      reason: "Gemini `:generateContent` TTS has no language parameter.",
+    })
     const client = yield* HttpClient.HttpClient
     const [format, wrap] = yield* realizeOutput(request.outputFormat?.container ?? "raw")
     const httpRequest = HttpClientRequest.post(

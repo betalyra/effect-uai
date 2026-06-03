@@ -8,18 +8,16 @@
  *    register it, so calling against an unsupported provider is a
  *    compile-time error.
  *
- * 2. **Custom pronunciations** via the optional `pronunciations` field
- *    on `CommonSynthesizeDialogueRequest`. Adapters that can't honor
- *    an entry silently drop it; audio still renders with the default
- *    pronunciation.
+ * 2. **Pronunciation without inline phonemes.** ElevenLabs has no
+ *    stateless inline IPA path, so the Common `pronunciations` field
+ *    fails `Unsupported` here. Instead, spell phonetically in the text:
+ *    the hyphenated `to-MAY-to` / `to-MAH-to` variants below steer each
+ *    voice's syllable stress with no phoneme API. For structured
+ *    overrides, provision a pronunciation dictionary and pass
+ *    `pronunciationDictionaryLocators` on the ElevenLabs-typed request.
  *
- * The example below compares American and British English
- * pronunciations of two words — same spelling, different sound per
- * voice. The trick is that the `pronunciations` map keys on each
- * turn's hyphenated spelling variant (`to-MAY-to` vs `to-MAH-to`), so
- * each voice picks up the matching IPA hint. The hyphenated spellings
- * also guide engines that silently drop the phoneme tags (i.e.
- * ElevenLabs `eleven_v3`) toward the right syllable pattern.
+ * The example compares American and British English pronunciations of
+ * the same base words: a different hyphenated spelling per voice.
  */
 import { Array as Arr, Effect, Stream } from "effect"
 import type { AudioChunk } from "@effect-uai/core/Audio"
@@ -32,15 +30,15 @@ const VOICE_AMERICAN = "JBFqnCBsd6RMkjVDRZzb" // "George"
 const VOICE_BRITISH = "EXAVITQu4vr4xnSDxMaL" // "Sarah"
 
 /**
- * Per-spelling IPA hints. Each turn uses a different hyphenated
- * spelling so the pronunciations map keys on what that voice
- * actually says, not on a shared base form like `"tomato"`.
+ * Hyphenated spelling variants, one per turn, that steer each voice's
+ * pronunciation in the text itself, no phoneme API required (ElevenLabs
+ * has no stateless inline IPA path).
  */
-export const pronunciations: ReadonlyArray<SpeechSynthesizer.CustomPronunciation> = [
-  { phrase: "to-MAY-to", pronunciation: "təˈmeɪtoʊ", encoding: "ipa" },
-  { phrase: "to-MAH-to", pronunciation: "təˈmɑːtoʊ", encoding: "ipa" },
-  { phrase: "po-TAY-to", pronunciation: "pəˈteɪtoʊ", encoding: "ipa" },
-  { phrase: "po-TAH-to", pronunciation: "pəˈtɑːtoʊ", encoding: "ipa" },
+export const spellingVariants: ReadonlyArray<string> = [
+  "to-MAY-to",
+  "to-MAH-to",
+  "po-TAY-to",
+  "po-TAH-to",
 ]
 
 export const dialogueTurns: ReadonlyArray<SpeechSynthesizer.DialogueTurn> = [
@@ -61,7 +59,6 @@ const mp3: SpeechSynthesizer.CommonSynthesizeRequest["outputFormat"] = {
 const request: SpeechSynthesizer.CommonSynthesizeDialogueRequest = {
   model: "eleven_v3",
   turns: dialogueTurns,
-  pronunciations,
   outputFormat: mp3,
 }
 

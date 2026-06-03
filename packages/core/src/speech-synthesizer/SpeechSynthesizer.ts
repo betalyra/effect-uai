@@ -3,31 +3,20 @@ import * as AiError from "../domain/AiError.js"
 import type { AudioBlob, AudioChunk, AudioFormat } from "../domain/Audio.js"
 
 /**
- * Phonetic alphabets accepted by `CustomPronunciation`. Not every
- * provider supports every alphabet — adapters translate or warn+drop
- * unsupported entries.
+ * Per-phrase pronunciation override. `pronunciation` is always IPA, the
+ * universal phonetic interchange format. Adapters translate to the
+ * provider's wire form (inline `/ipa/` token, SSML `<phoneme>`, or a
+ * structured field), converting IPA to X-SAMPA internally where the wire
+ * requires it (Google, Azure).
  *
- * - `ipa` — universal lowest common denominator (Google, ElevenLabs,
- *   Inworld, Deepgram, Cartesia, MiniMax).
- * - `x-sampa` — Google Cloud TTS.
- * - `cmu-arpabet` — ElevenLabs `eleven_flash_v2` / `eleven_english_v1`.
- */
-export type PhoneticEncoding = "ipa" | "x-sampa" | "cmu-arpabet"
-
-/**
- * Per-phrase pronunciation override. The same shape unifies the
- * structured-field providers (Google) and the inline-markup providers
- * (ElevenLabs SSML, Inworld `/ipa/`, Deepgram, Cartesia, MiniMax) — the
- * adapter does the wire translation.
- *
- * Unsupported alphabets are dropped at the adapter with a structured
- * `logWarning` (one per call). The audio still renders, just without
- * the override.
+ * Pronunciations are load-bearing (the configured word is mispronounced
+ * if dropped), so a provider with no stateless IPA path fails the call
+ * with `AiError.Unsupported` rather than silently degrading.
  */
 export type CustomPronunciation = {
   readonly phrase: string
+  /** IPA notation, e.g. `"ænˈθrɒpɪk"`. */
   readonly pronunciation: string
-  readonly encoding: PhoneticEncoding
 }
 
 /**
@@ -52,11 +41,10 @@ export type CommonSynthesizeRequest = {
   readonly speed?: number
   readonly languageCode?: string
   /**
-   * Phoneme overrides for specific phrases. 7 of 9 TTS providers
-   * support some form of this; adapters either translate to a
-   * structured field, rewrite `text` inline, or `warn+drop` per-entry
-   * for alphabets they don't accept. OpenAI rejects non-empty arrays
-   * with `Unsupported`.
+   * IPA phoneme overrides for specific phrases. Adapters render them to
+   * the provider's wire form (inline token, SSML `<phoneme>`, structured
+   * field). Load-bearing: a provider with no stateless IPA path fails
+   * the call with `AiError.Unsupported` rather than mispronouncing.
    */
   readonly pronunciations?: ReadonlyArray<CustomPronunciation>
 }
@@ -73,18 +61,15 @@ export type CommonSynthesizeRequest = {
 export type CommonStreamSynthesizeRequest = Omit<CommonSynthesizeRequest, "text">
 
 /**
- * One turn in a multi-speaker dialogue.
- *
- * `styleDescription` and `speed` are honored by providers that expose
- * per-turn knobs (Hume Octave-2) and silently ignored by others
- * (ElevenLabs `/v1/text-to-dialogue` accepts `{voice_id, text}` only;
- * Google Gemini TTS multi-speaker has no per-turn styling).
+ * One turn in a multi-speaker dialogue. Just a voice and its line; the
+ * only in-tree dialogue endpoint (ElevenLabs `/v1/text-to-dialogue`)
+ * accepts `{ voice_id, text }` per turn. Per-turn styling knobs
+ * (Hume Octave-2 `styleDescription` / `speed`) are provider-specific
+ * and belong on a provider-typed turn extension, not here.
  */
 export type DialogueTurn = {
   readonly voiceId: string
   readonly text: string
-  readonly styleDescription?: string
-  readonly speed?: number
 }
 
 /**

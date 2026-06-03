@@ -1,6 +1,7 @@
 import { Array as Arr, Effect, Encoding, Match, Option, Result } from "effect"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat, AudioSource } from "@effect-uai/core/Audio"
+import type { CustomPronunciation } from "@effect-uai/core/SpeechSynthesizer"
 
 // ---------------------------------------------------------------------------
 // Shared TTS voice-settings shape (sync + streaming use the same fields)
@@ -24,6 +25,50 @@ export const wireVoiceSettings = (v: VoiceSettings | undefined) =>
         ...(v.useSpeakerBoost !== undefined && { use_speaker_boost: v.useSpeakerBoost }),
         ...(v.speed !== undefined && { speed: v.speed }),
       }
+
+// ---------------------------------------------------------------------------
+// Pronunciation: dictionary locators (supported) vs inline IPA (rejected)
+// ---------------------------------------------------------------------------
+
+/**
+ * Reference to a pre-provisioned ElevenLabs pronunciation dictionary.
+ * The caller provisions and versions the dictionary out-of-band
+ * (dashboard or the pronunciation-dictionary API); we only reference it.
+ */
+export type PronunciationDictionaryLocator = {
+  readonly dictionaryId: string
+  readonly versionId: string
+}
+
+export const wirePronunciationLocators = (
+  locators: ReadonlyArray<PronunciationDictionaryLocator> | undefined,
+) =>
+  locators === undefined || locators.length === 0
+    ? undefined
+    : locators.map((l) => ({
+        pronunciation_dictionary_id: l.dictionaryId,
+        version_id: l.versionId,
+      }))
+
+/**
+ * ElevenLabs has no stateless inline IPA path (legacy `<phoneme>` SSML
+ * is dropped; modern phonetics live in pre-uploaded dictionaries).
+ * Inline `pronunciations` are load-bearing (bucket 1), so reject rather
+ * than silently mispronounce. Use `pronunciationDictionaryLocators`.
+ */
+export const rejectInlinePronunciations = (
+  pronunciations: ReadonlyArray<CustomPronunciation> | undefined,
+): Effect.Effect<void, AiError.AiError> =>
+  pronunciations !== undefined && pronunciations.length > 0
+    ? Effect.fail(
+        new AiError.Unsupported({
+          provider: "elevenlabs",
+          capability: "pronunciations",
+          reason:
+            "ElevenLabs has no stateless inline IPA path. Provision a pronunciation dictionary and pass `pronunciationDictionaryLocators`, or use a provider with inline phonemes (Inworld, Google).",
+        }),
+      )
+    : Effect.void
 
 // ---------------------------------------------------------------------------
 // AudioFormat → ElevenLabs `output_format` query value

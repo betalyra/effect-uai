@@ -76,9 +76,9 @@ export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: st
 
 /**
  * Inworld accepts inline phoneme overrides as `/ipa/` tokens directly
- * in the text — no separate field. Only IPA is supported; entries with
- * other encodings are silently dropped (audio still renders with the
- * default pronunciation). Whole-word, case-insensitive replacement.
+ * in the text, no separate field. `CustomPronunciation.pronunciation`
+ * is always IPA, so every entry is inlined. Whole-word,
+ * case-insensitive replacement.
  */
 const escapeForRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
@@ -88,9 +88,7 @@ const applyPronunciations = (
 ): string => {
   if (pronunciations === undefined) return text
   return Arr.reduce(pronunciations, text, (acc, p) =>
-    p.encoding === "ipa"
-      ? acc.replace(new RegExp(`\\b${escapeForRegex(p.phrase)}\\b`, "i"), `/${p.pronunciation}/`)
-      : acc,
+    acc.replace(new RegExp(`\\b${escapeForRegex(p.phrase)}\\b`, "i"), `/${p.pronunciation}/`),
   )
 }
 

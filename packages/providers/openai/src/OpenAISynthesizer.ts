@@ -103,7 +103,8 @@ const buildBody = (
       provider: "openai",
       capability: "languageCode",
       field: "languageCode",
-      reason: "OpenAI /audio/speech has no language parameter; it auto-detects from the input text.",
+      reason:
+        "OpenAI /audio/speech has no language parameter; it auto-detects from the input text.",
     })
     const responseFormat = yield* containerToResponseFormat(
       (request.outputFormat ?? defaultFormat).container,

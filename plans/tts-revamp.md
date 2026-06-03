@@ -35,12 +35,12 @@ Gemini (sync-only), ElevenLabs (sync+chunked+rt+dialogue), Inworld
   [SpeechSynthesizer.ts:103-181](../packages/core/src/speech-synthesizer/SpeechSynthesizer.ts#L103).
 - **Marker registration is correct and pessimistic** (verified):
 
-  | Layer | `TtsIncrementalText` | `MultiSpeakerTts` |
-  |---|---|---|
-  | OpenAI | ✗ (no incremental wire) | ✗ (no multi-speaker) |
-  | Gemini | ✗ (sync-only) | ✗ (generativelanguage has none) |
-  | ElevenLabs | ✓ (`/stream-input` WS) | ✓ (`/v1/text-to-dialogue`) |
-  | Inworld sync / rt | ✗ / ✓ | ✗ / ✗ |
+  | Layer             | `TtsIncrementalText`    | `MultiSpeakerTts`               |
+  | ----------------- | ----------------------- | ------------------------------- |
+  | OpenAI            | ✗ (no incremental wire) | ✗ (no multi-speaker)            |
+  | Gemini            | ✗ (sync-only)           | ✗ (generativelanguage has none) |
+  | ElevenLabs        | ✓ (`/stream-input` WS)  | ✓ (`/v1/text-to-dialogue`)      |
+  | Inworld sync / rt | ✗ / ✓                   | ✗ / ✗                           |
 
 - **`model` + `voiceId` narrowed** on every provider request
   (`Omit<…,"model"|"voiceId"> & { model: <Union>; voiceId: <Union> }`).
@@ -158,7 +158,7 @@ from a brand. Plain documented `string`.
 
 **Then the runtime rule (capabilities §2.2 / §14.1).** With one
 encoding the only remaining question is per-provider: does this provider
-have a *stateless* phoneme mechanism that accepts IPA? If yes, render
+have a _stateless_ phoneme mechanism that accepts IPA? If yes, render
 it; if no, a non-empty `pronunciations` is bucket-1 `Unsupported`
 (silent drop = the caller's configured word spoken wrong = broken
 audio). Partial honor is unacceptable, so any unrenderable entry fails
@@ -229,13 +229,13 @@ the caller-visible contract reduces to one bit: **this provider renders
 inline IPA, or it does not.** No per-encoding, no per-model branching
 survives on the caller's side.
 
-| Provider | Inline IPA path | Result |
-|---|---|---|
-| Inworld | `/ipa/` token, stateless | supported |
-| Google (future) | `<phoneme>` / `customPronunciations` (+IPA→X-SAMPA) | supported |
-| OpenAI, Gemini | none | `Unsupported` |
-| ElevenLabs | dictionary only (stateful, model-limited) | `Unsupported` (defer dict) |
-| MiniMax (future) | bespoke `pronunciation_dict.tone` (no IPA) | `Unsupported` |
+| Provider         | Inline IPA path                                     | Result                     |
+| ---------------- | --------------------------------------------------- | -------------------------- |
+| Inworld          | `/ipa/` token, stateless                            | supported                  |
+| Google (future)  | `<phoneme>` / `customPronunciations` (+IPA→X-SAMPA) | supported                  |
+| OpenAI, Gemini   | none                                                | `Unsupported`              |
+| ElevenLabs       | dictionary only (stateful, model-limited)           | `Unsupported` (defer dict) |
+| MiniMax (future) | bespoke `pronunciation_dict.tone` (no IPA)          | `Unsupported`              |
 
 ### 2.2 Pronunciations on the non-sync paths (§14.1, same bucket)
 
@@ -287,11 +287,11 @@ documents locators on the TTS body and WS BOS, not
 request" pattern is not ElevenLabs-only. Three providers share the
 concept with structurally different handles:
 
-| Provider | Handle | Provisioned via |
-|---|---|---|
+| Provider   | Handle                                                    | Provisioned via              |
+| ---------- | --------------------------------------------------------- | ---------------------------- |
 | ElevenLabs | `pronunciation_dictionary_locators: [{ id, version_id }]` | pronunciation-dictionary API |
-| AWS Polly | `LexiconNames: string[]` (≤5) | `PutLexicon` (PLS) |
-| Azure | `<lexicon uri="…"/>` in SSML | hosted lexicon file |
+| AWS Polly  | `LexiconNames: string[]` (≤5)                             | `PutLexicon` (PLS)           |
+| Azure      | `<lexicon uri="…"/>` in SSML                              | hosted lexicon file          |
 
 These stay **per-provider typed extras**, not a Common field (only 3 of
 9 providers, and the handle shapes diverge too far to unify: compound
@@ -350,8 +350,8 @@ antipattern).
 export type DialogueTurn = {
   readonly voiceId: string
   readonly text: string
-  readonly styleDescription?: string  // Hume-only, drop
-  readonly speed?: number             // Hume-only, drop
+  readonly styleDescription?: string // Hume-only, drop
+  readonly speed?: number // Hume-only, drop
 }
 // after
 export type DialogueTurn = {
@@ -390,36 +390,37 @@ provider-specifics already live in typed extras.
 S structured wire field · I inline-rewrite (text) · U `Unsupported` ·
 W `warnDropped` · — not applicable
 
-| | OpenAI | Gemini | ElevenLabs | Inworld sync | Inworld rt |
-|---|---|---|---|---|---|
-| `voiceId` | S (stock) | S (stock) | S (+clone) | S (+clone) | S (+clone) |
-| `outputFormat` | S / U | raw·wav / U | S / U | S / U | S / U |
-| `speed` | S | W | S | S | S |
-| `languageCode` | W | W | S | S | S |
-| `pronunciations` (IPA) | U | U | U (dict deferred) | I (`/ipa/`) | I (`/ipa/`) |
-| `streamSynthesis` (chunked) | S | wrap-sync | S | S | S |
-| `streamSynthesisFrom` (incr) | — | — | S | — | S |
-| `synthesizeDialogue` | — | — | S | — | — |
+|                              | OpenAI    | Gemini      | ElevenLabs        | Inworld sync | Inworld rt  |
+| ---------------------------- | --------- | ----------- | ----------------- | ------------ | ----------- |
+| `voiceId`                    | S (stock) | S (stock)   | S (+clone)        | S (+clone)   | S (+clone)  |
+| `outputFormat`               | S / U     | raw·wav / U | S / U             | S / U        | S / U       |
+| `speed`                      | S         | W           | S                 | S            | S           |
+| `languageCode`               | W         | W           | S                 | S            | S           |
+| `pronunciations` (IPA)       | U         | U           | U (dict deferred) | I (`/ipa/`)  | I (`/ipa/`) |
+| `streamSynthesis` (chunked)  | S         | wrap-sync   | S                 | S            | S           |
+| `streamSynthesisFrom` (incr) | —         | —           | S                 | —            | S           |
+| `synthesizeDialogue`         | —         | —           | S                 | —            | —           |
 
 (`pronunciations` is now IPA-only, §2.1. Cells: Inworld inlines IPA on
 every method; the rest have no stateless IPA path, so `Unsupported`.
 The previous per-encoding silent-drop behavior is gone.)
 
 ### 3.2 Expansion providers (grounded in [stt-tts-wire.md](./stt-tts-wire.md)
+
 plus the `CustomPronunciation` inventory in
 [SpeechSynthesizer.ts:5-31](../packages/core/src/speech-synthesizer/SpeechSynthesizer.ts#L5))
 
 S structured · I inline SSML · × unsupported
 
-| | Google Cloud TTS | Cartesia | Hume Octave | AWS Polly | Azure | MiniMax |
-|---|---|---|---|---|---|---|
-| custom voice / clone | S | S | S | × | S | S |
-| `pronunciations` (IPA in) | S `customPronunciations` / SSML (IPA, or IPA→X-SAMPA) | I (IPA) | × | I SSML (IPA) + lexicons | I SSML (IPA→X-SAMPA) | × (bespoke tone syntax, no IPA) |
-| incremental text-in | S (Chirp 3 HD gRPC) | S (WS) | × | × | S (SDK) | S |
-| multi-speaker dialogue | S (Gemini TTS markup) | × | S (`utterances[]`) | × | × | × |
-| per-turn timing | × | × | S | × | × | × |
+|                           | Google Cloud TTS                                      | Cartesia | Hume Octave        | AWS Polly               | Azure                | MiniMax                         |
+| ------------------------- | ----------------------------------------------------- | -------- | ------------------ | ----------------------- | -------------------- | ------------------------------- |
+| custom voice / clone      | S                                                     | S        | S                  | ×                       | S                    | S                               |
+| `pronunciations` (IPA in) | S `customPronunciations` / SSML (IPA, or IPA→X-SAMPA) | I (IPA)  | ×                  | I SSML (IPA) + lexicons | I SSML (IPA→X-SAMPA) | × (bespoke tone syntax, no IPA) |
+| incremental text-in       | S (Chirp 3 HD gRPC)                                   | S (WS)   | ×                  | ×                       | S (SDK)              | S                               |
+| multi-speaker dialogue    | S (Gemini TTS markup)                                 | ×        | S (`utterances[]`) | ×                       | ×                    | ×                               |
+| per-turn timing           | ×                                                     | ×        | S                  | ×                       | ×                    | ×                               |
 
-Google Cloud TTS is the one provider with a *structured*
+Google Cloud TTS is the one provider with a _structured_
 pronunciation field (`customPronunciations`), which would honor a
 `pronunciations` array natively rather than via fragile inline
 rewrite. It is also the strongest future marker shipper for incremental
@@ -491,14 +492,14 @@ ship wrong audio) and belong in the changeset.
 
 ## 6. Effort
 
-| Item | Effort |
-|---|---|
-| Domain: collapse `CustomPronunciation` to IPA (§2.1) + mock | ~1 hour |
-| Per-adapter pronunciation handling, all methods (§2.1, §2.2) + tests | ~half-day |
-| ElevenLabs `pronunciationDictionaryLocators` provider extra (§2.2) | ~1 hour |
-| Bucket-2 warns (§2.3) | ~1 hour |
-| Trim `DialogueTurn` (§2.5) + mock/codec updates | ~30 min |
-| Changeset / migration note (IPA collapse + breaking pronunciation behavior + `DialogueTurn` trim) | ~30 min |
+| Item                                                                                              | Effort    |
+| ------------------------------------------------------------------------------------------------- | --------- |
+| Domain: collapse `CustomPronunciation` to IPA (§2.1) + mock                                       | ~1 hour   |
+| Per-adapter pronunciation handling, all methods (§2.1, §2.2) + tests                              | ~half-day |
+| ElevenLabs `pronunciationDictionaryLocators` provider extra (§2.2)                                | ~1 hour   |
+| Bucket-2 warns (§2.3)                                                                             | ~1 hour   |
+| Trim `DialogueTurn` (§2.5) + mock/codec updates                                                   | ~30 min   |
+| Changeset / migration note (IPA collapse + breaking pronunciation behavior + `DialogueTurn` trim) | ~30 min   |
 
 Total: roughly one focused day. Far smaller than STT, because the TTS
 surface, markers, narrowing, and `Duration` were already right: this is

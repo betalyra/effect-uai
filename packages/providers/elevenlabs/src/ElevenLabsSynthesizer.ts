@@ -1,4 +1,4 @@
-import { Array as Arr, Context, Effect, Layer, Redacted, Stream } from "effect"
+import { Context, Effect, Layer, Redacted, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import type * as AiError from "@effect-uai/core/AiError"
@@ -7,7 +7,6 @@ import {
   type CommonStreamSynthesizeRequest,
   type CommonSynthesizeDialogueRequest,
   type CommonSynthesizeRequest,
-  type CustomPronunciation,
   MultiSpeakerTts,
   SpeechSynthesizer,
   type SpeechSynthesizerService,
@@ -17,8 +16,11 @@ import {
   defaultFormat,
   formatToOutputSlug,
   httpStatusError,
+  type PronunciationDictionaryLocator,
+  rejectInlinePronunciations,
   transportFailure,
   type VoiceSettings,
+  wirePronunciationLocators,
   wireVoiceSettings,
 } from "./codec.js"
 import type { ElevenLabsTtsModel, ElevenLabsVoiceId } from "./models.js"
@@ -34,6 +36,11 @@ import { type ElevenLabsRegion, resolveHost } from "./region.js"
  * provider's prosody/timbre controls; `seed` makes generation
  * deterministic; `previousText` / `nextText` thread context across
  * sequential calls for natural prosody.
+ *
+ * `pronunciationDictionaryLocators` references pre-provisioned
+ * pronunciation dictionaries by ID. Inline `pronunciations` (IPA) on
+ * the Common request are not supported by ElevenLabs and fail
+ * `Unsupported`; use a dictionary for phonetic control.
  */
 export type ElevenLabsSynthesizeRequest = Omit<CommonSynthesizeRequest, "model" | "voiceId"> & {
   readonly model: ElevenLabsTtsModel
@@ -42,6 +49,7 @@ export type ElevenLabsSynthesizeRequest = Omit<CommonSynthesizeRequest, "model" 
   readonly seed?: number
   readonly previousText?: string
   readonly nextText?: string
+  readonly pronunciationDictionaryLocators?: ReadonlyArray<PronunciationDictionaryLocator>
 }
 
 export type ElevenLabsSynthesizerService = {
@@ -66,63 +74,20 @@ export type Config = {
 }
 
 // ---------------------------------------------------------------------------
-// Pronunciations — SSML <phoneme> rewrite (gated to legacy models)
-// ---------------------------------------------------------------------------
-
-/**
- * Models that honor inline `<phoneme>` SSML tags. Other models silently
- * drop the tags server-side, so we don't bother rewriting the text for
- * them — the pronunciation overrides are silently ignored.
- *
- * Reference: https://elevenlabs.io/docs/best-practices/prompting/controls
- */
-const PHONEME_SUPPORTED_MODELS: ReadonlySet<string> = new Set([
-  "eleven_flash_v2",
-  "eleven_english_v1",
-  "eleven_monolingual_v1",
-])
-
-const wireAlphabet = (encoding: CustomPronunciation["encoding"]): string | undefined =>
-  encoding === "ipa" ? "ipa" : encoding === "cmu-arpabet" ? "cmu-arpabet" : undefined
-
-const phonemeTag = (phrase: string, pronunciation: string, alphabet: string): string =>
-  `<phoneme alphabet="${alphabet}" ph="${pronunciation}">${phrase}</phoneme>`
-
-const escapeForRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-
-/**
- * Apply pronunciation overrides to a text string. Only applies for
- * phoneme-supported models; only IPA and CMU Arpabet are honored
- * (x-sampa is silently dropped). Whole-word, case-insensitive
- * replacement.
- */
-const applyPronunciations = (
-  text: string,
-  model: string,
-  pronunciations: ReadonlyArray<CustomPronunciation> | undefined,
-): string => {
-  if (pronunciations === undefined || !PHONEME_SUPPORTED_MODELS.has(model)) return text
-  return Arr.reduce(pronunciations, text, (acc, p) => {
-    const alphabet = wireAlphabet(p.encoding)
-    if (alphabet === undefined) return acc
-    return acc.replace(
-      new RegExp(`\\b${escapeForRegex(p.phrase)}\\b`, "i"),
-      phonemeTag(p.phrase, p.pronunciation, alphabet),
-    )
-  })
-}
-
-// ---------------------------------------------------------------------------
 // Codec — request → JSON body
 // ---------------------------------------------------------------------------
 
 const buildBody = (r: ElevenLabsSynthesizeRequest) => ({
-  text: applyPronunciations(r.text, r.model, r.pronunciations),
+  text: r.text,
   model_id: r.model,
   ...(r.languageCode !== undefined && { language_code: r.languageCode }),
   ...(r.seed !== undefined && { seed: r.seed }),
   ...(r.previousText !== undefined && { previous_text: r.previousText }),
   ...(r.nextText !== undefined && { next_text: r.nextText }),
+  ...(() => {
+    const locators = wirePronunciationLocators(r.pronunciationDictionaryLocators)
+    return locators !== undefined && { pronunciation_dictionary_locators: locators }
+  })(),
   ...(r.voiceSettings !== undefined && { voice_settings: wireVoiceSettings(r.voiceSettings) }),
 })
 
@@ -135,7 +100,7 @@ const DEFAULT_DIALOGUE_MODEL = "eleven_v3"
 const buildDialogueBody = (r: CommonSynthesizeDialogueRequest) => ({
   inputs: r.turns.map((t) => ({
     voice_id: t.voiceId,
-    text: applyPronunciations(t.text, r.model, r.pronunciations),
+    text: t.text,
   })),
   model_id: r.model ?? DEFAULT_DIALOGUE_MODEL,
   ...(r.languageCode !== undefined && { language_code: r.languageCode }),
@@ -159,6 +124,7 @@ const buildDialogueHttpRequest = (
 
 const synthesizeDialogueImpl = (cfg: Config) => (request: CommonSynthesizeDialogueRequest) =>
   Effect.gen(function* () {
+    yield* rejectInlinePronunciations(request.pronunciations)
     const client = yield* HttpClient.HttpClient
     const { httpRequest, format } = yield* buildDialogueHttpRequest(cfg, request, "")
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
@@ -173,6 +139,7 @@ const synthesizeDialogueImpl = (cfg: Config) => (request: CommonSynthesizeDialog
 const streamSynthesizeDialogueImpl = (cfg: Config) => (request: CommonSynthesizeDialogueRequest) =>
   Stream.unwrap(
     Effect.gen(function* () {
+      yield* rejectInlinePronunciations(request.pronunciations)
       const client = yield* HttpClient.HttpClient
       const { httpRequest } = yield* buildDialogueHttpRequest(cfg, request, "/stream")
       const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
@@ -205,6 +172,7 @@ const buildHttpRequest = (cfg: Config, r: ElevenLabsSynthesizeRequest, path: "" 
 
 const synthesizeImpl = (cfg: Config) => (request: ElevenLabsSynthesizeRequest) =>
   Effect.gen(function* () {
+    yield* rejectInlinePronunciations(request.pronunciations)
     const client = yield* HttpClient.HttpClient
     const { httpRequest, format } = yield* buildHttpRequest(cfg, request, "")
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
@@ -219,6 +187,7 @@ const synthesizeImpl = (cfg: Config) => (request: ElevenLabsSynthesizeRequest) =
 const streamSynthesisImpl = (cfg: Config) => (request: ElevenLabsSynthesizeRequest) =>
   Stream.unwrap(
     Effect.gen(function* () {
+      yield* rejectInlinePronunciations(request.pronunciations)
       const client = yield* HttpClient.HttpClient
       const { httpRequest } = yield* buildHttpRequest(cfg, request, "/stream")
       const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))

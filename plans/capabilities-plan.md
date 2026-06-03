@@ -128,9 +128,7 @@ variant only if a consumer needs to pattern-match.
 
 ```ts
 // packages/core/src/capabilities/Capabilities.ts
-export const warnDropped = (
-  warning: Omit<CapabilityWarning, "_tag">,
-): Effect.Effect<void> =>
+export const warnDropped = (warning: Omit<CapabilityWarning, "_tag">): Effect.Effect<void> =>
   Effect.logWarning("Capability dropped", { ...warning, _tag: "CapabilityWarning" })
 
 // Shorthand: warn-and-drop when a specific field is set; the value
@@ -138,8 +136,7 @@ export const warnDropped = (
 export const warnDroppedWhen = <T>(
   value: T | undefined,
   warning: Omit<CapabilityWarning, "_tag" | "value">,
-): Effect.Effect<void> =>
-  value === undefined ? Effect.void : warnDropped({ ...warning, value })
+): Effect.Effect<void> => (value === undefined ? Effect.void : warnDropped({ ...warning, value }))
 ```
 
 That's the whole API. Used by adapters at the point where they drop
@@ -422,7 +419,7 @@ comment block above the type helpers:
    widen to non-tuple unions and `IntersectROut` returns `unknown`.
 2. `infer _E, infer _RIn` (not `any, any`) in `ROutOf` — `Layer` is
    contravariant in `ROut`; `any` in other slots collapses `infer
-   Out` to `unknown`.
+Out` to `unknown`.
 
 Reference: [experiments/capabilities-spike/index.ts:130-152](../experiments/capabilities-spike/index.ts#L130).
 
@@ -463,13 +460,13 @@ new `Layer.succeed(Marker, undefined)` lines. **Pessimistic
 registration** per guideline §5: ship a marker only if every model
 the Layer routes to honors the modifier.
 
-| Provider | File | Construction | DiarizationGuarantee | WordTimestampsGuarantee |
-|---|---|---|---|---|
-| **ElevenLabs** STT | [ElevenLabsTranscriber.ts:168](../packages/providers/elevenlabs/src/ElevenLabsTranscriber.ts#L168) | `Layer.mergeAll` | ✓ ship | ✓ ship |
-| **Inworld** STT (sync) | [InworldTranscriber.ts:212](../packages/providers/inworld/src/InworldTranscriber.ts#L212) | `Layer.merge` → `Layer.mergeAll` | ✓ ship | ✓ ship |
-| **Inworld** STT (realtime) | [InworldRealtimeTranscriber.ts:50](../packages/providers/inworld/src/InworldRealtimeTranscriber.ts#L50) | `Layer.mergeAll` | ✓ ship | ✓ ship |
-| **OpenAI** STT | [OpenAITranscriber.ts:249](../packages/providers/openai/src/OpenAITranscriber.ts#L249) | `Layer.merge` (stays) | ✗ omit | ✗ omit (pessimistic — whisper-1 only) |
-| **Gemini** STT | [GeminiTranscriber.ts:191](../packages/providers/google/src/GeminiTranscriber.ts#L191) | `Layer.merge` (stays) | ✗ omit | ✗ omit |
+| Provider                   | File                                                                                                    | Construction                     | DiarizationGuarantee | WordTimestampsGuarantee               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------- | -------------------- | ------------------------------------- |
+| **ElevenLabs** STT         | [ElevenLabsTranscriber.ts:168](../packages/providers/elevenlabs/src/ElevenLabsTranscriber.ts#L168)      | `Layer.mergeAll`                 | ✓ ship               | ✓ ship                                |
+| **Inworld** STT (sync)     | [InworldTranscriber.ts:212](../packages/providers/inworld/src/InworldTranscriber.ts#L212)               | `Layer.merge` → `Layer.mergeAll` | ✓ ship               | ✓ ship                                |
+| **Inworld** STT (realtime) | [InworldRealtimeTranscriber.ts:50](../packages/providers/inworld/src/InworldRealtimeTranscriber.ts#L50) | `Layer.mergeAll`                 | ✓ ship               | ✓ ship                                |
+| **OpenAI** STT             | [OpenAITranscriber.ts:249](../packages/providers/openai/src/OpenAITranscriber.ts#L249)                  | `Layer.merge` (stays)            | ✗ omit               | ✗ omit (pessimistic — whisper-1 only) |
+| **Gemini** STT             | [GeminiTranscriber.ts:191](../packages/providers/google/src/GeminiTranscriber.ts#L191)                  | `Layer.merge` (stays)            | ✗ omit               | ✗ omit                                |
 
 Inworld sync and Gemini / OpenAI currently use `Layer.merge`
 (two-arg). Adding marker lines means promoting to `Layer.mergeAll`
@@ -497,13 +494,13 @@ provider has no interpretation) per §2.
 
 Per-provider audit:
 
-| Provider | Has biasing equivalent? | Action |
-|---|---|---|
-| OpenAI Whisper | Yes (`prompt` field) | No change |
-| AssemblyAI | Partial (`word_boost`) | No change if mapped; warn if not |
-| ElevenLabs | No native equivalent | `warnDropped({field: "prompt", ...})` when caller provides it |
-| Inworld | Has `prompts` array | No change |
-| Gemini | Built into prompt template | No change |
+| Provider       | Has biasing equivalent?    | Action                                                        |
+| -------------- | -------------------------- | ------------------------------------------------------------- |
+| OpenAI Whisper | Yes (`prompt` field)       | No change                                                     |
+| AssemblyAI     | Partial (`word_boost`)     | No change if mapped; warn if not                              |
+| ElevenLabs     | No native equivalent       | `warnDropped({field: "prompt", ...})` when caller provides it |
+| Inworld        | Has `prompts` array        | No change                                                     |
+| Gemini         | Built into prompt template | No change                                                     |
 
 Net work: one `warnDropped` call in `ElevenLabsTranscriber` (and
 any other adapter that lacks a biasing equivalent — quick audit
@@ -518,7 +515,7 @@ today ships `SttStreaming` via `layer` and omits it via
 `layerSyncOnly`. The plan:
 
 - `layer(script)` — **now ships `SttStreaming + DiarizationGuarantee +
-  WordTimestampsGuarantee`**. The "full capability" mock. This is a
+WordTimestampsGuarantee`**. The "full capability" mock. This is a
   default change every existing transcriber test inherits; audit the
   callers to make sure no existing test relies on the absence of the
   new markers (none should — the markers are additive in `R`).
@@ -575,14 +572,12 @@ import { Transcriber } from "@effect-uai/core"
 import { ElevenLabsTranscriber } from "@effect-uai/elevenlabs"
 import { OpenAITranscriber } from "@effect-uai/openai"
 
-const layer = Transcriber.fallback([
-  ElevenLabsTranscriber.layer,
-  OpenAITranscriber.layer,
-])
+const layer = Transcriber.fallback([ElevenLabsTranscriber.layer, OpenAITranscriber.layer])
 
 const program = Effect.gen(function* () {
-  const r = yield* Transcriber.transcribe({ audio, diarization: true })
-    .pipe(Transcriber.requireDiarization)
+  const r = yield* Transcriber.transcribe({ audio, diarization: true }).pipe(
+    Transcriber.requireDiarization,
+  )
   return r
 }).pipe(Effect.provide(layer))
 ```
@@ -650,10 +645,10 @@ intersection correctly — verify with type tests parallel to §3.5.2.
 Per guideline §14.1. Pronunciations are load-bearing — silent drop
 = audibly wrong output.
 
-| Provider | File | Current | Fix |
-|---|---|---|---|
-| **Inworld** TTS | [InworldSynthesizer.ts:78-95](../packages/providers/inworld/src/InworldSynthesizer.ts#L78) | non-IPA silently skipped | reject with `AiError.Unsupported` if any non-IPA entry present |
-| **ElevenLabs** TTS | [ElevenLabsSynthesizer.ts:79-113](../packages/providers/elevenlabs/src/ElevenLabsSynthesizer.ts#L79) | whole-array drop on unsupported model; per-item x-sampa silent drop | reject with `Unsupported` for both gaps |
+| Provider           | File                                                                                                 | Current                                                             | Fix                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Inworld** TTS    | [InworldSynthesizer.ts:78-95](../packages/providers/inworld/src/InworldSynthesizer.ts#L78)           | non-IPA silently skipped                                            | reject with `AiError.Unsupported` if any non-IPA entry present |
+| **ElevenLabs** TTS | [ElevenLabsSynthesizer.ts:79-113](../packages/providers/elevenlabs/src/ElevenLabsSynthesizer.ts#L79) | whole-array drop on unsupported model; per-item x-sampa silent drop | reject with `Unsupported` for both gaps                        |
 
 Error message convention: `AiError.Unsupported({ capability:
 "pronunciations", reason: "Inworld TTS only supports IPA
@@ -684,13 +679,13 @@ format on output — has an interpretation). **No change.**
 
 TTS modifier surface against the §4 failure-vs-degradation rule:
 
-| Modifier | Verdict |
-|---|---|
-| `pronunciations` | bucket 1 — `Unsupported` (§4.2 above); not a marker |
-| `speed` | bucket 3 — silent (clamp) |
-| `languageCode` | bucket 3 — silent (inferred from voice) |
-| `instructions` (OpenAI) | bucket 2 — `warnDropped` (§4.3 above) |
-| `outputFormat` | bucket 1 — already `Unsupported` on Gemini |
+| Modifier                | Verdict                                             |
+| ----------------------- | --------------------------------------------------- |
+| `pronunciations`        | bucket 1 — `Unsupported` (§4.2 above); not a marker |
+| `speed`                 | bucket 3 — silent (clamp)                           |
+| `languageCode`          | bucket 3 — silent (inferred from voice)             |
+| `instructions` (OpenAI) | bucket 2 — `warnDropped` (§4.3 above)               |
+| `outputFormat`          | bucket 1 — already `Unsupported` on Gemini          |
 
 None of these is a marker candidate. No new markers in Phase 3.
 Revisit when a TTS feature with a real compliance use case lands
@@ -717,19 +712,19 @@ Revisit when a TTS feature with a real compliance use case lands
 All resolved during the design discussion. Recording here so they
 don't get re-litigated mid-implementation.
 
-| Decision | Resolution | Reasoning |
-|---|---|---|
-| `requireX` shape | Overloaded function (Effect / Stream), single `as any` in body | Best hover output, best error messages, no inference traps. |
-| Marker / combinator location | Co-located inline in service module (`Transcriber.ts`), `@experimental` JSDoc | Load-bearing for providers; separate sub-path makes the "experimental" label dishonest. |
-| OpenAI STT layer split | **No split.** Ship neither marker pessimistically. | Mixed-model variance is per-model, not per-Layer; per §5 of the guideline, pessimistic registration. |
-| `withModel<M>()` escape hatch | **Not in Phase 2.** Add lazily when a consumer asks. | Don't speculate. |
-| `CapabilityWarning` shape | Log-only via `Effect.logWarning`, no typed `AiError` variant | Cheaper; promote only if consumer needs programmatic match. |
-| Tag string convention | `@betalyra/effect-uai/capability/<Name>` | Matches existing `SttStreaming`. |
-| Per-model variance checks (e.g. OpenAI `wordTimestamps`) | Remove; translate provider errors | Guideline §2.3 — don't maintain per-model tables. |
-| Per-service tag naming | Per-service classes (`Transcriber.DiarizationGuarantee`); naturally satisfied for STT modifiers | Cross-service modality markers (LLM `AudioInput` etc.) become a real concern only in later phases. |
-| `IntersectROut` location | Inline in `Transcriber.ts` for Phase 2; lift to shared utility in Phase 3 when TTS needs it | Don't pre-generalise from one example. |
-| `fallback` runtime stability | The orElse runtime is stable; the marker-intersection guarantee is `@experimental` | Different stability axes; document accordingly. |
-| `synthesizeDialogue` as a method on the common service | Settled in v0.6: stays a method, gated by `MultiSpeakerTts` | Provider stubs already in tree; no factor-out planned. |
+| Decision                                                 | Resolution                                                                                      | Reasoning                                                                                            |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `requireX` shape                                         | Overloaded function (Effect / Stream), single `as any` in body                                  | Best hover output, best error messages, no inference traps.                                          |
+| Marker / combinator location                             | Co-located inline in service module (`Transcriber.ts`), `@experimental` JSDoc                   | Load-bearing for providers; separate sub-path makes the "experimental" label dishonest.              |
+| OpenAI STT layer split                                   | **No split.** Ship neither marker pessimistically.                                              | Mixed-model variance is per-model, not per-Layer; per §5 of the guideline, pessimistic registration. |
+| `withModel<M>()` escape hatch                            | **Not in Phase 2.** Add lazily when a consumer asks.                                            | Don't speculate.                                                                                     |
+| `CapabilityWarning` shape                                | Log-only via `Effect.logWarning`, no typed `AiError` variant                                    | Cheaper; promote only if consumer needs programmatic match.                                          |
+| Tag string convention                                    | `@betalyra/effect-uai/capability/<Name>`                                                        | Matches existing `SttStreaming`.                                                                     |
+| Per-model variance checks (e.g. OpenAI `wordTimestamps`) | Remove; translate provider errors                                                               | Guideline §2.3 — don't maintain per-model tables.                                                    |
+| Per-service tag naming                                   | Per-service classes (`Transcriber.DiarizationGuarantee`); naturally satisfied for STT modifiers | Cross-service modality markers (LLM `AudioInput` etc.) become a real concern only in later phases.   |
+| `IntersectROut` location                                 | Inline in `Transcriber.ts` for Phase 2; lift to shared utility in Phase 3 when TTS needs it     | Don't pre-generalise from one example.                                                               |
+| `fallback` runtime stability                             | The orElse runtime is stable; the marker-intersection guarantee is `@experimental`              | Different stability axes; document accordingly.                                                      |
+| `synthesizeDialogue` as a method on the common service   | Settled in v0.6: stays a method, gated by `MultiSpeakerTts`                                     | Provider stubs already in tree; no factor-out planned.                                               |
 
 ---
 
@@ -781,12 +776,12 @@ don't get re-litigated mid-implementation.
 
 ## 8. Estimated effort (rough)
 
-| Phase | Surface touched | Effort |
-|---|---|---|
-| Phase 0 | 2 small new core files, 1 smoke test | 0.5 day |
-| Phase 1 | 2 typed-request `Omit`s, `DialogueTurn` cleanup, 2 embedding error-tag changes, updated tests | 0.5 day |
+| Phase         | Surface touched                                                                                                                                            | Effort     |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Phase 0       | 2 small new core files, 1 smoke test                                                                                                                       | 0.5 day    |
+| Phase 1       | 2 typed-request `Omit`s, `DialogueTurn` cleanup, 2 embedding error-tag changes, updated tests                                                              | 0.5 day    |
 | Phase 2 (STT) | Inline additions to `Transcriber.ts`, ~5 provider Layer blocks, 2 runtime check removals (OpenAI + Lyria), 1-2 `warnDropped` calls, mock + tests, 1 recipe | 1.5-2 days |
-| Phase 3 (TTS) | 1 core function + type helper lift, 2 provider pronunciation fixes, 1 instructions fix, tests | 1 day |
-| Phases 4-7 | Separate plans | — |
+| Phase 3 (TTS) | 1 core function + type helper lift, 2 provider pronunciation fixes, 1 instructions fix, tests                                                              | 1 day      |
+| Phases 4-7    | Separate plans                                                                                                                                             | —          |
 
 Total Phases 0-3: ~4 days of focused work, broken into 3-4 PRs.

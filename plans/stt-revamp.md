@@ -51,7 +51,7 @@ and **the `fallback` combinator is dropped** (see §1.3).
   are **orthogonal mechanisms** — a union modeled them as mutually
   exclusive, which is wrong in principle (a provider could honor both).
   The split also enforces the no-prompt-building rule: each field maps
-  to a *structured* wire field or `warnDropped`, no `typeof` branching,
+  to a _structured_ wire field or `warnDropped`, no `typeof` branching,
   no stuffing terms into a prose field. Mapping: `prompt` → OpenAI
   `prompt` (others warn); `biasingTerms` → ElevenLabs `keyterms`,
   Deepgram `keyterm`, Google `adaptation`, Inworld `prompts` (OpenAI
@@ -101,7 +101,7 @@ is **markers + `requireX` only.**
 ### 2.1 Narrowing + drop the proactive guards (§14.3, refined)
 
 `diarization` / `wordTimestamps` are GATE-ONLY (Appendix A): the result
-fields are optional *because their presence varies* (single-speaker
+fields are optional _because their presence varies_ (single-speaker
 audio → no `speakerId`; empty utterance → no `words`). So a
 non-supporting provider on the lax path should return the field
 **absent**, not error — that's the documented "providers ignore what
@@ -155,11 +155,11 @@ shape as the music plan's pattern). No result-type narrowing.
 
 Registration (verified inventory + aggregator rule):
 
-| Layer | `SttStreaming` | `Diarization` | `WordTimestamps` |
-|---|---|---|---|
-| OpenAI sync / rt | ✗ / ✓ | ✗ | ✗ (whisper-1 only / not wired) |
-| ElevenLabs | ✓ | ⚠ §5.3 | ✓ |
-| Inworld sync / rt | ✗ / ✓ | ✗ (aggregator) | ✗ (aggregator) |
+| Layer             | `SttStreaming` | `Diarization`  | `WordTimestamps`               |
+| ----------------- | -------------- | -------------- | ------------------------------ |
+| OpenAI sync / rt  | ✗ / ✓          | ✗              | ✗ (whisper-1 only / not wired) |
+| ElevenLabs        | ✓              | ⚠ §5.3         | ✓                              |
+| Inworld sync / rt | ✗ / ✓          | ✗ (aggregator) | ✗ (aggregator)                 |
 
 **Thin in-tree rollout:** only ElevenLabs ships these. Clears the §7
 bar (ships vs OpenAI doesn't) but real discrimination arrives with
@@ -173,11 +173,11 @@ to a structured wire field or `warnDropped`. Verified against provider
 docs/SDK (ElevenLabs `keyterms` encoding confirmed from the SDK source:
 repeated form fields, not JSON).
 
-| Provider | `biasingTerms` | `prompt` |
-|---|---|---|
-| OpenAI (sync+rt) | warn (no keyterm field) | → `prompt` field |
-| ElevenLabs (sync+rt) | → `keyterms` (repeated; ≤1000 sync / ≤50 rt) | warn |
-| Inworld (sync+rt) | → `prompts` | warn |
+| Provider             | `biasingTerms`                               | `prompt`         |
+| -------------------- | -------------------------------------------- | ---------------- |
+| OpenAI (sync+rt)     | warn (no keyterm field)                      | → `prompt` field |
+| ElevenLabs (sync+rt) | → `keyterms` (repeated; ≤1000 sync / ≤50 rt) | warn             |
+| Inworld (sync+rt)    | → `prompts`                                  | warn             |
 
 `warnDropped` via `warnDroppedWhen` from
 [capabilities/Capabilities.ts](../packages/core/src/capabilities/Capabilities.ts).
@@ -201,15 +201,15 @@ setter + tests.
 
 S structured · P prompt-embedded · — unsupported/not-wired · M per-model
 
-| | OpenAI sync | OpenAI rt | ElevenLabs | Inworld sync | Inworld rt |
-|---|---|---|---|---|---|
-| `language` | S | S | S | S | S |
-| `prompt` (prose) | S | S | warn | warn | warn |
-| `biasingTerms` | warn | warn | S `keyterms` | S `prompts` | S `prompts` |
-| `diarization` | — | — | S sync | — | — |
-| `wordTimestamps` | S (M whisper-1) | — | S | S | S |
-| streaming | — | S | S | — | S |
-| `interimResults` | — | — | — | — | — |
+|                  | OpenAI sync     | OpenAI rt | ElevenLabs   | Inworld sync | Inworld rt  |
+| ---------------- | --------------- | --------- | ------------ | ------------ | ----------- |
+| `language`       | S               | S         | S            | S            | S           |
+| `prompt` (prose) | S               | S         | warn         | warn         | warn        |
+| `biasingTerms`   | warn            | warn      | S `keyterms` | S `prompts`  | S `prompts` |
+| `diarization`    | —               | —         | S sync       | —            | —           |
+| `wordTimestamps` | S (M whisper-1) | —         | S            | S            | S           |
+| streaming        | —               | S         | S            | —            | S           |
+| `interimResults` | —               | —         | —            | —            | —           |
 
 (Reflects the post-change adapters: the `prompt`/`biasingTerms` split is
 wired, and the OpenAI/Gemini proactive `diarization`/`wordTimestamps`
@@ -219,13 +219,13 @@ guards are gone — lax-silent absence on the generic surface.)
 
 E = structured field present · × = unsupported
 
-| | Google Cloud STT | Deepgram | AWS Transcribe | Cartesia | Azure |
-|---|---|---|---|---|---|
-| `diarization` | E | E | E | × | × |
-| `wordTimestamps` | E | always | always | E | E |
-| `biasingTerms` | E `phraseSets` | E `keyterm` | E `vocabularyName` | × | × |
-| `interimResults` | E | E | E | always | n/a |
-| streaming | gRPC | WS | HTTP2/WS | WS | SDK-only |
+|                  | Google Cloud STT | Deepgram    | AWS Transcribe     | Cartesia | Azure    |
+| ---------------- | ---------------- | ----------- | ------------------ | -------- | -------- |
+| `diarization`    | E                | E           | E                  | ×        | ×        |
+| `wordTimestamps` | E                | always      | always             | E        | E        |
+| `biasingTerms`   | E `phraseSets`   | E `keyterm` | E `vocabularyName` | ×        | ×        |
+| `interimResults` | E                | E           | E                  | always   | n/a      |
+| streaming        | gRPC             | WS          | HTTP2/WS           | WS       | SDK-only |
 
 Google Cloud STT and Deepgram are the real marker shippers (both
 diarize + word-timestamp natively, per-Layer). Both have structured
@@ -268,25 +268,25 @@ Need your call:
    doesn't, one Layer. (a) ship `DiarizationGuarantee` (gates the
    strict path, ~always used with sync `transcribe`), document the
    realtime gap; (b) omit, stay lax, pending a per-method marker split
-   (capabilities §11). *Rec: (a)* — blocking on the divergent method is
+   (capabilities §11). _Rec: (a)_ — blocking on the divergent method is
    pessimism misfiring across methods rather than models.
 4. **Land markers now or defer?** Only ElevenLabs ships in-tree (thin).
    (a) now — proves the mechanism, ElevenLabs `WordTimestamps` is clean,
    Cloud STT/Deepgram fill it later; (b) defer markers, do narrowing +
-   keyterms + Duration first. *Rec: (a)* — §7 commits to these as the
+   keyterms + Duration first. _Rec: (a)_ — §7 commits to these as the
    first per-modifier markers.
 
 ---
 
 ## 6. Effort
 
-| Phase | Effort |
-|---|---|
-| 1 — narrowing (OpenAI) + tests | ✅ done |
-| Gemini STT removal + chirp-stt.md plan | ✅ done |
-| `prompt`/`biasingTerms` split + wiring | ✅ done |
-| Duration migration | ✅ done |
-| 2 — markers | postponed (additive) |
+| Phase                                  | Effort               |
+| -------------------------------------- | -------------------- |
+| 1 — narrowing (OpenAI) + tests         | ✅ done              |
+| Gemini STT removal + chirp-stt.md plan | ✅ done              |
+| `prompt`/`biasingTerms` split + wiring | ✅ done              |
+| Duration migration                     | ✅ done              |
+| 2 — markers                            | postponed (additive) |
 
 Remaining: optional Inworld-rt `interimResults` wiring. (Chirp 3 / Cloud
 STT adapter is a separate effort — [chirp-stt.md](./chirp-stt.md).)

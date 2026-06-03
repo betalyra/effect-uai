@@ -63,16 +63,16 @@ explicit credentials/token. Document the ADC setup.
 `recognize` (sync, <60 s) first; `StreamingRecognize` (gRPC bidi) as a
 fast-follow since the SDK makes it tractable.
 
-| Common field | Chirp / Cloud STT V2 |
-|---|---|
-| `model` | `RecognitionConfig.model` (`"chirp_3"`, narrowed union) |
-| `language` | `languageCodes: [code]` (or `["auto"]` for detection) |
+| Common field       | Chirp / Cloud STT V2                                                           |
+| ------------------ | ------------------------------------------------------------------------------ |
+| `model`            | `RecognitionConfig.model` (`"chirp_3"`, narrowed union)                        |
+| `language`         | `languageCodes: [code]` (or `["auto"]` for detection)                          |
 | `prompt { terms }` | `adaptation.phraseSets[].inlinePhraseSet.phrases[].value` (+ optional `boost`) |
-| `prompt` (string) | no structured home → `warnDropped` |
-| `diarization` | `features.diarizationConfig` (min/maxSpeakerCount) |
-| `wordTimestamps` | `features.enableWordTimeOffsets` |
-| `audio` | `content` (base64) or `uri` (`gs://` only) |
-| word offsets | `"1.200s"` strings → parse to seconds / `Duration` |
+| `prompt` (string)  | no structured home → `warnDropped`                                             |
+| `diarization`      | `features.diarizationConfig` (min/maxSpeakerCount)                             |
+| `wordTimestamps`   | `features.enableWordTimeOffsets`                                               |
+| `audio`            | `content` (base64) or `uri` (`gs://` only)                                     |
+| word offsets       | `"1.200s"` strings → parse to seconds / `Duration`                             |
 
 ## 5. Markers (when Phase 2 lands)
 

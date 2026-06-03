@@ -22,7 +22,7 @@ gap is per-Layer (every model rejects the field), proactive guard is
 fine. If the gap is per-model (some models accept, some don't, the
 list churns): **send the request and translate the provider's
 error.** OpenRouter / HuggingFace / Together / "auto" routers
-*always* pass through — we have no chance of maintaining their
+_always_ pass through — we have no chance of maintaining their
 matrices and no business trying.
 
 **Per-modifier capability markers are an experimental strict path
@@ -62,7 +62,7 @@ fields optional, and returns a result whose modifier-derived fields
 are optional. Callers narrow at the call site:
 
 ```ts
-const r = yield* Transcriber.transcribe({ audio, diarization: true })
+const r = yield * Transcriber.transcribe({ audio, diarization: true })
 for (const w of r.words ?? []) {
   if (w.speakerId !== undefined) console.log(`[${w.speakerId}] ${w.text}`)
   else console.log(w.text)
@@ -83,18 +83,18 @@ Every optional attribute on a `Common*Request` falls into exactly one
 of three buckets. The bucket determines runtime behavior when the
 provider can't honor the field.
 
-| Bucket | Test | Behavior |
-|---|---|---|
-| **Shape / dimension / count** | Caller's downstream code structurally depends on the value being honored exactly (output format, dim, image count, exact pronunciation, what the vector represents). Silent drop = visibly / audibly **broken** output. | **`AiError.Unsupported`** — prefer pass-through provider error |
+| Bucket                                               | Test                                                                                                                                                                                                                                                                         | Behavior                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **Shape / dimension / count**                        | Caller's downstream code structurally depends on the value being honored exactly (output format, dim, image count, exact pronunciation, what the vector represents). Silent drop = visibly / audibly **broken** output.                                                      | **`AiError.Unsupported`** — prefer pass-through provider error           |
 | **Explicit feature, provider has no interpretation** | Caller wrote structured / discrete content (`thinking: true`, `cacheControl: true`, `task: "search_query"`, `prompt: { terms: [...] }`, `negativePrompt: "..."`). Provider drops it on the floor entirely. Silent drop = **less good** output, caller chose this on purpose. | **`warnDropped`** — structured warning via `Effect.logWarning`, see §2.4 |
-| **Tuning hint, provider always interprets** | Continuous knob or hint where the provider has *some* response (clamp, approximate, partial honor). "Ignoring entirely" isn't a meaningful option — every provider applies some temperature, some language hint. | **Silent** |
+| **Tuning hint, provider always interprets**          | Continuous knob or hint where the provider has _some_ response (clamp, approximate, partial honor). "Ignoring entirely" isn't a meaningful option — every provider applies some temperature, some language hint.                                                             | **Silent**                                                               |
 
 ### 2.1 The discriminator between bucket 2 and bucket 3
 
 The split isn't boolean-vs-continuous; it's **whether the provider
 has any structural interpretation of the field at all**.
 
-- `temperature: 0.7` on a provider that clamps to [0, 1] → silent. The provider *interpreted* the value (clamping is interpretation).
+- `temperature: 0.7` on a provider that clamps to [0, 1] → silent. The provider _interpreted_ the value (clamping is interpretation).
 - `prompt: { terms: ["Anthropic"] }` on a provider with no biasing endpoint → warn-and-drop. The provider has no field to interpret it into; it's literal noise.
 
 ### 2.2 The field-level failure test
@@ -163,9 +163,7 @@ export type CapabilityWarning = {
   readonly reason: string
 }
 
-export const warnDropped = (
-  warning: Omit<CapabilityWarning, "_tag">,
-): Effect.Effect<void> =>
+export const warnDropped = (warning: Omit<CapabilityWarning, "_tag">): Effect.Effect<void> =>
   Effect.logWarning("Capability dropped", { ...warning, _tag: "CapabilityWarning" })
 
 // Shorthand for the common "warn when this field is set" shape;
@@ -173,8 +171,7 @@ export const warnDropped = (
 export const warnDroppedWhen = <T>(
   value: T | undefined,
   warning: Omit<CapabilityWarning, "_tag" | "value">,
-): Effect.Effect<void> =>
-  value === undefined ? Effect.void : warnDropped({ ...warning, value })
+): Effect.Effect<void> => (value === undefined ? Effect.void : warnDropped({ ...warning, value }))
 ```
 
 Start log-side (no API surface change). Promote to typed
@@ -205,8 +202,8 @@ requires `R = never`).
 
 **Per-modifier markers — co-located, `@experimental` JSDoc.** Same
 mechanism as service-level markers, finer granularity. See §6 for the
-experimental status (about the curated *set*, not the mechanism). See
-§4 for the rule that governs *when* to add one and §7 for the curated
+experimental status (about the curated _set_, not the mechanism). See
+§4 for the rule that governs _when_ to add one and §7 for the curated
 library-wide list.
 
 The `requireX` combinator pattern (one per marker) injects the
@@ -333,22 +330,22 @@ from §2).
 
 ### Applying the rule
 
-| Modifier | Verdict | Reason |
-|---|---|---|
-| **STT diarization** | ✓ marker | Wrong if caller assumes speaker labels and silently gets none |
-| **STT word timestamps** | ✓ marker | Wrong if caller assumes timing and silently gets none |
-| **LLM tool calling** | ✓ marker | Agent unusable without it |
-| **LLM vision input** | ✓ marker | Silent image drop → response about something else |
-| **Embedding image input** | ✓ marker | Silent image drop → vector represents the wrong thing |
-| LLM cache control | ✗ lax | Same output, higher cost |
-| LLM thinking / reasoning | ✗ lax | Same answer, maybe shallower |
-| LLM parallel tool calls | ✗ lax | Invisible to caller |
-| LLM structured output | ✗ lax | A typed `LLM.structured<T>()` helper that validates at runtime covers this; marker adds little |
-| Image-gen seed | ✗ lax | Reproducibility nice-to-have; runtime echo + log works |
-| Image-gen negative prompt | ✗ lax | Quality degradation |
-| TTS pronunciations | ✗ — | Bucket 1 (`Unsupported`); not a marker case (load-bearing data-driven) |
-| TTS speed / language hint / instructions | ✗ lax | All bucket 2 or 3 |
-| Embedding task tuning | ✗ lax | Vector quality degradation; bucket 2 |
+| Modifier                                 | Verdict  | Reason                                                                                         |
+| ---------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| **STT diarization**                      | ✓ marker | Wrong if caller assumes speaker labels and silently gets none                                  |
+| **STT word timestamps**                  | ✓ marker | Wrong if caller assumes timing and silently gets none                                          |
+| **LLM tool calling**                     | ✓ marker | Agent unusable without it                                                                      |
+| **LLM vision input**                     | ✓ marker | Silent image drop → response about something else                                              |
+| **Embedding image input**                | ✓ marker | Silent image drop → vector represents the wrong thing                                          |
+| LLM cache control                        | ✗ lax    | Same output, higher cost                                                                       |
+| LLM thinking / reasoning                 | ✗ lax    | Same answer, maybe shallower                                                                   |
+| LLM parallel tool calls                  | ✗ lax    | Invisible to caller                                                                            |
+| LLM structured output                    | ✗ lax    | A typed `LLM.structured<T>()` helper that validates at runtime covers this; marker adds little |
+| Image-gen seed                           | ✗ lax    | Reproducibility nice-to-have; runtime echo + log works                                         |
+| Image-gen negative prompt                | ✗ lax    | Quality degradation                                                                            |
+| TTS pronunciations                       | ✗ —      | Bucket 1 (`Unsupported`); not a marker case (load-bearing data-driven)                         |
+| TTS speed / language hint / instructions | ✗ lax    | All bucket 2 or 3                                                                              |
+| Embedding task tuning                    | ✗ lax    | Vector quality degradation; bucket 2                                                           |
 
 The library-wide marker list is in §7. New modalities and services
 extend by the same rule, lazily.
@@ -402,7 +399,7 @@ Consequences:
   doesn't survive JSON serialization. Out-of-process consumers see
   the wide / optional types only. Acceptable cost.
 
-The strict path is a tool for callers who need a *guarantee* a
+The strict path is a tool for callers who need a _guarantee_ a
 capability is honored — compliance, audit, accessibility. It is not
 the default. The lax path is the default and works against every
 Layer.
@@ -483,41 +480,41 @@ follow §4. Removals are possible (experimental policy).
 
 **Tier 1 — Service-level markers (stable, in tree):**
 
-| Marker | Service |
-|---|---|
-| `SttStreaming` | Transcriber |
-| `TtsIncrementalText` | SpeechSynthesizer |
-| `MultiSpeakerTts` | SpeechSynthesizer |
-| `MusicInteractiveSession` | MusicGenerator |
-| `Sandbox*` family | Sandbox |
+| Marker                    | Service           |
+| ------------------------- | ----------------- |
+| `SttStreaming`            | Transcriber       |
+| `TtsIncrementalText`      | SpeechSynthesizer |
+| `MultiSpeakerTts`         | SpeechSynthesizer |
+| `MusicInteractiveSession` | MusicGenerator    |
+| `Sandbox*` family         | Sandbox           |
 
 **Tier 2 — Per-modifier markers, services we have (`@experimental`):**
 
-| Marker | Service | When |
-|---|---|---|
-| `DiarizationGuarantee` | Transcriber | Phase 1 — call center / compliance |
-| `WordTimestampsGuarantee` | Transcriber | Phase 1 — captioning / alignment |
-| `ToolCallingGuarantee` | LLM | LLM phase — agents unusable without it |
-| `VisionGuarantee` | LLM | LLM phase — silent image drop → wrong response |
-| `AudioInputGuarantee` | LLM | When audio-input LLM provider lands |
-| `VideoInputGuarantee` | LLM | When video-input LLM provider lands |
-| `ImageEmbeddingGuarantee` | Embedder | Embeddings phase — Cohere v3, Google multimodal |
-| `AudioEmbeddingGuarantee` | Embedder | When audio-multimodal embedder lands |
-| `VideoEmbeddingGuarantee` | Embedder | When video-multimodal embedder lands |
+| Marker                    | Service     | When                                            |
+| ------------------------- | ----------- | ----------------------------------------------- |
+| `DiarizationGuarantee`    | Transcriber | Phase 1 — call center / compliance              |
+| `WordTimestampsGuarantee` | Transcriber | Phase 1 — captioning / alignment                |
+| `ToolCallingGuarantee`    | LLM         | LLM phase — agents unusable without it          |
+| `VisionGuarantee`         | LLM         | LLM phase — silent image drop → wrong response  |
+| `AudioInputGuarantee`     | LLM         | When audio-input LLM provider lands             |
+| `VideoInputGuarantee`     | LLM         | When video-input LLM provider lands             |
+| `ImageEmbeddingGuarantee` | Embedder    | Embeddings phase — Cohere v3, Google multimodal |
+| `AudioEmbeddingGuarantee` | Embedder    | When audio-multimodal embedder lands            |
+| `VideoEmbeddingGuarantee` | Embedder    | When video-multimodal embedder lands            |
 
 **Tier 3 — Future services (markers planned when the service lands):**
 
-| Service | Marker | Type |
-|---|---|---|
-| Video gen | `VideoStreaming` | service-level |
-| Video gen | `ImageConditioningGuarantee` | per-modifier (image-to-video) |
-| Video gen | `AudioTrackGuarantee` | per-modifier |
-| Live / realtime agent | `LiveInterruption` | per-modifier |
-| Live / realtime agent | `LiveToolCalling` | per-modifier |
-| Live / realtime agent | `LiveVisionInput` | per-modifier |
-| OCR / document | `LayoutPreservingGuarantee` | per-modifier |
-| OCR / document | `HandwritingGuarantee` | per-modifier |
-| Speech-to-speech translation | `VoicePreservingGuarantee` | per-modifier |
+| Service                      | Marker                       | Type                          |
+| ---------------------------- | ---------------------------- | ----------------------------- |
+| Video gen                    | `VideoStreaming`             | service-level                 |
+| Video gen                    | `ImageConditioningGuarantee` | per-modifier (image-to-video) |
+| Video gen                    | `AudioTrackGuarantee`        | per-modifier                  |
+| Live / realtime agent        | `LiveInterruption`           | per-modifier                  |
+| Live / realtime agent        | `LiveToolCalling`            | per-modifier                  |
+| Live / realtime agent        | `LiveVisionInput`            | per-modifier                  |
+| OCR / document               | `LayoutPreservingGuarantee`  | per-modifier                  |
+| OCR / document               | `HandwritingGuarantee`       | per-modifier                  |
+| Speech-to-speech translation | `VoicePreservingGuarantee`   | per-modifier                  |
 
 **Reranker:** lax-only, no markers (no candidates pass the bar).
 
@@ -738,16 +735,16 @@ pnpm --filter @effect-uai/spike-capabilities typecheck
 **Note:** the spike includes NARROW examples (cacheControl,
 structured, seed) that demonstrate the type-level machinery but are
 not on the §7 curated list under current policy. They remain in the
-spike as a reference for what the pattern *can* do — useful if the
+spike as a reference for what the pattern _can_ do — useful if the
 policy ever expands. Don't read them as a planned rollout.
 
 Two implementation gotchas the spike documents:
 
 - The `fallback` combinator's type parameter must be `<const Layers
-  extends …>`. Without `const`, TS widens the array literal to a
+extends …>`. Without `const`, TS widens the array literal to a
   union and the tuple-tail recursion silently returns `unknown`.
 - Extracting `ROut` from `Layer.Layer<infer Out, …>` requires `infer
-  _E, infer _RIn` for the other slots. Using `any, any` makes TS
+_E, infer _RIn` for the other slots. Using `any, any` makes TS
   resolve `infer Out` to `unknown` (Layer is contravariant in
   ROut).
 
@@ -810,12 +807,12 @@ ignore is silent. Add `Effect.logWarning` via `warnDropped`.
 
 Same field, three different mechanisms across embedding providers:
 
-| Provider | Today | Correct |
-|---|---|---|
-| Jina | Narrows `task: JinaTask` | §3.4 ✓ |
-| OpenAIEmbedding (typed) | Omits `task` entirely | §3.4 ✓ |
-| OpenAIEmbedding (generic) | Accepts + silently drops | should warn (14.5) |
-| GeminiEmbedding (typed) | Widens to `GoogleEmbeddingTask` | §3.4 ✓ |
+| Provider                  | Today                                  | Correct            |
+| ------------------------- | -------------------------------------- | ------------------ |
+| Jina                      | Narrows `task: JinaTask`               | §3.4 ✓             |
+| OpenAIEmbedding (typed)   | Omits `task` entirely                  | §3.4 ✓             |
+| OpenAIEmbedding (generic) | Accepts + silently drops               | should warn (14.5) |
+| GeminiEmbedding (typed)   | Widens to `GoogleEmbeddingTask`        | §3.4 ✓             |
 | GeminiEmbedding (runtime) | Drops silently on `gemini-embedding-2` | should warn (14.5) |
 
 No structural fix — three providers, three valid type surfaces. Fix
@@ -857,15 +854,15 @@ for their respective service-area phases and documented consumers.
 
 ### 14.12 Summary count
 
-| Class | Count | Effort |
-|---|---|---|
-| Bucket 1 mis-classified as silent (14.1) | 2 sites | Mechanical |
-| `InvalidRequest` → `Unsupported` (14.2) | 2 sites | WIP |
-| Field-on-type → narrow + marker omission (14.3) | 2 providers | WIP |
-| Per-model checks to remove (14.4) | 2 sites | Mechanical |
-| Bucket 2 silent → warn (14.5) | 5+ sites | Add helper + call sites |
-| Per-modifier markers Phase 1 (14.11) | 2 markers, `@experimental` | Moderate |
-| Core additions: `warnDropped` + `CapabilityWarning` (done — `capabilities/Capabilities.ts`) | — | Small |
+| Class                                                                                       | Count                      | Effort                  |
+| ------------------------------------------------------------------------------------------- | -------------------------- | ----------------------- |
+| Bucket 1 mis-classified as silent (14.1)                                                    | 2 sites                    | Mechanical              |
+| `InvalidRequest` → `Unsupported` (14.2)                                                     | 2 sites                    | WIP                     |
+| Field-on-type → narrow + marker omission (14.3)                                             | 2 providers                | WIP                     |
+| Per-model checks to remove (14.4)                                                           | 2 sites                    | Mechanical              |
+| Bucket 2 silent → warn (14.5)                                                               | 5+ sites                   | Add helper + call sites |
+| Per-modifier markers Phase 1 (14.11)                                                        | 2 markers, `@experimental` | Moderate                |
+| Core additions: `warnDropped` + `CapabilityWarning` (done — `capabilities/Capabilities.ts`) | —                          | Small                   |
 
 ---
 
@@ -897,7 +894,7 @@ for their respective service-area phases and documented consumers.
 ## Appendix A — NARROW vs GATE-ONLY (reference)
 
 Reference for the rare case where you DO add a per-modifier marker
-*and* want it to narrow the result type. None of the §7 markers on
+_and_ want it to narrow the result type. None of the §7 markers on
 the current list does this; the appendix exists so the technique is
 recorded in one place.
 
@@ -917,16 +914,16 @@ utterance → no `words[]`; model declines to think → no `reasoning`).
 
 **Classification of modifiers historically considered:**
 
-| Service | Modifier | Verdict | Reason |
-|---|---|---|---|
-| Transcription | `diarization` | GATE-ONLY | `speakerId` depends on multi-speaker audio |
-| Transcription | `wordTimestamps` | GATE-ONLY | `words[]` depends on audio content |
-| Embeddings | `task` tuning | GATE-ONLY | Vector shape unchanged |
-| LLM | `thinking` / `reasoning_effort` | GATE-ONLY | Model may decline to think |
-| LLM | `parallelToolCalls` | GATE-ONLY | `toolCalls[]` shape unchanged |
-| **LLM** | **`cacheControl`** | **NARROW** | Cache token counts always reported when on |
-| **LLM** | **`structured<T>`** | **NARROW** | Schema validated server-side; conforming `parsed: T` |
-| **Image gen** | **`seed`** | **NARROW** | Provider always echoes / generates a seed |
+| Service       | Modifier                        | Verdict    | Reason                                               |
+| ------------- | ------------------------------- | ---------- | ---------------------------------------------------- |
+| Transcription | `diarization`                   | GATE-ONLY  | `speakerId` depends on multi-speaker audio           |
+| Transcription | `wordTimestamps`                | GATE-ONLY  | `words[]` depends on audio content                   |
+| Embeddings    | `task` tuning                   | GATE-ONLY  | Vector shape unchanged                               |
+| LLM           | `thinking` / `reasoning_effort` | GATE-ONLY  | Model may decline to think                           |
+| LLM           | `parallelToolCalls`             | GATE-ONLY  | `toolCalls[]` shape unchanged                        |
+| **LLM**       | **`cacheControl`**              | **NARROW** | Cache token counts always reported when on           |
+| **LLM**       | **`structured<T>`**             | **NARROW** | Schema validated server-side; conforming `parsed: T` |
+| **Image gen** | **`seed`**                      | **NARROW** | Provider always echoes / generates a seed            |
 
 **GATE-ONLY combinator (no cast):**
 

@@ -84,10 +84,7 @@ const buildBody = (r: ElevenLabsSynthesizeRequest) => ({
   ...(r.seed !== undefined && { seed: r.seed }),
   ...(r.previousText !== undefined && { previous_text: r.previousText }),
   ...(r.nextText !== undefined && { next_text: r.nextText }),
-  ...(() => {
-    const locators = wirePronunciationLocators(r.pronunciationDictionaryLocators)
-    return locators !== undefined && { pronunciation_dictionary_locators: locators }
-  })(),
+  ...wirePronunciationLocators(r.pronunciationDictionaryLocators),
   ...(r.voiceSettings !== undefined && { voice_settings: wireVoiceSettings(r.voiceSettings) }),
 })
 

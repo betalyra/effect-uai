@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Match, Redacted, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Match, Redacted, Result, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
@@ -52,19 +52,19 @@ const PCM_CHANNELS = 1
 
 export const realizeOutput = Match.type<AudioFormat["container"]>().pipe(
   Match.when("raw", () =>
-    Effect.succeed([
+    Result.succeed([
       { container: "raw", encoding: "pcm_s16le", sampleRate: PCM_RATE, channels: PCM_CHANNELS },
       (b: Uint8Array) => b,
     ] as const),
   ),
   Match.when("wav", () =>
-    Effect.succeed([
+    Result.succeed([
       { container: "wav", encoding: "pcm_s16le", sampleRate: PCM_RATE, channels: PCM_CHANNELS },
       (b: Uint8Array) => wrapPcmAsWav(b, PCM_RATE, PCM_CHANNELS),
     ] as const),
   ),
   Match.whenOr("mp3", "opus", "aac", "flac", "ogg", "webm", (c) =>
-    Effect.fail(
+    Result.fail(
       new AiError.Unsupported({
         provider: "gemini",
         capability: "outputFormat",

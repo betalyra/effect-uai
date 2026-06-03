@@ -45,10 +45,12 @@ export const wirePronunciationLocators = (
 ) =>
   locators === undefined || locators.length === 0
     ? undefined
-    : locators.map((l) => ({
-        pronunciation_dictionary_id: l.dictionaryId,
-        version_id: l.versionId,
-      }))
+    : {
+        pronunciation_dictionary_locators: locators.map((l) => ({
+          pronunciation_dictionary_id: l.dictionaryId,
+          version_id: l.versionId,
+        })),
+      }
 
 /**
  * ElevenLabs has no stateless inline IPA path (legacy `<phoneme>` SSML

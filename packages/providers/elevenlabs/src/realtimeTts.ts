@@ -61,12 +61,11 @@ export const buildWsUrl = (cfg: Config, request: StreamSynthesizeRequest, output
 
 const bosFrame = (cfg: Config, request: StreamSynthesizeRequest) => {
   const vs = wireVoiceSettings(request.voiceSettings)
-  const locators = wirePronunciationLocators(request.pronunciationDictionaryLocators)
   return JSON.stringify({
     text: " ",
     "xi-api-key": Redacted.value(cfg.apiKey),
     ...(vs !== undefined && { voice_settings: vs }),
-    ...(locators !== undefined && { pronunciation_dictionary_locators: locators }),
+    ...wirePronunciationLocators(request.pronunciationDictionaryLocators),
   })
 }
 

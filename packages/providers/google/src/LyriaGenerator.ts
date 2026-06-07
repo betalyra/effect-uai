@@ -274,14 +274,13 @@ const generateImpl =
       const client = yield* HttpClient.HttpClient
       const requestedContainer = (request.outputFormat?.container ??
         "mp3") satisfies AudioFormat["container"]
-      const mimeType = yield* containerToMimeType(requestedContainer)
-      if (isClipModel(request.model) && mimeType === "audio/wav") {
-        return yield* new AiError.Unsupported({
-          provider: "lyria",
-          capability: "outputFormat",
-          reason: `lyria-3-clip-preview is fixed at audio/mp3. Use lyria-3-pro-preview for audio/wav output.`,
-        })
-      }
+      const requestedMime = yield* containerToMimeType(requestedContainer)
+      // lyria-3-clip-preview has no `responseFormat` wire field and always
+      // emits mp3, so there is no format to send and no 400 to surface. Rather
+      // than keep a per-model table that rejects `wav`, report the format the
+      // model actually produces (mp3) so the result is never mislabeled.
+      // lyria-3-pro honours the requested container.
+      const mimeType = isClipModel(request.model) ? ("audio/mp3" as const) : requestedMime
       yield* warnDroppedHints(request)
       const body = isClipModel(request.model)
         ? { contents: [{ parts: [{ text: request.prompt }] }] }

@@ -27,7 +27,7 @@ describe("EmbedResponse<E> conditional narrowing", () => {
     }>()
   })
 
-  it("maps each EmbedEncoding literal to the matching Embedding variant", () => {
+  it("maps each encoding literal to the matching Embedding variant", () => {
     expectTypeOf<EmbedResponse<"float32">["embedding"]>().toEqualTypeOf<Float32Embedding>()
     expectTypeOf<EmbedResponse<"int8">["embedding"]>().toEqualTypeOf<Int8Embedding>()
     expectTypeOf<EmbedResponse<"binary">["embedding"]>().toEqualTypeOf<BinaryEmbedding>()
@@ -69,11 +69,22 @@ describe("embed / embedMany free exports preserve E in their return type", () =>
     >()
   })
 
-  it("embedMany with encoding: multivector returns EmbedManyResponse<multivector>", () => {
-    const result = embedMany({ inputs: ["x"], model: "m", encoding: "multivector" })
+  it("embedMany with encoding: binary returns EmbedManyResponse<binary>", () => {
+    const result = embedMany({ inputs: ["x"], model: "m", encoding: "binary" })
     expectTypeOf(result).toEqualTypeOf<
-      Effect.Effect<EmbedManyResponse<"multivector">, AiError.AiError, EmbeddingModel>
+      Effect.Effect<EmbedManyResponse<"binary">, AiError.AiError, EmbeddingModel>
     >()
+  })
+
+  it("rejects non-dense encodings on the generic path (trimmed EmbedEncoding)", () => {
+    // `sparse` / `multivector` are Jina-only representation kinds, not part
+    // of the cross-provider request set. Requesting them on the generic
+    // helper is a compile error; they're reachable only via the typed
+    // `JinaEmbedding` tag.
+    // @ts-expect-error "multivector" is not an EmbedEncoding
+    embedMany({ inputs: ["x"], model: "m", encoding: "multivector" })
+    // @ts-expect-error "sparse" is not an EmbedEncoding
+    embed({ input: "x", model: "m", encoding: "sparse" })
   })
 
   it("when the request is widened to CommonEmbedRequest, the response is the open union", () => {

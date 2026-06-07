@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Redacted, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import type {
   EmbedContentPart,
   EmbedInput,
@@ -8,6 +9,7 @@ import type {
   Usage,
 } from "@effect-uai/core/Embedding"
 import {
+  assertEncoding,
   type CommonEmbedManyRequest,
   type CommonEmbedRequest,
   type EmbedEncoding,
@@ -64,31 +66,29 @@ export type Config = {
 // Codec - input flattening to the single string OpenAI expects
 // ---------------------------------------------------------------------------
 
-const imageRejected = (param: string): AiError.AiError =>
-  new AiError.InvalidRequest({
-    provider: "openai",
-    param,
-    raw: "OpenAI embeddings are text-only; pass a string or { text }",
-  })
+// Image input on a text-only embedder is bucket 1: a silently dropped image
+// yields a vector that represents the wrong thing. Reject with `Unsupported`
+// (capability gap), not `InvalidRequest` (which is for wire-shape mismatches).
+// OpenAI's embeddings API remains text-only as of June 2026.
+const imageRejected: AiError.AiError = new AiError.Unsupported({
+  provider: "openai",
+  capability: "imageEmbedding",
+  reason: "OpenAI embeddings are text-only; pass a string or { text }.",
+})
 
-const partToText = (
-  param: string,
-  part: EmbedContentPart,
-): Effect.Effect<string, AiError.AiError> =>
-  "text" in part ? Effect.succeed(part.text) : Effect.fail(imageRejected(param))
+const partToText = (part: EmbedContentPart): Effect.Effect<string, AiError.AiError> =>
+  "text" in part ? Effect.succeed(part.text) : Effect.fail(imageRejected)
 
 /**
  * OpenAI accepts a single string per input. Pure-text `content[]` is
  * concatenated with newlines (treats them as paragraphs of one document);
- * any image part fails with `InvalidRequest`.
+ * any image part fails with `Unsupported`.
  */
 const inputToString = (input: EmbedInput): Effect.Effect<string, AiError.AiError> => {
   if (typeof input === "string") return Effect.succeed(input)
   if ("text" in input) return Effect.succeed(input.text)
-  if ("image" in input) return Effect.fail(imageRejected("input.image"))
-  return Effect.forEach(input.content, (p, i) => partToText(`input.content[${i}].image`, p)).pipe(
-    Effect.map((texts) => texts.join("\n")),
-  )
+  if ("image" in input) return Effect.fail(imageRejected)
+  return Effect.forEach(input.content, partToText).pipe(Effect.map((texts) => texts.join("\n")))
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +205,16 @@ const postEmbed = (
 
 const usageOf = (u: typeof WireUsage.Type): Usage => ({ inputTokens: u.prompt_tokens })
 
+// `task` is dropped on the generic path (OpenAI has no task parameter on any
+// model, so this is a per-Layer gap, not per-model). Bucket 2: warn, don't fail.
+const warnTaskDropped = (task: CommonEmbedRequest["task"]): Effect.Effect<void> =>
+  Capabilities.warnDroppedWhen(task, {
+    provider: "openai",
+    capability: "task",
+    field: "task",
+    reason: "OpenAI embeddings have no task-type parameter.",
+  })
+
 const embedImpl =
   (cfg: Config) =>
   (
@@ -272,19 +282,24 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): EmbeddingModelService => ({
-        // OpenAI only emits float32; the cast is sound for the 99% case.
-        // A caller asking for a non-float32 encoding via the generic tag
-        // gets the type they requested but the runtime returns float32.
+        // OpenAI emits float32 only and has no task parameter. Reject a
+        // non-float32 `encoding` (bucket 1, else a float32 vector comes back
+        // mislabeled as the requested type) and warn on a dropped `task`
+        // (bucket 2).
         embed: <E extends EmbedEncoding | undefined = undefined>(
           req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
-        ) => s.embed(req as OpenAIEmbedRequest) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
+        ) =>
+          assertEncoding(req.encoding, ["float32"], "openai").pipe(
+            Effect.andThen(warnTaskDropped(req.task)),
+            Effect.andThen(s.embed(req as OpenAIEmbedRequest)),
+          ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
         embedMany: <E extends EmbedEncoding | undefined = undefined>(
           req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
         ) =>
-          s.embedMany(req as OpenAIEmbedManyRequest) as Effect.Effect<
-            EmbedManyResponse<E>,
-            AiError.AiError
-          >,
+          assertEncoding(req.encoding, ["float32"], "openai").pipe(
+            Effect.andThen(warnTaskDropped(req.task)),
+            Effect.andThen(s.embedMany(req as OpenAIEmbedManyRequest)),
+          ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>,
       }),
     ),
   )

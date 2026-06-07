@@ -8,6 +8,7 @@ import type { Embedding, EmbedContentPart, EmbedInput, Usage } from "@effect-uai
 type AnyEmbedResponse = { readonly embedding: Embedding; readonly usage: Usage }
 type AnyEmbedManyResponse = { readonly embeddings: ReadonlyArray<Embedding>; readonly usage: Usage }
 import {
+  assertEncoding,
   type CommonEmbedManyRequest,
   type CommonEmbedRequest,
   type EmbedEncoding,
@@ -135,10 +136,15 @@ const contentPartToItem: (part: EmbedContentPart) => WireItem = Match.type<Embed
   Match.exhaustive,
 )
 
-const multiPartContentRejected: AiError.AiError = new AiError.InvalidRequest({
+// Jina's flat `input[]` can't fuse a multi-part `content[]` into one vector.
+// Bucket 1: silently splitting or dropping parts would change what the vector
+// represents (and the vector count). Reject as `Unsupported` (capability gap),
+// not `InvalidRequest` (wire-shape) - Jina does carry images, just not fused.
+const multiPartContentRejected: AiError.AiError = new AiError.Unsupported({
   provider: "jina",
-  param: "input.content",
-  raw: "Jina treats each input[] entry as one item; multi-part `content[]` would lose the grouping. Split into separate `inputs[]` entries.",
+  capability: "multiPartInput",
+  reason:
+    "Jina treats each input[] entry as one item; multi-part `content[]` can't be fused into one vector. Split into separate `inputs[]` entries.",
 })
 
 /**

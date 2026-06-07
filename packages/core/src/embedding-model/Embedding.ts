@@ -108,6 +108,17 @@ export const isSparse = (e: Embedding): e is SparseEmbedding => e._tag === "spar
 export const isMultivector = (e: Embedding): e is MultivectorEmbedding => e._tag === "multivector"
 
 /**
+ * Domain of `EmbeddingFor` and the response type parameter on
+ * `EmbedResponse` / `EmbedManyResponse`: every encoding a provider can
+ * *return*, including Jina's widened `sparse` / `multivector`. Distinct
+ * from `EmbedEncoding` (the cross-provider *request* set, which is dense
+ * quantization only). Providers whose typed request widens beyond the
+ * dense set (Jina) parameterize their responses with their own encoding
+ * union, which is a subset of this.
+ */
+export type ResponseEncoding = "float32" | "int8" | "binary" | "sparse" | "multivector"
+
+/**
  * Maps an `encoding` request field to the corresponding response embedding
  * variant. `undefined` (no encoding requested) defaults to `Float32Embedding`,
  * which is what every provider returns when the caller doesn't ask for

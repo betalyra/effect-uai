@@ -72,14 +72,14 @@ consumer.
 `CommonEmbedRequest = { input, model, task?, dimensions?, encoding? }`
 (+ `inputs` on the batch variant).
 
-| Field        | Bucket          | Verdict                                                                 |
-| ------------ | --------------- | ----------------------------------------------------------------------- |
-| `input`      | 1 (shape)       | Common. Image / multi-part arms reject as `Unsupported` on text-only.   |
-| `model`      | §3.4 narrow     | Common. Done.                                                           |
-| `task`       | 2 (explicit)    | Common (`query`/`document` universal axis). Per-Layer gap warns.        |
-| `dimensions` | 1 (shape)       | Common. Wired everywhere; per-model rejects pass through (§2.3).        |
-| `encoding`   | 1 (shape)       | **Split:** `float32`/`int8`/`binary` common; `sparse`/`multivector` Jina-only. |
-| `inputs`     | 1 (shape)       | Common. Batch-size limits are runtime, not type-shape.                  |
+| Field        | Bucket       | Verdict                                                                        |
+| ------------ | ------------ | ------------------------------------------------------------------------------ |
+| `input`      | 1 (shape)    | Common. Image / multi-part arms reject as `Unsupported` on text-only.          |
+| `model`      | §3.4 narrow  | Common. Done.                                                                  |
+| `task`       | 2 (explicit) | Common (`query`/`document` universal axis). Per-Layer gap warns.               |
+| `dimensions` | 1 (shape)    | Common. Wired everywhere; per-model rejects pass through (§2.3).               |
+| `encoding`   | 1 (shape)    | **Split:** `float32`/`int8`/`binary` common; `sparse`/`multivector` Jina-only. |
+| `inputs`     | 1 (shape)    | Common. Batch-size limits are runtime, not type-shape.                         |
 
 ---
 
@@ -110,16 +110,16 @@ untouched (genuine wire-shape, §1.1).
 
 `EmbedEncoding` conflates two axes and only one is cross-provider:
 
-| Value         | Axis              | Providers                                | Verdict       |
-| ------------- | ----------------- | ---------------------------------------- | ------------- |
-| `float32`     | quantization      | all 7                                    | common        |
-| `int8`        | quantization      | Cohere, Voyage, Mixedbread               | common        |
-| `binary`      | quantization      | Cohere, Voyage, Jina, Mixedbread         | common        |
-| `sparse`      | representation    | **Jina `elser-v2` only**                 | Jina-specific |
-| `multivector` | representation    | **Jina v4 only**                         | Jina-specific |
+| Value         | Axis           | Providers                        | Verdict       |
+| ------------- | -------------- | -------------------------------- | ------------- |
+| `float32`     | quantization   | all 7                            | common        |
+| `int8`        | quantization   | Cohere, Voyage, Mixedbread       | common        |
+| `binary`      | quantization   | Cohere, Voyage, Jina, Mixedbread | common        |
+| `sparse`      | representation | **Jina `elser-v2` only**         | Jina-specific |
+| `multivector` | representation | **Jina v4 only**                 | Jina-specific |
 
 [embeddings.md](./embeddings.md#L53): "Sparse is essentially Jina v4
-only." `sparse`/`multivector` are a different vector *structure*, not a
+only." `sparse`/`multivector` are a different vector _structure_, not a
 storage option . the embedding analog of `DialogueTurn.styleDescription`.
 
 - Core `EmbedEncoding` → `"float32" | "int8" | "binary"`
@@ -128,7 +128,7 @@ storage option . the embedding analog of `DialogueTurn.styleDescription`.
   (already there, the `task`-widening pattern)
   ([JinaEmbedding.ts:66](../packages/providers/jina/src/JinaEmbedding.ts#L66)).
 - **`Embedding` response union and `EmbeddingFor<E>` are unchanged** . they
-  keep all 5 arms. The response describes what came *back* (a Jina response
+  keep all 5 arms. The response describes what came _back_ (a Jina response
   really can be sparse), and Jina's typed `EmbedResponse<E extends JinaEncoding>`
   still feeds `sparse`/`multivector` literals into `EmbeddingFor`.
   [Embedding.ts:97-131](../packages/core/src/embedding-model/Embedding.ts#L97).
@@ -205,10 +205,13 @@ OpenAI has **no** task field on **any** model . a per-Layer gap, not
 per-model . so the generic registration warns when `task` is set:
 
 ```ts
-yield* Capabilities.warnDroppedWhen(req.task, {
-  provider: "openai", capability: "task", field: "task",
-  reason: "OpenAI embeddings have no task-type parameter.",
-})
+yield *
+  Capabilities.warnDroppedWhen(req.task, {
+    provider: "openai",
+    capability: "task",
+    field: "task",
+    reason: "OpenAI embeddings have no task-type parameter.",
+  })
 ```
 
 (The typed `OpenAIEmbedRequest` already `Omit`s `task`, so only the
@@ -218,7 +221,7 @@ Gemini is **per-model**: `gemini-embedding-001` honors `taskType`,
 `gemini-embedding-2` ignores it server-side. Per §2.3 we don't keep
 per-model tables, and there's no wire error to translate (the server
 silently ignores). Warning unconditionally would false-fire on `-001`
-where `task` *is* honored. So Gemini's `task` stays **silent**, documented
+where `task` _is_ honored. So Gemini's `task` stays **silent**, documented
 in the existing JSDoc
 ([GeminiEmbedding.ts:26-31](../packages/providers/google/src/GeminiEmbedding.ts#L26)).
 This refines §14.7 ("should warn") the same way [stt-revamp §2.1](./stt-revamp.md#L100)
@@ -230,25 +233,25 @@ refined §14.3. (See §5 . open decision.)
 
 S structured · — unsupported (bucket-1 `Unsupported`) · W warn · M per-model
 
-|                  | OpenAI                  | Gemini                       | Jina                          |
-| ---------------- | ----------------------- | ---------------------------- | ----------------------------- |
-| `input` text     | S                       | S                            | S                             |
-| `input` image    | — `imageEmbedding`      | S (base64/bytes; url→InvalidRequest) | S single (multi → `multiPartInput`) |
-| `task`           | W (no field)            | S `-001` / silent `-2` (M)   | S (mapped query/document)     |
-| `dimensions`     | M (3-large/small; 400)  | S `outputDimensionality`     | S                             |
-| `encoding`       | float32 only (else —)   | float32 only (else —)        | float32/int8?/binary/sparse/multivector |
+|               | OpenAI                 | Gemini                               | Jina                                    |
+| ------------- | ---------------------- | ------------------------------------ | --------------------------------------- |
+| `input` text  | S                      | S                                    | S                                       |
+| `input` image | — `imageEmbedding`     | S (base64/bytes; url→InvalidRequest) | S single (multi → `multiPartInput`)     |
+| `task`        | W (no field)           | S `-001` / silent `-2` (M)           | S (mapped query/document)               |
+| `dimensions`  | M (3-large/small; 400) | S `outputDimensionality`             | S                                       |
+| `encoding`    | float32 only (else —)  | float32 only (else —)                | float32/int8?/binary/sparse/multivector |
 
 (Jina honors `int8`? . no: `JinaEncoding` is `float32`/`binary`/`sparse`/`multivector`;
 `int8` is supported by Cohere/Voyage/Mixedbread, not in tree yet.)
 
 ### 4.1 Expansion providers (forward look, [embeddings.md](./embeddings.md#L38))
 
-| Provider   | image | task                | quant (int8/binary) | sparse/multivector |
-| ---------- | ----- | ------------------- | ------------------- | ------------------ |
-| Cohere v4  | yes   | `input_type` req.   | int8/binary/uint8/ubinary | no           |
-| Voyage     | yes   | query/document/null | int8/binary/uint8/ubinary | no           |
-| Mixedbread | (lim) | free-form `prompt`  | int8/binary/uint8/ubinary | no           |
-| Vertex     | yes   | matches Gemini      | dense float only    | no                 |
+| Provider   | image | task                | quant (int8/binary)       | sparse/multivector |
+| ---------- | ----- | ------------------- | ------------------------- | ------------------ |
+| Cohere v4  | yes   | `input_type` req.   | int8/binary/uint8/ubinary | no                 |
+| Voyage     | yes   | query/document/null | int8/binary/uint8/ubinary | no                 |
+| Mixedbread | (lim) | free-form `prompt`  | int8/binary/uint8/ubinary | no                 |
+| Vertex     | yes   | matches Gemini      | dense float only          | no                 |
 
 Cohere/Voyage/Mixedbread support `int8`/`binary` (core's trimmed set), so
 no float32-only guard. None ship `sparse`/`multivector` . confirms the
@@ -289,7 +292,7 @@ rebuild core before the provider edits compile):
 2. **OpenAI**: `imageRejected` → `Unsupported`; generic registration adds
    `assertEncoding(…, ["float32"], "openai")` + `warnDroppedWhen(task)`.
 3. **Gemini**: generic registration adds `assertEncoding(…, ["float32"],
-   "gemini")`. `task` silent (no change). `url` reject unchanged.
+"gemini")`. `task` silent (no change). `url` reject unchanged.
 4. **Jina**: `multiPartContentRejected` → `Unsupported`. Encoding handling
    unchanged.
 5. **Tests**: pure-codec / decode tests stay; add `Unsupported` coverage
@@ -305,11 +308,11 @@ to OpenAI/Gemini now get `Unsupported` instead of a mislabeled float32
 
 ## 7. Effort
 
-| Phase                                                   | Effort     |
-| ------------------------------------------------------- | ---------- |
-| Core: trim `EmbedEncoding` + `assertEncoding` + JSDoc   | Small      |
+| Phase                                                    | Effort     |
+| -------------------------------------------------------- | ---------- |
+| Core: trim `EmbedEncoding` + `assertEncoding` + JSDoc    | Small      |
 | OpenAI: image `Unsupported` + encoding guard + task warn | Small      |
-| Gemini: encoding guard                                  | Small      |
-| Jina: multi-part `Unsupported`                          | Mechanical |
-| Markers (`ImageEmbeddingGuarantee`)                     | Deferred   |
-| Changeset / migration note                              | Deferred   |
+| Gemini: encoding guard                                   | Small      |
+| Jina: multi-part `Unsupported`                           | Mechanical |
+| Markers (`ImageEmbeddingGuarantee`)                      | Deferred   |
+| Changeset / migration note                               | Deferred   |

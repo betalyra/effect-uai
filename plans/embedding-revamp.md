@@ -113,7 +113,7 @@ untouched (genuine wire-shape, §1.1).
 | Value         | Axis              | Providers                                | Verdict       |
 | ------------- | ----------------- | ---------------------------------------- | ------------- |
 | `float32`     | quantization      | all 7                                    | common        |
-| `int8`        | quantization      | Cohere, Voyage, Jina, Mixedbread         | common        |
+| `int8`        | quantization      | Cohere, Voyage, Mixedbread               | common        |
 | `binary`      | quantization      | Cohere, Voyage, Jina, Mixedbread         | common        |
 | `sparse`      | representation    | **Jina `elser-v2` only**                 | Jina-specific |
 | `multivector` | representation    | **Jina v4 only**                         | Jina-specific |
@@ -164,12 +164,14 @@ embed: <E>(req) =>
   ) as Effect.Effect<EmbedResponse<E>, …>
 ```
 
-Applies to OpenAI + Gemini, single + batch, generic registration only
-(the typed requests `Omit` `encoding`, so the typed path can't pass it).
-Jina is untouched (it honors `int8`/`binary`/`sparse`/`multivector` and
-verifies at the response level). Cohere / Voyage, when they land, support
-all of core's trimmed `EmbedEncoding` (`float32`/`int8`/`binary`), so they
-need no guard.
+Applies to OpenAI + Gemini + Jina, single + batch, generic registration
+only (the typed requests `Omit` `encoding`, so the typed path can't pass it).
+OpenAI / Gemini guard `["float32"]`; Jina guards `["float32", "binary"]`: it
+honors `binary`/`sparse`/`multivector` but NOT scalar `int8` (Jina's "binary
+packed as int8" is bit quantization, our `binary`, not scalar int8 per
+dimension), and verifies at the response level. Cohere / Voyage, when they
+land, support all of core's `EmbedEncoding` (`float32`/`int8`/`binary`), so
+they need no guard.
 
 ### 3.4 `assertEncoding` core helper
 

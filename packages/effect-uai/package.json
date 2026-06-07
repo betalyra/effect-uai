@@ -1,6 +1,6 @@
 {
   "name": "effect-uai",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Reserved name. See @effect-uai/core and the @effect-uai/* provider packages.",
   "homepage": "https://github.com/betalyra/effect-uai#readme",
   "bugs": {

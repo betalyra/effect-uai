@@ -1,5 +1,62 @@
 # @effect-uai/core
 
+## 0.7.0
+
+### Minor Changes
+
+- 602bfa9: 0.7 is a capability-honesty pass across every audio and embedding
+  surface. The unifying rule: where a provider cannot honor a request, the
+  call now fails with `AiError.Unsupported` (load-bearing gaps) or emits a
+  structured `warnDropped` (best-effort hints), instead of silently
+  substituting a different result. Alongside that, `Duration` replaces raw
+  `durationSeconds` everywhere audio carries a length, the `MusicGenerator`
+  surface is reshaped, an ElevenLabs music provider lands, and Gemini
+  `toolChoice` is now mapped.
+
+  Most of it is mechanical (find-and-replace renames plus a
+  `Duration.seconds(n)` wrap). The parts that need judgement are the
+  removed `GeminiTranscriber` (use OpenAI / ElevenLabs / Inworld instead)
+  and the requests that now error where they previously degraded silently.
+  The full before/after diffs and the recommended order live in
+  [Migrating to 0.7](https://effect-uai.betalyra.com/migrations/v0-7/).
+
+  `@effect-uai/anthropic`, `@effect-uai/microsandbox`, and
+  `@effect-uai/deno` have no functional changes this release; they bump for
+  lockstep versioning only.
+
+- 602bfa9: Core domain and service reshape (audio, STT, TTS, embeddings):
+  - **Audio**: `AudioBlob.durationSeconds: number` becomes
+    `duration?: Duration.Duration`. The same rename flows through
+    `TranscriptResult` (STT) and `MusicResult` (music).
+  - **Transcriber**: `CommonTranscribeRequest.prompt` splits into
+    `prompt?: string` (free-form prose context) and
+    `biasingTerms?: ReadonlyArray<string>` (discrete vocabulary). The old
+    `{ terms }` union arm is gone. `TranscriptResult.durationSeconds`
+    becomes `duration`. Stream `inputFormat` gaps now fail
+    `AiError.Unsupported` instead of `InvalidRequest`.
+  - **SpeechSynthesizer**: `PhoneticEncoding` and
+    `CustomPronunciation.encoding` are removed (`pronunciation` is IPA-only).
+    Pronunciations are load-bearing: a provider with no IPA path fails
+    `Unsupported` rather than dropping them. `DialogueTurn` trims to
+    `{ voiceId, text }` (`styleDescription` / `speed` removed).
+  - **MusicGenerator**: `prompts` becomes `prompt` (string), `bpm` / `scale`
+    / `instrumental` dropped from `CommonGenerateMusicRequest`, `MusicResult`
+    composes `AudioBlob` (`result.audio.bytes`), `generate` returns
+    `GenerateResult` (`primary` + `variants[]`), `streamGenerationFrom`
+    yields `MusicStreamEvent`, and `MusicSessionInput` drops the `config`
+    variant.
+  - **EmbeddingModel**: `EmbedEncoding` is trimmed to
+    `"float32" | "int8" | "binary"` (the dense cross-provider request set);
+    `sparse` / `multivector` move to the provider-typed `JinaEncoding`. New
+    `ResponseEncoding` (the wider response union) parameterizes
+    `EmbedResponse<E>` / `EmbedManyResponse<E>`. New exported `assertEncoding`
+    guard validates an encoding against a provider's supported set and fails
+    `Unsupported` instead of returning a mislabeled vector.
+  - **Additive**: new `@effect-uai/core/Capabilities` module with
+    `warnDroppedWhen` for structured bucket-2 warn-and-drop.
+
+  See [Migrating to 0.7](https://effect-uai.betalyra.com/migrations/v0-7/).
+
 ## 0.6.0
 
 ### Minor Changes
@@ -125,13 +182,13 @@
 
   ```ts
   // Before
-  import { retry } from "@effect-uai/core/LanguageModel"
-  streamTurn(req).pipe(retry(schedule))
+  import { retry } from "@effect-uai/core/LanguageModel";
+  streamTurn(req).pipe(retry(schedule));
 
   // After
-  import * as Retry from "@effect-uai/core/Retry"
-  streamTurn(req).pipe(Retry.stream(schedule))
-  embed(req).pipe(Retry.effect(schedule))
+  import * as Retry from "@effect-uai/core/Retry";
+  streamTurn(req).pipe(Retry.stream(schedule));
+  embed(req).pipe(Retry.effect(schedule));
   ```
 
   `Retryable` and `isRetryable` move to the same module.

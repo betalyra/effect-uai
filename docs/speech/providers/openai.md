@@ -62,9 +62,10 @@ const mainLayer = openai.pipe(Layer.provide(FetchHttpClient.layer))
 | `gpt-4o-mini-transcribe` | ✓    | ✓                           | Plain text only, cheaper                         |
 | `whisper-1`              | ✓    | —                           | **Only model supporting `wordTimestamps: true`** |
 
-`wordTimestamps: true` requires `whisper-1`. Passing it with a GPT-4o
-model fails with `AiError.Unsupported`. `diarization` isn't offered on
-the OpenAI transcription endpoint at all.
+`wordTimestamps: true` requires `whisper-1`. Passing it to a GPT-4o
+model surfaces the provider's wire rejection (HTTP 400) rather than a
+pre-send error. `diarization` is narrowed off `OpenAITranscribeRequest`
+(OpenAI's transcription endpoint has none).
 
 ### TTS
 
@@ -88,7 +89,8 @@ type OpenAITranscribeRequest = {
   readonly model: OpenAITranscribeModel
   readonly audio: AudioSource
   readonly language?: string
-  readonly prompt?: string | { readonly terms: ReadonlyArray<string> }
+  readonly prompt?: string // free-form prose context, mapped to OpenAI's prompt
+  readonly biasingTerms?: ReadonlyArray<string> // warnDropped (no keyterm field)
   readonly wordTimestamps?: boolean // whisper-1 only
   readonly temperature?: number
   readonly fileName?: string // overrides multipart filename

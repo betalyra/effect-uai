@@ -121,8 +121,8 @@ Same shape, larger surface:
 - **Cross-modal retrieval**: swap `string` inputs for
   `{ image: ImageSource }` — see
   [multimodal embedding](/embeddings/multimodal/).
-- **Late-interaction**: pass `encoding: "multivector"` and rank with
-  `Vector.maxSim` instead — see
+- **Late-interaction**: request `encoding: "multivector"` via the typed
+  `JinaEmbedding` service and rank with `Vector.maxSim` instead — see
   [multivector embedding](/embeddings/multivector/).
 
 ## See also

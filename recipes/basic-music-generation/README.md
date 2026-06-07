@@ -1,85 +1,86 @@
 ---
 title: Basic music generation
-description: A short prompt is enough. Lyria 3 turns it into a 30-second clip.
-source: recipes/basic-music-generation
+description: A short prompt is enough. Two providers behind one `MusicGenerator` service tag — switch via `--provider=`.
 ---
 
-A short prompt is enough to get useful background music.
+A short prompt is enough to get useful music.
 
 Give the model a vibe, a tempo hint, or a rough song structure and it
-returns audio bytes you can write to disk. The recipe shows the small
-path first, then a richer prompt with weighted influences and lyrics.
+returns audio bytes you can write to disk. The recipe runs against
+either **Google Lyria** (30 s MP3 clip; `lyria-3-clip-preview`) or
+**ElevenLabs Music** (full song up to 5 min; `music_v1`), depending
+on `--provider=`.
 
 **Scenario.** You need background audio for a video, a song draft for
-a demo, or a quick musical sketch. You want a 30-second clip from a
-prompt, not a local model or a new provider SDK.
+a demo, or a quick musical sketch. You want to compare what two
+providers do with the same prompt.
 
-## Simple Or Directed
+## The recipe body is provider-agnostic
 
 ```ts
+import { Duration } from "effect"
 import { generate } from "@effect-uai/core/MusicGenerator"
 
-// Simple
-const simple =
+const result =
   yield *
   generate({
-    model: "lyria-3-clip-preview",
-    prompts: "Lo-fi piano with brushed drums, 70 bpm",
+    model: "music_v1", // or "lyria-3-clip-preview"
+    prompt: "Lo-fi piano with brushed drums, 70 BPM, melancholic",
+    duration: Duration.seconds(30),
+    outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 },
   })
-yield * writeFile("out-simple.mp3", simple.bytes)
 
-// Weighted
-const weighted =
-  yield *
-  generate({
-    model: "lyria-3-clip-preview",
-    prompts: [
-      { text: "minimal techno", weight: 0.7 },
-      { text: "ambient pad", weight: 0.3 },
-    ],
-    bpm: 124,
-    scale: "A_MINOR",
-    lyrics: "[Verse]\nA late train hums beneath the city\n",
-  })
-yield * writeFile("out-weighted.mp3", weighted.bytes)
+yield * writeFile("out.mp3", result.primary.audio.bytes)
 ```
 
-Both calls use the same `MusicGenerator.generate` boundary: prompt in,
-`MusicResult` out. The simple prompt is enough for most demos. The
-weighted prompt is useful when you want to blend influences, preserve a
-song section shape, or carry musical hints like `bpm` and `scale`.
-
-`lyria-3-clip-preview` returns a fixed 30-second MP3. Use
-`lyria-3-pro-preview` in `index.ts` when you want longer clips or WAV
-output.
-
-Lyria adds a SynthID watermark. The adapter surfaces that as
-`result.watermark`, so downstream code can preserve provenance.
+The recipe yields the generic `MusicGenerator` service. The runner
+([`run-node.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-music-generation/run-node.ts))
+picks the Layer based on `--provider=`, so the same body works
+against both providers without changes.
 
 ## Run it
 
 ```sh
-# Both built-in variants
+# Default: Google Lyria with the built-in prompt
 GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts
 
-# Custom simple prompt from a .txt file
-GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts ./my-prompt.txt
+# Explicit provider
+GOOGLE_API_KEY=...     pnpm tsx recipes/basic-music-generation/run-node.ts --provider=google
+ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts --provider=elevenlabs
 
-# Custom weighted prompt from a .json file (see index.ts for the WeightedConfig shape)
-GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts ./my-track.json
+# Custom prompt from a .txt file
+ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts --provider=elevenlabs ./my-prompt.txt
 ```
 
-Writes `out-simple.mp3` and/or `out-weighted.mp3` next to the recipe.
+Writes `out-google.mp3` or `out-elevenlabs.mp3` next to the recipe.
 
-## What This Generalizes To
+## Where the providers differ
 
-Today this runs on Google's Lyria layer, but the recipe body yields the
-generic `MusicGenerator` service. Future providers can hide job polling,
-streaming, or session setup behind the same boundary.
+The shared `MusicGenerator` surface intentionally hides most
+differences. The ones worth knowing:
 
-For the broader model surface and planned interactive sessions, see
-[Music generation](/music-generation/). For spoken audio instead of
-music, see [Basic speech synthesis](/recipes/basic-speech-synthesis/).
+| Capability                                                 | Lyria 3 sync                                  | ElevenLabs Music                                                       |
+| ---------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------- |
+| Duration                                                   | Fixed 30 s for `clip`, controllable on `pro`. | Honored. `music_length_ms` 3 s – 10 min.                               |
+| Streaming                                                  | Single chunk after sync (fake stream).        | Native chunked HTTP via `POST /v1/music/stream`.                       |
+| Lyrics                                                     | No structured wire field; embed in prompt.    | Per-section `lines` in composition plan, or embed in prompt.           |
+| Watermark                                                  | Always `"synthid"` (mandatory).               | Opt-in `"c2pa"` via `signWithC2pa: true` (MP3 only).                   |
+| Vocals control                                             | Embed `"no vocals"` in your prompt.           | `forceInstrumental` on the typed request.                              |
+| Composition plan (per-section lyrics + styles + durations) | —                                             | Yes (`compositionPlan`). Free plan-generator at `POST /v1/music/plan`. |
+
+These provider-specific knobs live on the **typed** services
+(`LyriaGenerator`, `ElevenLabsMusicGenerator`), not on the
+cross-provider `CommonGenerateMusicRequest`. Reach for them when the
+shared surface isn't expressive enough.
+
+## What this generalises to
+
+The recipe body returns Effects that yield the generic
+`MusicGenerator` service. Future providers (Suno, Mureka, MiniMax,
+Stable Audio, Tencent SongGen) can hide their job polling, streaming,
+or session setup behind the same calls. The
+[music generation overview](/music-generation/) covers the cross-provider
+shapes and the capability marker that gates bidirectional sessions.
 
 The full source lives next to this README at
 [`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-music-generation/index.ts).

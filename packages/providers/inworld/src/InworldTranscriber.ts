@@ -12,6 +12,7 @@ import { Context, Effect, Encoding, Layer, Match, Redacted, Schema, Stream } fro
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioSource } from "@effect-uai/core/Audio"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import type { TranscriptEvent, TranscriptResult, WordTimestamp } from "@effect-uai/core/Transcript"
 import {
   type CommonStreamTranscribeRequest,
@@ -74,15 +75,17 @@ const audioToBase64: (audio: AudioSource) => Effect.Effect<string, AiError.AiErr
 // Request body
 // ---------------------------------------------------------------------------
 
-const promptToTerms = (
-  prompt: string | { readonly terms: ReadonlyArray<string> } | undefined,
-): ReadonlyArray<string> | undefined =>
-  prompt === undefined ? undefined : typeof prompt === "string" ? [prompt] : prompt.terms
-
 const buildBody = (request: InworldTranscribeRequest) =>
   Effect.gen(function* () {
     const content = yield* audioToBase64(request.audio)
-    const prompts = promptToTerms(request.prompt)
+    // Inworld's `prompts` is a vocab-biasing term list — maps from
+    // `biasingTerms`. There's no free-form prompt field, so `prompt` warns.
+    yield* Capabilities.warnDroppedWhen(request.prompt, {
+      provider: "inworld",
+      capability: "prompt",
+      field: "prompt",
+      reason: "Inworld STT has no free-form prompt field; bias via `biasingTerms`.",
+    })
     return {
       transcribeConfig: {
         modelId: request.model,
@@ -92,7 +95,7 @@ const buildBody = (request: InworldTranscribeRequest) =>
         }),
         numberOfChannels: request.numberOfChannels ?? 1,
         ...(request.language !== undefined && { language: request.language }),
-        ...(prompts !== undefined && { prompts }),
+        ...(request.biasingTerms !== undefined && { prompts: request.biasingTerms }),
         ...(request.wordTimestamps === true && { includeWordTimestamps: true }),
       },
       audioData: { content },

@@ -222,6 +222,10 @@ export default defineConfig({
                   label: "Google Lyria",
                   slug: "music-generation/providers/gemini",
                 },
+                {
+                  label: "ElevenLabs Music",
+                  slug: "music-generation/providers/elevenlabs",
+                },
               ],
             },
             {
@@ -231,6 +235,10 @@ export default defineConfig({
                 {
                   label: "Basic music generation",
                   slug: "recipes/basic-music-generation",
+                },
+                {
+                  label: "Radio station",
+                  slug: "recipes/radio-station",
                 },
               ],
             },

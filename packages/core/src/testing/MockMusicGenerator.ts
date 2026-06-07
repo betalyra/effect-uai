@@ -1,11 +1,13 @@
 import { Effect, Layer, Ref, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { AudioChunk } from "../domain/Audio.js"
-import type {
-  CommonGenerateMusicRequest,
-  CommonStreamGenerateMusicRequest,
-  MusicResult,
-  MusicSessionInput,
+import {
+  audioEvent,
+  type CommonGenerateMusicRequest,
+  type CommonStreamGenerateMusicRequest,
+  type GenerateResult,
+  type MusicSessionInput,
+  type MusicStreamEvent,
 } from "../domain/Music.js"
 import {
   MusicGenerator,
@@ -21,11 +23,15 @@ export type MockMusicGeneratorRecorder = {
 
 export type MockMusicGeneratorScript = {
   /** One result per `generate` call, consumed in order. */
-  readonly results?: ReadonlyArray<MusicResult>
+  readonly results?: ReadonlyArray<GenerateResult>
   /** One chunk-list per `streamGeneration` call, consumed in order. */
   readonly streamGenerationChunks?: ReadonlyArray<ReadonlyArray<AudioChunk>>
-  /** One chunk-list per `streamGenerationFrom` call, consumed in order. */
-  readonly streamGenerationFromChunks?: ReadonlyArray<ReadonlyArray<AudioChunk>>
+  /**
+   * One event-list per `streamGenerationFrom` call, consumed in order.
+   * If a list contains only `AudioChunk`s for ergonomics, wrap them in
+   * `audioEvent(chunk)` first.
+   */
+  readonly streamGenerationFromEvents?: ReadonlyArray<ReadonlyArray<MusicStreamEvent>>
 }
 
 const makeService = (
@@ -74,22 +80,23 @@ const makeService = (
       streamGenerationFrom: <E, R>(
         input: Stream.Stream<MusicSessionInput, E, R>,
         request: CommonStreamGenerateMusicRequest,
-      ): Stream.Stream<AudioChunk, AiError.AiError | E, R> =>
+      ): Stream.Stream<MusicStreamEvent, AiError.AiError | E, R> =>
         Stream.unwrap(
           Effect.gen(function* () {
             yield* record.streamGenerationFrom(request)
             const i = yield* Ref.getAndUpdate(sgfCursor, (n) => n + 1)
-            const scripted = script.streamGenerationFromChunks ?? []
+            const scripted = script.streamGenerationFromEvents ?? []
             if (i >= scripted.length) {
-              const exhausted: Stream.Stream<AudioChunk, AiError.AiError | E, R> = Stream.fail(
-                new AiError.InvalidRequest({
-                  provider: "mock",
-                  raw: `MockMusicGenerator exhausted: ${scripted.length} streamGenerationFrom lists scripted, but call ${i + 1} was made`,
-                }),
-              )
+              const exhausted: Stream.Stream<MusicStreamEvent, AiError.AiError | E, R> =
+                Stream.fail(
+                  new AiError.InvalidRequest({
+                    provider: "mock",
+                    raw: `MockMusicGenerator exhausted: ${scripted.length} streamGenerationFrom lists scripted, but call ${i + 1} was made`,
+                  }),
+                )
               return exhausted
             }
-            // Drain the input fully before emitting scripted audio chunks,
+            // Drain the input fully before emitting scripted events,
             // so consumers can assert on what session messages were pushed.
             return Stream.drain(input).pipe(Stream.concat(Stream.fromIterable(scripted[i]!)))
           }),
@@ -133,7 +140,7 @@ export const layer = (
 }
 
 /**
- * Variant that omits the `MusicInteractiveSession` marker — simulates a
+ * Variant that omits the `MusicInteractiveSession` marker, simulates a
  * provider without bidirectional support (Lyria 3 sync, ElevenLabs,
  * Mureka, MiniMax, Stable Audio, Suno). Calls to
  * `streamGenerationFrom` in code under test should be a compile-time
@@ -166,3 +173,6 @@ export const layerWithoutInteractive = (
     }),
   }
 }
+
+// Re-export the event constructor for test-script ergonomics.
+export { audioEvent }

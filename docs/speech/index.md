@@ -92,7 +92,7 @@ demo.
 - **`SttStreaming`** — required for `streamTranscriptionFrom`. Shipped
   by `OpenAIRealtimeTranscriber`, `ElevenLabsTranscriber`,
   `InworldRealtimeTranscriber`. Not shipped by `OpenAITranscriber`
-  (sync), `GeminiTranscriber` (sync, prompt-driven), `InworldTranscriber`.
+  (sync) or `InworldTranscriber`.
 - **`TtsIncrementalText`** — required for `streamSynthesisFrom` (text
   arrives as a `Stream<string>`, audio leaves as `Stream<AudioChunk>`,
   pacing tied to the upstream WS). Shipped by `ElevenLabsSynthesizer`

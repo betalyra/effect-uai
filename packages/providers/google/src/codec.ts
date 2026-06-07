@@ -8,6 +8,7 @@ import type {
 } from "@effect-uai/core/Items"
 import type { ToolDescriptor } from "@effect-uai/core/Tool"
 import type { Turn } from "@effect-uai/core/Turn"
+import type { CommonRequest } from "@effect-uai/core/LanguageModel"
 
 // ---------------------------------------------------------------------------
 // Wire schemas - the subset of Gemini's streamGenerateContent payload we
@@ -341,10 +342,39 @@ const toolDescriptorsToTools = (tools: ReadonlyArray<ToolDescriptor>): ReadonlyA
         },
       ]
 
+/**
+ * Map our cross-provider `toolChoice` onto Gemini's `functionCallingConfig`.
+ * Gemini honours the same three modes plus a function allow-list, so the
+ * choice is mapped, not dropped. `undefined` keeps the API default (`AUTO`).
+ */
+const toolChoiceToFunctionCallingConfig = (
+  toolChoice: CommonRequest["toolChoice"],
+): RequestToolConfig["functionCallingConfig"] =>
+  Match.value(toolChoice ?? "auto").pipe(
+    Match.when("auto", () => ({ mode: "AUTO" as const })),
+    Match.when("required", () => ({ mode: "ANY" as const })),
+    Match.when("none", () => ({ mode: "NONE" as const })),
+    Match.orElse((tc) => ({ mode: "ANY" as const, allowedFunctionNames: [tc.name] })),
+  )
+
+/**
+ * URL-form images need Gemini's Files API (upload, then `fileData`); we
+ * don't pre-upload, so such a part would otherwise vanish from the request.
+ * The caller fails the request with `Unsupported` instead of silently
+ * dropping the image.
+ */
+export const hasUrlImageSource = (history: ReadonlyArray<HistoryItem>): boolean =>
+  history.some(
+    (item) =>
+      item.type === "message" &&
+      item.content.some((b) => b.type === "input_image" && b.source._tag === "url"),
+  )
+
 export const buildRequestBody = (
   history: ReadonlyArray<HistoryItem>,
   generationConfig: Option.Option<GenerationConfig>,
   tools: ReadonlyArray<ToolDescriptor> = [],
+  toolChoice: CommonRequest["toolChoice"] = undefined,
 ): RequestBody => {
   const systemTexts = pipe(allMessages(history), Arr.filterMap(systemMessageText))
   const contents = pipe(history, Arr.filterMap(itemToContent(history)))
@@ -360,7 +390,7 @@ export const buildRequestBody = (
     }),
     ...(requestTools.length > 0 && {
       tools: requestTools,
-      toolConfig: { functionCallingConfig: { mode: "AUTO" as const } },
+      toolConfig: { functionCallingConfig: toolChoiceToFunctionCallingConfig(toolChoice) },
     }),
   }
 }

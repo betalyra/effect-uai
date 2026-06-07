@@ -3,6 +3,7 @@ import {
   PiArrowRight,
   PiArrowsClockwise,
   PiArrowsInLineHorizontal,
+  PiRadio,
   PiChatCircleDots,
   PiClockCounterClockwise,
   PiDetective,
@@ -133,6 +134,13 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Talk to your agent.** Streaming STT, LLM, and TTS composed as Effect fibers; stop-words interrupt mid-sentence.",
     href: "/recipes/voice-loop/",
     Icon: PiMicrophone,
+  },
+  {
+    title: "Radio station",
+    description:
+      "**Run your own AI radio station.** An AI DJ writes the next track while you listen to the current one; the same set replays for free.",
+    href: "/recipes/radio-station/",
+    Icon: PiRadio,
   },
   {
     title: "Run, fix, repeat",

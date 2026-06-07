@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect"
+import { Duration, Effect, Stream } from "effect"
 import { describe, expect, expectTypeOf, it } from "vitest"
 import type * as AiError from "../domain/AiError.js"
 import type { AudioBlob, AudioChunk, AudioFormat } from "../domain/Audio.js"
@@ -14,7 +14,7 @@ const pcmFormat: AudioFormat = {
 const blob: AudioBlob = {
   format: pcmFormat,
   bytes: new Uint8Array([0xde, 0xad, 0xbe, 0xef]),
-  durationSeconds: 0.5,
+  duration: Duration.millis(500),
 }
 
 const chunk = (n: number): AudioChunk => ({ bytes: new Uint8Array([n]) })
@@ -29,7 +29,7 @@ describe("SpeechSynthesizer.synthesize", () => {
     })
     const result = await Effect.runPromise(program.pipe(Effect.provide(mock.layer)))
     expect(result.bytes).toEqual(blob.bytes)
-    expect(result.durationSeconds).toBe(0.5)
+    expect(result.duration).toEqual(Duration.millis(500))
   })
 })
 

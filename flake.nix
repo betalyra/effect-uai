@@ -5,12 +5,13 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs =
+    { self, nixpkgs }:
     let
       # Systems we provide a devShell for: the standard set flakes expose.
-      forAllSystems = f:
-        nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed
-          (system: f nixpkgs.legacyPackages.${system});
+      forAllSystems =
+        f:
+        nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed (system: f nixpkgs.legacyPackages.${system});
     in
     {
       devShells = forAllSystems (pkgs: {
@@ -20,8 +21,9 @@
           # field via corepack (see shellHook), so it always matches CI exactly.
           packages = [
             pkgs.nodejs_24
-            pkgs.corepack       # provides the pnpm version pinned in package.json
-            pkgs.deno           # only needed for the deno integration-test suite
+            pkgs.corepack # provides the pnpm version pinned in package.json
+            pkgs.deno # only needed for the deno integration-test suite
+            pkgs.bun
             pkgs.git
           ];
 
@@ -37,6 +39,7 @@
             echo "  node $(node --version)"
             echo "  pnpm $(pnpm --version 2>/dev/null || echo '(run: corepack prepare --activate)')"
             echo "  deno $(deno --version | head -n1 | cut -d' ' -f2)"
+            echo "  bun $(bun --version | head -n1 | cut -d' ' -f2)"
           '';
         };
       });

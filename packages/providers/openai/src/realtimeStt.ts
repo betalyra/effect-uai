@@ -10,6 +10,7 @@
 import { Cause, Effect, Encoding, Match, Queue, Redacted, Schema, Stream } from "effect"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent } from "@effect-uai/core/Transcript"
@@ -58,28 +59,21 @@ const wsBaseUrl = (cfg: Config) => resolveHost(cfg).replace(/^http/, "ws")
 
 const buildWsUrl = (cfg: Config) => `${wsBaseUrl(cfg)}/realtime?intent=transcription`
 
-const promptToString = (
-  prompt: string | { readonly terms: ReadonlyArray<string> } | undefined,
-): string | undefined =>
-  prompt === undefined ? undefined : typeof prompt === "string" ? prompt : prompt.terms.join(", ")
-
-const sessionUpdateFrame = (wireFormat: WireFormat, request: CommonStreamTranscribeRequest) => {
-  const prompt = promptToString(request.prompt)
-  return JSON.stringify({
+const sessionUpdateFrame = (wireFormat: WireFormat, request: CommonStreamTranscribeRequest) =>
+  JSON.stringify({
     type: "transcription_session.update",
     session: {
       input_audio_format: wireFormat,
       input_audio_transcription: {
         model: request.model,
         ...(request.language !== undefined && { language: request.language }),
-        ...(prompt !== undefined && { prompt }),
+        ...(request.prompt !== undefined && { prompt: request.prompt }),
       },
       // VAD on by default — emits `speech_started` / `speech_stopped` events.
       // Caller opts out via `vadEvents: false`.
       ...(request.vadEvents !== false && { turn_detection: { type: "server_vad" } }),
     },
   })
-}
 
 const encodeAudioFrame = (bytes: Uint8Array) =>
   JSON.stringify({
@@ -198,6 +192,13 @@ export const streamTranscription =
   ): Stream.Stream<TranscriptEvent, AiError.AiError | E, R> =>
     Stream.unwrap(
       Effect.gen(function* () {
+        // OpenAI Realtime has no keyterm field — only the prose `prompt`.
+        yield* Capabilities.warnDroppedWhen(request.biasingTerms, {
+          provider: "openai",
+          capability: "biasing",
+          field: "biasingTerms",
+          reason: "OpenAI Realtime transcription has no keyterm field; use `prompt`.",
+        })
         const wireFormat = yield* inputFormatToWire(request.inputFormat)
         const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg), {
           // Effect's Socket treats all close codes as errors by default —

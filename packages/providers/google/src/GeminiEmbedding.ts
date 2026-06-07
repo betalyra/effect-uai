@@ -8,6 +8,7 @@ import type {
   Usage,
 } from "@effect-uai/core/Embedding"
 import {
+  assertEncoding,
   type CommonEmbedManyRequest,
   type CommonEmbedRequest,
   type EmbedEncoding,
@@ -348,20 +349,24 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): EmbeddingModelService => ({
-        // Gemini's endpoints only emit float32; the cast is sound for the
-        // 99% case. A caller who asks for `encoding: "int8"` via the
-        // generic tag gets the type they requested but the runtime returns
-        // float32 (Gemini ignores the field).
+        // Gemini's embed endpoints emit float32 only. Reject a non-float32
+        // `encoding` (bucket 1) so a float32 vector isn't handed back
+        // mislabeled as the requested type. `task` is left silent: it's a
+        // per-model gap (honored by gemini-embedding-001, ignored by
+        // gemini-embedding-2 server-side), and per capabilities.md §2.3 we
+        // don't maintain per-model tables; there's no wire error to translate.
         embed: <E extends EmbedEncoding | undefined = undefined>(
           req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
-        ) => s.embed(req as GeminiEmbedRequest) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
+        ) =>
+          assertEncoding(req.encoding, ["float32"], "gemini").pipe(
+            Effect.andThen(s.embed(req as GeminiEmbedRequest)),
+          ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
         embedMany: <E extends EmbedEncoding | undefined = undefined>(
           req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
         ) =>
-          s.embedMany(req as GeminiEmbedManyRequest) as Effect.Effect<
-            EmbedManyResponse<E>,
-            AiError.AiError
-          >,
+          assertEncoding(req.encoding, ["float32"], "gemini").pipe(
+            Effect.andThen(s.embedMany(req as GeminiEmbedManyRequest)),
+          ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>,
       }),
     ),
   )

@@ -15,6 +15,28 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.7](/migrations/v0-7/) — a capability-honesty pass
+  across audio and embeddings. `AudioBlob.durationSeconds: number`
+  becomes `duration: Duration.Duration` (flowing through STT, TTS, and
+  music). STT: `GeminiTranscriber` removed (use OpenAI / ElevenLabs /
+  Inworld), `prompt` splits into `prompt` + `biasingTerms`,
+  `TranscriptResult.durationSeconds → duration`. TTS: `PhoneticEncoding`
+  and `CustomPronunciation.encoding` removed (IPA-only), pronunciations
+  now fail `Unsupported` on providers without an IPA path, `DialogueTurn`
+  trims to `{ voiceId, text }`. Embeddings: `EmbedEncoding` trimmed to
+  `float32 | int8 | binary` (sparse / multivector move to `JinaEncoding`),
+  mismatched encoding / image / multi-part now fail `Unsupported` instead
+  of degrading silently. Music: `prompts → prompt`, `bpm` / `scale` /
+  `instrumental` dropped, `MusicResult` composes `AudioBlob`
+  (`result.bytes → result.audio.bytes`), `generate` returns
+  `GenerateResult` (`primary` + `variants[]`), `streamGenerationFrom`
+  yields `MusicStreamEvent`. LLM (no rewrites): Gemini `toolChoice` now
+  mapped, Gemini URL images now `Unsupported`, Lyria clip reports mp3
+  honestly. Additive (no migration needed):
+  `@effect-uai/elevenlabs/ElevenLabsMusicGenerator`,
+  `@effect-uai/core/Capabilities` warn-and-drop helper, ElevenLabs
+  `pronunciationDictionaryLocators`, multi-provider recipe runner via
+  `--provider=`.
 - [Migrating to 0.6](/migrations/v0-6/) — the consistent-naming sweep
   plus additive speech features. Breaking but mechanical: "function
   call" → "tool call" terminology (`Item` → `HistoryItem`,

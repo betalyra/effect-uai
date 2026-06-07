@@ -4,12 +4,12 @@
  * transcribes the given audio file.
  *
  * The OpenAI verbose (`whisper-1` + word timestamps) variant only runs
- * when `--provider openai` is selected — Gemini's transcription has no
+ * when `--provider openai` is selected — not every provider surfaces
  * structured per-word timing.
  *
  * Run with:
  *   `OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-transcription/run-node.ts <audio>`
- *   `GOOGLE_API_KEY=...   pnpm tsx recipes/basic-transcription/run-node.ts --provider gemini <audio>`
+ *   `ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-transcription/run-node.ts --provider elevenlabs <audio>`
  *
  * Audio formats: m4a, mp3, mp4, mpeg, mpga, oga, ogg, wav, webm, flac.
  */
@@ -20,7 +20,6 @@ import { FetchHttpClient } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import type { AudioMimeType, AudioSource } from "@effect-uai/core/Audio"
 import { layer as elevenlabsLayer } from "@effect-uai/elevenlabs/ElevenLabsTranscriber"
-import { layer as geminiLayer } from "@effect-uai/google/GeminiTranscriber"
 import { layer as inworldLayer } from "@effect-uai/inworld/InworldTranscriber"
 import { layer as openaiLayer } from "@effect-uai/openai/OpenAITranscriber"
 import { transcribeFast, transcribeVerbose, type Provider } from "./index.js"
@@ -37,7 +36,7 @@ const mimeForExt: (ext: string) => AudioMimeType = Match.type<string>().pipe(
 
 const usage = (): never => {
   console.error(
-    `Usage: pnpm tsx recipes/basic-transcription/run-node.ts [--provider openai|gemini|elevenlabs|inworld] <audio-file>`,
+    `Usage: pnpm tsx recipes/basic-transcription/run-node.ts [--provider openai|elevenlabs|inworld] <audio-file>`,
   )
   process.exit(1)
 }
@@ -49,7 +48,7 @@ const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefine
 
 const parseProvider = (argv: ReadonlyArray<string>): Provider =>
   Match.value(flagValue(argv, "--provider") ?? "openai").pipe(
-    Match.whenOr("openai", "gemini", "elevenlabs", "inworld", (p): Provider => p),
+    Match.whenOr("openai", "elevenlabs", "inworld", (p): Provider => p),
     Match.orElse(usage),
   )
 
@@ -72,14 +71,6 @@ const layerFor = Match.type<Provider>().pipe(
       Effect.gen(function* () {
         const apiKey = yield* Config.redacted("OPENAI_API_KEY")
         return openaiLayer({ apiKey })
-      }),
-    ),
-  ),
-  Match.when("gemini", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
-        return geminiLayer({ apiKey })
       }),
     ),
   ),
@@ -121,7 +112,7 @@ const program = Effect.gen(function* () {
     yield* Effect.logInfo("verbose (whisper-1, openai only)", {
       text: verbose.text,
       languageCode: verbose.languageCode,
-      durationSeconds: verbose.durationSeconds,
+      duration: verbose.duration,
       wordCount: verbose.words?.length ?? 0,
       firstWords: verbose.words?.slice(0, 5),
     })

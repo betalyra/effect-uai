@@ -136,7 +136,7 @@ The [Voice loop](/recipes/voice-loop/) recipe uses this exact pipe.
 type AudioBlob = {
   readonly format: AudioFormat
   readonly bytes: Uint8Array
-  readonly durationSeconds?: number
+  readonly duration?: Duration.Duration
 }
 
 type AudioChunk = {

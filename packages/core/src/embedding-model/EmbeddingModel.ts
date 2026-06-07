@@ -1,29 +1,29 @@
 import { Context, Effect } from "effect"
 import * as AiError from "../domain/AiError.js"
-import type { EmbeddingFor, EmbedInput, Usage } from "./Embedding.js"
+import type { EmbeddingFor, EmbedInput, ResponseEncoding, Usage } from "./Embedding.js"
 
 /**
- * Output representation requested from the provider.
+ * Output representation requested from the provider. Cross-provider dense
+ * quantization only, the same vector at different storage cost:
+ * - `float32`: universal default.
+ * - `int8`: ~4x smaller, minimal recall loss on most benchmarks. Supported
+ *   by Cohere, Voyage, Jina (binary only), Mixedbread.
+ * - `binary`: ~32x smaller, meaningful recall loss but pairs well with a
+ *   float32 reranker pass over a small candidate set.
  *
- * Dense quantizations - same vector at different storage cost:
- * - `float32` — universal default.
- * - `int8` — ~4x smaller; minimal recall loss on most benchmarks.
- * - `binary` — ~32x smaller; meaningful recall loss but pairs well with
- *   a float32 reranker pass over a small candidate set.
+ * Non-dense representations (`sparse`, `multivector`) are a different vector
+ * *structure*, not a storage option, and are produced by Jina only. They
+ * live on `JinaEncoding`, not here (the same widening pattern `task` uses).
+ * The response `Embedding` union still carries all arms, see
+ * {@link ResponseEncoding}.
  *
- * Non-dense representations:
- * - `sparse` — learned sparse vector for hybrid (dense + lexical) search.
- *   Currently Jina ELSER only on hosted APIs.
- * - `multivector` — one vector per token for late-interaction (ColBERT-
- *   style) scoring via `Vector.maxSim`. Currently Jina v4 only.
- *
- * Each provider's typed request narrows this to its supported set at
- * compile time (e.g. `JinaEmbedEncoding = "float32" | "binary" | "sparse" |
- * "multivector"`). On the generic `EmbeddingModel` path, callers can
- * pass any `EmbedEncoding` and the provider's API will reject mismatches at
- * runtime.
+ * Each provider's typed request narrows this to its supported set. On the
+ * generic `EmbeddingModel` path, a provider that emits float32 only (OpenAI,
+ * Gemini) rejects a non-float32 encoding with `AiError.Unsupported`
+ * (bucket 1) via {@link assertEncoding}, rather than silently returning a
+ * mislabeled float32 vector.
  */
-export type EmbedEncoding = "float32" | "int8" | "binary" | "sparse" | "multivector"
+export type EmbedEncoding = "float32" | "int8" | "binary"
 
 /**
  * Cross-provider single-embed request. Mirrors the shape of
@@ -80,13 +80,13 @@ export type CommonEmbedManyRequest = Omit<CommonEmbedRequest, "input"> & {
  * narrowing. Defaults to `undefined` for back-compat with consumers that
  * use the bare `EmbedResponse` name.
  */
-export type EmbedResponse<E extends EmbedEncoding | undefined = undefined> = {
+export type EmbedResponse<E extends ResponseEncoding | undefined = undefined> = {
   readonly embedding: EmbeddingFor<E>
   readonly usage: Usage
 }
 
 /** Batch-embed response. Same encoding rule as {@link EmbedResponse}. */
-export type EmbedManyResponse<E extends EmbedEncoding | undefined = undefined> = {
+export type EmbedManyResponse<E extends ResponseEncoding | undefined = undefined> = {
   readonly embeddings: ReadonlyArray<EmbeddingFor<E>>
   readonly usage: Usage
 }
@@ -115,3 +115,30 @@ export const embedMany = <E extends EmbedEncoding | undefined = undefined>(
   request: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
 ): Effect.Effect<EmbedManyResponse<E>, AiError.AiError, EmbeddingModel> =>
   Effect.flatMap(EmbeddingModel.asEffect(), (m) => m.embedMany(request))
+
+/**
+ * Guard a requested `encoding` against a provider's supported set. Returns
+ * `void` when the encoding is unset or supported, and fails
+ * `AiError.Unsupported` (bucket 1) otherwise.
+ *
+ * Used by the generic-tag registration of providers that emit a strict
+ * subset of `EmbedEncoding`: OpenAI / Gemini pass `["float32"]`, Jina passes
+ * `["float32", "binary"]`. Without this guard, a non-supported encoding on
+ * the generic path silently returns a float32 vector mislabeled as the
+ * requested type (the `as`-cast lie), which breaks downstream storage and
+ * vector math.
+ */
+export const assertEncoding = (
+  encoding: EmbedEncoding | undefined,
+  supported: ReadonlyArray<EmbedEncoding>,
+  provider: string,
+): Effect.Effect<void, AiError.AiError> =>
+  encoding === undefined || supported.includes(encoding)
+    ? Effect.void
+    : Effect.fail(
+        new AiError.Unsupported({
+          provider,
+          capability: "encoding",
+          reason: `${provider} emits ${supported.join(" / ")} only; encoding="${encoding}" is unavailable.`,
+        }),
+      )

@@ -24,6 +24,7 @@ import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import * as JSONL from "@effect-uai/core/JSONL"
+import type { CustomPronunciation } from "@effect-uai/core/SpeechSynthesizer"
 import { audioConfigFor, decodeAudioContent, defaultFormat } from "./codec.js"
 import type { InworldDeliveryMode, InworldTtsModel, InworldVoiceId } from "./models.js"
 import { authedWsConstructor } from "./wsAuth.js"
@@ -43,6 +44,9 @@ export type StreamSynthesizeRequest = {
   readonly deliveryMode?: InworldDeliveryMode
   readonly applyTextNormalization?: "ON" | "OFF"
   readonly speed?: number
+  /** Carried from the Common request so the WS path can reject inline
+   *  pronunciations (no place to rewrite into a chunked text stream). */
+  readonly pronunciations?: ReadonlyArray<CustomPronunciation>
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +139,19 @@ export const streamSynthesis =
   ): Stream.Stream<AudioChunk, AiError.AiError | E, R> =>
     Stream.unwrap(
       Effect.gen(function* () {
+        // Inline pronunciations are load-bearing (bucket 1) but there is no
+        // single text to rewrite `/ipa/` into on a chunked stream. Reject
+        // rather than silently drop; use sync `synthesize` for overrides.
+        if (request.pronunciations !== undefined && request.pronunciations.length > 0) {
+          return Stream.fail(
+            new AiError.Unsupported({
+              provider: "inworld",
+              capability: "pronunciations",
+              reason:
+                "Inworld applies inline /ipa/ pronunciations on sync `synthesize` only; the incremental WS path streams text in chunks with no place to rewrite. Use `synthesize` for pronunciation overrides.",
+            }),
+          )
+        }
         const create = yield* createFrame(request)
         const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg), {
           // Effect's Socket treats all close codes as errors by default —

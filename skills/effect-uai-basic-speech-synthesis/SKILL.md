@@ -34,7 +34,7 @@ Returns an `AudioBlob`:
 type AudioBlob = {
   readonly format: AudioFormat
   readonly bytes: Uint8Array
-  readonly durationSeconds?: number
+  readonly duration?: Duration.Duration
 }
 ```
 

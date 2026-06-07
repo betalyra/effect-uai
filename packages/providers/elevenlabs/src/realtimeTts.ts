@@ -3,10 +3,14 @@ import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import * as JSONL from "@effect-uai/core/JSONL"
+import type { CustomPronunciation } from "@effect-uai/core/SpeechSynthesizer"
 import {
   defaultFormat,
   formatToOutputSlug,
+  type PronunciationDictionaryLocator,
+  rejectInlinePronunciations,
   type VoiceSettings,
+  wirePronunciationLocators,
   wireVoiceSettings,
 } from "./codec.js"
 import type { ElevenLabsTtsModel, ElevenLabsVoiceId } from "./models.js"
@@ -33,6 +37,11 @@ export type StreamSynthesizeRequest = {
   readonly languageCode?: string
   readonly voiceSettings?: VoiceSettings
   readonly autoMode?: boolean
+  /** Pre-provisioned pronunciation dictionaries, sent on the BOS frame. */
+  readonly pronunciationDictionaryLocators?: ReadonlyArray<PronunciationDictionaryLocator>
+  /** Carried from the Common request so the WS path can reject inline
+   *  pronunciations (ElevenLabs has no stateless inline IPA path). */
+  readonly pronunciations?: ReadonlyArray<CustomPronunciation>
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +65,7 @@ const bosFrame = (cfg: Config, request: StreamSynthesizeRequest) => {
     text: " ",
     "xi-api-key": Redacted.value(cfg.apiKey),
     ...(vs !== undefined && { voice_settings: vs }),
+    ...wirePronunciationLocators(request.pronunciationDictionaryLocators),
   })
 }
 
@@ -117,6 +127,7 @@ export const streamSynthesis =
   ): Stream.Stream<AudioChunk, AiError.AiError | E, R | Socket.WebSocketConstructor> =>
     Stream.unwrap(
       Effect.gen(function* () {
+        yield* rejectInlinePronunciations(request.pronunciations)
         const slug = yield* formatToOutputSlug(request.outputFormat ?? defaultFormat)
         // ElevenLabs closes `/stream-input` with code 1000 after delivering the
         // final audio chunk. Effect's default treats all close codes as errors,

@@ -43,19 +43,24 @@ Multivector lives on `jina-embeddings-v4` today. The same model also
 produces dense single vectors — you choose per request:
 
 ```ts
-import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
+import { embed } from "@effect-uai/core/EmbeddingModel"
+import { JinaEmbedding } from "@effect-uai/jina/JinaEmbedding"
 
-// Late-interaction: one vector per token
+// Late-interaction: one vector per token. `multivector` is Jina-specific
+// (it lives on `JinaEncoding`, off the cross-provider `EmbedEncoding`), so
+// reach for the typed `JinaEmbedding` service.
+const jina = yield * JinaEmbedding.asEffect()
 const mv =
   yield *
-  embed({
+  jina.embed({
     model: "jina-embeddings-v4",
     input: query,
-    task: "query",
+    task: "retrieval.query",
     encoding: "multivector",
   })
 
-// Dense baseline: one vector per input
+// Dense baseline: one vector per input. The portable `EmbeddingModel`
+// path returns float32 by default.
 const dense =
   yield *
   embed({
@@ -65,9 +70,10 @@ const dense =
   })
 ```
 
-Both go through the generic `EmbeddingModel` tag. The wire-level flag
-(`return_multivector: true`) is set inside the Jina layer; you pick
-the shape via `encoding`.
+The multivector call goes through the typed `JinaEmbedding` service;
+the dense baseline stays on the portable `EmbeddingModel` tag. The
+wire-level flag (`return_multivector: true`) is set inside the Jina
+layer.
 
 ## Narrowing the result
 

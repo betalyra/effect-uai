@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Redacted, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import {
   type CommonStreamSynthesizeRequest,
   type CommonSynthesizeRequest,
@@ -84,8 +85,31 @@ type WireBody = {
 const buildBody = (
   request: OpenAISynthesizeRequest,
 ): Effect.Effect<{ readonly body: WireBody; readonly format: AudioFormat }, AiError.AiError> =>
-  containerToResponseFormat((request.outputFormat ?? defaultFormat).container).pipe(
-    Effect.map((responseFormat) => ({
+  Effect.gen(function* () {
+    // OpenAI TTS has no phoneme field. Pronunciations are load-bearing
+    // (bucket 1), so reject rather than silently mispronounce.
+    if (request.pronunciations !== undefined && request.pronunciations.length > 0) {
+      return yield* Effect.fail(
+        new AiError.Unsupported({
+          provider: "openai",
+          capability: "pronunciations",
+          reason:
+            "OpenAI TTS has no phoneme/pronunciation field. Use a provider with a phoneme path (Inworld, Google) for pronunciation overrides.",
+        }),
+      )
+    }
+    // `/audio/speech` has no language parameter (it auto-detects); bucket 2.
+    yield* Capabilities.warnDroppedWhen(request.languageCode, {
+      provider: "openai",
+      capability: "languageCode",
+      field: "languageCode",
+      reason:
+        "OpenAI /audio/speech has no language parameter; it auto-detects from the input text.",
+    })
+    const responseFormat = yield* containerToResponseFormat(
+      (request.outputFormat ?? defaultFormat).container,
+    )
+    return {
       body: {
         model: request.model,
         input: request.text,
@@ -95,8 +119,8 @@ const buildBody = (
         ...(request.instructions !== undefined && { instructions: request.instructions }),
       } satisfies WireBody,
       format: realizedFormat(responseFormat),
-    })),
-  )
+    }
+  })
 
 // ---------------------------------------------------------------------------
 // HTTP plumbing

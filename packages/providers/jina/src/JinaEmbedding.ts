@@ -8,6 +8,7 @@ import type { Embedding, EmbedContentPart, EmbedInput, Usage } from "@effect-uai
 type AnyEmbedResponse = { readonly embedding: Embedding; readonly usage: Usage }
 type AnyEmbedManyResponse = { readonly embeddings: ReadonlyArray<Embedding>; readonly usage: Usage }
 import {
+  assertEncoding,
   type CommonEmbedManyRequest,
   type CommonEmbedRequest,
   type EmbedEncoding,
@@ -135,10 +136,15 @@ const contentPartToItem: (part: EmbedContentPart) => WireItem = Match.type<Embed
   Match.exhaustive,
 )
 
-const multiPartContentRejected: AiError.AiError = new AiError.InvalidRequest({
+// Jina's flat `input[]` can't fuse a multi-part `content[]` into one vector.
+// Bucket 1: silently splitting or dropping parts would change what the vector
+// represents (and the vector count). Reject as `Unsupported` (capability gap),
+// not `InvalidRequest` (wire-shape) - Jina does carry images, just not fused.
+const multiPartContentRejected: AiError.AiError = new AiError.Unsupported({
   provider: "jina",
-  param: "input.content",
-  raw: "Jina treats each input[] entry as one item; multi-part `content[]` would lose the grouping. Split into separate `inputs[]` entries.",
+  capability: "multiPartInput",
+  reason:
+    "Jina treats each input[] entry as one item; multi-part `content[]` can't be fused into one vector. Split into separate `inputs[]` entries.",
 })
 
 /**
@@ -529,25 +535,38 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): EmbeddingModelService => ({
+        // Jina emits dense float32 / binary (binary is bit-quantized, packed
+        // into int8 bytes on the wire - NOT scalar int8 per dimension; sparse /
+        // multivector live on the provider-typed JinaEncoding, off the
+        // cross-provider set). Reject a scalar `int8` encoding (bucket 1) so it
+        // isn't returned as a mislabeled vector, matching OpenAI / Gemini.
         embed: <E extends EmbedEncoding | undefined = undefined>(
           req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
         ) => {
           const task = mapGenericTask(req.task)
-          return s.embed({
-            ...req,
-            model: req.model as JinaEmbeddingModel,
-            ...(task !== undefined && { task }),
-          } as JinaEmbedRequest) as Effect.Effect<EmbedResponse<E>, AiError.AiError>
+          return assertEncoding(req.encoding, ["float32", "binary"], "jina").pipe(
+            Effect.andThen(
+              s.embed({
+                ...req,
+                model: req.model as JinaEmbeddingModel,
+                ...(task !== undefined && { task }),
+              } as JinaEmbedRequest),
+            ),
+          ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>
         },
         embedMany: <E extends EmbedEncoding | undefined = undefined>(
           req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
         ) => {
           const task = mapGenericTask(req.task)
-          return s.embedMany({
-            ...req,
-            model: req.model as JinaEmbeddingModel,
-            ...(task !== undefined && { task }),
-          } as JinaEmbedManyRequest) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>
+          return assertEncoding(req.encoding, ["float32", "binary"], "jina").pipe(
+            Effect.andThen(
+              s.embedMany({
+                ...req,
+                model: req.model as JinaEmbeddingModel,
+                ...(task !== undefined && { task }),
+              } as JinaEmbedManyRequest),
+            ),
+          ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>
         },
       }),
     ),

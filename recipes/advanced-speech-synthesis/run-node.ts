@@ -1,7 +1,7 @@
 /**
  * Node runner for the advanced-speech-synthesis recipe. Drives the
- * regional-pronunciation dialogue (multi-speaker + per-turn
- * pronunciation hints) under the ElevenLabs Layer.
+ * regional-pronunciation dialogue (multi-speaker, with per-voice accents
+ * steered by hyphenated spelling) under the ElevenLabs Layer.
  *
  *   `--mode dialogue`        — one-shot multi-speaker dialogue (default)
  *   `--mode dialogue-stream` — chunked multi-speaker dialogue

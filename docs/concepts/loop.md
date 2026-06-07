@@ -52,19 +52,16 @@ Loop.value(a) // wrap a value as a Step (use inside Stream.map)
 Loop.next(state) // single-element stream: end this iteration, continue with new state
 Loop.stop() // single-element stream that ends the loop
 Loop.stop(state) // end the loop AND surface a final state
-Loop.emitValues(stream) // lift every element as Loop.value(a) — left arm of a fork
-Loop.emitNext(effect) // lift a one-shot Effect<S> as a single Loop.next(s) — right arm of a fork
 ```
 
 `next` and `stop` each emit a single terminal step, so concatenate your
 values before them: emit a run of values then continue with
 `values.pipe(Stream.map(Loop.value), Stream.concat(Loop.next(state)))`,
-or just `Loop.next(state)` when there were no values. `emitValues` /
-`emitNext` are the broadcast-fork building blocks — broadcast a source
-stream, pipe one arm through `emitValues` for pass-through, accumulate
-the other into an `Effect<S>` and lift via `emitNext`, then `Stream.merge`.
-The streaming-tool helper [`Toolkit.continueWithResults`](/concepts/tools/) is
-built on top.
+or just `Loop.next(state)` when there were no values. The streaming-tool
+helper [`Toolkit.continueWithResults`](/concepts/tools/) bundles that
+pattern: it forwards every `ToolEvent` as `Loop.value`, accumulates the
+terminal `Output` events into a `ReadonlyArray<ToolResult>`, and concats
+one `Loop.next(build(results))` at end-of-stream.
 
 Reach for `stop(state)` when the loop ending _is_ the result you care
 about — a summarised state, a tallied result, a final checkpoint.

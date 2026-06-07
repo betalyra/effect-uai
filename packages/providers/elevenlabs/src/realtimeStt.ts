@@ -3,6 +3,7 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent, WordTimestamp } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
@@ -175,6 +176,7 @@ export type RealtimeOptions = {
   readonly languageCode?: string
   readonly includeTimestamps?: boolean
   readonly commitStrategy?: "manual" | "vad"
+  readonly keyterms?: ReadonlyArray<string>
 }
 
 export const buildWsUrl = (
@@ -192,6 +194,8 @@ export const buildWsUrl = (
     ...(opts.languageCode !== undefined && { language_code: opts.languageCode }),
     ...(opts.includeTimestamps === true && { include_timestamps: "true" }),
   })
+  // Vocab biasing — repeated `keyterms` param (≤50 on realtime).
+  for (const term of opts.keyterms ?? []) params.append("keyterms", term)
   return `${wsBase}/speech-to-text/realtime?${params.toString()}`
 }
 
@@ -247,9 +251,16 @@ export const streamTranscription =
         const slug = yield* inputFormatToSlug(request.inputFormat)
         const token = yield* fetchSingleUseToken(cfg)
         const includeTimestamps = request.wordTimestamps === true
+        yield* Capabilities.warnDroppedWhen(request.prompt, {
+          provider: "elevenlabs",
+          capability: "prompt",
+          field: "prompt",
+          reason: "ElevenLabs Scribe has no free-form prompt field; bias via `biasingTerms`.",
+        })
         const url = buildWsUrl(cfg, token, slug, {
           ...(request.model !== undefined && { model: request.model }),
           ...(request.language !== undefined && { languageCode: request.language }),
+          ...(request.biasingTerms !== undefined && { keyterms: request.biasingTerms }),
           includeTimestamps,
         })
         const socket = yield* Socket.makeWebSocket(url, {

@@ -20,7 +20,7 @@ import * as AiError from "@effect-uai/core/AiError"
 import * as Embedding from "@effect-uai/core/Embedding"
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
 import * as Vector from "@effect-uai/core/Vector"
-import { layer as jinaEmbeddingLayer } from "@effect-uai/jina/JinaEmbedding"
+import { JinaEmbedding, layer as jinaEmbeddingLayer } from "@effect-uai/jina/JinaEmbedding"
 
 // ---------------------------------------------------------------------------
 // Corpus - longer docs make the multivector advantage more visible.
@@ -80,11 +80,20 @@ const asMultivector = (
 const model = "jina-embeddings-v4"
 
 const program = Effect.gen(function* () {
-  // One HTTP call each. v4 unifies query + document under `task: "retrieval"`.
+  // `multivector` is Jina-specific: it lives on `JinaEncoding`, not the
+  // cross-provider `EmbedEncoding`, so reach for the Jina-typed tag here.
+  // The dense baseline below stays on the portable `EmbeddingModel` path.
+  const jina = yield* JinaEmbedding.asEffect()
+  // One HTTP call each. v4 unifies query + document under `retrieval.*`.
   const [queryResult, docsResult] = yield* Effect.all(
     [
-      embed({ model, input: query, task: "query", encoding: "multivector" }),
-      embedMany({ model, inputs: documents, task: "document", encoding: "multivector" }),
+      jina.embed({ model, input: query, task: "retrieval.query", encoding: "multivector" }),
+      jina.embedMany({
+        model,
+        inputs: documents,
+        task: "retrieval.passage",
+        encoding: "multivector",
+      }),
     ],
     { concurrency: "unbounded" },
   )

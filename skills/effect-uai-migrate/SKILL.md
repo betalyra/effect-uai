@@ -32,6 +32,103 @@ The full migration prose (with rationale and edge cases) lives in
 
 ---
 
+## 0.6 → 0.7
+
+A capability-honesty pass across audio and embeddings. Three flavors of
+change: (1) mechanical renames (mostly `durationSeconds → duration`),
+(2) one removed module (`GeminiTranscriber`), (3) requests that now fail
+`AiError.Unsupported` or `warnDropped` where 0.6 degraded silently. The
+type renames are find-and-replace; the silent-to-error changes need a
+judgement call per call site (drop the field, switch provider, or handle
+the new error).
+
+### Required rewrites
+
+#### Removed: `GeminiTranscriber`
+
+`@effect-uai/google/GeminiTranscriber` is deleted (it was an LLM with a
+"transcribe" prompt, not a real STT endpoint). No drop-in replacement;
+switch to a real transcription provider.
+
+```ts
+// Before
+import * as GeminiTranscriber from "@effect-uai/google/GeminiTranscriber"
+
+// After — pick an in-tree STT provider
+import * as OpenAITranscriber from "@effect-uai/openai/OpenAITranscriber"
+// or @effect-uai/elevenlabs/ElevenLabsTranscriber (diarization on sync)
+// or @effect-uai/inworld/InworldTranscriber
+```
+
+`GeminiTranscribeRequest` and `GeminiSttModel` are gone with it.
+
+#### `durationSeconds: number` → `duration: Duration.Duration`
+
+Applies to `AudioBlob` (TTS / music output) and `TranscriptResult` (STT).
+Per-word offsets (`WordTimestamp.startSeconds` / `endSeconds`) stay raw
+`number`.
+
+```ts
+// Before
+const secs = blob.durationSeconds // number | undefined
+
+// After
+import { Duration } from "effect"
+const secs = blob.duration ? Duration.toSeconds(blob.duration) : undefined
+// Constructing: duration: Duration.seconds(30)
+```
+
+#### Flat renames / removals
+
+| Before                                                           | After                                                               |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `AudioBlob.durationSeconds` / `TranscriptResult.durationSeconds` | `.duration` (`Duration.Duration`)                                   |
+| `transcribe({ prompt: { terms: [...] } })`                       | `transcribe({ biasingTerms: [...] })`                               |
+| `CustomPronunciation` `{ …, encoding: "ipa" }`                   | `{ phrase, pronunciation }` (drop `encoding`, IPA-only)             |
+| `PhoneticEncoding` (type)                                        | removed (no replacement)                                            |
+| `DialogueTurn` `{ …, styleDescription, speed }`                  | `{ voiceId, text }` (drop the two extra fields)                     |
+| `EmbedEncoding` = `… "sparse" \| "multivector"`                  | `"float32" \| "int8" \| "binary"` (use `JinaEncoding` for the rest) |
+| `embed({ encoding: "sparse" \| "multivector" })` (generic)       | `JinaEmbedding.asEffect()` then `jina.embed({ encoding })`          |
+
+`prompt?: string` still exists on `CommonTranscribeRequest` (prose
+context). Only the `{ terms }` union arm moved to `biasingTerms`.
+
+### Behavior changes (no rewrite, but observable)
+
+Apply only if the call site relied on the old silent behavior or matches
+on the error tag:
+
+- **Embeddings, generic path**: a non-`float32` `encoding` on OpenAI /
+  Gemini (and scalar `int8` on Jina) now fails `Unsupported` instead of
+  returning a mislabeled float32. Omit `encoding` or pass `"float32"`.
+- **Embeddings**: OpenAI image input and Jina multi-part input now fail
+  `Unsupported` (were `InvalidRequest`). OpenAI `task` now `warnDropped`.
+- **TTS**: `pronunciations` now fails `Unsupported` on OpenAI / Gemini /
+  modern ElevenLabs (no IPA path). Drop them, switch to Inworld, or use
+  ElevenLabs `pronunciationDictionaryLocators`.
+- **STT**: stream `inputFormat` gaps now fail `Unsupported` (were
+  `InvalidRequest`). OpenAI no longer accepts `diarization` on its typed
+  request, and a non-`whisper-1` `wordTimestamps` request now surfaces the
+  wire 400 rather than a pre-send `Unsupported`.
+- **LLM**: Gemini `toolChoice` is now applied (was forced to AUTO and
+  ignored). Gemini `url`-source images now fail `Unsupported` (were
+  silently dropped); pass base64 / bytes.
+
+### After-migration checklist
+
+- [ ] No imports from `@effect-uai/google/GeminiTranscriber`
+- [ ] No `.durationSeconds` reads on `AudioBlob` / `TranscriptResult`
+- [ ] No `prompt: { terms: [...] }`; vocabulary biasing on `biasingTerms`
+- [ ] No `encoding` field on `CustomPronunciation`; no `PhoneticEncoding`
+- [ ] No `styleDescription` / `speed` on `DialogueTurn`
+- [ ] No `"sparse"` / `"multivector"` passed to generic `embed` /
+      `embedMany` (use the `JinaEmbedding` service)
+- [ ] Error handlers updated for the `InvalidRequest → Unsupported` shifts
+- [ ] `pnpm typecheck` clean
+- [ ] Tests pass
+
+---
+
 ## 0.5 → 0.6
 
 The "consistent naming" sweep (0.6 also adds multi-speaker dialogue and
@@ -522,6 +619,7 @@ ToolResult.$match({ Value: ..., Failure: ... })(result) // matcher
 
 ## See also
 
+- [Migration guide for 0.7](https://effect-uai.betalyra.com/migrations/v0-7/)
 - [Migration guide for 0.6](https://effect-uai.betalyra.com/migrations/v0-6/)
 - [Migration guide for 0.5](https://effect-uai.betalyra.com/migrations/v0-5/)
 - [Migration guide for 0.4](https://effect-uai.betalyra.com/migrations/v0-4/)

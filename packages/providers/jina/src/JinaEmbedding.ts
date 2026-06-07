@@ -535,25 +535,38 @@ export const layer = (
     Effect.map(
       make(cfg),
       (s): EmbeddingModelService => ({
+        // Jina emits dense float32 / binary (binary is bit-quantized, packed
+        // into int8 bytes on the wire - NOT scalar int8 per dimension; sparse /
+        // multivector live on the provider-typed JinaEncoding, off the
+        // cross-provider set). Reject a scalar `int8` encoding (bucket 1) so it
+        // isn't returned as a mislabeled vector, matching OpenAI / Gemini.
         embed: <E extends EmbedEncoding | undefined = undefined>(
           req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
         ) => {
           const task = mapGenericTask(req.task)
-          return s.embed({
-            ...req,
-            model: req.model as JinaEmbeddingModel,
-            ...(task !== undefined && { task }),
-          } as JinaEmbedRequest) as Effect.Effect<EmbedResponse<E>, AiError.AiError>
+          return assertEncoding(req.encoding, ["float32", "binary"], "jina").pipe(
+            Effect.andThen(
+              s.embed({
+                ...req,
+                model: req.model as JinaEmbeddingModel,
+                ...(task !== undefined && { task }),
+              } as JinaEmbedRequest),
+            ),
+          ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>
         },
         embedMany: <E extends EmbedEncoding | undefined = undefined>(
           req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
         ) => {
           const task = mapGenericTask(req.task)
-          return s.embedMany({
-            ...req,
-            model: req.model as JinaEmbeddingModel,
-            ...(task !== undefined && { task }),
-          } as JinaEmbedManyRequest) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>
+          return assertEncoding(req.encoding, ["float32", "binary"], "jina").pipe(
+            Effect.andThen(
+              s.embedMany({
+                ...req,
+                model: req.model as JinaEmbeddingModel,
+                ...(task !== undefined && { task }),
+              } as JinaEmbedManyRequest),
+            ),
+          ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>
         },
       }),
     ),

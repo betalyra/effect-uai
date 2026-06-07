@@ -1,5 +1,44 @@
 # @effect-uai/openai
 
+## 0.7.0
+
+### Minor Changes
+
+- 602bfa9: 0.7 is a capability-honesty pass across every audio and embedding
+  surface. The unifying rule: where a provider cannot honor a request, the
+  call now fails with `AiError.Unsupported` (load-bearing gaps) or emits a
+  structured `warnDropped` (best-effort hints), instead of silently
+  substituting a different result. Alongside that, `Duration` replaces raw
+  `durationSeconds` everywhere audio carries a length, the `MusicGenerator`
+  surface is reshaped, an ElevenLabs music provider lands, and Gemini
+  `toolChoice` is now mapped.
+
+  Most of it is mechanical (find-and-replace renames plus a
+  `Duration.seconds(n)` wrap). The parts that need judgement are the
+  removed `GeminiTranscriber` (use OpenAI / ElevenLabs / Inworld instead)
+  and the requests that now error where they previously degraded silently.
+  The full before/after diffs and the recommended order live in
+  [Migrating to 0.7](https://effect-uai.betalyra.com/migrations/v0-7/).
+
+  `@effect-uai/anthropic`, `@effect-uai/microsandbox`, and
+  `@effect-uai/deno` have no functional changes this release; they bump for
+  lockstep versioning only.
+
+- 602bfa9: - **`OpenAITranscriber`**: `diarization` is narrowed off
+  `OpenAITranscribeRequest` (OpenAI has no diarization). The proactive
+  per-model `wordTimestamps` guard is removed: a non-`whisper-1` model now
+  surfaces the provider's wire 400 rather than a pre-send `Unsupported`.
+  `prompt` maps to the OpenAI prompt field; `biasingTerms` `warnDropped`.
+  - **`OpenAISynthesizer`**: `pronunciations` now fail `AiError.Unsupported`
+    (OpenAI has no phoneme field); `languageCode` now `warnDropped` (OpenAI
+    auto-detects).
+  - **Embeddings (generic path)**: a non-`float32` `encoding` now fails
+    `Unsupported` instead of returning a mislabeled float32 vector; image
+    input now fails `Unsupported` (was `InvalidRequest`); `task` now
+    `warnDropped`.
+
+  See [Migrating to 0.7](https://effect-uai.betalyra.com/migrations/v0-7/).
+
 ## 0.6.0
 
 ### Minor Changes
@@ -116,13 +155,13 @@
 
   ```ts
   // Before
-  import { retry } from "@effect-uai/core/LanguageModel"
-  streamTurn(req).pipe(retry(schedule))
+  import { retry } from "@effect-uai/core/LanguageModel";
+  streamTurn(req).pipe(retry(schedule));
 
   // After
-  import * as Retry from "@effect-uai/core/Retry"
-  streamTurn(req).pipe(Retry.stream(schedule))
-  embed(req).pipe(Retry.effect(schedule))
+  import * as Retry from "@effect-uai/core/Retry";
+  streamTurn(req).pipe(Retry.stream(schedule));
+  embed(req).pipe(Retry.effect(schedule));
   ```
 
   `Retryable` and `isRetryable` move to the same module.

@@ -17,6 +17,7 @@ import {
   accumulatorToTurn,
   buildRequestBody,
   emptyAccumulator,
+  hasUrlImageSource,
   ingestChunk,
 } from "./codec.js"
 import { Match } from "effect"
@@ -162,9 +163,22 @@ const buildNativeStream = (cfg: Config) => {
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
+        if (hasUrlImageSource(request.history)) {
+          return yield* new AiError.Unsupported({
+            provider: "gemini",
+            capability: "imageInput",
+            reason:
+              "Gemini needs URL images pre-uploaded via the Files API; pass the image as base64 or raw bytes instead.",
+          })
+        }
         const url = `${baseUrl}/models/${request.model}:streamGenerateContent?alt=sse`
         const generationConfig = buildGenerationConfig(request)
-        const body = buildRequestBody(request.history, generationConfig, request.tools ?? [])
+        const body = buildRequestBody(
+          request.history,
+          generationConfig,
+          request.tools ?? [],
+          request.toolChoice,
+        )
         const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.setHeader("x-goog-api-key", Redacted.value(cfg.apiKey)),
           HttpClientRequest.bodyJsonUnsafe(body),

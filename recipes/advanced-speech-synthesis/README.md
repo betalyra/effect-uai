@@ -34,10 +34,10 @@ yield *
       { voiceId: "JBFqnCBsd6RMkjVDRZzb", text: "Same spelling, different worlds." },
     ],
     pronunciations: [
-      { phrase: "to-MAY-to", pronunciation: "təˈmeɪtoʊ", encoding: "ipa" },
-      { phrase: "to-MAH-to", pronunciation: "təˈmɑːtoʊ", encoding: "ipa" },
-      { phrase: "po-TAY-to", pronunciation: "pəˈteɪtoʊ", encoding: "ipa" },
-      { phrase: "po-TAH-to", pronunciation: "pəˈtɑːtoʊ", encoding: "ipa" },
+      { phrase: "to-MAY-to", pronunciation: "təˈmeɪtoʊ" },
+      { phrase: "to-MAH-to", pronunciation: "təˈmɑːtoʊ" },
+      { phrase: "po-TAY-to", pronunciation: "pəˈteɪtoʊ" },
+      { phrase: "po-TAH-to", pronunciation: "pəˈtɑːtoʊ" },
     ],
     outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, bitRate: 128 },
   })

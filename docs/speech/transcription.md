@@ -43,7 +43,8 @@ type CommonTranscribeRequest = {
   readonly audio: AudioSource
   readonly model: string
   readonly language?: string // ISO-639-1 / BCP-47
-  readonly prompt?: string | { readonly terms: ReadonlyArray<string> }
+  readonly prompt?: string // free-form prose context (Whisper-style)
+  readonly biasingTerms?: ReadonlyArray<string> // discrete vocabulary to boost
   readonly diarization?: boolean
   readonly wordTimestamps?: boolean
 }
@@ -84,7 +85,7 @@ Returns `TranscriptResult`:
 type TranscriptResult = {
   readonly text: string
   readonly languageCode?: string
-  readonly durationSeconds?: number
+  readonly duration?: Duration.Duration
   readonly words?: ReadonlyArray<WordTimestamp>
   readonly raw?: unknown
 }
@@ -93,9 +94,8 @@ type TranscriptResult = {
 `words` only appears when `wordTimestamps: true` was requested **and**
 the provider+model combination supports it. Today that means
 OpenAI `whisper-1` only — `gpt-4o-transcribe` and `gpt-4o-mini-transcribe`
-return text-only; Gemini's prompt-driven STT has no structured timing.
-Passing `wordTimestamps: true` to an unsupporting provider fails with
-`AiError.Unsupported`.
+return text-only. Passing `wordTimestamps: true` to a model that doesn't
+support it surfaces the provider's wire rejection.
 
 ## Streaming — `streamTranscriptionFrom`
 
@@ -162,8 +162,8 @@ type AudioFormat = {
 }
 ```
 
-Mismatches with what the provider's wire expects fail up front with
-`AiError.InvalidRequest`. Common targets:
+Mismatches with what the provider's wire can ingest fail up front with
+`AiError.Unsupported` (a per-Layer capability gap). Common targets:
 
 - **ElevenLabs Scribe v2 Realtime** — 16 kHz pcm s16le mono.
 - **OpenAI Realtime** — 24 kHz pcm s16le mono.

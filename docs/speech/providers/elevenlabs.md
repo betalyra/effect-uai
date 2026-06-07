@@ -59,7 +59,7 @@ browsers.
 `@effect-uai/elevenlabs/ElevenLabsTranscriber` registers
 `SttStreaming` and is the realtime path; sync transcription via the
 ElevenLabs REST endpoint isn't wired up yet — for sync STT today,
-reach for `OpenAITranscriber` or `GeminiTranscriber`.
+reach for `OpenAITranscriber` or `InworldTranscriber`.
 
 ### TTS
 
@@ -98,8 +98,20 @@ type ElevenLabsSynthesizeRequest = {
   readonly seed?: number // deterministic generation
   readonly previousText?: string // prosody context
   readonly nextText?: string
+  readonly pronunciationDictionaryLocators?: ReadonlyArray<PronunciationDictionaryLocator>
+}
+
+type PronunciationDictionaryLocator = {
+  readonly dictionaryId: string
+  readonly versionId: string
 }
 ```
+
+ElevenLabs has no stateless inline IPA path, so inline `pronunciations`
+on the common request fail with `AiError.Unsupported`. For phoneme
+control, provision a pronunciation dictionary (dashboard or the
+pronunciation-dictionary API) and reference it by id via
+`pronunciationDictionaryLocators`.
 
 `voiceSettings` exposes ElevenLabs' prosody controls:
 

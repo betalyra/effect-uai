@@ -10,6 +10,7 @@ is the one operation all five providers share, so it needs no capability
 markers: every provider Layer can do it.
 
 **Out of scope (noted, not built):**
+
 - **extract / crawl** (Exa `/contents`, Tavily `/extract` + `/crawl` +
   `/map`, You.com `/contents`) — a plausible future addition; the design
   leaves room for it (section 8) but builds nothing now.
@@ -37,13 +38,13 @@ tool-calling.
 
 All five do "query -> ranked results," but the result shapes differ:
 
-| Provider | Endpoint | Transport | Per-result text field(s) | Score? |
-| -------- | -------- | --------- | ------------------------ | :----: |
-| Perplexity | `POST /search` | Bearer, JSON | `snippet` | — |
-| Exa | `POST /search` | `x-api-key`, JSON | `text` / `highlights` / `summary` | ✓ 0..1 |
-| You.com | `GET /v1/search` | `X-API-Key`, query | `snippets[]` (multi-chunk) | — |
-| Tavily | `POST /search` | Bearer, JSON | `content` (+ `raw_content`) | ✓ |
-| Brave | `GET /res/v1/web/search` | `X-Subscription-Token`, query | `description` (+ `extra_snippets`) | — |
+| Provider   | Endpoint                 | Transport                     | Per-result text field(s)           | Score? |
+| ---------- | ------------------------ | ----------------------------- | ---------------------------------- | :----: |
+| Perplexity | `POST /search`           | Bearer, JSON                  | `snippet`                          |   —    |
+| Exa        | `POST /search`           | `x-api-key`, JSON             | `text` / `highlights` / `summary`  | ✓ 0..1 |
+| You.com    | `GET /v1/search`         | `X-API-Key`, query            | `snippets[]` (multi-chunk)         |   —    |
+| Tavily     | `POST /search`           | Bearer, JSON                  | `content` (+ `raw_content`)        |   ✓    |
+| Brave      | `GET /res/v1/web/search` | `X-Subscription-Token`, query | `description` (+ `extra_snippets`) |   —    |
 
 The job of the core type is to normalize these into one `SearchResult`
 while keeping the provider blob on `raw`.
@@ -81,20 +82,20 @@ the five** support it (3+/5) and a developer would expect it from a
 generic search interface. Everything else lives on the provider-typed
 request (section 6). Support matrix:
 
-| Field | PPLX | Exa | You | Tavily | Brave | Common? |
-| ----- | :--: | :-: | :-: | :----: | :---: | :-----: |
-| `query` | ✓ | ✓ | ✓ | ✓ | ✓ | **yes** |
-| `maxResults` | ✓ | ✓ | ✓ | ✓ | ✓ | **yes** |
-| `includeDomains` | ✓ | ✓ | ✓ | ✓ | via `q` | **yes** |
-| `excludeDomains` | ✓ | ✓ | ✓ | ✓ | via `q` | **yes** |
-| `startDate`/`endDate` | ✓ | ✓ | ✓ | ✓ | ✓ | **yes** |
-| `recency` (enum) | ✓ | from dates | ✓ | ✓ | ✓ | **yes** |
-| `country` | ✓ | approx | ✓ | ✓ | ✓ | **yes** (4/5) |
-| `language` | ✓ | — | ✓ | — | ✓ | **yes** (3/5) |
-| `safeSearch` | — | — | ✓ | enterprise | ✓ | no -> typed |
-| `topic` (news/finance) | — | `category` | partial | ✓ | vertical | no -> typed |
-| `offset`/pagination | — | request 100 | `offset` 0-9 | — | `offset` 0-9 | no -> typed |
-| `model` | — | — | — | — | — | **no** |
+| Field                  | PPLX |     Exa     |     You      |   Tavily   |    Brave     |    Common?    |
+| ---------------------- | :--: | :---------: | :----------: | :--------: | :----------: | :-----------: |
+| `query`                |  ✓   |      ✓      |      ✓       |     ✓      |      ✓       |    **yes**    |
+| `maxResults`           |  ✓   |      ✓      |      ✓       |     ✓      |      ✓       |    **yes**    |
+| `includeDomains`       |  ✓   |      ✓      |      ✓       |     ✓      |   via `q`    |    **yes**    |
+| `excludeDomains`       |  ✓   |      ✓      |      ✓       |     ✓      |   via `q`    |    **yes**    |
+| `startDate`/`endDate`  |  ✓   |      ✓      |      ✓       |     ✓      |      ✓       |    **yes**    |
+| `recency` (enum)       |  ✓   | from dates  |      ✓       |     ✓      |      ✓       |    **yes**    |
+| `country`              |  ✓   |   approx    |      ✓       |     ✓      |      ✓       | **yes** (4/5) |
+| `language`             |  ✓   |      —      |      ✓       |     —      |      ✓       | **yes** (3/5) |
+| `safeSearch`           |  —   |      —      |      ✓       | enterprise |      ✓       |  no -> typed  |
+| `topic` (news/finance) |  —   | `category`  |   partial    |     ✓      |   vertical   |  no -> typed  |
+| `offset`/pagination    |  —   | request 100 | `offset` 0-9 |     —      | `offset` 0-9 |  no -> typed  |
+| `model`                |  —   |      —      |      —       |     —      |      —       |    **no**     |
 
 The non-obvious cut is **`model`**: unlike every other capability, pure
 search has no model to pick. None of the five `/search` endpoints take
@@ -135,16 +136,16 @@ floor is "ask for `maxResults` in one call," which all five honor.
 Same rule for the result: a field stays on the common record only if
 most providers return it. Support matrix:
 
-| Field | PPLX | Exa | You | Tavily | Brave | Common? |
-| ----- | :--: | :-: | :-: | :----: | :---: | :-----: |
-| `url` | ✓ | ✓ | ✓ | ✓ | ✓ | **yes** |
-| `title` | ✓ | ✓ | ✓ | ✓ | ✓ | **yes** |
-| `snippet` | ✓ | text/hl | `description` | `content` | `description` | **yes** |
-| `publishedDate` | ✓ | ✓ | `page_age` | news only | `page_age` | **yes** (4/5) |
-| `score` | — | ✓ | — | ✓ | — | **optional** (2/5) |
-| `snippets[]` (multi-chunk) | — | highlights | ✓ | — | `extra_snippets` | no -> typed |
-| `author` | — | ✓ | ✓ | — | `profile` | no -> typed |
-| `favicon` | — | ✓ | ✓ | ✓ | partial | no -> typed |
+| Field                      | PPLX |    Exa     |      You      |  Tavily   |      Brave       |      Common?       |
+| -------------------------- | :--: | :--------: | :-----------: | :-------: | :--------------: | :----------------: |
+| `url`                      |  ✓   |     ✓      |       ✓       |     ✓     |        ✓         |      **yes**       |
+| `title`                    |  ✓   |     ✓      |       ✓       |     ✓     |        ✓         |      **yes**       |
+| `snippet`                  |  ✓   |  text/hl   | `description` | `content` |  `description`   |      **yes**       |
+| `publishedDate`            |  ✓   |     ✓      |  `page_age`   | news only |    `page_age`    |   **yes** (4/5)    |
+| `score`                    |  —   |     ✓      |       —       |     ✓     |        —         | **optional** (2/5) |
+| `snippets[]` (multi-chunk) |  —   | highlights |       ✓       |     —     | `extra_snippets` |    no -> typed     |
+| `author`                   |  —   |     ✓      |       ✓       |     —     |    `profile`     |    no -> typed     |
+| `favicon`                  |  —   |     ✓      |       ✓       |     ✓     |     partial      |    no -> typed     |
 
 ```ts
 export type SearchResult = {
@@ -164,6 +165,7 @@ export type SearchResponse = {
 ```
 
 Decisions baked in:
+
 - **`snippets[]` dropped from common.** Only You.com makes the per-hit
   multi-chunk array first-class (Brave's `extra_snippets` is
   supplementary, Exa's `highlights` is extract-adjacent). A single
@@ -172,7 +174,7 @@ Decisions baked in:
   question.
 - **`author` and `favicon` dropped to provider-typed.** 2/5 and 3/5
   respectively, and neither is something a developer expects from a
-  *generic* web-search result (they read as article/display metadata).
+  _generic_ web-search result (they read as article/display metadata).
 - **`score` kept as optional despite only 2/5.** It earns its place by
   semantic value, not headcount: relevance ranking is core to what
   "search result" means, and optionality cleanly represents "this
@@ -183,20 +185,20 @@ Decisions baked in:
   `ExaSearch` only.
 
 Open question for review: flat record vs tagged union. The five
-providers differ by *which fields are present*, not by *kind*, so a flat
+providers differ by _which fields are present_, not by _kind_, so a flat
 record with optionals fits better than a discriminated union (which
 would force a synthetic discriminant nobody queries). Keep it flat unless
 review disagrees.
 
 ## 5. Provider matrix
 
-| Provider | npm package | typed tag | generic `WebSearch` |
-| -------- | ----------- | --------- | :-----------------: |
-| Exa | `@effect-uai/exa` | `ExaSearch` | ✓ |
-| Perplexity | `@effect-uai/perplexity` | `PerplexitySearch` | ✓ |
-| You.com | `@effect-uai/you` | `YouSearch` | ✓ |
-| Tavily | `@effect-uai/tavily` | `TavilySearch` | ✓ |
-| Brave | `@effect-uai/brave` | `BraveSearch` | ✓ |
+| Provider   | npm package              | typed tag          | generic `WebSearch` |
+| ---------- | ------------------------ | ------------------ | :-----------------: |
+| Exa        | `@effect-uai/exa`        | `ExaSearch`        |          ✓          |
+| Perplexity | `@effect-uai/perplexity` | `PerplexitySearch` |          ✓          |
+| You.com    | `@effect-uai/you`        | `YouSearch`        |          ✓          |
+| Tavily     | `@effect-uai/tavily`     | `TavilySearch`     |          ✓          |
+| Brave      | `@effect-uai/brave`      | `BraveSearch`      |          ✓          |
 
 All five register the generic tag (no markers). One package per API
 surface (memory: packages scope to one API surface).
@@ -272,6 +274,7 @@ through that future path. Nothing in the search types blocks this.
 Reuse `AiError` from
 [packages/core/src/domain/AiError.ts](../packages/core/src/domain/AiError.ts)
 unchanged:
+
 - 401/403 -> `AuthFailed`
 - 429 -> `RateLimited` (Brave's low-QPS tiers make this common; honor
   `Retry-After`)
@@ -340,7 +343,8 @@ export const webSearchTool = (options?: {
 }): Tool.Tool<"web_search", WebSearchToolArgs, string, WebSearch> =>
   Tool.make({
     name: options?.name ?? "web_search",
-    description: "Search the web for current information. Returns ranked results with titles, URLs, and snippets.",
+    description:
+      "Search the web for current information. Returns ranked results with titles, URLs, and snippets.",
     inputSchema: Tool.fromEffectSchema(
       Schema.Struct({
         query: Schema.String,
@@ -364,6 +368,7 @@ name, and description do not change. It also composes with the existing
 `Toolkit` and `LanguageModel` tool-calling loop with no new machinery.
 
 Design choices for the tool (distinct from the raw capability):
+
 - **Model-facing schema exposes the important filters from day one:**
   `query` plus `recency`, `includeDomains`, `excludeDomains`. A capable
   model uses these to scope a search itself ("search X from the past
@@ -379,7 +384,7 @@ Design choices for the tool (distinct from the raw capability):
 - **Layer on top of the generic `WebSearch` tag**, never a provider tag,
   so the tool stays backend-agnostic.
 
-What we are *not* doing: wrapping provider-native server-side search
+What we are _not_ doing: wrapping provider-native server-side search
 tools (Anthropic web search, OpenAI web search, Gemini grounding). Those
 are a different feature — the LLM provider doing its own search. Our tool
 routes through our `WebSearch` providers regardless of the LLM, which is
@@ -401,7 +406,7 @@ Parallel to [basic-embedding](../recipes/basic-embedding/README.md).
 Query in, ranked results out, with a `--provider` switch across all five
 backends. The program body is provider-agnostic; only the Layer at the
 bottom changes. Search's own twist over the embedding recipe: print two
-providers' top-5 side by side so the reader *sees* that neural (Exa) vs
+providers' top-5 side by side so the reader _sees_ that neural (Exa) vs
 keyword vs independent-index (Brave) backends genuinely disagree on the
 same query. This is the smallest end-to-end shape and the place to
 introduce `CommonSearchRequest` / `SearchResult`.
@@ -438,6 +443,7 @@ going) is visible and controllable. That is the library's value over
 calling one vendor's opaque `/research` call.
 
 It composes three existing recipes:
+
 - [agentic-loop](../recipes/agentic-loop/) for the search -> reflect loop
   driving `webSearchTool` (section 12).
 - [auto-compaction](../recipes/auto-compaction/) because a long research
@@ -475,6 +481,7 @@ Pipeline: produce/accept the answer -> structured turn extracts
 WebSearch`; provide e.g. `Anthropic.layer` + `BraveSearch.layer`.
 
 Design points worth writing down:
+
 - **`Effect.all({ concurrency })`** is the centerpiece, capped for
   search-provider QPS (Brave's tiers are low), with `AiError.RateLimited`
   handled at the layer.

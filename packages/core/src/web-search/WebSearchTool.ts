@@ -67,15 +67,20 @@ export type WebSearchToolOptions = {
 export const webSearchTool = (
   options?: WebSearchToolOptions,
 ): Tool.Tool<string, WebSearchToolArgs, string, WebSearch> => {
+  const name = options?.name ?? "web_search"
   const render = options?.render ?? defaultRender
   const maxResults = options?.maxResults ?? 5
   const includeDomains = options?.includeDomains
   const excludeDomains = options?.excludeDomains
   return Tool.make({
-    name: options?.name ?? "web_search",
+    name,
     description:
       "Search the web for current information. Returns ranked results with titles, URLs, and snippets.",
     inputSchema: Tool.fromEffectSchema(WebSearchToolArgs),
+    // The call is wrapped in a tracing span so agent traces show the tool
+    // invocation (query, filters, result count) nested under the model turn.
+    // `withSpan` is a no-op until a Tracer is installed, so this is free by
+    // default and adds nothing to the requirements.
     run: (args) =>
       search({
         query: args.query,
@@ -83,6 +88,19 @@ export const webSearchTool = (
         ...(args.recency !== undefined && { recency: args.recency }),
         ...(includeDomains !== undefined && { includeDomains }),
         ...(excludeDomains !== undefined && { excludeDomains }),
-      }).pipe(Effect.map((r) => render(r.results))),
+      }).pipe(
+        Effect.tap((r) => Effect.annotateCurrentSpan("web_search.result_count", r.results.length)),
+        Effect.map((r) => render(r.results)),
+        Effect.withSpan(name, {
+          kind: "client",
+          attributes: {
+            "web_search.query": args.query,
+            "web_search.max_results": maxResults,
+            ...(args.recency !== undefined && { "web_search.recency": args.recency }),
+            ...(includeDomains !== undefined && { "web_search.include_domains": includeDomains }),
+            ...(excludeDomains !== undefined && { "web_search.exclude_domains": excludeDomains }),
+          },
+        }),
+      ),
   })
 }

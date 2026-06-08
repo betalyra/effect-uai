@@ -16,26 +16,42 @@ one or more times, then answers with inline citation links.
 
 ## The shape
 
-`recipe.ts` is one `Effect` that runs a bounded tool loop:
-
-1. Run a model turn with the `web_search` tool available.
-2. If the model called the tool, execute the search, feed the results
-   back, and loop.
-3. If the model answered instead, stop and return the text.
+`recipe.ts` is an explicit streaming `Loop` (the same machinery as
+[basic-usage](../basic-usage/) and [agentic-loop](../agentic-loop/)). Each
+iteration streams a model turn; `onTurnComplete` inspects it:
 
 ```ts
-const result = yield * turn({ history, model, tools: descriptors })
-const calls = Turn.getToolCalls(result)
-if (calls.length === 0) return { answer: Turn.assistantText(result), rounds }
-
-const results = yield * Toolkit.collectResults(Toolkit.run(tools, calls))
-const next = Toolkit.appendToolResults({ history }, result)(results)
-// ...loop with next.history
+streamTurn({ history: state.history, model, tools: descriptors }).pipe(
+  onTurnComplete((turn) =>
+    Effect.sync(() => {
+      const calls = Turn.getToolCalls(turn)
+      if (calls.length === 0) return stop() // model answered; end the loop
+      return Toolkit.run(tools, calls).pipe(
+        Toolkit.continueWithResults(
+          Toolkit.appendToolResults({ ...state, round: state.round + 1 }, turn),
+        ),
+      )
+    }),
+  ),
+)
 ```
 
-There is no streaming and no queue here. The model either asks to search
-or it answers, and a round cap forces a final, tool-free turn so the
-agent always terminates with an answer instead of looping forever.
+The answer streams token-by-token as the model writes it. the recipe
+yields a `Stream` of turn / tool events and the runner forwards the
+`TextDelta`s to stdout live. A round cap withholds the tools on the final
+turn, forcing an answer so the agent always terminates instead of looping.
+
+One subtlety the types catch: the body returns the `streamTurn` `Stream`
+directly rather than wrapping it in `Effect.gen`. Yielding the
+`LanguageModel` tag inside a gen would split the requirement (`LanguageModel`
+on the effect, `WebSearch` on the tool stream) and they would not unify;
+the free `streamTurn` helper keeps `R` as one `LanguageModel | WebSearch`.
+
+### Tracing
+
+`webSearchTool` wraps each call in an `Effect.withSpan`, so when a `Tracer`
+is installed the trace shows `web_search(query=…) -> N results` nested
+under the model turn. It is a no-op (free) until you install one.
 
 ## One tool, any backend
 
@@ -71,18 +87,21 @@ GOOGLE_API_KEY=... PERPLEXITY_API_KEY=... \
   pnpm tsx recipes/grounded-answer/run-node.ts --llm=gemini
 ```
 
-| Flag       | Values                 | Default      |
-| ---------- | ---------------------- | ------------ |
-| `--llm`    | `openai` \| `gemini`   | `openai`     |
-| `--search` | `perplexity` \| `exa`  | `perplexity` |
+| Flag       | Values                            | Default      |
+| ---------- | --------------------------------- | ------------ |
+| `--llm`    | `openai` \| `gemini`              | `openai`     |
+| `--search` | `perplexity` \| `exa` \| `tavily` | `perplexity` |
 
-The `--search` flag is wired to grow: Tavily, You.com, and Brave each
-land as one alias entry and one Match arm in `app.ts`, with nothing in
-`recipe.ts` touched. Exa needs `EXA_API_KEY`:
+The `--search` flag is wired to grow: You.com and Brave each land as one
+alias entry and one Match arm in `app.ts`, with nothing in `recipe.ts`
+touched. Each backend needs its own key (`EXA_API_KEY`, `TAVILY_API_KEY`):
 
 ```sh
 OPENAI_API_KEY=... EXA_API_KEY=... \
   pnpm tsx recipes/grounded-answer/run-node.ts --search=exa
+
+OPENAI_API_KEY=... TAVILY_API_KEY=... \
+  pnpm tsx recipes/grounded-answer/run-node.ts --search=tavily
 ```
 
 One honest difference shows through the portable interface: Exa's pure
@@ -104,13 +123,13 @@ honest as the answer's links, so forcing inline sources is what turns
 
 ## Files
 
-- `recipe.ts` — the runtime-agnostic tool loop (`LanguageModel | WebSearch`).
-- `app.ts` — provider flags, Layers, config, and the `main` effect.
-- `run-node.ts` / `run-bun.ts` / `run-deno.ts` — platform HttpClient + runtime.
+- `recipe.ts`: the runtime-agnostic tool loop (`LanguageModel | WebSearch`).
+- `app.ts`: provider flags, Layers, config, and the `main` effect.
+- `run-node.ts` / `run-bun.ts` / `run-deno.ts`: platform HttpClient + runtime.
 
 ## See also
 
-- [Basic search](/recipes/basic-search/) — query in, ranked results out,
+- [Basic search](/recipes/basic-search/): query in, ranked results out,
   no LLM.
-- [Agentic loop](/recipes/agentic-loop/) — the streaming tool-loop this
+- [Agentic loop](/recipes/agentic-loop/): the streaming tool-loop this
   recipe is a single-shot variation of.

@@ -110,6 +110,14 @@
       "types": "./dist/transcriber/Transcriber.d.mts",
       "import": "./dist/transcriber/Transcriber.mjs"
     },
+    "./WebSearch": {
+      "types": "./dist/web-search/WebSearch.d.mts",
+      "import": "./dist/web-search/WebSearch.mjs"
+    },
+    "./WebSearchTool": {
+      "types": "./dist/web-search/WebSearchTool.d.mts",
+      "import": "./dist/web-search/WebSearchTool.mjs"
+    },
     "./Loop": {
       "types": "./dist/loop/Loop.d.mts",
       "import": "./dist/loop/Loop.mjs"

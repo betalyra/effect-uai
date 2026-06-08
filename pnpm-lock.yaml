@@ -165,6 +165,18 @@ importers:
         specifier: ^8.18.0
         version: 8.20.0
 
+  packages/providers/perplexity:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/providers/responses:
     devDependencies:
       '@effect-uai/core':
@@ -200,6 +212,9 @@ importers:
       '@effect-uai/openai':
         specifier: workspace:*
         version: link:../packages/providers/openai
+      '@effect-uai/perplexity':
+        specifier: workspace:*
+        version: link:../packages/providers/perplexity
       '@effect-uai/responses':
         specifier: workspace:*
         version: link:../packages/providers/responses

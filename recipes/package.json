@@ -17,6 +17,7 @@
     "@effect-uai/openai": "workspace:*",
     "@effect-uai/perplexity": "workspace:*",
     "@effect-uai/responses": "workspace:*",
+    "@effect-uai/tavily": "workspace:*",
     "@effect/platform-bun": "4.0.0-beta.57",
     "@effect/platform-node": "4.0.0-beta.57",
     "effect": "4.0.0-beta.57",

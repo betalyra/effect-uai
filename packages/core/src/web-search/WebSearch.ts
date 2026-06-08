@@ -107,24 +107,16 @@ export type SearchResult = {
   readonly raw: unknown
 }
 
-/**
- * Usage / cost a provider reports alongside results. Sparse by nature -
- * most search endpoints report nothing, so every field is optional.
- */
-export type SearchUsage = {
-  /** Monetary cost of this request in USD, when reported (e.g. Exa). */
-  readonly costUsd?: number
-  /** Credit / request count, when the provider meters that way. */
-  readonly requests?: number
-  /** The provider-native usage object, when present. */
-  readonly raw?: unknown
-}
-
 export type SearchResponse = {
   readonly results: ReadonlyArray<SearchResult>
-  /** Present only when the provider reports cost / credits. */
-  readonly usage?: SearchUsage
-  /** The provider-native top-level response object. */
+  /**
+   * The provider-native top-level response object. Cost / usage reporting
+   * is deliberately not modeled on this surface yet: providers disagree on
+   * both what (Exa returns USD, Tavily credits, Brave nothing in-body) and
+   * where (Brave reports cost in response headers), so it is deferred to the
+   * unified usage design (see plans/usage-tracking.md). Anything a provider
+   * reports survives here on `raw`.
+   */
   readonly raw: unknown
 }
 

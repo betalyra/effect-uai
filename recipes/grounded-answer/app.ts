@@ -18,11 +18,23 @@
  * runner (`run-node.ts`, `run-bun.ts`, `run-deno.ts`) supplies the platform
  * client and calls the matching `runMain`.
  */
-import { Config, Console, Data, Effect, Layer, Logger, Match, Option, References } from "effect"
+import {
+  Config,
+  Console,
+  Data,
+  Effect,
+  Layer,
+  Logger,
+  Match,
+  Option,
+  References,
+  Stream,
+} from "effect"
 import { layer as exaLayer } from "@effect-uai/exa/ExaSearch"
 import { layer as geminiLayer } from "@effect-uai/google/Gemini"
 import { layer as perplexityLayer } from "@effect-uai/perplexity/PerplexitySearch"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
+import { layer as tavilyLayer } from "@effect-uai/tavily/TavilySearch"
 import { flagValue } from "../_shared/argv.js"
 import { groundedAnswer } from "./recipe.js"
 
@@ -31,10 +43,9 @@ import { groundedAnswer } from "./recipe.js"
 // ---------------------------------------------------------------------------
 
 export type LlmProvider = "openai" | "gemini"
-// New search backends (tavily, you, brave) are added as one alias entry
-// below + one Match arm in `searchLayerFor` - nothing in `recipe.ts`
-// changes.
-export type SearchProvider = "perplexity" | "exa"
+// New search backends (you, brave) are added as one alias entry below +
+// one Match arm in `searchLayerFor` - nothing in `recipe.ts` changes.
+export type SearchProvider = "perplexity" | "exa" | "tavily"
 
 const argv = process.argv.slice(2)
 
@@ -55,6 +66,7 @@ const searchAliases: Record<string, SearchProvider> = {
   perplexity: "perplexity",
   pplx: "perplexity",
   exa: "exa",
+  tavily: "tavily",
 }
 
 // Resolve a `--flag` against an alias table. Absent -> fallback; present
@@ -128,6 +140,14 @@ const searchLayerFor = Match.type<SearchProvider>().pipe(
       }),
     ),
   ),
+  Match.when("tavily", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("TAVILY_API_KEY")
+        return tavilyLayer({ apiKey })
+      }),
+    ),
+  ),
   Match.exhaustive,
 )
 
@@ -159,16 +179,31 @@ export const main = Effect.gen(function* () {
 
   yield* Effect.logInfo(`grounded-answer (llm: ${llm} ${cfg.model}, search: ${search})`)
   yield* Effect.logInfo(`question: ${cfg.question}`)
+  yield* Console.log("")
 
-  const result = yield* groundedAnswer({
+  // Forward the model's text deltas to stdout as they arrive; note search
+  // calls on stderr so the streamed answer stays clean on stdout.
+  yield* groundedAnswer({
     question: cfg.question,
     model: cfg.model,
     maxRounds: cfg.maxRounds,
     maxResults: cfg.maxResults,
-  }).pipe(Effect.provide(Layer.mergeAll(llmLayerFor(llm), searchLayerFor(search))))
+  }).pipe(
+    Stream.runForEach((event) =>
+      event._tag === "TextDelta"
+        ? Effect.sync(() => {
+            process.stdout.write(event.text)
+          })
+        : event._tag === "ToolCallStart"
+          ? Effect.sync(() => {
+              process.stderr.write("\n[searching the web…]\n")
+            })
+          : Effect.void,
+    ),
+    Effect.provide(Layer.mergeAll(llmLayerFor(llm), searchLayerFor(search))),
+  )
 
-  yield* Effect.logInfo(`answered after ${result.rounds} search round(s)`)
-  yield* Console.log(`\n${result.answer}\n`)
+  yield* Console.log("")
 }).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
 
 // ---------------------------------------------------------------------------

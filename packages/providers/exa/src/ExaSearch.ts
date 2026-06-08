@@ -140,11 +140,11 @@ const toResult = (r: WireResult): SearchResult => {
   }
 }
 
+// `costDollars` is still decoded (so it survives on `raw`) but not promoted
+// to a typed cost field: search cost/usage is deferred to the unified usage
+// design (see plans/usage-tracking.md).
 const toResponse = (wire: WireResponse): SearchResponse => ({
   results: wire.results.map(toResult),
-  ...(wire.costDollars?.total !== undefined && {
-    usage: { costUsd: wire.costDollars.total },
-  }),
   raw: wire,
 })
 

@@ -1,0 +1,59 @@
+{
+  "name": "@effect-uai/tavily",
+  "version": "0.7.0",
+  "description": "Tavily provider for @effect-uai/core (web search).",
+  "keywords": [
+    "ai",
+    "effect",
+    "search",
+    "tavily",
+    "web-search"
+  ],
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/tavily",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "license": "MIT",
+  "author": "Betalyra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai",
+    "directory": "packages/providers/tavily"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./TavilySearch": {
+      "types": "./dist/TavilySearch.d.mts",
+      "import": "./dist/TavilySearch.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm typecheck && pnpm build"
+  },
+  "devDependencies": {
+    "@effect-uai/core": "workspace:*",
+    "effect": "4.0.0-beta.57",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@effect-uai/core": "workspace:>=0.2.0 <1",
+    "effect": "4.0.0-beta.57"
+  }
+}

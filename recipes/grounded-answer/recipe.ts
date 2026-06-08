@@ -32,14 +32,17 @@ import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import { webSearchTool } from "@effect-uai/core/WebSearchTool"
 
+// Citation-grounding prompt rules (see this recipe's README for the why):
+// answer only from results, allow an honest "couldn't confirm", cite inline
+// per claim, and demonstrate the exact link format for smaller models.
 const SYSTEM_PROMPT = [
-  "You are a research assistant. Answer the user's question using the web_search tool to find current information.",
+  "You are a research assistant. Use the web_search tool to find current information.",
   "",
-  "Rules:",
-  "- Search before answering anything time-sensitive; do not rely on prior knowledge for current facts.",
+  "- Answer ONLY from the search results. Do not use prior knowledge for facts.",
   "- You may search more than once to fill gaps, then answer.",
-  "- Cite every factual claim inline with its source as a markdown link, e.g. [source](https://example.com).",
-  "- If the searches do not support an answer, say so plainly instead of guessing.",
+  "- Cite every factual claim inline with its source as a markdown link,",
+  "  e.g. The model ships in March [source](https://example.com).",
+  "- If the results do not support an answer, say so plainly instead of guessing.",
 ].join("\n")
 
 export type GroundedAnswerConfig = {

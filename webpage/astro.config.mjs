@@ -245,6 +245,17 @@ export default defineConfig({
           ],
         },
         {
+          label: "Web search",
+          items: [
+            { label: "Overview", slug: "search" },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Grounded answer", slug: "recipes/grounded-answer" }],
+            },
+          ],
+        },
+        {
           label: "Sandboxes",
           items: [
             { label: "Overview", slug: "sandboxes" },

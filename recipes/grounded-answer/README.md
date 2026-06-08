@@ -71,14 +71,25 @@ GOOGLE_API_KEY=... PERPLEXITY_API_KEY=... \
   pnpm tsx recipes/grounded-answer/run-node.ts --llm=gemini
 ```
 
-| Flag       | Values               | Default      |
-| ---------- | -------------------- | ------------ |
-| `--llm`    | `openai` \| `gemini` | `openai`     |
-| `--search` | `perplexity`         | `perplexity` |
+| Flag       | Values                 | Default      |
+| ---------- | ---------------------- | ------------ |
+| `--llm`    | `openai` \| `gemini`   | `openai`     |
+| `--search` | `perplexity` \| `exa`  | `perplexity` |
 
-The `--search` flag is wired to grow: Exa, Tavily, You.com, and Brave
-each land as one alias entry and one Match arm in `app.ts`, with nothing
-in `recipe.ts` touched.
+The `--search` flag is wired to grow: Tavily, You.com, and Brave each
+land as one alias entry and one Match arm in `app.ts`, with nothing in
+`recipe.ts` touched. Exa needs `EXA_API_KEY`:
+
+```sh
+OPENAI_API_KEY=... EXA_API_KEY=... \
+  pnpm tsx recipes/grounded-answer/run-node.ts --search=exa
+```
+
+One honest difference shows through the portable interface: Exa's pure
+`/search` returns ranked url + title + relevance `score` but no text
+snippet (snippets come from its separate `contents` extract step, which
+is out of scope here), whereas Perplexity returns a snippet and no score.
+The model still gets ranked URLs to read either way.
 
 Ask your own question with the `QUESTION` env var, and tune `MODEL`,
 `MAX_ROUNDS`, and `MAX_RESULTS` the same way.

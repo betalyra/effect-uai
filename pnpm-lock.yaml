@@ -90,6 +90,18 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/providers/exa:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/providers/google:
     devDependencies:
       '@effect-uai/core':
@@ -200,6 +212,9 @@ importers:
       '@effect-uai/elevenlabs':
         specifier: workspace:*
         version: link:../packages/providers/elevenlabs
+      '@effect-uai/exa':
+        specifier: workspace:*
+        version: link:../packages/providers/exa
       '@effect-uai/google':
         specifier: workspace:*
         version: link:../packages/providers/google

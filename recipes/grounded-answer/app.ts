@@ -19,6 +19,7 @@
  * client and calls the matching `runMain`.
  */
 import { Config, Console, Data, Effect, Layer, Logger, Match, Option, References } from "effect"
+import { layer as exaLayer } from "@effect-uai/exa/ExaSearch"
 import { layer as geminiLayer } from "@effect-uai/google/Gemini"
 import { layer as perplexityLayer } from "@effect-uai/perplexity/PerplexitySearch"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
@@ -30,10 +31,10 @@ import { groundedAnswer } from "./recipe.js"
 // ---------------------------------------------------------------------------
 
 export type LlmProvider = "openai" | "gemini"
-// New search backends (exa, tavily, you, brave) are added as one alias
-// entry below + one Match arm in `searchLayerFor` - nothing in `recipe.ts`
+// New search backends (tavily, you, brave) are added as one alias entry
+// below + one Match arm in `searchLayerFor` - nothing in `recipe.ts`
 // changes.
-export type SearchProvider = "perplexity"
+export type SearchProvider = "perplexity" | "exa"
 
 const argv = process.argv.slice(2)
 
@@ -53,6 +54,7 @@ const llmAliases: Record<string, LlmProvider> = {
 const searchAliases: Record<string, SearchProvider> = {
   perplexity: "perplexity",
   pplx: "perplexity",
+  exa: "exa",
 }
 
 // Resolve a `--flag` against an alias table. Absent -> fallback; present
@@ -115,6 +117,14 @@ const searchLayerFor = Match.type<SearchProvider>().pipe(
       Effect.gen(function* () {
         const apiKey = yield* Config.redacted("PERPLEXITY_API_KEY")
         return perplexityLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.when("exa", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("EXA_API_KEY")
+        return exaLayer({ apiKey })
       }),
     ),
   ),

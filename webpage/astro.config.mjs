@@ -251,7 +251,10 @@ export default defineConfig({
             {
               label: "Recipes",
               collapsed: true,
-              items: [{ label: "Grounded answer", slug: "recipes/grounded-answer" }],
+              items: [
+                { label: "Grounded answer", slug: "recipes/grounded-answer" },
+                { label: "Deep research", slug: "recipes/deep-research" },
+              ],
             },
           ],
         },

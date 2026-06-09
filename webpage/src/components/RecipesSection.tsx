@@ -3,6 +3,7 @@ import {
   PiArrowRight,
   PiArrowsClockwise,
   PiArrowsInLineHorizontal,
+  PiAtom,
   PiRadio,
   PiChatCircleDots,
   PiClockCounterClockwise,
@@ -157,6 +158,13 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/grounded-answer/",
     Icon: PiMagnifyingGlass,
   },
+  {
+    title: "Deep research",
+    description:
+      "**Research a broad question.** Plan it into sub-questions, investigate each with a streaming sub-agent, and synthesize one cited report.",
+    href: "/recipes/deep-research/",
+    Icon: PiAtom,
+  },
 ]
 
 const markdownComponents: Components = {
@@ -173,7 +181,7 @@ export default function RecipesSection() {
           <div className="flex items-baseline gap-3">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
             <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
-              27 and counting
+              28 and counting
             </span>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">

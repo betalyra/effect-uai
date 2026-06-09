@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/microsandbox",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Microsandbox local microVM sandbox provider for @effect-uai/core.",
   "keywords": [
     "agents",

@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/perplexity",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Perplexity provider for @effect-uai/core (web search).",
   "keywords": [
     "ai",

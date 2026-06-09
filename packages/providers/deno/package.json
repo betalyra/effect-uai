@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/deno",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Deno Sandbox provider (Firecracker microVMs on Deno Deploy) for @effect-uai/core.",
   "keywords": [
     "agents",

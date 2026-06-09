@@ -15,6 +15,12 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.8](/migrations/v0-8/): purely additive. A new
+  `WebSearch` capability in `@effect-uai/core` (a generic search service
+  plus a ready-made `webSearchTool` for grounding an LLM), three search
+  providers (`@effect-uai/perplexity`, `@effect-uai/exa`,
+  `@effect-uai/tavily`), and two recipes (grounded answer, deep research).
+  No breaking changes; bump dependencies and run typecheck.
 - [Migrating to 0.7](/migrations/v0-7/) — a capability-honesty pass
   across audio and embeddings. `AudioBlob.durationSeconds: number`
   becomes `duration: Duration.Duration` (flowing through STT, TTS, and

@@ -14,7 +14,10 @@
       "@effect-uai/elevenlabs",
       "@effect-uai/inworld",
       "@effect-uai/microsandbox",
-      "@effect-uai/deno"
+      "@effect-uai/deno",
+      "@effect-uai/perplexity",
+      "@effect-uai/exa",
+      "@effect-uai/tavily"
     ]
   ],
   "linked": [],

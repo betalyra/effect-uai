@@ -32,6 +32,43 @@ The full migration prose (with rationale and edge cases) lives in
 
 ---
 
+## 0.7 → 0.8
+
+**No rewrites needed.** 0.8 is purely additive: a new `WebSearch`
+capability in `@effect-uai/core` (generic `WebSearch` service + `search`
+helper + `webSearchTool`), and three search providers
+(`@effect-uai/perplexity`, `@effect-uai/exa`, `@effect-uai/tavily`).
+Nothing in the existing surface changed. Bump dependencies, run typecheck,
+done.
+
+If the user sees a 0.8-version compile error that looks like a rename
+(`durationSeconds`, `GeminiTranscriber`, `prompts`, `bpm`, etc.), they are
+actually on 0.6 or older, so apply the **0.6 → 0.7** rules below (and the
+earlier sections) first.
+
+### New-code patterns (only if the user is adopting search)
+
+```ts
+// Generic search call, portable across providers
+import { search } from "@effect-uai/core/WebSearch"
+const { results } = yield * search({ query: "..." })
+
+// Ground an LLM: the tool requires WebSearch; app policy on the
+// constructor, the model only picks `query` (+ optional `recency`)
+import { webSearchTool } from "@effect-uai/core/WebSearchTool"
+const tools = [webSearchTool({ maxResults: 5 })]
+
+// Provide a backend (plus an HttpClient). Swap the layer to switch.
+import { layer as perplexity } from "@effect-uai/perplexity/PerplexitySearch"
+// or @effect-uai/exa/ExaSearch, @effect-uai/tavily/TavilySearch
+```
+
+The full tour is in
+[Migrating to 0.8](https://effect-uai.betalyra.com/migrations/v0-8/) and
+the [Web search overview](https://effect-uai.betalyra.com/search/).
+
+---
+
 ## 0.6 → 0.7
 
 A capability-honesty pass across audio and embeddings. Three flavors of
@@ -619,6 +656,7 @@ ToolResult.$match({ Value: ..., Failure: ... })(result) // matcher
 
 ## See also
 
+- [Migration guide for 0.8](https://effect-uai.betalyra.com/migrations/v0-8/)
 - [Migration guide for 0.7](https://effect-uai.betalyra.com/migrations/v0-7/)
 - [Migration guide for 0.6](https://effect-uai.betalyra.com/migrations/v0-6/)
 - [Migration guide for 0.5](https://effect-uai.betalyra.com/migrations/v0-5/)

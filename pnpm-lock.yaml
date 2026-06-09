@@ -90,6 +90,18 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/providers/exa:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/providers/google:
     devDependencies:
       '@effect-uai/core':
@@ -165,7 +177,31 @@ importers:
         specifier: ^8.18.0
         version: 8.20.0
 
+  packages/providers/perplexity:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/providers/responses:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/providers/tavily:
     devDependencies:
       '@effect-uai/core':
         specifier: workspace:*
@@ -188,6 +224,9 @@ importers:
       '@effect-uai/elevenlabs':
         specifier: workspace:*
         version: link:../packages/providers/elevenlabs
+      '@effect-uai/exa':
+        specifier: workspace:*
+        version: link:../packages/providers/exa
       '@effect-uai/google':
         specifier: workspace:*
         version: link:../packages/providers/google
@@ -200,9 +239,15 @@ importers:
       '@effect-uai/openai':
         specifier: workspace:*
         version: link:../packages/providers/openai
+      '@effect-uai/perplexity':
+        specifier: workspace:*
+        version: link:../packages/providers/perplexity
       '@effect-uai/responses':
         specifier: workspace:*
         version: link:../packages/providers/responses
+      '@effect-uai/tavily':
+        specifier: workspace:*
+        version: link:../packages/providers/tavily
       '@effect/platform-bun':
         specifier: 4.0.0-beta.57
         version: 4.0.0-beta.57(effect@4.0.0-beta.57)

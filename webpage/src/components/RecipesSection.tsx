@@ -3,6 +3,7 @@ import {
   PiArrowRight,
   PiArrowsClockwise,
   PiArrowsInLineHorizontal,
+  PiAtom,
   PiRadio,
   PiChatCircleDots,
   PiClockCounterClockwise,
@@ -12,6 +13,7 @@ import {
   PiGitFork,
   PiHandPalm,
   PiListBullets,
+  PiMagnifyingGlass,
   PiMicrophone,
   PiPause,
   PiPulse,
@@ -149,6 +151,20 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/sandbox-code-interpreter/",
     Icon: PiTerminalWindow,
   },
+  {
+    title: "Grounded answer",
+    description:
+      "**Answer from the live web.** The model searches, reads the results, and writes a cited answer; swap the LLM and search backend independently.",
+    href: "/recipes/grounded-answer/",
+    Icon: PiMagnifyingGlass,
+  },
+  {
+    title: "Deep research",
+    description:
+      "**Research a broad question.** Plan it into sub-questions, investigate each with a streaming sub-agent, and synthesize one cited report.",
+    href: "/recipes/deep-research/",
+    Icon: PiAtom,
+  },
 ]
 
 const markdownComponents: Components = {
@@ -165,7 +181,7 @@ export default function RecipesSection() {
           <div className="flex items-baseline gap-3">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
             <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
-              26 and counting
+              28 and counting
             </span>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">

@@ -49,6 +49,13 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Multi-model compare](/recipes/multi-model-compare/) | Fan one prompt out to multiple providers; per-member errors stay isolated.                      |
 | [Model council](/recipes/model-council/)             | Build a stream graph where models answer, judge each other, and emit a winner.                  |
 
+## Web search
+
+| Recipe                                       | One-line                                                                                                          |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| [Grounded answer](/recipes/grounded-answer/) | Answer a current-events question from live web search with inline citations; swap the LLM and backend at will.    |
+| [Deep research](/recipes/deep-research/)     | Plan a broad question into sub-questions, investigate each with a streaming sub-agent, synthesize a cited report. |
+
 ## Speech
 
 | Recipe                                                       | One-line                                                                                            |

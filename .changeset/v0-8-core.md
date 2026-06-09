@@ -12,7 +12,7 @@ New `WebSearch` capability (additive):
   `language`); `SearchResponse` carries normalized `SearchResult`s
   (`url`, `title`, `snippet`, `publishedDate`, `score`) plus the raw
   provider payload. `SearchRecency` is `"hour" | "day" | "week" | "month"
-  | "year"`. A provider `layer` registers both the generic `WebSearch` tag
+| "year"`. A provider `layer` registers both the generic `WebSearch` tag
   and its provider-typed tag at once.
 - **`@effect-uai/core/WebSearchTool`**: `webSearchTool(options?)` builds a
   ready-to-use tool for the agent loop. The model only chooses `query`

@@ -142,14 +142,15 @@ const toToolError = (call: ToolCall, toolName: string, message: string) => (caus
   new ToolError({ call_id: call.call_id, tool: toolName, message, cause })
 
 /**
- * Decode and validate the JSON arguments of a function_call against the
- * tool's input schema, run the tool, and serialize the output into a
- * function_call_output item.
+ * Decode and validate a function_call's JSON `arguments` against the tool's
+ * own `inputSchema`, yielding the typed input. The decode-only half of
+ * `execute` - reach for it when you intercept a call to translate it into a
+ * control-flow decision rather than running the tool's `run`.
  */
-export const execute = <Name extends string, Input, Output, R>(
+export const decodeArgs = <Name extends string, Input, Output, R>(
   tool: Tool<Name, Input, Output, R>,
   call: ToolCall,
-): Effect.Effect<ToolCallOutput, ToolError, R> =>
+): Effect.Effect<Input, ToolError> =>
   Effect.gen(function* () {
     const parsed = yield* Effect.try({
       try: () => JSON.parse(call.arguments) as unknown,
@@ -167,9 +168,21 @@ export const execute = <Name extends string, Input, Output, R>(
         cause: result.issues,
       })
     }
-
-    const output = yield* tool
-      .run(result.value)
-      .pipe(Effect.mapError(toToolError(call, tool.name, "Tool execution failed")))
-    return toolCallOutput(call.call_id, JSON.stringify(output))
+    return result.value
   })
+
+/**
+ * Decode and validate the JSON arguments of a function_call against the
+ * tool's input schema, run the tool, and serialize the output into a
+ * function_call_output item.
+ */
+export const execute = <Name extends string, Input, Output, R>(
+  tool: Tool<Name, Input, Output, R>,
+  call: ToolCall,
+): Effect.Effect<ToolCallOutput, ToolError, R> =>
+  decodeArgs(tool, call).pipe(
+    Effect.flatMap((input) =>
+      tool.run(input).pipe(Effect.mapError(toToolError(call, tool.name, "Tool execution failed"))),
+    ),
+    Effect.map((output) => toolCallOutput(call.call_id, JSON.stringify(output))),
+  )

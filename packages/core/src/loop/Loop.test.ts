@@ -179,6 +179,28 @@ describe("Loop.loop", () => {
     expect(b.length).toBe(3)
   })
 
+  it("onTurnComplete: handler may return a step stream directly (not just Effect<Stream>)", async () => {
+    // The handler can skip the Effect wrapper when no effect is needed -
+    // bare stop() / next(s), mirroring loop's body.
+    const turnComplete: TurnEvent = TurnEvent.TurnComplete({
+      turn: { items: [], usage: { input_tokens: 0, output_tokens: 0 }, stop_reason: "stop" },
+    })
+    const deltas: Stream.Stream<TurnEvent> = Stream.fromIterable([
+      TurnEvent.TextDelta({ text: "hi" }),
+      turnComplete,
+    ])
+
+    const plain = deltas.pipe(onTurnComplete(() => stop()))
+    const effectful = deltas.pipe(onTurnComplete(() => Effect.sync(() => stop())))
+
+    const a = await Effect.runPromise(Stream.runCollect(plain))
+    const b = await Effect.runPromise(Stream.runCollect(effectful))
+
+    // Two value(delta) wraps + one stop sentinel; both return forms behave identically.
+    expect(a.length).toBe(3)
+    expect(b.length).toBe(3)
+  })
+
   it("is stack-safe and linear-time across many iterations", async () => {
     // 100k iterations far exceeds V8's typical stack depth (~10–15k frames).
     const N = 100_000

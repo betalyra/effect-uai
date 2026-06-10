@@ -48,24 +48,27 @@ const deltas = tier.service
     ...(current.tier === 0 ? { tools: escalateDescriptors } : {}),
   })
   .pipe(
-    onTurnComplete<State, EscalationEvent>((turn) =>
-      Effect.sync(() => {
-        if (current.tier === 1) return stop
+    // `then` may return a step stream directly or an Effect of one - bare
+    // `stop` for the guards, an Effect for the decode branch.
+    onTurnComplete<State, EscalationEvent>((turn) => {
+      if (current.tier === 1) return stop
 
-        const call = Turn.functionCalls(turn).find((c) => c.name === "escalate")
-        if (call === undefined) return stop
+      const call = Turn.functionCalls(turn).find((c) => c.name === "escalate")
+      if (call === undefined) return stop
 
-        return Result.match(decodeEscalateArgs(call.arguments), {
-          onFailure: () => stop,
-          onSuccess: (args) =>
-            nextAfter(Stream.succeed<EscalationEvent>({ _tag: "escalated", ...args }), {
-              history: current.history,
-              tier: 1,
-              escalation: args,
-            }),
-        })
-      }),
-    ),
+      // Decode against escalate's own schema via Tool.decodeArgs - no second
+      // decoder to keep in sync with the tool.
+      return Tool.decodeArgs(escalate, call).pipe(
+        Effect.map((args) =>
+          nextAfter(Stream.succeed<EscalationEvent>({ _tag: "escalated", ...args }), {
+            history: current.history,
+            tier: 1,
+            escalation: args,
+          }),
+        ),
+        Effect.catch(() => Effect.succeed(stop)),
+      )
+    }),
   )
 ```
 

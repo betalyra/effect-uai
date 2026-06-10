@@ -67,6 +67,16 @@ interface StepDef extends Data.TaggedEnum.WithGenerics<2> {
 
 const Step = Data.taggedEnum<StepDef>()
 
+/**
+ * Bare step constructors, so a loop body can emit `Value(...)`, `Next(...)`,
+ * `Stop()`, `StopWith(...)` directly inside a `Stream.make(...)` without the
+ * `Step.` prefix. (The `Step` object itself can't be exported under that name
+ * because it collides with the exported `Step` type.) For the common cases
+ * prefer the `value` / `next` / `stop` helpers, which also handle the
+ * single-element-stream wrapping for `next` / `stop`.
+ */
+export const { Value, Next, Stop, StopWith } = Step
+
 /** Wrap a value so it flows through the loop to downstream consumers. */
 export const value = <A>(a: A): Step<A, never> => Step.Value({ value: a })
 

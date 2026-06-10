@@ -25,7 +25,7 @@
  * `index.ts` builds the conversation given two tiers. The runner in
  * `run-node.ts` wires real providers (OpenAI / Google / Anthropic).
  */
-import { Array as Arr, Effect, Option, Result, Schema, Stream, pipe } from "effect"
+import { Array as Arr, Effect, Option, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { loop, next, stop, onTurnComplete, value } from "@effect-uai/core/Loop"
@@ -43,8 +43,6 @@ export const EscalateInput = Schema.Struct({
   question: Schema.String,
 })
 export type EscalateArgs = typeof EscalateInput.Type
-
-const decodeEscalateArgs = Schema.decodeResult(Schema.fromJsonString(EscalateInput))
 
 export const escalate = Tool.make({
   name: "escalate",
@@ -156,48 +154,34 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
             ...(current.tier === 0 ? { tools: escalateDescriptors } : {}),
           })
           .pipe(
-            onTurnComplete((turn) =>
-              Effect.sync(() =>
-                current.tier === 1
-                  ? stop()
-                  : pipe(
-                      Turn.getToolCalls(turn),
-                      Arr.findFirst((c) => c.name === "escalate"),
-                      Option.match({
-                        onNone: () => stop(),
-                        onSome: (call) =>
-                          Result.match(decodeEscalateArgs(call.arguments), {
-                            onFailure: (issue) =>
-                              Stream.unwrap(
-                                Effect.logError("escalate call had invalid arguments", {
-                                  call_id: call.call_id,
-                                  arguments: call.arguments,
-                                  issue: String(issue),
-                                }).pipe(Effect.as(stop())),
-                              ),
-                            onSuccess: (args) =>
-                              Stream.succeed<EscalationEvent>({
-                                _tag: "escalated",
-                                reason: args.reason,
-                                question: args.question,
-                              }).pipe(
-                                Stream.map(value),
-                                Stream.concat(
-                                  // Strong tier sees the same accumulated history
-                                  // the cheap tier saw - no system prompt, no
-                                  // cheap-tier turn, no escalate function call.
-                                  next({
-                                    history: current.history,
-                                    tier: 1,
-                                    escalation: args,
-                                  } satisfies State),
-                                ),
-                              ),
-                          }),
-                      }),
+            onTurnComplete((turn) => {
+              if (current.tier === 1) return stop()
+
+              const call = Turn.getToolCalls(turn).find((c) => c.name === "escalate")
+              if (call === undefined) return stop()
+
+              // Decode against escalate's own schema - the tool already owns
+              // it, so there's no second decoder to keep in sync. Bad arguments
+              // log and stop instead of escalating.
+              return Tool.decodeArgs(escalate, call).pipe(
+                Effect.map((args) =>
+                  // Strong tier sees the same accumulated history the cheap tier
+                  // saw - no system prompt, no cheap-tier turn, no escalate call.
+                  Stream.succeed(value<EscalationEvent>({ _tag: "escalated", ...args })).pipe(
+                    Stream.concat(
+                      next({ history: current.history, tier: 1, escalation: args } satisfies State),
                     ),
-              ),
-            ),
+                  ),
+                ),
+                Effect.catch((error) =>
+                  Effect.logError("escalate call had invalid arguments", {
+                    call_id: call.call_id,
+                    arguments: call.arguments,
+                    cause: error.cause,
+                  }).pipe(Effect.as(stop())),
+                ),
+              )
+            }),
           )
 
         return Stream.concat(announce, deltas)

@@ -1,6 +1,7 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
 import { Effect } from "effect"
 import { describe, expect, expectTypeOf, it } from "vitest"
+import type * as Items from "../domain/Items.js"
 import * as Tool from "./Tool.js"
 
 // ---------------------------------------------------------------------------
@@ -101,5 +102,38 @@ describe("Tool.fromStandardSchema", () => {
 
     type InputOf<T> = T extends Tool.Tool<string, infer I, unknown, never> ? I : never
     expectTypeOf<InputOf<typeof tool>>().toEqualTypeOf<EmailRecipient>()
+  })
+})
+
+describe("Tool.decodeArgs", () => {
+  const sendEmail = Tool.make({
+    name: "send_email",
+    description: "Send an email to a single recipient.",
+    inputSchema: Tool.fromStandardSchema(emailRecipientSchema),
+    run: ({ to }) => Effect.succeed(`queued: ${to}`),
+  })
+
+  const callWith = (args: string): Items.ToolCall => ({
+    type: "function_call",
+    call_id: "call_1",
+    name: "send_email",
+    arguments: args,
+  })
+
+  it("decodes valid JSON arguments to the typed input", async () => {
+    const input = await Effect.runPromise(Tool.decodeArgs(sendEmail, callWith('{"to":"x@y.z"}')))
+    expect(input).toEqual({ to: "x@y.z" })
+    // The return type is the tool's Input, no annotation needed.
+    expectTypeOf(input).toEqualTypeOf<EmailRecipient>()
+  })
+
+  it("fails with ToolError when the arguments aren't valid JSON", async () => {
+    const exit = await Effect.runPromiseExit(Tool.decodeArgs(sendEmail, callWith("not json")))
+    expect(exit._tag).toBe("Failure")
+  })
+
+  it("fails with ToolError when the arguments don't satisfy the schema", async () => {
+    const exit = await Effect.runPromiseExit(Tool.decodeArgs(sendEmail, callWith('{"to":42}')))
+    expect(exit._tag).toBe("Failure")
   })
 })

@@ -113,6 +113,11 @@ export const stop = <S = never>(state?: S): Stream.Stream<Step<never, S>> =>
  * Pre-pipe transforms (`Stream.tap` / `Stream.map` / `Stream.filter`) on
  * the raw delta stream cover anything an `emit`-style callback would do.
  *
+ * `then` may return the step stream directly, or an `Effect` that produces
+ * it (for branches that need to read a `Ref`, decode tool args, log, etc.).
+ * Mirrors `loop`'s body: return a bare `stop()` / `next(s)` where no effect
+ * is needed, lift to `Effect` only where one is.
+ *
  * If the upstream ends without a `TurnComplete`, the resulting stream
  * fails with `AiError.IncompleteTurn`. Catch it via `Stream.catchTag` if
  * you want to recover.
@@ -120,21 +125,25 @@ export const stop = <S = never>(state?: S): Stream.Stream<Step<never, S>> =>
  * Dual: data-first `onTurnComplete(deltas, then)` and data-last
  * `deltas.pipe(onTurnComplete(then))` both work.
  */
+type TurnContinuation<S, A, E2, R2> =
+  | Stream.Stream<Step<A, S>, E2, R2>
+  | Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E2, R2>
+
 export const onTurnComplete: {
   <S, A, E2 = never, R2 = never>(
-    then: (turn: Turn) => Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E2, R2>,
+    then: (turn: Turn) => TurnContinuation<S, A, E2, R2>,
   ): <E, R>(
     deltas: Stream.Stream<TurnEvent, E, R>,
   ) => Stream.Stream<Step<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2>
   <S, A, E, R, E2 = never, R2 = never>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-    then: (turn: Turn) => Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E2, R2>,
+    then: (turn: Turn) => TurnContinuation<S, A, E2, R2>,
   ): Stream.Stream<Step<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2>
 } = Function.dual(
   2,
   <S, A, E, R, E2, R2>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-    then: (turn: Turn) => Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E2, R2>,
+    then: (turn: Turn) => TurnContinuation<S, A, E2, R2>,
   ): Stream.Stream<Step<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2> =>
     Stream.unwrap(
       Effect.gen(function* () {
@@ -151,7 +160,8 @@ export const onTurnComplete: {
           Effect.gen(function* () {
             const opt = yield* Ref.get(turnRef)
             if (Option.isNone(opt)) return yield* new IncompleteTurn({})
-            return yield* then(opt.value)
+            const result = then(opt.value)
+            return Effect.isEffect(result) ? yield* result : result
           }),
         )
 

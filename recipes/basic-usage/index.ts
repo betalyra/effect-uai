@@ -5,13 +5,14 @@
  *
  * `index.ts` exports the building blocks; the runner lives in `run.ts`.
  */
-import { DateTime, Effect, Option, pipe, Schema, Stream } from "effect"
-import * as Items from "@effect-uai/core/Items"
-import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
-import * as Tool from "@effect-uai/core/Tool"
-import * as Toolkit from "@effect-uai/core/Toolkit"
-import * as Turn from "@effect-uai/core/Turn"
-import { Responses } from "@effect-uai/responses/Responses"
+import { DateTime, Effect, Option, pipe, Schema, Stream } from "effect";
+import * as Items from "@effect-uai/core/Items";
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop";
+import * as Tool from "@effect-uai/core/Tool";
+import * as Toolkit from "@effect-uai/core/Toolkit";
+import * as Turn from "@effect-uai/core/Turn";
+import { Responses } from "@effect-uai/responses/Responses";
+import { LanguageModel } from "@effect-uai/core/LanguageModel";
 
 // ---------------------------------------------------------------------------
 // Tool - get_current_time (uses Effect's DateTime)
@@ -19,9 +20,10 @@ import { Responses } from "@effect-uai/responses/Responses"
 
 const GetCurrentTimeInput = Schema.Struct({
   timezone: Schema.String,
-})
+});
 
-const InvalidTimeZone = (timezone: string) => new Error(`Invalid IANA timezone: ${timezone}`)
+const InvalidTimeZone = (timezone: string) =>
+  new Error(`Invalid IANA timezone: ${timezone}`);
 
 const getCurrentTime = Tool.make({
   name: "get_current_time",
@@ -44,24 +46,24 @@ const getCurrentTime = Tool.make({
       ),
     ),
   strict: true,
-})
+});
 
-const allTools = [getCurrentTime]
-const tools = Tool.toDescriptors(allTools)
+const allTools = [getCurrentTime];
+const tools = Tool.toDescriptors(allTools);
 
 // ---------------------------------------------------------------------------
 // State and types
 // ---------------------------------------------------------------------------
 
 interface State {
-  readonly history: ReadonlyArray<Items.HistoryItem>
-  readonly index: number
+  readonly history: ReadonlyArray<Items.HistoryItem>;
+  readonly index: number;
 }
 
 const initial: State = {
   history: [Items.userText("What time is it in Lisbon and Tokyo right now?")],
   index: 0,
-}
+};
 
 // ---------------------------------------------------------------------------
 // The loop - explicit, streaming, and still fully visible
@@ -74,23 +76,22 @@ export const conversation = pipe(
   initial,
   loop((state) =>
     Effect.gen(function* () {
-      const oai = yield* Responses
+      const lm = yield* LanguageModel;
 
-      return oai
+      return lm
         .streamTurn({
           history: state.history,
           model: "gpt-5.4-mini",
           tools,
-          reasoning: { effort: "low" },
         })
         .pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
           onTurnComplete((turn) =>
             Effect.sync(() => {
-              const calls = Turn.getToolCalls(turn)
+              const calls = Turn.getToolCalls(turn);
 
               // No tool calls - the assistant is done.
-              if (calls.length === 0) return stop()
+              if (calls.length === 0) return stop();
 
               // Stream tool events to the consumer; on end-of-stream
               // emit one `Loop.next` carrying the appended turn.
@@ -99,12 +100,15 @@ export const conversation = pipe(
               // `Loop.next` if you ever need to vary an arm.
               return Toolkit.run(allTools, calls).pipe(
                 Toolkit.continueWithResults(
-                  Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
+                  Toolkit.appendToolResults(
+                    { ...state, index: state.index + 1 },
+                    turn,
+                  ),
                 ),
-              )
+              );
             }),
           ),
-        )
+        );
     }),
   ),
-)
+);

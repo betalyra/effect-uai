@@ -20,17 +20,17 @@
  * stream-state combinator — simpler, and the interrupt handler can append a
  * partial assistant message without reaching into stream internals.
  */
-import { Cause, Effect, Fiber, Match, Ref, Result, Stream } from "effect"
-import type * as AiError from "@effect-uai/core/AiError"
-import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
-import * as Items from "@effect-uai/core/Items"
-import * as LanguageModel from "@effect-uai/core/LanguageModel"
-import * as SpeechSynthesizer from "@effect-uai/core/SpeechSynthesizer"
-import * as Transcriber from "@effect-uai/core/Transcriber"
-import type { TranscriptEvent } from "@effect-uai/core/Transcript"
-import * as Turn from "@effect-uai/core/Turn"
-import type * as Duration from "effect/Duration"
-import { settleBurst } from "./streamOps.js"
+import { Cause, Effect, Fiber, Match, Ref, Result, Stream } from "effect";
+import type * as AiError from "@effect-uai/core/AiError";
+import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio";
+import * as Items from "@effect-uai/core/Items";
+import * as LanguageModel from "@effect-uai/core/LanguageModel";
+import * as SpeechSynthesizer from "@effect-uai/core/SpeechSynthesizer";
+import * as Transcriber from "@effect-uai/core/Transcriber";
+import type { TranscriptEvent } from "@effect-uai/core/Transcript";
+import * as Turn from "@effect-uai/core/Turn";
+import type * as Duration from "effect/Duration";
+import { settleBurst } from "./streamOps.js";
 
 // ---------------------------------------------------------------------------
 // Wire shapes & config
@@ -43,24 +43,36 @@ export type StatusEvent =
   | { readonly type: "assistant-delta"; readonly text: string }
   | { readonly type: "assistant-done"; readonly text: string }
   | { readonly type: "assistant-cancelled"; readonly text: string }
-  | { readonly type: "error"; readonly message: string }
+  | { readonly type: "error"; readonly message: string };
 
 export type PipelineConfig = {
-  readonly stt: { readonly model: string; readonly inputFormat: AudioFormat }
-  readonly llm: { readonly model: string; readonly systemPrompt: string }
+  readonly stt: {
+    readonly model: string;
+    readonly inputFormat: AudioFormat;
+    /** Vocabulary biasing — terms to boost so STT doesn't mishear them
+     *  (e.g. "effect-uai" instead of "effect-Y"). */
+    readonly biasingTerms?: ReadonlyArray<string>;
+  };
+  readonly llm: { readonly model: string; readonly systemPrompt: string };
   readonly tts: {
-    readonly model: string
-    readonly voiceId: string
-    readonly outputFormat: AudioFormat
-  }
+    readonly model: string;
+    readonly voiceId: string;
+    readonly outputFormat: AudioFormat;
+  };
   /** Resetting-window debounce for coalescing rapid STT finals. */
-  readonly utteranceSettle: Duration.Input
-}
+  readonly utteranceSettle: Duration.Input;
+};
 
 export const defaultConfig: PipelineConfig = {
   stt: {
     model: "scribe_v2_realtime",
-    inputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 16000, channels: 1 },
+    biasingTerms: ["effect-uai"],
+    inputFormat: {
+      container: "raw",
+      encoding: "pcm_s16le",
+      sampleRate: 16000,
+      channels: 1,
+    },
   },
   llm: {
     model: "gemini-2.5-flash",
@@ -81,6 +93,7 @@ export const defaultConfig: PipelineConfig = {
       "- You're powered by effect-uai, a TypeScript library built on Effect for",
       "  writing AI applications by composing small primitives instead of",
       "  configuring a framework.",
+      "- The user might pronounce it effect why or effect Y, treat this as a question for effect-uai.",
       "",
       "Voice-output rules:",
       "- One or two short sentences per turn. No lists, code, or markdown.",
@@ -92,36 +105,46 @@ export const defaultConfig: PipelineConfig = {
   tts: {
     model: "eleven_flash_v2_5",
     voiceId: "JBFqnCBsd6RMkjVDRZzb",
-    outputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 48000, channels: 1 },
+    outputFormat: {
+      container: "raw",
+      encoding: "pcm_s16le",
+      sampleRate: 48000,
+      channels: 1,
+    },
   },
   utteranceSettle: "350 millis",
-}
+};
 
 // ---------------------------------------------------------------------------
 // Phonetic / markdown rewrites applied just before the TTS WS. UI sees the
 // LLM's original text; only the speech engine sees these substitutions.
 // ---------------------------------------------------------------------------
 
-const TTS_REWRITES: ReadonlyArray<readonly [pattern: RegExp, replacement: string]> = [
+const TTS_REWRITES: ReadonlyArray<
+  readonly [pattern: RegExp, replacement: string]
+> = [
   [/effect-uai/gi, "effect why"],
   [/[`*_]/g, ""],
-]
+];
 
 const phoneticize = (text: string): string =>
-  TTS_REWRITES.reduce((s, [pattern, replacement]) => s.replace(pattern, replacement), text)
+  TTS_REWRITES.reduce(
+    (s, [pattern, replacement]) => s.replace(pattern, replacement),
+    text,
+  );
 
 // Real-time duration of an s16le PCM chunk. The pacing sleep based on this
 // duration keeps the assistant fiber alive while the browser plays audio,
 // so a stop-word `Fiber.interrupt` can cut it short mid-response.
 const chunkDurationMs = (bytes: number, format: AudioFormat): number =>
-  (bytes / (format.sampleRate * 2 * (format.channels ?? 1))) * 1000
+  (bytes / (format.sampleRate * 2 * (format.channels ?? 1))) * 1000;
 
 // ---------------------------------------------------------------------------
 // STT: side-effects (partial / error → status) flow through `Stream.tap`;
 // downstream consumers split this into finals via `finalTextOf`.
 // ---------------------------------------------------------------------------
 
-type SendStatus = (event: StatusEvent) => Effect.Effect<void>
+type SendStatus = (event: StatusEvent) => Effect.Effect<void>;
 
 const stt =
   (cfg: PipelineConfig, sendStatus: SendStatus) =>
@@ -130,6 +153,9 @@ const stt =
       Transcriber.streamTranscriptionFrom({
         model: cfg.stt.model,
         inputFormat: cfg.stt.inputFormat,
+        ...(cfg.stt.biasingTerms !== undefined
+          ? { biasingTerms: cfg.stt.biasingTerms }
+          : {}),
         wordTimestamps: false,
       }),
       Stream.tap(
@@ -147,12 +173,12 @@ const stt =
           Match.orElse(() => Effect.void),
         ),
       ),
-    )
+    );
 
 const finalTextOf = (event: TranscriptEvent) =>
   event._tag === "final" && event.text.trim().length > 0
     ? Result.succeed(event.text.trim())
-    : Result.failVoid
+    : Result.failVoid;
 
 // ---------------------------------------------------------------------------
 // Stop-word classifier.
@@ -175,7 +201,7 @@ const STOP_WORDS: ReadonlyArray<string> = [
   "hold on",
   "shut up",
   "be quiet",
-]
+];
 
 const normalizeFinal = (text: string): string =>
   text
@@ -183,14 +209,15 @@ const normalizeFinal = (text: string): string =>
     .toLowerCase()
     .replace(/[.,!?;:…]/g, "")
     .replace(/\s+/g, " ")
-    .trim()
+    .trim();
 
 const containsStopWord = (text: string): boolean => {
-  const t = normalizeFinal(text)
-  return STOP_WORDS.some((w) => t.includes(w))
-}
+  const t = normalizeFinal(text);
+  return STOP_WORDS.some((w) => t.includes(w));
+};
 
-const isJustStopWord = (text: string): boolean => STOP_WORDS.includes(normalizeFinal(text))
+const isJustStopWord = (text: string): boolean =>
+  STOP_WORDS.includes(normalizeFinal(text));
 
 // ---------------------------------------------------------------------------
 // runAssistantTurn — one user utterance → one assistant response.
@@ -210,27 +237,27 @@ const runAssistantTurn = (
   userText: string,
 ) =>
   Effect.gen(function* () {
-    const acc = yield* Ref.make("")
+    const acc = yield* Ref.make("");
 
     // Append the user turn (plus the assistant's accumulated text, if any)
     // to history and send the terminal status. Closed over `acc` so success
     // and interrupt paths share one definition.
     const commit = (type: "assistant-done" | "assistant-cancelled") =>
       Effect.gen(function* () {
-        const text = yield* Ref.get(acc)
-        yield* Effect.logInfo(`[pipeline] ${type}`, { text })
-        yield* sendStatus({ type, text })
+        const text = yield* Ref.get(acc);
+        yield* Effect.logInfo(`[pipeline] ${type}`, { text });
+        yield* sendStatus({ type, text });
         yield* Ref.update(historyRef, (h) => [
           ...h,
           Items.userText(userText),
           ...(text.length > 0 ? [Items.assistantText(text)] : []),
-        ])
-      })
+        ]);
+      });
 
-    yield* sendStatus({ type: "user-final", text: userText })
-    yield* sendStatus({ type: "assistant-thinking" })
+    yield* sendStatus({ type: "user-final", text: userText });
+    yield* sendStatus({ type: "assistant-thinking" });
 
-    const history = yield* Ref.get(historyRef)
+    const history = yield* Ref.get(historyRef);
     const audio = LanguageModel.streamTurn({
       history: [...history, Items.userText(userText)],
       model: cfg.llm.model,
@@ -247,7 +274,7 @@ const runAssistantTurn = (
         voiceId: cfg.tts.voiceId,
         outputFormat: cfg.tts.outputFormat,
       }),
-    )
+    );
 
     // Send each chunk, then sleep its playback duration. The sleep is what
     // keeps this fiber alive for the full time the user is hearing audio,
@@ -264,8 +291,8 @@ const runAssistantTurn = (
     ).pipe(
       Effect.tap(() => commit("assistant-done")),
       Effect.onInterrupt(() => commit("assistant-cancelled")),
-    )
-  })
+    );
+  });
 
 // ---------------------------------------------------------------------------
 // runPipeline — wires STT → stop-word watcher + utterance loop.
@@ -282,18 +309,24 @@ export const runPipeline = <E, R>(
       stt: cfg.stt.model,
       llm: cfg.llm.model,
       tts: `${cfg.tts.model} / ${cfg.tts.voiceId}`,
-    })
+    });
 
     const historyRef = yield* Ref.make<ReadonlyArray<Items.HistoryItem>>([
       Items.systemText(cfg.llm.systemPrompt),
-    ])
-    const activeTurn = yield* Ref.make<Fiber.Fiber<void, AiError.AiError> | null>(null)
+    ]);
+    const activeTurn = yield* Ref.make<Fiber.Fiber<
+      void,
+      AiError.AiError
+    > | null>(null);
 
     // Share the STT stream so the stop-word watcher and the utterance loop
     // can both pull finals independently. Subscribers only see events
     // emitted after they subscribe — stale partials don't reach a new sub.
-    const sttEvents = yield* audioIn.pipe(stt(cfg, sendStatus), Stream.share({ capacity: 32 }))
-    const finals = sttEvents.pipe(Stream.filterMap(finalTextOf))
+    const sttEvents = yield* audioIn.pipe(
+      stt(cfg, sendStatus),
+      Stream.share({ capacity: 32 }),
+    );
+    const finals = sttEvents.pipe(Stream.filterMap(finalTextOf));
 
     // (1) Stop-word watcher. Reads raw finals (no settleBurst) so "Stop."
     // interrupts as soon as STT delivers the final.
@@ -302,11 +335,13 @@ export const runPipeline = <E, R>(
       Stream.runForEach((text) =>
         Effect.logInfo("[pipeline] stop word", { text }).pipe(
           Effect.andThen(Ref.get(activeTurn)),
-          Effect.flatMap((fiber) => (fiber !== null ? Fiber.interrupt(fiber) : Effect.void)),
+          Effect.flatMap((fiber) =>
+            fiber !== null ? Fiber.interrupt(fiber) : Effect.void,
+          ),
         ),
       ),
       Effect.forkScoped,
-    )
+    );
 
     // (2) Utterance loop. Drops "Stop." alone (the watcher handled it), keeps
     // "Stop. <follow-up>" as a normal turn. Turns are awaited sequentially:
@@ -328,16 +363,18 @@ export const runPipeline = <E, R>(
         Effect.gen(function* () {
           const fiber = yield* Effect.forkChild(
             runAssistantTurn(cfg, sendStatus, sendAudio, historyRef, userText),
-          )
-          yield* Ref.set(activeTurn, fiber)
-          yield* Fiber.await(fiber)
-          yield* Ref.set(activeTurn, null)
+          );
+          yield* Ref.set(activeTurn, fiber);
+          yield* Fiber.await(fiber);
+          yield* Ref.set(activeTurn, null);
         }),
       ),
       Effect.tapCause((cause) =>
         Cause.hasInterruptsOnly(cause)
           ? Effect.void
-          : Effect.logError("[pipeline] terminated", { cause: Cause.pretty(cause) }),
+          : Effect.logError("[pipeline] terminated", {
+              cause: Cause.pretty(cause),
+            }),
       ),
-    )
-  })
+    );
+  });

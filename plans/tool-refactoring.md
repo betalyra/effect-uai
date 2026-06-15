@@ -81,7 +81,7 @@ const toolkit = Toolkit.make(...weatherTools, { ...emailSearch, name: "email_sea
 
 // prefix a whole set: it's map
 const prefixed = emailTools.map((t) => ({ ...t, name: `email_${t.name}` }))
-const toolkit  = Toolkit.make(...weatherTools, ...prefixed)
+const toolkit = Toolkit.make(...weatherTools, ...prefixed)
 ```
 
 Changing `name` (a spread) changes the index key, since the key is derived from
@@ -103,7 +103,9 @@ the renamed reference and use it directly.
 export type ToolkitR<T extends Toolkit> = T[keyof T] extends AnyTool<infer R> ? R : never
 
 export const run: <T extends Toolkit>(
-  toolkit: T, calls: ReadonlyArray<ToolCall>, options?: ExecuteOptions,
+  toolkit: T,
+  calls: ReadonlyArray<ToolCall>,
+  options?: ExecuteOptions,
 ) => Stream.Stream<ToolEvent, never, ToolkitR<T>>
 ```
 
@@ -122,7 +124,7 @@ export const run: <T extends Toolkit>(
 
 A streaming tool is two functions today (`run: (input) => Stream<Event>` plus
 `finalize: (events) => Output`). Awkward to define, and because `Stream` discards
-its done value, the executor accumulates *every* event into a `Ref` just to feed
+its done value, the executor accumulates _every_ event into a `Ref` just to feed
 `finalize`, buffering the full event log even when the output is a running fold or
 the last event.
 
@@ -138,7 +140,7 @@ type Tool<Name extends string, Input, Event, Output, R = never> = {
   readonly description: string
   readonly inputSchema: ToolInputSchema<Input>
   readonly run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output, unknown, R>
-  readonly emitBufferSize?: number   // this tool's emit-queue bound; unbounded default
+  readonly emitBufferSize?: number // this tool's emit-queue bound; unbounded default
   readonly strict?: boolean
 }
 ```
@@ -169,7 +171,7 @@ it is no longer a concept, just shorthand. (`ToolkitR` could pattern-match on
 ```ts
 Stream.unwrapScoped(
   Effect.gen(function* () {
-    const input = yield* decodeAndValidate(tool, call)          // input boundary
+    const input = yield* decodeAndValidate(tool, call) // input boundary
     const queue = yield* Queue.make<Event, Cause.Done>(tool.emitBufferSize)
     const emit: Emit<Event> = (e) => Queue.offer(queue, e)
     const fiber = yield* tool.run(input, emit).pipe(Effect.ensuring(Queue.end(queue)), Effect.fork)
@@ -180,10 +182,14 @@ Stream.unwrapScoped(
     const output = Stream.fromEffect(
       Fiber.join(fiber).pipe(
         Effect.map((value) => ToolEvent.Output({ result: okResult(call, tool.name, value) })),
-        Effect.catchCause(() => Effect.succeed(ToolEvent.Output({ result: executionError(call, "Tool execution failed") }))),
+        Effect.catchCause(() =>
+          Effect.succeed(
+            ToolEvent.Output({ result: executionError(call, "Tool execution failed") }),
+          ),
+        ),
       ),
     )
-    return progress.pipe(Stream.concat(output))                 // progress drains, then output
+    return progress.pipe(Stream.concat(output)) // progress drains, then output
   }),
 )
 ```
@@ -214,8 +220,10 @@ run: (input, emit) =>
 // emit + accumulate: the output is a fold over the stream (single pass)
 run: (input, emit) =>
   source(input).pipe(
-    Stream.runFoldEffect(() => "", (text, chunk) =>
-      emit({ token: chunk }).pipe(Effect.as(text + chunk))),
+    Stream.runFoldEffect(
+      () => "",
+      (text, chunk) => emit({ token: chunk }).pipe(Effect.as(text + chunk)),
+    ),
     Effect.map((text) => ({ text })),
   )
 ```

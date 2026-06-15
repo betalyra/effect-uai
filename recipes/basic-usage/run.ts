@@ -26,8 +26,9 @@ const program = Stream.runForEach(conversation, (event) =>
     // The tool's result, dim under its call.
     Match.tag("Output", ({ result }) =>
       write(
-        dim(`   ↳ ${result._tag === "Ok" ? JSON.stringify(result.value) : `failed: ${result.kind}`}`) +
-          "\n",
+        dim(
+          `   ↳ ${result._tag === "Ok" ? JSON.stringify(result.value) : `failed: ${result.kind}`}`,
+        ) + "\n",
       ),
     ),
     // End of a turn: reset any dim styling and break the line.

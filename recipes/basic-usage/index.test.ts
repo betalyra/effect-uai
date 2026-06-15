@@ -21,7 +21,7 @@ describe("basic-usage", () => {
       run: ({ name }) => Effect.succeed({ greeting: `Hello, ${name}!` }),
       strict: true,
     })
-    const allTools = [greet]
+    const toolkit = Toolkit.make(greet)
 
     // Script the model: turn 1 calls the tool, turn 2 produces a final answer.
     const turn1: Turn.Turn = {
@@ -68,7 +68,7 @@ describe("basic-usage", () => {
             .streamTurn({
               history: state.history,
               model: "mock",
-              tools: Tool.toDescriptors(allTools),
+              tools: Toolkit.descriptors(toolkit),
             })
             .pipe(
               onTurnComplete((turn) =>
@@ -76,7 +76,7 @@ describe("basic-usage", () => {
                   const calls = Turn.getToolCalls(turn)
                   if (calls.length === 0) return stop()
 
-                  return Toolkit.run(allTools, calls).pipe(
+                  return Toolkit.run(toolkit, calls).pipe(
                     Toolkit.continueWithResults((results) =>
                       Turn.appendToHistory(
                         { ...state, index: state.index + 1 },

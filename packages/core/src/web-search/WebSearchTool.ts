@@ -66,7 +66,7 @@ export type WebSearchToolOptions = {
  */
 export const webSearchTool = (
   options?: WebSearchToolOptions,
-): Tool.Tool<string, WebSearchToolArgs, string, WebSearch> => {
+): Tool.Tool<string, WebSearchToolArgs, never, string, WebSearch> => {
   const name = options?.name ?? "web_search"
   const render = options?.render ?? defaultRender
   const maxResults = options?.maxResults ?? 5

@@ -1,35 +1,63 @@
-import { Array as Arr, Effect, Function, Ref, Schema, Stream } from "effect"
+import { Array as Arr, Cause, Effect, Fiber, Function, Queue, Ref, Schema, Stream } from "effect"
 import * as Loop from "../loop/Loop.js"
-import type { ToolCall, HistoryItem } from "../domain/Items.js"
+import type { HistoryItem, ToolCall } from "../domain/Items.js"
 import { appendToHistory, type Turn } from "../domain/Turn.js"
+import { type AnyTool, type ToolDescriptor, toDescriptors } from "./Tool.js"
 import {
-  type AnyTool,
-  type AnyPlainTool,
-  type AnyStreamingTool,
-  isStreamingTool,
-  type StreamingTool,
-  type Tool,
-} from "./Tool.js"
-import { ToolResult, executionError, failed, toToolCallOutput } from "./ToolResult.js"
+  ToolResult,
+  executionError,
+  failed,
+  toToolCallOutput,
+  validationError,
+} from "./ToolResult.js"
 import { ToolEvent } from "./ToolEvent.js"
 import { isOutput } from "./ToolEvent.js"
 
+// ---------------------------------------------------------------------------
+// Toolkit: a name-indexed record of tools — "what the model sees". Composing
+// reusable toolkits is native array/object work (concat / spread / map);
+// `make`/`fromArray` are just the indexer. Descriptors are derived, not stored.
+// Duplicate names resolve last-wins; resolve clashes with `Tool.withName`.
+// ---------------------------------------------------------------------------
+
+export type ToolMap = Record<string, AnyTool>
+
+export type Toolkit<Tools extends ToolMap = ToolMap> = Tools
+
+const indexByName = (tools: ReadonlyArray<AnyTool>): ToolMap =>
+  Object.fromEntries(tools.map((tool) => [tool.name, tool]))
+
+/** Index tools by their literal `name`. */
+export const make = <const Tools extends ReadonlyArray<AnyTool>>(
+  ...tools: Tools
+): Toolkit<{ [T in Tools[number] as T["name"]]: T }> =>
+  indexByName(tools) as Toolkit<{ [T in Tools[number] as T["name"]]: T }>
+
+/** Same as `make`, from a dynamically-built array (MCP tools, etc.). */
+export const fromArray = (tools: ReadonlyArray<AnyTool>): Toolkit => indexByName(tools)
+
+/** Render the provider-facing descriptors for a toolkit on demand. */
+export const descriptors = (toolkit: Toolkit): ReadonlyArray<ToolDescriptor> =>
+  toDescriptors(Object.values(toolkit))
+
 /**
- * Union of every tool's `R` requirements in a mixed plain + streaming array.
- * Used by `run` to surface the services tools need at the recipe level, so
- * the loop's stream type carries them through to `Effect.provide`.
+ * Union of every tool's `R` requirements in a toolkit. Surfaced by `run` so the
+ * loop's stream type carries the services tools need through to `Effect.provide`.
+ *
+ * The `ToolMap extends T` guard yields `never` for the wide `Toolkit` type (a
+ * toolkit passed through an untyped boundary, where the requirements aren't
+ * statically known) instead of `any`, which would otherwise poison the
+ * resulting stream's `R`. Concrete toolkits from `make` keep their precise R.
  */
-export type ToolKindR<Tools extends ReadonlyArray<AnyTool<any>>> =
-  Tools[number] extends StreamingTool<any, any, any, any, infer R>
+export type ToolkitR<T extends Toolkit> = ToolMap extends T
+  ? never
+  : T[keyof T] extends AnyTool<infer R>
     ? R
-    : Tools[number] extends Tool<any, any, any, infer R>
-      ? R
-      : never
+    : never
 
 // ---------------------------------------------------------------------------
-// Tool executor. Streams `ToolEvent`s in real time and dispatches streaming
-// and plain tools uniformly. Policy stays outside this module: callers pass
-// only the calls they have already decided should run.
+// Tool executor. Streams `ToolEvent`s in real time. Policy stays outside this
+// module: callers pass only the calls they have already decided should run.
 // ---------------------------------------------------------------------------
 
 export type ExecuteOptions = {
@@ -37,69 +65,37 @@ export type ExecuteOptions = {
 }
 
 /** Execute every provided call. Approval/rejection policy belongs upstream. */
-export const run = <Tools extends ReadonlyArray<AnyTool<any>>>(
-  tools: Tools,
+export const run = <T extends Toolkit>(
+  toolkit: T,
   calls: ReadonlyArray<ToolCall>,
   options?: ExecuteOptions,
-): Stream.Stream<ToolEvent, never, ToolKindR<Tools>> =>
+): Stream.Stream<ToolEvent, never, ToolkitR<T>> =>
   Stream.fromIterable(calls).pipe(
-    Stream.flatMap((call) => runOne(tools, call), {
+    Stream.flatMap((call) => runOne(toolkit, call), {
       concurrency: options?.concurrency ?? "unbounded",
     }),
-  )
+  ) as Stream.Stream<ToolEvent, never, ToolkitR<T>>
 
 const okResult = (call: ToolCall, tool: string, value: unknown): ToolResult =>
-  ToolResult.Ok({
-    call_id: call.call_id,
-    tool,
-    value,
-  })
+  ToolResult.Ok({ call_id: call.call_id, tool, value })
 
-const runOne = <R>(
-  tools: ReadonlyArray<AnyTool<R>>,
-  call: ToolCall,
-): Stream.Stream<ToolEvent, never, R> => {
-  const tool = tools.find((t) => t.name === call.name)
+const runOne = (toolkit: ToolMap, call: ToolCall): Stream.Stream<ToolEvent, never, any> => {
+  const tool = toolkit[call.name]
   if (tool === undefined) {
-    // Graceful: emit a synthetic Failure so OTHER calls in this turn
-    // still execute. LLMs hallucinate tool names; MCP tools come and go.
+    // Graceful: emit a synthetic Failure so OTHER calls in this turn still
+    // execute. LLMs hallucinate tool names; MCP tools come and go.
     return Stream.succeed(
       ToolEvent.Output({
         result: failed(call, "unknown_tool", `No tool registered with name "${call.name}"`),
       }),
     )
   }
-  if (isStreamingTool(tool)) return runStreaming(tool, call)
-  return runPlain(tool, call)
+  return runTool(tool, call)
 }
 
 const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
 
-const runPlain = <R>(tool: AnyPlainTool<R>, call: ToolCall): Stream.Stream<ToolEvent, never, R> =>
-  Stream.fromEffect(
-    Effect.gen(function* () {
-      const parsed = yield* parseJsonUnknown(call.arguments).pipe(
-        Effect.mapError(() => "json_parse_error" as const),
-      )
-      const validated = yield* Effect.tryPromise({
-        try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
-        catch: () => "validation_threw" as const,
-      })
-      if (validated.issues !== undefined) {
-        return executionError(call, "Tool input failed schema validation")
-      }
-      const output = yield* tool.run(validated.value)
-      return okResult(call, tool.name, output)
-    }).pipe(
-      Effect.catchCause(() => Effect.succeed(executionError(call, "Tool execution failed"))),
-      Effect.map((result) => ToolEvent.Output({ result })),
-    ),
-  )
-
-const runStreaming = <R>(
-  tool: AnyStreamingTool<R>,
-  call: ToolCall,
-): Stream.Stream<ToolEvent, never, R> =>
+const runTool = (tool: AnyTool, call: ToolCall): Stream.Stream<ToolEvent, never, any> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const parsed = yield* parseJsonUnknown(call.arguments).pipe(
@@ -110,45 +106,40 @@ const runStreaming = <R>(
         catch: () => "validation_threw" as const,
       })
       if (validated.issues !== undefined) {
-        return Stream.succeed<ToolEvent>(
-          ToolEvent.Output({
-            result: executionError(call, "Tool input failed schema validation"),
-          }),
-        )
+        return Stream.succeed<ToolEvent>(ToolEvent.Output({ result: validationError(call) }))
       }
 
-      // Real-time: tap each event into a Ref as it flows; emit one
-      // Progress per event; then concat one synthetic Output element
-      // built from the accumulated Ref via `finalize`.
-      const ref = yield* Ref.make<Array<unknown>>([])
-      const progress = tool.run(validated.value).pipe(
-        Stream.tap((event) => Ref.update(ref, Arr.append(event))),
-        Stream.map((data) =>
-          ToolEvent.Progress({
-            call_id: call.call_id,
-            tool: tool.name,
-            data,
-          }),
-        ),
+      // Per-call queue: `emit` offers events as `run` produces them; the
+      // progress stream drains them in real time; `Queue.end` (in the
+      // `ensuring`) flushes pending events then signals a clean end, which
+      // `Stream.fromQueue` treats as completion. `Queue.shutdown` would clear
+      // queued items and interrupt pending takes — wrong for graceful teardown.
+      const queue = yield* Queue.make<unknown, Cause.Done>({ capacity: tool.emitBufferSize })
+      const emit = (event: unknown) => Effect.asVoid(Queue.offer(queue, event))
+      const fiber = yield* tool
+        .run(validated.value, emit)
+        .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
+
+      const progress = Stream.fromQueue(queue).pipe(
+        Stream.map((data) => ToolEvent.Progress({ call_id: call.call_id, tool: tool.name, data })),
       )
       const output = Stream.fromEffect(
-        Ref.get(ref).pipe(
-          Effect.map((events) =>
-            ToolEvent.Output({
-              result: okResult(call, tool.name, tool.finalize(events)),
-            }),
+        Fiber.join(fiber).pipe(
+          Effect.map((value) => ToolEvent.Output({ result: okResult(call, tool.name, value) })),
+          Effect.catchCause(() =>
+            Effect.succeed(
+              ToolEvent.Output({ result: executionError(call, "Tool execution failed") }),
+            ),
           ),
         ),
       )
       return progress.pipe(Stream.concat(output))
     }),
   ).pipe(
+    // Backstop for the input-parsing failures (`json_parse_error`,
+    // `validation_threw`) and any defect before the run fiber is forked.
     Stream.catchCause(() =>
-      Stream.succeed(
-        ToolEvent.Output({
-          result: executionError(call, "Tool execution failed"),
-        }),
-      ),
+      Stream.succeed(ToolEvent.Output({ result: executionError(call, "Tool execution failed") })),
     ),
   )
 
@@ -167,7 +158,7 @@ const runStreaming = <R>(
  * the results to wire-format `ToolCallOutput`s. Curried so it slots directly
  * into `continueWithResults`:
  *
- *   Toolkit.run(tools, calls).pipe(
+ *   Toolkit.run(toolkit, calls).pipe(
  *     Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
  *   )
  *

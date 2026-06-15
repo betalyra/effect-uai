@@ -66,9 +66,17 @@ export const denied = (call: ToolCall, reason?: string): ToolResult =>
 export const cancelled = (call: ToolCall, reason?: string): ToolResult =>
   failed(call, "cancelled", reason)
 
-/** Tool's own execution failed (parse error, schema, runtime crash). */
+/** Tool's own execution failed (JSON parse error, runtime crash). */
 export const executionError = (call: ToolCall, reason: string): ToolResult =>
   failed(call, "execution_error", reason)
+
+/**
+ * The model's `arguments` failed the tool's input schema. Distinct kind from
+ * `execution_error` so recipes can tell a contract violation apart from a
+ * runtime crash.
+ */
+export const validationError = (call: ToolCall, reason?: string): ToolResult =>
+  failed(call, "input_validation_error", reason ?? "Tool input failed schema validation")
 
 // ---------------------------------------------------------------------------
 // Wire conversion - the one place structured → string happens.

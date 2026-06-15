@@ -92,7 +92,7 @@ describe("Toolkit.run - tools with R requirements", () => {
   })
 
   it("propagates each tool's R into the resulting Stream's requirements", () => {
-    const stream = Toolkit.run([getWeather, getCoords], [])
+    const stream = Toolkit.run(Toolkit.make(getWeather, getCoords), [])
     expectTypeOf(stream).toEqualTypeOf<
       Stream.Stream<import("./ToolEvent.js").ToolEvent, never, WeatherApiKey | GeoApiKey>
     >()
@@ -104,10 +104,10 @@ describe("Toolkit.run - tools with R requirements", () => {
       Layer.succeed(GeoApiKey, { key: "geo-456" }),
     )
 
-    const program = Toolkit.run(
-      [getWeather, getCoords],
-      [call("get_weather", "c1"), call("get_coords", "c2")],
-    ).pipe(Stream.runCollect, Effect.provide(layer))
+    const program = Toolkit.run(Toolkit.make(getWeather, getCoords), [
+      call("get_weather", "c1"),
+      call("get_coords", "c2"),
+    ]).pipe(Stream.runCollect, Effect.provide(layer))
 
     const events = await Effect.runPromise(program)
     const outputs = Array.from(events).filter(isOutput)
@@ -132,7 +132,7 @@ describe("Toolkit.run - tools with R requirements", () => {
       inputSchema: Tool.fromEffectSchema(Empty),
       run: () => Effect.succeed(0),
     })
-    const stream = Toolkit.run([plain], [])
+    const stream = Toolkit.run(Toolkit.make(plain), [])
     expectTypeOf(stream).toEqualTypeOf<
       Stream.Stream<import("./ToolEvent.js").ToolEvent, never, never>
     >()

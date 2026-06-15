@@ -168,7 +168,7 @@ export const conversation = (
         strict: true,
       })
 
-      const tools: ReadonlyArray<Tool.AnyTool> = [triggerDeploy]
+      const toolkit = Toolkit.make(triggerDeploy)
 
       return pipe(
         initial,
@@ -203,7 +203,7 @@ export const conversation = (
 
             const lm = yield* LanguageModel
             return lm
-              .streamTurn({ history, model: "gpt-5.4-mini", tools: Tool.toDescriptors(tools) })
+              .streamTurn({ history, model: "gpt-5.4-mini", tools: Toolkit.descriptors(toolkit) })
               .pipe(
                 Loop.onTurnComplete((turn) =>
                   Effect.sync(() => {
@@ -212,7 +212,7 @@ export const conversation = (
 
                     // `continueWithResults` streams tool events to the consumer and
                     // folds their outputs into the next state's history.
-                    return Toolkit.run(tools, calls).pipe(
+                    return Toolkit.run(toolkit, calls).pipe(
                       Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
                     )
                   }),

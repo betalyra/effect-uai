@@ -82,7 +82,7 @@ describe("Tool.fromStandardSchema", () => {
 
     // `run`'s parameter is typed as { to: string } via the schema's Output —
     // this property access compiles without annotation.
-    const result = await Effect.runPromise(sendEmail.run({ to: "x@y.z" }))
+    const result = await Effect.runPromise(sendEmail.run({ to: "x@y.z" }, () => Effect.void))
     expect(result).toBe("queued: x@y.z")
   })
 
@@ -100,7 +100,7 @@ describe("Tool.fromStandardSchema", () => {
       run: (input) => Effect.succeed(input),
     })
 
-    type InputOf<T> = T extends Tool.Tool<string, infer I, unknown, never> ? I : never
+    type InputOf<T> = T extends Tool.Tool<string, infer I, any, any, any> ? I : never
     expectTypeOf<InputOf<typeof tool>>().toEqualTypeOf<EmailRecipient>()
   })
 })

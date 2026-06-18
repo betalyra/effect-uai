@@ -6,10 +6,11 @@ license: MIT
 
 # effect-uai streaming-tool-output
 
-`Tool.streaming` lets a tool emit a `Stream<Event>` from its `run`,
-plus a `finalize` that reduces the events into the model-facing
-output. Inner events flow to the user as `ToolEvent.Progress` events
-in real time; the model only ever sees `finalize(events)`.
+A tool's `run` is an `Effect` that computes the model-facing `Output`, plus an
+`emit` side channel for intermediate events. Emitted events flow to the user as
+`ToolEvent.Progress` in real time; the model only ever sees the `Output` that
+`run` returns. There is no separate `finalize`: fold the events into the output
+inside `run` as they stream by.
 
 Reach for this when the user says any of:
 
@@ -18,6 +19,10 @@ Reach for this when the user says any of:
 - "I want a download / search tool with live progress and a clean structured result"
 
 ## Pattern 1: progress + terminal result
+
+`emit` is `(event) => Effect<void>`, so it drops straight into
+`Stream.runForEach`/`Stream.runFoldEffect`. Fold the events into the output in a
+single pass (no buffering of the whole event log):
 
 ```ts
 import { Duration, Effect, Schema, Stream } from "effect"
@@ -28,7 +33,7 @@ type DownloadEvent =
   | { readonly type: "result"; readonly bytes: string }
 
 export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =>
-  Tool.streaming({
+  Tool.make({
     name: "download_artifact",
     description: "Download bytes from a URL.",
     inputSchema: Tool.fromEffectSchema(
@@ -37,9 +42,9 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
         chunks: Schema.optional(Schema.Number),
       }),
     ),
-    run: ({ url, chunks }) => {
+    run: ({ url, chunks }, emit) => {
       const total = chunks ?? 4
-      return Stream.unfold(0, (i: number) => {
+      const events = Stream.unfold(0, (i: number): Effect.Effect<readonly [DownloadEvent, number] | undefined> => {
         if (i > total) return Effect.succeed(undefined)
         if (i === total)
           return Effect.succeed([{ type: "result", bytes: `bytes-of-${url}` }, i + 1] as const)
@@ -51,24 +56,37 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
           perChunkDelay,
         )
       })
-    },
-    finalize: (events) => {
-      const result = events.find(
-        (e): e is Extract<DownloadEvent, { type: "result" }> => e.type === "result",
+      // Emit each event to the consumer while folding to the model-facing output.
+      return events.pipe(
+        Stream.runFoldEffect(
+          () => ({ bytes: "", chunks: 0, completed: false }),
+          (acc, event) =>
+            emit(event).pipe(
+              Effect.as(
+                event.type === "result"
+                  ? { ...acc, bytes: event.bytes, completed: true }
+                  : { ...acc, chunks: acc.chunks + 1 },
+              ),
+            ),
+        ),
+        Effect.map((acc) =>
+          acc.completed
+            ? { status: "completed" as const, bytes: acc.bytes, chunks: acc.chunks }
+            : { status: "failed" as const, bytes: "", chunks: acc.chunks },
+        ),
       )
-      const chunks = events.filter((e) => e.type === "progress").length
-      return result
-        ? { status: "completed" as const, bytes: result.bytes, chunks }
-        : { status: "failed" as const, bytes: "", chunks }
     },
     strict: true,
   })
 ```
 
-The user sees four `Progress` events (progress × 3 + result × 1)
-followed by one `Output` carrying the structured `DownloadOutput`.
+The user sees four `Progress` events (progress × 3 + result × 1) followed by one
+`Output` carrying the structured result.
 
 ## Pattern 2: sub-agent (text streaming)
+
+Consume the inner agent's stream, emitting each event while folding the text
+deltas into the answer:
 
 ```ts
 import * as Turn from "@effect-uai/core/Turn"
@@ -76,37 +94,44 @@ import * as Turn from "@effect-uai/core/Turn"
 export const makeSubAgent = (
   runInner: (q: string) => Stream.Stream<Turn.TurnEvent, unknown, never>,
 ) =>
-  Tool.streaming({
+  Tool.make({
     name: "ask_subagent",
     description: "Ask a specialist sub-agent for help with a hard question.",
     inputSchema: Tool.fromEffectSchema(Schema.Struct({ question: Schema.String })),
-    run: ({ question }) => runInner(question),
-    finalize: (events) => ({
-      answer: events
-        .filter((e): e is Extract<Turn.TurnEvent, { _tag: "TextDelta" }> => e._tag === "TextDelta")
-        .map((e) => e.text)
-        .join(""),
-    }),
+    run: ({ question }, emit) =>
+      runInner(question).pipe(
+        Stream.runFoldEffect(
+          () => "",
+          (answer, event) =>
+            emit(event).pipe(Effect.as(event._tag === "TextDelta" ? answer + event.text : answer)),
+        ),
+        Effect.map((answer) => ({ answer })),
+      ),
     strict: true,
   })
 ```
 
-`run` is parametrized over `runInner` so tests inject a mocked stream
-and production passes a real inner-loop stream against the same
-provider.
+`run` is parametrized over `runInner` so tests inject a mocked stream and
+production passes a real inner-loop stream against the same provider.
+
+A plain tool is the same shape that simply never calls `emit` (its `Event` type
+is then irrelevant). Set `emitBufferSize` on the tool to bound its emit queue
+(unbounded by default) when it emits faster than the consumer drains.
 
 ## How it slots into the loop
 
-Identical to the basic-usage shape; only the toolkit differs.
-`Toolkit.run` dispatches streaming and plain tools uniformly:
+Identical to the basic-usage shape; only the toolkit differs. `Toolkit.run`
+dispatches every tool uniformly:
 
 ```ts
+const toolkit = Toolkit.make(downloadArtifact, subAgent)
+
 onTurnComplete<State, ToolEvent>((turn) =>
   Effect.sync(() => {
     const calls = Turn.getToolCalls(turn)
     if (calls.length === 0) return stop()
 
-    return Toolkit.run(allTools, calls).pipe(
+    return Toolkit.run(toolkit, calls).pipe(
       Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
     )
   }),

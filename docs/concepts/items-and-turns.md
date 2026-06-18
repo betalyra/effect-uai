@@ -98,7 +98,7 @@ boundary:
 ```ts
 import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 
-return Toolkit.run(allTools, calls).pipe(
+return Toolkit.run(toolkit, calls).pipe(
   Toolkit.continueWithResults((results) =>
     Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
   ),

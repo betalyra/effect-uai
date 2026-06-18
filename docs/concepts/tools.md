@@ -1,6 +1,6 @@
 ---
 title: Tools and toolkits
-description: Plain and streaming tools, explicit execution, structured results, approval gating, and history reconciliation.
+description: Defining tools, streaming progress via emit, toolkits, explicit execution, structured results, approval gating, and history reconciliation.
 ---
 
 Tools are typed Effects your loop decides to run, not callbacks hidden inside
@@ -10,15 +10,12 @@ The executor renders schemas, validates arguments, runs the tool, and turns
 success or failure into structured `ToolResult`s. You own `run` and every
 policy decision around it.
 
-Two flavors, both dispatched by the same executor:
+A tool's `run` is an `Effect` that computes the model-facing `Output`. It also
+receives an `emit` function for streaming intermediate events to the consumer in
+real time (sub-agent reasoning, download progress). A plain tool just ignores
+`emit`; a streaming tool calls it. One shape, one `Tool.make`, one executor.
 
-- **Plain tools** — `run` returns an `Effect<Output>`. The vast majority.
-- **Streaming tools** — `run` returns a `Stream<Event>`. Events flow through
-  to the consumer in real time; `finalize(events)` reduces them into the
-  model-facing `Output`. For sub-agents, progress reporting, and any tool
-  whose internal reasoning the user should see live.
-
-## `Tool.make` — plain tools
+## `Tool.make` — defining a tool
 
 ```ts
 import { Effect, Schema } from "effect"
@@ -37,41 +34,47 @@ const getCurrentTime = Tool.make({
 })
 ```
 
-A plain `Tool` is `{ name, description, inputSchema, run, strict? }`.
-`run` returns an `Effect`; its requirements flow out via the executor.
+A `Tool` is `{ name, description, inputSchema, run, emitBufferSize?, strict? }`.
+`run` is `(input, emit) => Effect<Output, unknown, R>`; its requirements flow
+out via the executor. The plain tool above never calls `emit`.
 
 `strict` (default `true`) toggles the provider's strict-mode flag
 (OpenAI's `strict: true`, Gemini's equivalent). The framework never
 rewrites your schema; if the rendered JSON Schema is incompatible with
 strict mode, the provider errors and you drop `strict` or simplify it.
 
-## `Tool.streaming` — streaming tools
+## Streaming with `emit`
+
+To stream progress, call `emit(event)` inside `run`. Each event reaches the
+consumer as a `ToolEvent.Progress` in real time; `run` still returns the single
+`Output` the model sees. `emit` is `(event) => Effect<void>`, so it drops
+straight into `Stream.runForEach` / `Stream.runFoldEffect` — fold the events into
+the output in one pass (no buffering of the whole event log):
 
 ```ts
-import { Stream } from "effect"
+import { Effect, Stream } from "effect"
 
-const askSubagent = Tool.streaming({
+const askSubagent = Tool.make({
   name: "ask_subagent",
   description: "Ask a specialist sub-agent for help.",
   inputSchema: Tool.fromEffectSchema(SubAgentInput),
-  run: ({ question }) => runInner(question), // Stream<TurnEvent>
-  finalize: (events): SubAgentOutput => ({
-    answer: events
-      .filter((e) => e._tag === "TextDelta")
-      .map((e) => e.text)
-      .join(""),
-  }),
+  run: ({ question }, emit) =>
+    runInner(question).pipe(
+      // emit each inner event; fold the text deltas into the answer
+      Stream.runFoldEffect(
+        () => "",
+        (answer, event) =>
+          emit(event).pipe(Effect.as(event._tag === "TextDelta" ? answer + event.text : answer)),
+      ),
+      Effect.map((answer): SubAgentOutput => ({ answer })),
+    ),
   strict: true,
 })
 ```
 
-A `StreamingTool` is `{ name, description, inputSchema, run, finalize, strict? }`.
-`run` returns `Stream<Event, unknown, R>`; events flow as
-`ToolEvent.Progress`s. When the stream ends, `finalize(events)`
-reduces them into the `Output` the model sees next turn.
-
-Three canonical `finalize` patterns — text concat, result list, progress +
-terminal — sit side-by-side in the
+Set `emitBufferSize` on the tool to bound its emit queue (unbounded by default)
+when it emits faster than the consumer drains. More patterns — text concat,
+result list, progress + terminal — sit side-by-side in the
 [Streaming tool output recipe](/recipes/streaming-tool-output/).
 
 ## `inputSchema` — any Standard Schema
@@ -91,31 +94,36 @@ Two adapters cover the two cases:
 
 The same schema serves two purposes:
 
-- **Wire rendering** — `Tool.toDescriptors` calls
+- **Wire rendering** — descriptor rendering calls
   `inputSchema.~standard.jsonSchema.input({ target: "draft-2020-12" })`
-  to produce the JSON Schema each provider sends.
+  to produce the JSON Schema each provider sends (`Toolkit.descriptors`,
+  or the low-level `Tool.toDescriptors`).
 - **Argument validation** — when a `ToolCall` arrives, the executor
   parses arguments, validates them, and either passes the parsed value
-  to `run` or synthesizes a `Failure(execution_error)`.
+  to `run` or synthesizes a `Failure(input_validation_error)`.
 
 ## Wiring tools up
 
-Collect your tools — plain, streaming, or a mix — in a flat array typed
-`ReadonlyArray<Tool.AnyTool>`, then render them with `Tool.toDescriptors`:
+Group your tools into a `Toolkit` — a name-indexed record of tools — with
+`Toolkit.make(...tools)`, then render the descriptors with
+`Toolkit.descriptors`:
 
 ```ts
-import * as Tool from "@effect-uai/core/Tool"
+import * as Toolkit from "@effect-uai/core/Toolkit"
 
-const allTools: ReadonlyArray<Tool.AnyTool> = [
+const toolkit = Toolkit.make(
   getCurrentTime, // plain
   askSubagent, // streaming
-]
-const tools = Tool.toDescriptors(allTools)
+)
+const tools = Toolkit.descriptors(toolkit)
 ```
 
-Both forms produce the provider-agnostic `ToolDescriptor[]` the
-generic `LanguageModel` accepts. Providers map `inputSchema` to their
-own wire field (`parameters` for OpenAI, `input_schema` for Anthropic).
+`Toolkit.make` is variadic and indexes by `tool.name`; use
+`Toolkit.fromArray(tools)` for a runtime-built array (e.g. MCP). Descriptors are
+the provider-agnostic `ToolDescriptor[]` the generic `LanguageModel` accepts;
+providers map `inputSchema` to their own wire field (`parameters` for OpenAI,
+`input_schema` for Anthropic). Compose toolkits with native ops (concat the
+tools, re-`make`); resolve a name clash with `Tool.withName(tool, "new_name")`.
 
 ### Tools with service requirements
 
@@ -153,7 +161,7 @@ const getCoords = Tool.make({
     }),
 })
 
-const events = Toolkit.run([lookupWeather, getCoords], calls)
+const events = Toolkit.run(Toolkit.make(lookupWeather, getCoords), calls)
 //   ^? Stream<ToolEvent, never, WeatherApiKey | GeoApiKey>
 
 const Live = Layer.mergeAll(
@@ -172,23 +180,24 @@ the stream runs. Tools that need nothing keep `R = never`.
 ```ts
 import * as Toolkit from "@effect-uai/core/Toolkit"
 
-const events = Toolkit.run(allTools, calls)
+const events = Toolkit.run(toolkit, calls)
 //   ^? Stream<ToolEvent>
 ```
 
-`run` runs every requested tool concurrently and emits a
-`Stream<ToolEvent>` in real time. Three event variants:
+`run` takes a `Toolkit`, dispatches each call by name (O(1)), runs every
+requested tool concurrently, and emits a `Stream<ToolEvent>` in real time. Three
+event variants:
 
-- **`Progress`** — one per element from a streaming tool's `run`.
-  Plain tools don't emit any.
+- **`Progress`** — one per event a tool emits via `emit`. Tools that never
+  call `emit` produce none.
 - **`Output`** — one per call, terminal. Carries a structured `ToolResult`.
 - **`ApprovalRequested`** — emitted by `fromQueue` for gated calls.
 
 Graceful by default: hallucinated tool names become `Failure(unknown_tool)`
-for that call only; runtime errors and validation failures become
-`Failure(execution_error)`. Defects flow through the stream's failure
-channel. Concurrency defaults to `"unbounded"`; pass `{ concurrency: 4 }`
-to bound it.
+for that call only; input that fails the schema becomes
+`Failure(input_validation_error)` and runtime crashes become
+`Failure(execution_error)`. Concurrency defaults to `"unbounded"`; pass
+`{ concurrency: 4 }` to bound it.
 
 ## `ToolResult` — structured results
 
@@ -225,7 +234,7 @@ onTurnComplete<State, ToolEvent>((turn) =>
     // If the model did not ask for tools, this conversation is done.
     if (calls.length === 0) return stop()
 
-    return Toolkit.run(allTools, calls).pipe(
+    return Toolkit.run(toolkit, calls).pipe(
       Toolkit.continueWithResults((results) =>
         // Provider history needs both the function_call items and their outputs.
         Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
@@ -257,7 +266,7 @@ which splits calls into approved and rejected up front:
 ```ts
 const plan = fromMap(isSensitive, approvals)(calls)
 const events = Stream.merge(
-  Toolkit.run(allTools, plan.approved),
+  Toolkit.run(toolkit, plan.approved),
   Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
 )
 ```
@@ -272,7 +281,7 @@ const { approved, decisions, approvalRequests } = yield * fromQueue(isSensitive,
 
 const events = Stream.merge(
   approvalRequests,
-  Stream.merge(Toolkit.run(allTools, approved), decisions.pipe(Stream.flatMap(decisionToEvents))),
+  Stream.merge(Toolkit.run(toolkit, approved), decisions.pipe(Stream.flatMap(decisionToEvents))),
 )
 ```
 

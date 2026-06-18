@@ -56,10 +56,10 @@ interface State {
 
 export const conversation = (
   queue: Queue.Queue<string>,
-  tools: ReadonlyArray<Tool.AnyKindTool>,
+  toolkit: Toolkit.Toolkit,
   settle: Duration.Input = "150 millis",
 ) => {
-  const descriptors = Tool.toDescriptors(tools)
+  const descriptors = Toolkit.descriptors(toolkit)
 
   return pipe(
     { history: [] } as State,
@@ -70,18 +70,16 @@ export const conversation = (
 
         const lm = yield* LanguageModel
         return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
-          onTurnComplete<State, ToolEvent>((turn) =>
+          onTurnComplete((turn) =>
             Effect.sync(() => {
-              const calls = Turn.functionCalls(turn)
+              const calls = Turn.getToolCalls(turn)
 
               if (calls.length === 0) {
-                return nextAfter(Stream.empty, Turn.appendTurn({ history }, turn))
+                return next(Turn.appendToHistory({ history }, turn))
               }
 
-              return Toolkit.executeAll(tools, calls).pipe(
-                Toolkit.continueWith((results) =>
-                  Turn.appendTurn({ history }, turn, results.map(toFunctionCallOutput)),
-                ),
+              return Toolkit.run(toolkit, calls).pipe(
+                Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
               )
             }),
           ),
@@ -91,6 +89,9 @@ export const conversation = (
   )
 }
 ```
+
+The caller builds the toolkit with `Toolkit.make(...tools)` and provides any
+tool requirements via `Effect.provide` at the boundary.
 
 ## Debounced burst collection
 

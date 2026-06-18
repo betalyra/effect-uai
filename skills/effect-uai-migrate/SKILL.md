@@ -32,6 +32,100 @@ The full migration prose (with rationale and edge cases) lives in
 
 ---
 
+## 0.8 → 0.9
+
+A tool-layer refactor. Two changes: (1) a `Toolkit` is now a name-indexed record
+that `Toolkit.run` takes directly (not a bare array), and (2) plain and streaming
+tools are unified into one `Tool.make` whose `run(input, emit)` returns an Effect
+(`Tool.streaming` / `finalize` are gone). Mostly mechanical at call sites.
+
+### Required rewrites
+
+#### `Toolkit` is a record; build it with `Toolkit.make`
+
+`Toolkit.run`, and the descriptor rendering, now go through a `Toolkit` value
+instead of a flat tool array.
+
+| Before                              | After                               |
+| ----------------------------------- | ----------------------------------- |
+| `const tools = [a, b]`              | `const toolkit = Toolkit.make(a, b)` |
+| `Tool.toDescriptors(tools)`         | `Toolkit.descriptors(toolkit)`      |
+| `Toolkit.run(tools, calls)`         | `Toolkit.run(toolkit, calls)`       |
+
+`Toolkit.make(...tools)` is variadic and indexes by `tool.name`; use
+`Toolkit.fromArray(tools)` for a runtime-built array (e.g. MCP). `Tool.toDescriptors`
+still exists as the low-level renderer, but call sites read `Toolkit.descriptors`.
+Compose toolkits with native ops (concat the tools, re-`make`) and resolve a name
+clash with `Tool.withName(tool, "new_name")`. A function that takes a toolkit as a
+parameter types it as `Toolkit.Toolkit`.
+
+#### `run(input, emit)`; `Tool.streaming` / `finalize` removed
+
+Plain and streaming tools are one shape. `run` returns the model-facing `Output`
+as an Effect and calls `emit(event)` for progress (it composes with
+`Stream.runForEach` / `Stream.runFoldEffect`). There is no `finalize` — fold the
+events into the output inside `run`. `Tool.streaming`, `StreamingTool`,
+`isStreamingTool`, `AnyStreamingTool`, and `AnyPlainTool` are removed; `AnyTool`
+gains an `Event` type param (`Tool<Name, Input, Event, Output, R>`).
+
+```ts
+// Before
+Tool.streaming({
+  name, description, inputSchema,
+  run: (input) => sourceStream(input),
+  finalize: (events) => reduce(events),
+})
+
+// After
+Tool.make({
+  name, description, inputSchema,
+  run: (input, emit) =>
+    sourceStream(input).pipe(
+      Stream.runFoldEffect(() => init, (acc, event) => emit(event).pipe(Effect.as(step(acc, event)))),
+      Effect.map((acc) => reduce(acc)),
+    ),
+  // optional: emitBufferSize to bound the emit queue (unbounded by default)
+})
+```
+
+#### Canonical loop body
+
+```ts
+// Before
+const tools = [getTime, lookupWeather]
+const descriptors = Tool.toDescriptors(tools)
+// ...
+return Toolkit.run(tools, calls).pipe(
+  Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
+)
+
+// After
+const toolkit = Toolkit.make(getTime, lookupWeather)
+const descriptors = Toolkit.descriptors(toolkit)
+// ...
+return Toolkit.run(toolkit, calls).pipe(
+  Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
+)
+```
+
+### Behavior changes (no rewrite, but observable)
+
+- Input-schema validation failures now produce a distinct `ToolResult.Failure`
+  kind `"input_validation_error"` (was bucketed under `"execution_error"`), and
+  `Tool.decodeArgs` fails with the new `Tool.ToolValidationError` instead of a
+  generic `ToolError`. A control-flow tool used only for its descriptor + decode
+  (e.g. `escalate`) is unaffected.
+
+### After-migration checklist
+
+- [ ] No `Tool.streaming` / `finalize` / `isStreamingTool` / `AnyStreamingTool`
+- [ ] `Toolkit.run` and `Toolkit.descriptors` take a `Toolkit` from
+      `Toolkit.make(...)` / `Toolkit.fromArray(...)`, not a bare array
+- [ ] Tool-array parameters retyped as `Toolkit.Toolkit`
+- [ ] `pnpm typecheck` clean
+
+---
+
 ## 0.7 → 0.8
 
 **No rewrites needed.** 0.8 is purely additive: a new `WebSearch`

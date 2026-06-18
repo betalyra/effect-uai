@@ -79,7 +79,6 @@ always the same: forward events to the consumer, wait for the terminal
 import { Effect } from "effect"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toToolCallOutput } from "@effect-uai/core/ToolResult"
-import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -95,7 +94,7 @@ pipe(
         .streamTurn({
           history: state.history,
           model: "gpt-5.4-mini",
-          tools: Tool.toDescriptors(allTools),
+          tools: Toolkit.descriptors(toolkit),
         })
         .pipe(
           onTurnComplete<State, ToolEvent>((turn) =>
@@ -105,7 +104,7 @@ pipe(
               // No tool calls means there is nothing to feed back.
               if (calls.length === 0) return stop()
 
-              return Toolkit.run(allTools, calls).pipe(
+              return Toolkit.run(toolkit, calls).pipe(
                 Toolkit.continueWithResults((results) =>
                   // Build the next state only after every tool call has an output.
                   Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),

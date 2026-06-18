@@ -36,10 +36,8 @@ const initial: State = {
   history: [Items.userText("What time is it in Lisbon and Tokyo right now?")],
 }
 
-const tools: ReadonlyArray<Tool.AnyTool> = [
-  /* getCurrentTime, ... */
-]
-const descriptors = Tool.toDescriptors(tools)
+const toolkit = Toolkit.make(/* getCurrentTime, ... */)
+const descriptors = Toolkit.descriptors(toolkit)
 
 export const conversation = pipe(
   initial,
@@ -62,7 +60,7 @@ export const conversation = pipe(
               if (calls.length === 0) return stop()
 
               // Tool calls -> execute, append outputs, loop again.
-              return Toolkit.run(tools, calls).pipe(
+              return Toolkit.run(toolkit, calls).pipe(
                 Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
               )
             }),

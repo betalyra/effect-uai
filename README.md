@@ -57,13 +57,13 @@ export const conversation = loop(initial, (state) =>
   Effect.gen(function* () {
     const oai = yield* Responses // swap for Anthropic / Gemini any turn
     return oai
-      .streamTurn({ history: state.history, model, tools }) // stream text, reasoning, tool events
+      .streamTurn({ history: state.history, model, tools: Toolkit.descriptors(toolkit) }) // stream text, reasoning, tool events
       .pipe(
         onTurnComplete((turn) =>
           Effect.sync(() => {
             const calls = Turn.getToolCalls(turn) // approve, deny, audit, batch (it's your code)
             if (calls.length === 0) return stop() // stop on a final answer, a budget, your call
-            return Toolkit.run(tools, calls).pipe(
+            return Toolkit.run(toolkit, calls).pipe(
               // run typed Effect tools
               Toolkit.continueWithResults(
                 Toolkit.appendToolResults(state, turn), // fold results back into your state
@@ -139,7 +139,7 @@ Recommended reading order:
 2. [Basic usage](https://effect-uai.betalyra.com/recipes/basic-usage/) - the core agent harness: state, stream, tools, continuation.
 3. [The loop primitive](https://effect-uai.betalyra.com/concepts/loop/) - what `loop` is, its shape, and `streamUntilComplete`.
 4. [Items and turns](https://effect-uai.betalyra.com/concepts/items-and-turns/) - the conversation as a flat list, the assembled turn, the event stream.
-5. [Tools and toolkits](https://effect-uai.betalyra.com/concepts/tools/) - `Tool.make`, `Tool.streaming`, approval planners, `ToolEvent`.
+5. [Tools and toolkits](https://effect-uai.betalyra.com/concepts/tools/) - `Tool.make` (with progress via `emit`), `Toolkit.make`, approval planners, `ToolEvent`.
 
 Then dip into recipes for whatever pattern you need.
 

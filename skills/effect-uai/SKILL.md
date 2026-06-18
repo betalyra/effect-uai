@@ -25,9 +25,10 @@ Use this mental model when writing or recommending code:
    forwards values, then ends with `Loop.next(state)` to continue or
    `Loop.stop()` / `Loop.stop(state)` to exit.
 4. **Tools are typed Effects.** A `Tool` declares an input schema and a
-   `run` returning an Effect. `Toolkit.run(tools, calls)` returns
-   a `Stream<ToolEvent>` so streaming tools can emit progress while
-   structured outputs go back to the model.
+   `run(input, emit)` returning an Effect; `emit` streams optional progress
+   events. Tools are grouped into a name-indexed `Toolkit`, and
+   `Toolkit.run(toolkit, calls)` returns a `Stream<ToolEvent>` so tools can
+   emit progress while their structured outputs go back to the model.
 5. **Providers are Layers.** `LanguageModel` is a single service; each
    provider package (`@effect-uai/responses`, `@effect-uai/anthropic`,
    `@effect-uai/google`) ships a `layer({ apiKey })` that implements it.
@@ -88,8 +89,8 @@ naming sweep), reach for `effect-uai-migrate`.
 | `@effect-uai/core/SpeechSynthesizer`    | `SpeechSynthesizer` service tag, `synthesize`, `streamSynthesis`, `streamSynthesisFrom` for finished-text and incremental-text TTS. New in 0.6: `synthesizeDialogue`, `streamSynthesizeDialogue` (gated by the `MultiSpeakerTts` capability marker); `pronunciations` on `CommonSynthesizeRequest`.                         |
 | `@effect-uai/core/MusicGenerator`       | `MusicGenerator` service tag, `generate`, `streamGeneration`, `streamGenerationFrom` for prompt-to-music workflows.                                                                                                                                                                                                         |
 | `@effect-uai/core/Loop`                 | `loop`, `loopOver`, `loopWithState`, `value(a)`, `next(state)`, `stop()` / `stop(state)`, `onTurnComplete`. `Step<A, S>` is the event type. The v0.5 `nextAfter` / `stopAfter` / `stopWithAfter` / `stopEvent` / `nextAfterFold` helpers were removed in 0.6; compose with `Stream.concat` instead.                         |
-| `@effect-uai/core/Tool`                 | `Tool.make`, `Tool.streaming`, `Tool.fromEffectSchema`, `Tool.fromStandardSchema`, `Tool.toDescriptors`, `Tool.AnyTool` (the v0.5 `AnyKindTool` was renamed).                                                                                                                                                               |
-| `@effect-uai/core/Toolkit`              | `Toolkit.run(tools, calls)`, `Toolkit.continueWithResults(build)`, `Toolkit.appendToolResults(state, turn)`, `Toolkit.collectResults(stream)`. The v0.5 `Toolkit.make(...)` wrapper is gone, pass arrays directly to `Tool.toDescriptors([...])` and `Toolkit.run`.                                                         |
+| `@effect-uai/core/Tool`                 | `Tool.make` (unified plain + streaming: `run(input, emit)` returns an Effect, optional `emitBufferSize`), `Tool.fromEffectSchema`, `Tool.fromStandardSchema`, `Tool.toDescriptors`, `Tool.withName`, `Tool.AnyTool`, `Tool.ToolValidationError`. `Tool.streaming` / `finalize` were removed; emit progress from `run` instead.                                                       |
+| `@effect-uai/core/Toolkit`              | A `Toolkit` is a name-indexed record of tools. `Toolkit.make(...tools)` / `Toolkit.fromArray(tools)` index by name; `Toolkit.descriptors(toolkit)` renders the provider descriptors; `Toolkit.run(toolkit, calls)` executes. Plus `Toolkit.continueWithResults(build)`, `Toolkit.appendToolResults(state, turn)`, `Toolkit.collectResults(stream)`. Compose toolkits with native ops (concat tools, then `make`).                                             |
 | `@effect-uai/core/ToolResult`           | `ToolResult` (`Ok` / `Failure`), `ToolResult.isOk`, `ToolResult.isFailure`, `toToolCallOutput`, `failed`, `denied`, `cancelled`, `executionError`. (Renamed from `@effect-uai/core/Outcome` in 0.6.)                                                                                                                        |
 | `@effect-uai/core/ToolEvent`            | `ToolEvent` union (`ApprovalRequested` / `Progress` / `Output`), `isOutput`, `isProgress`, `isApprovalRequested`. (`Intermediate` was renamed to `Progress` in 0.6.)                                                                                                                                                        |
 | `@effect-uai/core/Approval`             | `Approval.fromMap`, `Approval.fromQueue`, `ApprovalDecision` (`Approved` / `Rejected`) for human-in-the-loop tool approval. The queue helper surfaces pending requests as `approvalRequests`. (Renamed from `@effect-uai/core/Resolvers` in 0.6; `fromApprovalMap` / `fromVerdictQueue` / `ToolCallDecision` / `announce`.) |
@@ -182,10 +183,8 @@ const initial: State = {
   history: [Items.userText("What time is it in Lisbon?")],
 }
 
-const allTools: ReadonlyArray<Tool.AnyTool> = [
-  /* getCurrentTime, ... */
-]
-const tools = Tool.toDescriptors(allTools)
+const toolkit = Toolkit.make(/* getCurrentTime, ... */)
+const tools = Toolkit.descriptors(toolkit)
 
 export const conversation = pipe(
   initial,
@@ -201,7 +200,7 @@ export const conversation = pipe(
             if (calls.length === 0) return stop()
 
             // Tool calls: execute, append outputs, loop again.
-            return Toolkit.run(allTools, calls).pipe(
+            return Toolkit.run(toolkit, calls).pipe(
               Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
             )
           }),

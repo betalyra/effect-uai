@@ -42,6 +42,8 @@ import * as Turn from "@effect-uai/core/Turn"
 const SENSITIVE = new Set(["send_email", "delete_user"])
 const isSensitive = (call: Items.ToolCall) => SENSITIVE.has(call.name)
 
+// const toolkit = Toolkit.make(searchEmails, sendEmail, deleteUser)
+
 export const httpConversation = (
   approvals: ReadonlyMap<string, Approval.ApprovalMapEntry>,
   state: { history: ReadonlyArray<Items.HistoryItem> },
@@ -51,7 +53,13 @@ export const httpConversation = (
     loop((current) =>
       Effect.gen(function* () {
         const oai = yield* Responses
-        return oai.streamTurn({ history: current.history, model: "gpt-5.4-mini", tools }).pipe(
+        return oai
+          .streamTurn({
+            history: current.history,
+            model: "gpt-5.4-mini",
+            tools: Toolkit.descriptors(toolkit),
+          })
+          .pipe(
           onTurnComplete<typeof state, ToolEvent>((turn) =>
             Effect.sync(() => {
               const calls = Turn.getToolCalls(turn)
@@ -59,7 +67,7 @@ export const httpConversation = (
 
               const plan = Approval.fromMap(isSensitive, approvals)(calls)
               return Stream.merge(
-                Toolkit.run(allTools, plan.approved),
+                Toolkit.run(toolkit, plan.approved),
                 Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
               ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
             }),
@@ -89,11 +97,11 @@ const events = Stream.unwrap(
     return Stream.merge(
       approvalRequests, // ApprovalRequested events drive the UI
       Stream.merge(
-        Toolkit.run(allTools, approved),
+        Toolkit.run(toolkit, approved),
         decisions.pipe(
           Stream.flatMap((d) =>
             d._tag === "Approved"
-              ? Toolkit.run(allTools, [d.call])
+              ? Toolkit.run(toolkit, [d.call])
               : Stream.succeed(ToolEvent.Output({ result: d.result })),
           ),
         ),

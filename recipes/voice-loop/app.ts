@@ -274,9 +274,10 @@ export const main = Effect.gen(function* () {
   const path = yield* Path.Path
   const fs = yield* FileSystem.FileSystem
   const cfg = configFor(provider)
-  const minLevel = (yield* Config.string("PIPELINE_DEBUG").pipe(Config.withDefault("0"))) === "1"
-    ? "Debug"
-    : "Info"
+  const minLevel =
+    (yield* Config.string("PIPELINE_DEBUG").pipe(Config.withDefault("0"))) === "1"
+      ? "Debug"
+      : "Info"
 
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   // All client code is TypeScript, bundled on demand (no prebuilt JS on disk).

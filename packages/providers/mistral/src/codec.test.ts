@@ -97,10 +97,18 @@ describe("streaming accumulation", () => {
     const { acc, tags } = runChunks([
       {
         choices: [
-          { delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "get_weather", arguments: '{"ci' } }] } },
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: "c1", function: { name: "get_weather", arguments: '{"ci' } },
+              ],
+            },
+          },
         ],
       },
-      { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'ty":"NYC"}' } }] } }] },
+      {
+        choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'ty":"NYC"}' } }] } }],
+      },
       { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
     ])
     expect(tags).toEqual(["ToolCallStart", "ToolCallArgsDelta", "ToolCallArgsDelta"])

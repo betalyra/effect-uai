@@ -1,5 +1,11 @@
 import { Array as Arr, Encoding, Match, Option, Schema } from "effect"
-import type { ContentBlock, HistoryItem, InputImage, StopReason, Usage } from "@effect-uai/core/Items"
+import type {
+  ContentBlock,
+  HistoryItem,
+  InputImage,
+  StopReason,
+  Usage,
+} from "@effect-uai/core/Items"
 import type { StructuredFormat } from "@effect-uai/core/StructuredFormat"
 import type { ToolDescriptor } from "@effect-uai/core/Tool"
 import type { Turn } from "@effect-uai/core/Turn"
@@ -92,9 +98,8 @@ const foldItem = (acc: ReadonlyArray<WireMessage>, item: HistoryItem): ReadonlyA
   )
 
 /** Convert our `HistoryItem[]` history into Mistral chat `messages`. */
-export const itemsToMessages = (
-  items: ReadonlyArray<HistoryItem>,
-): ReadonlyArray<WireMessage> => Arr.reduce(items, [] as ReadonlyArray<WireMessage>, foldItem)
+export const itemsToMessages = (items: ReadonlyArray<HistoryItem>): ReadonlyArray<WireMessage> =>
+  Arr.reduce(items, [] as ReadonlyArray<WireMessage>, foldItem)
 
 // ---------------------------------------------------------------------------
 // tools / tool_choice / response_format
@@ -117,7 +122,11 @@ export const toolsWire = (
       )
     : Option.none()
 
-type ToolChoice = "auto" | "required" | "none" | { readonly type: "function"; readonly name: string }
+type ToolChoice =
+  | "auto"
+  | "required"
+  | "none"
+  | { readonly type: "function"; readonly name: string }
 
 // Mistral uses "any" for forced tool use (OpenAI's "required").
 export const toolChoiceWire = (choice: ToolChoice): string | Record<string, unknown> =>
@@ -231,12 +240,7 @@ const stopReasonOf = (acc: Accumulator): StopReason =>
     onSome: reasonToStop,
   })
 
-const withTool = (
-  acc: Accumulator,
-  index: number,
-  tool: ToolAcc,
-  isNew: boolean,
-): Accumulator => ({
+const withTool = (acc: Accumulator, index: number, tool: ToolAcc, isNew: boolean): Accumulator => ({
   ...acc,
   tools: new Map(acc.tools).set(index, tool),
   order: isNew ? [...acc.order, index] : acc.order,
@@ -260,7 +264,9 @@ const applyToolCall = (acc: Accumulator, tc: typeof WireToolCall.Type, position:
       withTool(acc, index, { call_id, name, arguments: argsDelta }, true),
       [
         TurnEvent.ToolCallStart({ call_id, name }),
-        ...(argsDelta.length > 0 ? [TurnEvent.ToolCallArgsDelta({ call_id, delta: argsDelta })] : []),
+        ...(argsDelta.length > 0
+          ? [TurnEvent.ToolCallArgsDelta({ call_id, delta: argsDelta })]
+          : []),
       ],
     ]
   }
@@ -280,10 +286,8 @@ const chain = (step: Step, next: (acc: Accumulator) => Step): Step => {
 
 const applyChoice = (step: Step, choice: typeof WireChoice.Type): Step => {
   const withContent = chain(step, (acc) => applyContent(acc, choice.delta))
-  const withTools = Arr.reduce(
-    choice.delta?.tool_calls ?? [],
-    withContent,
-    (s: Step, tc, i) => chain(s, (acc) => applyToolCall(acc, tc, i)),
+  const withTools = Arr.reduce(choice.delta?.tool_calls ?? [], withContent, (s: Step, tc, i) =>
+    chain(s, (acc) => applyToolCall(acc, tc, i)),
   )
   const reason = choice.finish_reason
   return reason !== undefined && reason !== null

@@ -1,18 +1,19 @@
 ---
 title: Language model
-description: One generic service tag, three providers, and the seam between portable and provider-specific code.
+description: One generic service tag, multiple providers, and the seam between portable and provider-specific code.
 ---
 
 Provider choice should be wiring, not program structure.
 
 `LanguageModel` is the generic provider tag. Every provider's `layer`
 registers itself under both its own typed tag (`Responses`, `Anthropic`,
-`Gemini`) _and_ `LanguageModel`. Code that yields `LanguageModel` is
-portable across providers; code that yields the typed tag gets that
-provider's extended options.
+`Gemini`, `Mistral`) _and_ `LanguageModel`. Code that yields
+`LanguageModel` is portable across providers; code that yields the typed
+tag gets that provider's extended options.
 
 This is the seam: write the agent harness once, then decide at the layer
-boundary whether it runs on OpenAI, Anthropic, Gemini, or a test provider.
+boundary whether it runs on OpenAI, Anthropic, Gemini, Mistral, or a test
+provider.
 
 ## The shape
 

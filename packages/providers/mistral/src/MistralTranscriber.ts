@@ -58,7 +58,9 @@ export type Config = {
 // upload filename).
 // ---------------------------------------------------------------------------
 
-type Part = readonly [name: string, value: string] | readonly [name: string, file: Blob, filename: string]
+type Part =
+  | readonly [name: string, value: string]
+  | readonly [name: string, file: Blob, filename: string]
 
 const when = (condition: boolean, part: Part): ReadonlyArray<Part> => (condition ? [part] : [])
 
@@ -77,13 +79,16 @@ const buildFormData = (
       provider: "mistral",
       capability: "prompt",
       field: "prompt",
-      reason: "Voxtral transcription has no prose prompt field; use `biasingTerms` for vocabulary hints.",
+      reason:
+        "Voxtral transcription has no prose prompt field; use `biasingTerms` for vocabulary hints.",
     })
     // URL audio rides the `file_url` field; inline bytes/base64 upload directly.
     const filePart: Part = isAudioUrl(request.audio)
       ? ["file_url", request.audio.url]
       : yield* audioToBlob(request.audio).pipe(
-          Effect.map((blob): Part => ["file", blob, request.fileName ?? defaultFileName(blob.type)]),
+          Effect.map(
+            (blob): Part => ["file", blob, request.fileName ?? defaultFileName(blob.type)],
+          ),
         )
     const parts: ReadonlyArray<Part> = [
       filePart,

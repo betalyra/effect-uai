@@ -1,4 +1,14 @@
-import { Array as Arr, Context, Effect, Encoding, Layer, Redacted, Result, Schema, Stream } from "effect"
+import {
+  Array as Arr,
+  Context,
+  Effect,
+  Encoding,
+  Layer,
+  Redacted,
+  Result,
+  Schema,
+  Stream,
+} from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
@@ -133,7 +143,9 @@ const decodeAudioData = (b64: string): Effect.Effect<Uint8Array, AiError.AiError
   Result.match(Encoding.decodeBase64(b64), {
     onSuccess: Effect.succeed,
     onFailure: (cause) =>
-      Effect.fail(new AiError.InvalidRequest({ provider: "mistral", param: "audio_data", raw: cause })),
+      Effect.fail(
+        new AiError.InvalidRequest({ provider: "mistral", param: "audio_data", raw: cause }),
+      ),
   })
 
 const synthesizeImpl =
@@ -149,13 +161,19 @@ const synthesizeImpl =
         .pipe(Effect.mapError(transportFailure))
       if (response.status >= 400) {
         const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-        yield* Effect.logWarning("[voxtral-tts] request failed", { status: response.status, body: text })
+        yield* Effect.logWarning("[voxtral-tts] request failed", {
+          status: response.status,
+          body: text,
+        })
         return yield* Effect.fail(httpStatusError(response.status, text))
       }
       const json = yield* response.json.pipe(Effect.mapError(transportFailure))
       const decoded = yield* decodeResponse(json).pipe(Effect.mapError(transportFailure))
       const bytes = yield* decodeAudioData(decoded.audio_data)
-      yield* Effect.logDebug("[voxtral-tts] ok", { bytes: bytes.byteLength, voice: request.voiceId })
+      yield* Effect.logDebug("[voxtral-tts] ok", {
+        bytes: bytes.byteLength,
+        voice: request.voiceId,
+      })
       return { format, bytes }
     })
 
@@ -219,7 +237,11 @@ export const make = (
     streamSynthesisFrom: (textIn, request) =>
       Stream.unwrap(
         Effect.map(
-          Stream.runFold(textIn, () => "", (acc, s) => acc + s),
+          Stream.runFold(
+            textIn,
+            () => "",
+            (acc, s) => acc + s,
+          ),
           (text) =>
             streamSynthesisImpl(cfg)({ ...request, text } as MistralSynthesizeRequest).pipe(
               Stream.provideService(HttpClient.HttpClient, client),

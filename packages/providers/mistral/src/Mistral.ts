@@ -125,7 +125,8 @@ const buildStream = (cfg: Config) => {
           .execute(httpRequest)
           .pipe(
             Effect.mapError(
-              (cause): AiError.AiError => new AiError.Unavailable({ provider: "mistral", raw: cause }),
+              (cause): AiError.AiError =>
+                new AiError.Unavailable({ provider: "mistral", raw: cause }),
             ),
           )
         if (response.status >= 400) {
@@ -135,11 +136,14 @@ const buildStream = (cfg: Config) => {
 
         return response.stream.pipe(
           Stream.mapError(
-            (cause): AiError.AiError => new AiError.Unavailable({ provider: "mistral", raw: cause }),
+            (cause): AiError.AiError =>
+              new AiError.Unavailable({ provider: "mistral", raw: cause }),
           ),
           SSE.fromBytes,
           Stream.mapEffect((ev) => decodeEvent(ev.data)),
-          Stream.filterMap((chunk) => (Option.isSome(chunk) ? Result.succeed(chunk.value) : Result.failVoid)),
+          Stream.filterMap((chunk) =>
+            Option.isSome(chunk) ? Result.succeed(chunk.value) : Result.failVoid,
+          ),
           Stream.mapAccum((): Accumulator => emptyAccumulator, applyChunk, {
             onHalt: (acc) => [TurnEvent.TurnComplete({ turn: accumulatorToTurn(acc) })],
           }),

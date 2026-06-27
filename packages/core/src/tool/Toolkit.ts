@@ -1,12 +1,38 @@
-import { Array as Arr, Cause, Effect, Fiber, Function, Queue, Ref, Schema, Stream } from "effect"
+import {
+  Array as Arr,
+  Cause,
+  Data,
+  Effect,
+  Fiber,
+  Function,
+  Match,
+  Option,
+  Queue,
+  Record,
+  Ref,
+  Schema,
+  Stream,
+} from "effect"
 import * as Loop from "../loop/Loop.js"
 import type { HistoryItem, ToolCall } from "../domain/Items.js"
 import { appendToHistory, type Turn } from "../domain/Turn.js"
-import { type AnyTool, type ToolDescriptor, toDescriptors } from "./Tool.js"
+import {
+  type AnyLocalTool,
+  type AnyTool,
+  type Emit,
+  type InteractionTool,
+  type ProviderTool,
+  type SignalTool,
+  type Tool,
+  type ToolDescriptor,
+  type ToolR,
+  toDescriptors,
+} from "./Tool.js"
 import {
   ToolResult,
   executionError,
   failed,
+  nonLocalTool,
   toToolCallOutput,
   validationError,
 } from "./ToolResult.js"
@@ -14,10 +40,12 @@ import { ToolEvent } from "./ToolEvent.js"
 import { isOutput } from "./ToolEvent.js"
 
 // ---------------------------------------------------------------------------
-// Toolkit: a name-indexed record of tools — "what the model sees". Composing
-// reusable toolkits is native array/object work (concat / spread / map);
-// `make`/`fromArray` are just the indexer. Descriptors are derived, not stored.
-// Duplicate names resolve last-wins; resolve clashes with `Tool.withName`.
+// Toolkit: a name-indexed record of tools — "what the model sees". The record
+// gives O(1) dispatch and within-toolkit name-uniqueness for free; descriptors
+// are derived, not stored. Build a static one with `make` (compile-time
+// duplicate-name check + first-party name validation), a dynamic one with
+// `fromArray` (trusted single source, last-wins), and combine independent ones
+// with `compose` (the application boundary where cross-source names can clash).
 // ---------------------------------------------------------------------------
 
 export type ToolMap = Record<string, AnyTool>
@@ -27,13 +55,28 @@ export type Toolkit<Tools extends ToolMap = ToolMap> = Tools
 const indexByName = (tools: ReadonlyArray<AnyTool>): ToolMap =>
   Object.fromEntries(tools.map((tool) => [tool.name, tool]))
 
-/** Index tools by their literal `name`. */
-export const make = <const Tools extends ReadonlyArray<AnyTool>>(
-  ...tools: Tools
-): Toolkit<{ [T in Tools[number] as T["name"]]: T }> =>
-  indexByName(tools) as Toolkit<{ [T in Tools[number] as T["name"]]: T }>
+/**
+ * Index literal tools by their `name`. Duplicate names are a compile error
+ * (`UniqueTools`); first-party (local/signal/interaction) names are validated
+ * provider-safe (throws `InvalidToolName`). Provider-defined names are trusted.
+ */
+const buildStatic = <Tools extends ReadonlyArray<AnyTool>>(
+  tools: Tools,
+): Toolkit<{ [T in Tools[number] as T["name"]]: T }> => {
+  validateFirstPartyNames(tools)
+  return indexByName(tools) as Toolkit<{ [T in Tools[number] as T["name"]]: T }>
+}
 
-/** Same as `make`, from a dynamically-built array (MCP tools, etc.). */
+export const make = <const Tools extends ReadonlyArray<AnyTool>>(
+  ...tools: UniqueTools<Tools>
+): Toolkit<{ [T in Tools[number] as T["name"]]: T }> => buildStatic(tools as unknown as Tools)
+
+/**
+ * Build a toolkit from a dynamically-sourced array (MCP server, plugin). Names
+ * are not validated (MCP legitimately uses dots / >64 chars — sanitize at the
+ * provider adapter); same-named tools resolve last-wins. Cross-source clashes
+ * are caught by `compose`.
+ */
 export const fromArray = (tools: ReadonlyArray<AnyTool>): Toolkit => indexByName(tools)
 
 /** Render the provider-facing descriptors for a toolkit on demand. */
@@ -49,11 +92,256 @@ export const descriptors = (toolkit: Toolkit): ReadonlyArray<ToolDescriptor> =>
  * statically known) instead of `any`, which would otherwise poison the
  * resulting stream's `R`. Concrete toolkits from `make` keep their precise R.
  */
-export type ToolkitR<T extends Toolkit> = ToolMap extends T
-  ? never
-  : T[keyof T] extends AnyTool<infer R>
-    ? R
+export type ToolkitR<T extends Toolkit> = ToolMap extends T ? never : ToolR<T[keyof T]>
+
+// ---------------------------------------------------------------------------
+// Uniqueness & composition. `make` rejects duplicate literal names at compile
+// time; `compose` rejects cross-source collisions — at compile time when the
+// names are statically known, and at runtime (`DuplicateToolName`) for dynamic
+// sources whose keys are only `string`. No silent last-wins overwrite, no late
+// provider 400.
+// ---------------------------------------------------------------------------
+
+// --- compile-time duplicate detection --------------------------------------
+
+type DuplicateName<
+  Tools extends ReadonlyArray<AnyTool>,
+  Seen extends string = never,
+> = Tools extends readonly [
+  infer Head extends AnyTool,
+  ...infer Tail extends ReadonlyArray<AnyTool>,
+]
+  ? Head["name"] extends Seen
+    ? Head["name"]
+    : DuplicateName<Tail, Seen | Head["name"]>
+  : never
+
+type DuplicateNameError<Name extends string> = {
+  readonly __error: `Duplicate tool name: ${Name}`
+}
+
+export type NoDuplicateNames<Tools extends ReadonlyArray<AnyTool>> = [
+  DuplicateName<Tools>,
+] extends [never]
+  ? unknown
+  : DuplicateNameError<DuplicateName<Tools>>
+
+/** `Tools` constrained so a repeated literal name is a compile error in `make`. */
+export type UniqueTools<Tools extends ReadonlyArray<AnyTool>> = Tools & NoDuplicateNames<Tools>
+
+// Cross-toolkit literal-key collision, skipping wide (`string`-keyed, dynamic)
+// toolkits so the compile-time check never false-positives on `fromArray`.
+type ComposeDuplicateKey<
+  Kits extends ReadonlyArray<Toolkit>,
+  Seen extends string = never,
+> = Kits extends readonly [infer Head extends Toolkit, ...infer Tail extends ReadonlyArray<Toolkit>]
+  ? string extends keyof Head
+    ? ComposeDuplicateKey<Tail, Seen>
+    : Extract<keyof Head & string, Seen> extends never
+      ? ComposeDuplicateKey<Tail, Seen | (keyof Head & string)>
+      : Extract<keyof Head & string, Seen>
+  : never
+
+type NoDuplicateComposedKeys<Kits extends ReadonlyArray<Toolkit>> = [
+  ComposeDuplicateKey<Kits>,
+] extends [never]
+  ? unknown
+  : DuplicateNameError<ComposeDuplicateKey<Kits>>
+
+type UnionToIntersection<U> = (U extends unknown ? (x: U) => void : never) extends (
+  x: infer I,
+) => void
+  ? I
+  : never
+
+type Composed<Kits extends ReadonlyArray<Toolkit>> =
+  UnionToIntersection<Kits[number]> extends infer M ? (M extends ToolMap ? M : ToolMap) : ToolMap
+
+// --- name-validity / uniqueness errors -------------------------------------
+
+/**
+ * A first-party tool or namespace name is not provider-safe. The default
+ * validator is the cross-provider intersection `^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$`
+ * (leading letter/underscore, no dots, ≤64), so a name we author never 400s on
+ * any provider. Thrown (a programmer error) by `make` / `makeNamespaced` /
+ * `namespace`; dynamic (`fromArray`) and provider-defined names are not checked.
+ */
+export class InvalidToolName extends Data.TaggedError("InvalidToolName")<{
+  readonly name: string
+  readonly reason: string
+}> {}
+
+/**
+ * Two composed toolkits resolved to the same final name. Carries the colliding
+ * `sources` (the positions of the clashing toolkits) so the error says *which*
+ * inputs collided. Raised at runtime by `compose` for dynamic sources; static
+ * collisions are caught earlier at compile time.
+ */
+export class DuplicateToolName extends Data.TaggedError("DuplicateToolName")<{
+  readonly name: string
+  readonly sources: ReadonlyArray<string>
+}> {}
+
+const TOOL_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$/
+
+const isProviderSafe = (name: string): boolean => TOOL_NAME_PATTERN.test(name)
+
+const ensureValidName = (name: string): void => {
+  if (!isProviderSafe(name)) {
+    throw new InvalidToolName({
+      name,
+      reason:
+        "Tool names must start with a letter or underscore and contain only letters, digits, underscores, and hyphens (≤64 chars)",
+    })
+  }
+}
+
+const ensureValidNamespace = (ns: string): void => {
+  ensureValidName(ns)
+  if (ns.includes("__")) {
+    throw new InvalidToolName({
+      name: ns,
+      reason: "Tool namespaces must not contain the reserved separator '__'",
+    })
+  }
+}
+
+/** Validate names we author; skip provider-defined names (the provider owns them). */
+const validateFirstPartyNames = (tools: ReadonlyArray<AnyTool>): void =>
+  Arr.findFirst(tools, (tool) => tool._tag !== "ProviderTool" && !isProviderSafe(tool.name)).pipe(
+    Option.map((tool) => ensureValidName(tool.name)),
+    Option.getOrElse(() => undefined),
+  )
+
+// --- namespacing -----------------------------------------------------------
+
+type PrefixName<Prefix extends string, Name extends string> = `${Prefix}__${Name}`
+
+type PrefixTool<Prefix extends string, T extends AnyTool> =
+  T extends Tool<infer N, infer I, infer Ev, infer O, infer R>
+    ? Tool<PrefixName<Prefix, N>, I, Ev, O, R>
+    : T extends ProviderTool<infer N, infer I, infer P, infer C>
+      ? ProviderTool<PrefixName<Prefix, N>, I, P, C>
+      : T extends SignalTool<infer N, infer I>
+        ? SignalTool<PrefixName<Prefix, N>, I>
+        : T extends InteractionTool<infer N, infer I>
+          ? InteractionTool<PrefixName<Prefix, N>, I>
+          : T
+
+type Namespaced<Prefix extends string, T extends ToolMap> = {
+  readonly [K in keyof T & string as PrefixName<Prefix, K>]: T[K] extends AnyTool
+    ? PrefixTool<Prefix, T[K]>
     : never
+}
+
+/**
+ * Prefix every tool name with `<namespace>__`, returning a new toolkit. Use it
+ * to keep generic names (`search`) from two sources distinct before `compose`.
+ * Throws `InvalidToolName` if the namespace isn't provider-safe or contains the
+ * reserved `__`.
+ */
+export const namespace = <const Prefix extends string, const T extends ToolMap>(
+  prefix: Prefix,
+  toolkit: Toolkit<T>,
+): Toolkit<Namespaced<Prefix, T>> => {
+  ensureValidNamespace(prefix)
+  const renamed = Arr.map(Record.values(toolkit), (tool) => ({
+    ...tool,
+    name: `${prefix}__${tool.name}`,
+  }))
+  return indexByName(renamed) as Toolkit<Namespaced<Prefix, T>>
+}
+
+/** `namespace(prefix, make(...tools))` in one step, for static namespaced tools. */
+export const makeNamespaced = <
+  const Prefix extends string,
+  const Tools extends ReadonlyArray<AnyTool>,
+>(
+  prefix: Prefix,
+  ...tools: UniqueTools<Tools>
+): Toolkit<Namespaced<Prefix, { [T in Tools[number] as T["name"]]: T }>> =>
+  namespace(prefix, buildStatic(tools as unknown as Tools))
+
+// --- composition (the application boundary) --------------------------------
+
+/**
+ * Combine independently-built toolkits into one. This is where names from
+ * separate sources can collide, so it is the one effectful constructor: a
+ * duplicate final name fails with `DuplicateToolName` (naming the colliding
+ * input positions) instead of silently overwriting or 400-ing later at the
+ * provider. Statically-known collisions are additionally a compile error.
+ */
+export const compose = <const Kits extends ReadonlyArray<Toolkit>>(
+  ...toolkits: Kits & NoDuplicateComposedKeys<Kits>
+): Effect.Effect<Toolkit<Composed<Kits>>, DuplicateToolName> =>
+  Effect.gen(function* () {
+    const kits = toolkits as unknown as ReadonlyArray<Toolkit>
+    const labelled = Arr.flatMap(kits, (kit, i) =>
+      Arr.map(Record.keys(kit), (name) => ({ name, source: `toolkit-${i}` })),
+    )
+    const collision = Arr.findFirst(
+      Record.toEntries(Arr.groupBy(labelled, (entry) => entry.name)),
+      ([, group]) => group.length > 1,
+    )
+    if (Option.isSome(collision)) {
+      const [name, group] = collision.value
+      return yield* new DuplicateToolName({ name, sources: Arr.map(group, (e) => e.source) })
+    }
+    return Arr.reduce(kits, {} as ToolMap, (acc, kit) => ({ ...acc, ...kit })) as Toolkit<
+      Composed<Kits>
+    >
+  })
+
+// ---------------------------------------------------------------------------
+// Middleware: a `Toolkit -> Toolkit` transform applied up front, then the
+// wrapped toolkit is run. A middleware transforms one local tool's `run` given
+// its name (logging, retry, auth, metrics); `wrap` lifts it over the whole
+// toolkit, leaving provider/signal/interaction kinds untouched. The one reason
+// this is a combinator rather than native `Record.map`: it tracks the
+// middleware's added requirement `R2`, unioning it into `ToolkitR` instead of
+// widening every tool's type.
+// ---------------------------------------------------------------------------
+
+type Handler<Input, Event, Output, R> = (
+  input: Input,
+  emit: Emit<Event>,
+) => Effect.Effect<Output, unknown, R>
+
+export type Middleware<R2 = never> = <Input, Event, Output, R>(
+  run: Handler<Input, Event, Output, R>,
+  name: string,
+) => Handler<Input, Event, Output, R | R2>
+
+type WrapTool<T extends AnyTool, R2> =
+  T extends Tool<infer N, infer I, infer Ev, infer O, infer R> ? Tool<N, I, Ev, O, R | R2> : T
+
+type WrapToolkit<T extends ToolMap, R2> = {
+  readonly [K in keyof T]: T[K] extends AnyTool ? WrapTool<T[K], R2> : T[K]
+}
+
+/**
+ * Wrap every local tool's `run` with a middleware, preserving each tool's
+ * `Input`/`Output` and unioning the middleware's requirement `R2` into the
+ * toolkit's `ToolkitR`. Non-local kinds pass through unchanged. Stack with
+ * `pipe`:
+ *
+ *   const observed = pipe(toolkit, Toolkit.wrap(logging), Toolkit.wrap(authz))
+ *   Toolkit.run(observed, calls) // R = ToolkitR<typeof toolkit> | <authz R>
+ *
+ * A middleware that `Effect.fail`s surfaces as a `ToolResult.Failure` from the
+ * executor like any run failure; use the `Approval` flow for a distinct
+ * "denied" verdict.
+ */
+export const wrap: {
+  <R2>(middleware: Middleware<R2>): <T extends Toolkit>(toolkit: T) => WrapToolkit<T, R2>
+  <T extends Toolkit, R2>(toolkit: T, middleware: Middleware<R2>): WrapToolkit<T, R2>
+} = Function.dual(
+  2,
+  <T extends Toolkit, R2>(toolkit: T, middleware: Middleware<R2>): WrapToolkit<T, R2> =>
+    Record.map(toolkit, (tool) =>
+      tool._tag === "LocalTool" ? { ...tool, run: middleware(tool.run, tool.name) } : tool,
+    ) as WrapToolkit<T, R2>,
+)
 
 // ---------------------------------------------------------------------------
 // Tool executor. Streams `ToolEvent`s in real time. Policy stays outside this
@@ -79,23 +367,26 @@ export const run = <T extends Toolkit>(
 const okResult = (call: ToolCall, tool: string, value: unknown): ToolResult =>
   ToolResult.Ok({ call_id: call.call_id, tool, value })
 
-const runOne = (toolkit: ToolMap, call: ToolCall): Stream.Stream<ToolEvent, never, any> => {
-  const tool = toolkit[call.name]
-  if (tool === undefined) {
-    // Graceful: emit a synthetic Failure so OTHER calls in this turn still
-    // execute. LLMs hallucinate tool names; MCP tools come and go.
-    return Stream.succeed(
-      ToolEvent.Output({
-        result: failed(call, "unknown_tool", `No tool registered with name "${call.name}"`),
-      }),
-    )
-  }
-  return runTool(tool, call)
-}
+const outputEvent = (result: ToolResult): Stream.Stream<ToolEvent, never, any> =>
+  Stream.succeed(ToolEvent.Output({ result }))
+
+const runOne = (toolkit: ToolMap, call: ToolCall): Stream.Stream<ToolEvent, never, any> =>
+  Match.value(toolkit[call.name]).pipe(
+    // No such tool. Graceful: emit a synthetic Failure so OTHER calls in this
+    // turn still execute. LLMs hallucinate tool names; MCP tools come and go.
+    Match.when(Match.undefined, () =>
+      outputEvent(failed(call, "unknown_tool", `No tool registered with name "${call.name}"`)),
+    ),
+    Match.tag("LocalTool", (local) => runTool(local, call)),
+    // Provider/signal/interaction tools are model-visible but not locally
+    // executable. The loop is expected to intercept these (decode + act) before
+    // execution; reaching here means it didn't, so report it rather than crash.
+    Match.orElse(() => outputEvent(nonLocalTool(call))),
+  )
 
 const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
 
-const runTool = (tool: AnyTool, call: ToolCall): Stream.Stream<ToolEvent, never, any> =>
+const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<ToolEvent, never, any> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const parsed = yield* parseJsonUnknown(call.arguments).pipe(

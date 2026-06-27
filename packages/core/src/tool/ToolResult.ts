@@ -71,6 +71,19 @@ export const executionError = (call: ToolCall, reason: string): ToolResult =>
   failed(call, "execution_error", reason)
 
 /**
+ * The model called a tool that is visible to it but has no local executor — a
+ * provider-hosted, signal, or interaction tool routed through `Toolkit.run`.
+ * Distinct from `unknown_tool` (no such tool at all): the loop is expected to
+ * intercept these kinds before execution, so this kind flags a missing handler.
+ */
+export const nonLocalTool = (call: ToolCall, reason?: string): ToolResult =>
+  failed(
+    call,
+    "non_local_tool",
+    reason ?? `Tool "${call.name}" is visible to the model but has no local executor`,
+  )
+
+/**
  * The model's `arguments` failed the tool's input schema. Distinct kind from
  * `execution_error` so recipes can tell a contract violation apart from a
  * runtime crash.

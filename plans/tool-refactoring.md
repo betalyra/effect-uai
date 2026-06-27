@@ -278,8 +278,10 @@ decided design is:
    combinator exists).
 
    ```ts
-   type Middleware<R2 = never> =
-     <I, O, Ev, R>(run: Handler<I, O, Ev, R>, name: string) => Handler<I, O, Ev, R | R2>
+   type Middleware<R2 = never> = <I, O, Ev, R>(
+     run: Handler<I, O, Ev, R>,
+     name: string,
+   ) => Handler<I, O, Ev, R | R2>
 
    export const wrap: <R2>(mw: Middleware<R2>) => <T extends Toolkit>(toolkit: T) => WithR<T, R2>
 
@@ -293,8 +295,16 @@ decided design is:
    typing.
 
    ```ts
-   const safe   = { ...toolkit, send_email: Tool.withRun(toolkit.send_email, ({ to }) => Effect.succeed({ status: "dry-run", to })) }
-   const mockKit = { ...toolkit, get_weather: Tool.withRun(toolkit.get_weather, () => Effect.succeed({ tempC: 0 })) }
+   const safe = {
+     ...toolkit,
+     send_email: Tool.withRun(toolkit.send_email, ({ to }) =>
+       Effect.succeed({ status: "dry-run", to }),
+     ),
+   }
+   const mockKit = {
+     ...toolkit,
+     get_weather: Tool.withRun(toolkit.get_weather, () => Effect.succeed({ tempC: 0 })),
+   }
    ```
 
 What Part C adds: a `Toolkit | ToolDescriptor[]` union on `streamTurn.tools` (+ one
@@ -338,8 +348,8 @@ pattern-match interpreter (all deferred or rejected, see below).
 
 # Exploration: definition/implementation separation + composability
 
-Open question being revisited: should a tool's *implementation* (`run`) be welded
-into its *definition* (name/description/schema, what the model sees), or split
+Open question being revisited: should a tool's _implementation_ (`run`) be welded
+into its _definition_ (name/description/schema, what the model sees), or split
 apart? Driven by composability: how do we wrap a toolkit with metrics / auth,
 override one tool, or mock it, in a functional, effect-native, low-boilerplate
 way? This section is the rationale behind the **Part C** decision above (Option E):
@@ -350,7 +360,7 @@ remain for context.
 
 The `Toolkit.descriptors(toolkit)` call in `streamTurn({ tools })` is **not** a
 consequence of bundling. `streamTurn` takes `ReadonlyArray<ToolDescriptor>` (the
-provider wire form, confirmed in `LanguageModel.ts`), so *something* always
+provider wire form, confirmed in `LanguageModel.ts`), so _something_ always
 renders defs → descriptors, bundled or separated. Two things make it a non-issue:
 
 - **Bind once per recipe:** `const tools = Toolkit.descriptors(kit)`, then reuse.
@@ -366,8 +376,10 @@ call. Good news: that is exactly what this section measures.
 
 ```ts
 // 1. Middleware: cross-cutting wrap of every tool's execution.
-type Middleware<R2> =
-  <I, O, Ev, R>(handler: Handler<I, O, Ev, R>, name: string) => Handler<I, O, Ev, R | R2>
+type Middleware<R2> = <I, O, Ev, R>(
+  handler: Handler<I, O, Ev, R>,
+  name: string,
+) => Handler<I, O, Ev, R | R2>
 
 // 2. Override: replace one tool's execution, keep its definition.
 // 3. Mock: run the same model-facing contract with stand-in execution.
@@ -415,10 +427,7 @@ const withAuthz: Middleware<CurrentUser> = (handler, name) => (input, emit) =>
     Effect.flatMap((u) => (u.can(name) ? handler(input, emit) : Effect.fail(new Forbidden(name)))),
   )
 
-const observed = toolkit.pipe(
-  Toolkit.mapHandlers(withTiming),
-  Toolkit.mapHandlers(withAuthz),
-) // Toolkit.run(observed, calls): R now includes MetricsEnv | CurrentUser
+const observed = toolkit.pipe(Toolkit.mapHandlers(withTiming), Toolkit.mapHandlers(withAuthz)) // Toolkit.run(observed, calls): R now includes MetricsEnv | CurrentUser
 ```
 
 **Override** one tool (dry-run send_email), keeping its definition:
@@ -429,7 +438,7 @@ const safe = Toolkit.override(toolkit, {
 })
 ```
 
-**Mock** for tests, reusing the *real* definitions (so the model-facing contract
+**Mock** for tests, reusing the _real_ definitions (so the model-facing contract
 is identical to prod, no drift):
 
 ```ts
@@ -448,7 +457,7 @@ design).
 ## Option B: `Tool.def` + `Toolkit.implement` (separation as an alternative constructor)
 
 Split the definition (pure data, `R = never`, what the model sees) from the
-handler. Crucially, `implement` **re-bundles** into the *same* `Toolkit` value
+handler. Crucially, `implement` **re-bundles** into the _same_ `Toolkit` value
 Option A operates on, so this is additive: a second way to construct a toolkit,
 not a second runtime type. `Output`/`Event`/`R` are inferred from the handler
 (no output schema, no phantom on the def).
@@ -499,7 +508,7 @@ Toolkit.run(kit, calls)
 ```
 
 Middleware and override are identical to Option A (they act on the re-bundled
-`kit`). **Mock** gets its cleanest form: re-implement the *same defs*, which
+`kit`). **Mock** gets its cleanest form: re-implement the _same defs_, which
 guarantees byte-identical descriptors and exhaustiveness in one step:
 
 ```ts
@@ -547,7 +556,7 @@ program.pipe(Effect.provide(ToolsMock)) // test
 
 Pros: middleware and mock ride the standard `Layer` machinery; handler `R` becomes
 the layer's `RIn`, composed in the layer graph; late binding is free. Cons: the
-most ceremony (tag + layer to run anything); it makes the toolkit a *service*
+most ceremony (tag + layer to run anything); it makes the toolkit a _service_
 resolved ambiently, which collides with this codebase's "recipe drives the loop
 and holds the toolkit as a value" stance; and you still render `defs → descriptors`
 separately for `streamTurn`. Justified only if tools must be resolved deep in a
@@ -583,7 +592,7 @@ The runtime model should stay the **record `Toolkit`** from Part A. Layer it:
    already have, and they cover the three composability asks with contract
    fidelity. This is the high-value, low-cost core of "make toolkits composable".
 2. **Offer `Tool.def` + `Toolkit.implement` / `implementWith` as an additive
-   alternative constructor** (Option B) that produces the *same* `Toolkit`. Reach
+   alternative constructor** (Option B) that produces the _same_ `Toolkit`. Reach
    for it when you want a shipped contract, compile-time exhaustiveness, multiple
    implementations of one contract, or a dispatcher-implemented namespace (MCP).
    `Tool.make` stays the one-liner for the common case; `def`/`implement` is the
@@ -607,7 +616,7 @@ making composition explicit, type-safe, and functional.
   or is widening acceptable? Precise preservation needs a mapped type over the
   record; worth it for `override` (you want the patched run typed against the def),
   less critical for `mapHandlers`.
-- If we add `Tool.def`/`implement`, does `implement` allow *partial* coverage (the
+- If we add `Tool.def`/`implement`, does `implement` allow _partial_ coverage (the
   rest defaulting to a "not implemented" failure) or require exhaustiveness? Lean
   exhaustive, with `implementWith` as the escape hatch for dispatcher namespaces.
 
@@ -645,7 +654,7 @@ escape hatch while removing the friction the user actually hit.
 ### 2. Middleware as a `Toolkit → Toolkit` transform (`Toolkit.wrap`)
 
 Middleware is a transform you apply to the toolkit up front, then run the wrapped
-toolkit (not a hook passed into `run`). A *middleware* is the use-case-specific
+toolkit (not a hook passed into `run`). A _middleware_ is the use-case-specific
 part: transform one tool's `run` given its name. `Toolkit.wrap` lifts it over the
 whole toolkit. This is the one combinator worth having, because native
 `Record.map` produces a uniform value type and can't track the added `R2` — so it
@@ -653,8 +662,10 @@ would widen `toolkit.get_weather` and drop `R2` from `ToolkitR`. `Toolkit.wrap`'
 mapped return preserves each tool's `Input`/`Output` and unions `R2` in.
 
 ```ts
-type Middleware<R2 = never> =
-  <I, O, Ev, R>(run: Handler<I, O, Ev, R>, name: string) => Handler<I, O, Ev, R | R2>
+type Middleware<R2 = never> = <I, O, Ev, R>(
+  run: Handler<I, O, Ev, R>,
+  name: string,
+) => Handler<I, O, Ev, R | R2>
 
 type WithR<T extends Toolkit, R2> = {
   [K in keyof T]: T[K] extends Tool<infer N, infer I, infer Ev, infer O, infer R>
@@ -678,9 +689,16 @@ const retrying: Middleware = (run) => (input, emit) =>
   run(input, emit).pipe(Effect.retry(Schedule.exponential("100 millis")))
 
 const withAuthz: Middleware<CurrentUser> = (run, name) => (input, emit) =>
-  CurrentUser.pipe(Effect.flatMap((u) => (u.can(name) ? run(input, emit) : Effect.fail(new Forbidden(name)))))
+  CurrentUser.pipe(
+    Effect.flatMap((u) => (u.can(name) ? run(input, emit) : Effect.fail(new Forbidden(name)))),
+  )
 
-const observed = pipe(toolkit, Toolkit.wrap(logging), Toolkit.wrap(retrying), Toolkit.wrap(withAuthz))
+const observed = pipe(
+  toolkit,
+  Toolkit.wrap(logging),
+  Toolkit.wrap(retrying),
+  Toolkit.wrap(withAuthz),
+)
 Toolkit.run(observed, calls) // R = ToolkitR<typeof toolkit> | CurrentUser
 ```
 
@@ -697,7 +715,12 @@ typing so you skip the annotation); even that is optional.
 
 ```ts
 // Override one tool (dry-run), definition unchanged
-const safe = { ...toolkit, send_email: Tool.withRun(toolkit.send_email, ({ to }) => Effect.succeed({ status: "dry-run", to })) }
+const safe = {
+  ...toolkit,
+  send_email: Tool.withRun(toolkit.send_email, ({ to }) =>
+    Effect.succeed({ status: "dry-run", to }),
+  ),
+}
 
 // Mock for tests: same definitions (identical descriptors), stand-in execution
 const mockKit = {
@@ -727,15 +750,15 @@ is an interpreter transformer). Naming the encodings precisely:
 
 - **Initial = pure data + one external fold** that supplies all behavior. For
   tools that is **Option D** (a tagged union of defs + one `execute` that
-  pattern-matches). Adding an interpreter is cheap; adding a *tool* is expensive
+  pattern-matches). Adding an interpreter is cheap; adding a _tool_ is expensive
   (touch every fold). Verbose; rejected.
 - **Final / object (records of functions)** = each tool carries its own behavior
   as a closure; the toolkit is a record of them. This is **Option E** (and B's
   runtime shape — B only decouples construction). `run` is a generic dispatcher,
-  not a behavior-supplying interpreter. Adding a *tool* is trivial (one record
+  not a behavior-supplying interpreter. Adding a _tool_ is trivial (one record
   entry); the few interpreters stay generic (descriptors reads the data fields,
   `run` dispatches, `wrap`/mock transform closures), so they never need per-tool
-  behavior. (Note: separating `run` from the tool does *not* make it "initial" —
+  behavior. (Note: separating `run` from the tool does _not_ make it "initial" —
   it is still a record of functions; only Option D is the initial encoding.)
 - **Tagless-final** = the carrier-polymorphic generalization of the object
   encoding, via HKT. This is **Option C** (Effect services + `Layer`).
@@ -743,7 +766,7 @@ is an interpreter transformer). Naming the encodings precisely:
 Why E and not C or D:
 
 1. **Expression-problem profile.** We add tools often and interpreters rarely, so
-   we want the encoding where adding a *variant* is cheap (object / E), not the
+   we want the encoding where adding a _variant_ is cheap (object / E), not the
    one where adding an interpreter is cheap but variants are expensive
    (initial / D).
 2. **One carrier.** Tagless-final's payoff is writing programs polymorphic over
@@ -757,7 +780,7 @@ Why E and not C or D:
    there is nothing to fold at the tool layer (Free belongs at the Loop layer, cf.
    `internal-docs/conversation-as-unfold.md`).
 
-Decisive point: this is **not** "data instead of Layers" for *dependencies*. A
+Decisive point: this is **not** "data instead of Layers" for _dependencies_. A
 handler's `R` is still surfaced in `run`'s type and provided by a `Layer` at the
 recipe boundary. Option C conflates the tool registry with the DI mechanism;
 Option E keeps **tools as a record of functions, dependencies as Layers** — losing

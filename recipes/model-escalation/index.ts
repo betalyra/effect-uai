@@ -33,9 +33,10 @@ import * as Tool from "@effect-uai/core/Tool"
 import * as Turn from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
-// The escalate "tool". `run` never executes - we intercept the call at
-// `onTurnComplete` and translate it into a tier advance. Only the descriptor
-// is sent to the cheap tier.
+// The escalate signal. A `Tool.signal` is model-visible and decodable but has
+// no local executor: the loop intercepts the call at `onTurnComplete` and
+// translates it into a tier advance. No fake `run` to pretend it executes.
+// Only the descriptor is sent to the cheap tier.
 // ---------------------------------------------------------------------------
 
 export const EscalateInput = Schema.Struct({
@@ -44,13 +45,11 @@ export const EscalateInput = Schema.Struct({
 })
 export type EscalateArgs = typeof EscalateInput.Type
 
-export const escalate = Tool.make({
+export const escalate = Tool.signal({
   name: "escalate",
   description:
     "Hand the question off to a stronger, more expensive model. Use when the question requires deep expertise that a fast model can't deliver with high confidence.",
   inputSchema: Tool.fromEffectSchema(EscalateInput),
-  run: () => Effect.succeed({ escalated: true }),
-  strict: true,
 })
 
 const escalateDescriptors = Tool.toDescriptors([escalate])

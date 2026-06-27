@@ -17,7 +17,9 @@ Reach for this when the user says any of:
 
 ## The control tool
 
-Give the cheap tier an `escalate` tool descriptor:
+Give the cheap tier an `escalate` **signal**. `Tool.signal` is a model-visible,
+decodable tool with no local `run` — exactly right here, since the loop
+interprets the call rather than executing a handler:
 
 ```ts
 export const EscalateInput = Schema.Struct({
@@ -25,18 +27,17 @@ export const EscalateInput = Schema.Struct({
   question: Schema.String,
 })
 
-export const escalate = Tool.make({
+export const escalate = Tool.signal({
   name: "escalate",
   description:
     "Hand the question off to a stronger, more expensive model. Use when the question requires deep expertise that a fast model can't deliver with high confidence.",
   inputSchema: Tool.fromEffectSchema(EscalateInput),
-  run: () => Effect.succeed({ escalated: true }),
-  strict: true,
 })
 ```
 
-`run` is not the point. The loop intercepts the call at
-`onTurnComplete` and turns it into a tier transition.
+There is no fake `run`. The loop intercepts the call at `onTurnComplete` and
+turns it into a tier transition; if it ever reached `Toolkit.run`, the executor
+would report it as `non_local_tool` rather than running anything.
 
 ## Loop shape
 

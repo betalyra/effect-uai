@@ -60,19 +60,19 @@ export const httpConversation = (
             tools: Toolkit.descriptors(toolkit),
           })
           .pipe(
-          onTurnComplete<typeof state, ToolEvent>((turn) =>
-            Effect.sync(() => {
-              const calls = Turn.getToolCalls(turn)
-              if (calls.length === 0) return stop()
+            onTurnComplete<typeof state, ToolEvent>((turn) =>
+              Effect.sync(() => {
+                const calls = Turn.getToolCalls(turn)
+                if (calls.length === 0) return stop()
 
-              const plan = Approval.fromMap(isSensitive, approvals)(calls)
-              return Stream.merge(
-                Toolkit.run(toolkit, plan.approved),
-                Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
-              ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
-            }),
-          ),
-        )
+                const plan = Approval.fromMap(isSensitive, approvals)(calls)
+                return Stream.merge(
+                  Toolkit.run(toolkit, plan.approved),
+                  Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
+                ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
+              }),
+            ),
+          )
       }),
     ),
   )

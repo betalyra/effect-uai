@@ -46,18 +46,21 @@ tools are unified into one `Tool.make` whose `run(input, emit)` returns an Effec
 `Toolkit.run`, and the descriptor rendering, now go through a `Toolkit` value
 instead of a flat tool array.
 
-| Before                              | After                               |
-| ----------------------------------- | ----------------------------------- |
-| `const tools = [a, b]`              | `const toolkit = Toolkit.make(a, b)` |
-| `Tool.toDescriptors(tools)`         | `Toolkit.descriptors(toolkit)`      |
-| `Toolkit.run(tools, calls)`         | `Toolkit.run(toolkit, calls)`       |
+| Before                      | After                                |
+| --------------------------- | ------------------------------------ |
+| `const tools = [a, b]`      | `const toolkit = Toolkit.make(a, b)` |
+| `Tool.toDescriptors(tools)` | `Toolkit.descriptors(toolkit)`       |
+| `Toolkit.run(tools, calls)` | `Toolkit.run(toolkit, calls)`        |
 
-`Toolkit.make(...tools)` is variadic and indexes by `tool.name`; use
-`Toolkit.fromArray(tools)` for a runtime-built array (e.g. MCP). `Tool.toDescriptors`
-still exists as the low-level renderer, but call sites read `Toolkit.descriptors`.
-Compose toolkits with native ops (concat the tools, re-`make`) and resolve a name
-clash with `Tool.withName(tool, "new_name")`. A function that takes a toolkit as a
-parameter types it as `Toolkit.Toolkit`.
+`Toolkit.make(...tools)` is variadic, indexes by `tool.name`, and rejects a
+duplicate literal name at compile time (plus validates first-party names); use
+`Toolkit.fromArray(tools)` for a runtime-built array (e.g. MCP, trusted/last-wins).
+`Tool.toDescriptors` still exists as the low-level renderer, but call sites read
+`Toolkit.descriptors`. Combine independent toolkits with `Toolkit.compose(...kits)`
+(effectful; fails `DuplicateToolName` with source provenance, compile error for
+static clashes), prefixing generic names first with `Toolkit.namespace(prefix, kit)`
+when needed. A function that takes a toolkit as a parameter types it as
+`Toolkit.Toolkit`.
 
 #### `run(input, emit)`; `Tool.streaming` / `finalize` removed
 
@@ -71,17 +74,24 @@ gains an `Event` type param (`Tool<Name, Input, Event, Output, R>`).
 ```ts
 // Before
 Tool.streaming({
-  name, description, inputSchema,
+  name,
+  description,
+  inputSchema,
   run: (input) => sourceStream(input),
   finalize: (events) => reduce(events),
 })
 
 // After
 Tool.make({
-  name, description, inputSchema,
+  name,
+  description,
+  inputSchema,
   run: (input, emit) =>
     sourceStream(input).pipe(
-      Stream.runFoldEffect(() => init, (acc, event) => emit(event).pipe(Effect.as(step(acc, event)))),
+      Stream.runFoldEffect(
+        () => init,
+        (acc, event) => emit(event).pipe(Effect.as(step(acc, event))),
+      ),
       Effect.map((acc) => reduce(acc)),
     ),
   // optional: emitBufferSize to bound the emit queue (unbounded by default)
@@ -108,19 +118,55 @@ return Toolkit.run(toolkit, calls).pipe(
 )
 ```
 
+#### Control / provider tools get honest kinds
+
+Tools now have four kinds (discriminated by `_tag`): `Tool.make` (local),
+`Tool.provider`, `Tool.signal`, `Tool.interaction`. A control tool you faked
+with a throwaway `run: () => Effect.succeed(...)` (the loop intercepts the call
+in `onTurnComplete`) should become a `Tool.signal`; an "ask the user/channel"
+tool a `Tool.interaction`. Both are decode-only — keep `Tool.decodeArgs` — they
+just drop the fake `run`.
+
+```ts
+// Before
+export const escalate = Tool.make({
+  name: "escalate",
+  description,
+  inputSchema: Tool.fromEffectSchema(EscalateInput),
+  run: () => Effect.succeed({ escalated: true }),
+})
+
+// After
+export const escalate = Tool.signal({
+  name: "escalate",
+  description,
+  inputSchema: Tool.fromEffectSchema(EscalateInput),
+})
+```
+
+A provider-hosted tool you passed as a hand-built descriptor becomes
+`Tool.provider({ ..., provider, config })`.
+
 ### Behavior changes (no rewrite, but observable)
 
 - Input-schema validation failures now produce a distinct `ToolResult.Failure`
   kind `"input_validation_error"` (was bucketed under `"execution_error"`), and
   `Tool.decodeArgs` fails with the new `Tool.ToolValidationError` instead of a
-  generic `ToolError`. A control-flow tool used only for its descriptor + decode
-  (e.g. `escalate`) is unaffected.
+  generic `ToolError`.
+- A non-local kind (provider/signal/interaction) passed to `Toolkit.run` yields
+  `ToolResult.Failure` kind `"non_local_tool"` (the loop is meant to intercept
+  it first) — distinct from `"unknown_tool"`.
+- `Toolkit.make` now rejects a duplicate literal tool name at compile time and
+  throws `InvalidToolName` for a non-provider-safe first-party name.
 
 ### After-migration checklist
 
 - [ ] No `Tool.streaming` / `finalize` / `isStreamingTool` / `AnyStreamingTool`
+- [ ] Faked control tools (`run: () => succeed`) switched to `Tool.signal` /
+      `Tool.interaction`; provider-hosted tools to `Tool.provider`
 - [ ] `Toolkit.run` and `Toolkit.descriptors` take a `Toolkit` from
       `Toolkit.make(...)` / `Toolkit.fromArray(...)`, not a bare array
+- [ ] Cross-source toolkits combined with `Toolkit.compose` (not array concat)
 - [ ] Tool-array parameters retyped as `Toolkit.Toolkit`
 - [ ] `pnpm typecheck` clean
 

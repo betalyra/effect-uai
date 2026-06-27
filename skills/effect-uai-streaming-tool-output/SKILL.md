@@ -44,18 +44,21 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
     ),
     run: ({ url, chunks }, emit) => {
       const total = chunks ?? 4
-      const events = Stream.unfold(0, (i: number): Effect.Effect<readonly [DownloadEvent, number] | undefined> => {
-        if (i > total) return Effect.succeed(undefined)
-        if (i === total)
-          return Effect.succeed([{ type: "result", bytes: `bytes-of-${url}` }, i + 1] as const)
-        return Effect.delay(
-          Effect.succeed([
-            { type: "progress", pct: Math.round(((i + 1) / total) * 100), chunk: i + 1 },
-            i + 1,
-          ] as const),
-          perChunkDelay,
-        )
-      })
+      const events = Stream.unfold(
+        0,
+        (i: number): Effect.Effect<readonly [DownloadEvent, number] | undefined> => {
+          if (i > total) return Effect.succeed(undefined)
+          if (i === total)
+            return Effect.succeed([{ type: "result", bytes: `bytes-of-${url}` }, i + 1] as const)
+          return Effect.delay(
+            Effect.succeed([
+              { type: "progress", pct: Math.round(((i + 1) / total) * 100), chunk: i + 1 },
+              i + 1,
+            ] as const),
+            perChunkDelay,
+          )
+        },
+      )
       // Emit each event to the consumer while folding to the model-facing output.
       return events.pipe(
         Stream.runFoldEffect(

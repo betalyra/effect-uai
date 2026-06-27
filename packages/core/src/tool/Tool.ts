@@ -87,13 +87,19 @@ export const fromStandardSchema = <S extends StandardSchemaV1 & StandardJSONSche
 export type Emit<Event> = (event: Event) => Effect.Effect<void>
 
 /**
- * A tool the model can call. `run` is an `Effect` that computes the
+ * A model-visible tool with a local `Effect` executor. `run` computes the
  * model-facing `Output`; emitting progress is a side channel via `emit`. A
  * plain tool never calls `emit` (its `Event` is irrelevant); a streaming tool
  * emits intermediate `Event`s that flow to the consumer as
  * `ToolEvent.Progress` in real time.
+ *
+ * This is one of four tool *kinds*, discriminated by `_tag`. The other three
+ * (`ProviderTool`, `SignalTool`, `InteractionTool`) are model-visible but have
+ * no local executor — see their constructors below. `Tool` keeps its name (and
+ * the `Tool.make` constructor) because the local kind is by far the common one.
  */
 export type Tool<Name extends string, Input, Event, Output, R = never> = {
+  readonly _tag: "LocalTool"
   readonly name: Name
   readonly description: string
   readonly inputSchema: ToolInputSchema<Input>
@@ -113,8 +119,66 @@ export type Tool<Name extends string, Input, Event, Output, R = never> = {
   readonly strict?: boolean
 }
 
-/** A tool of any shape. Readability alias, no longer a union. */
-export type AnyTool<R = any> = Tool<string, any, any, any, R>
+/**
+ * A provider-hosted tool: visible to the model and executed by the *provider*
+ * (native web search, code execution, RAG grounding), never by this process.
+ * It has no local `run`; `provider`/`config` tell the provider adapter how to
+ * render it. Passing it to `Toolkit.run` yields a `non_local_tool` result.
+ */
+export type ProviderTool<Name extends string, Input, Provider extends string, Config> = {
+  readonly _tag: "ProviderTool"
+  readonly name: Name
+  readonly description: string
+  readonly inputSchema: ToolInputSchema<Input>
+  readonly provider: Provider
+  readonly config: Config
+  readonly strict?: boolean
+}
+
+/**
+ * A typed request for the agent loop to change control flow (escalate, pause,
+ * schedule, hand off). Model-visible and decodable (`decodeArgs`) but never
+ * locally executed — the loop intercepts the call in `onTurnComplete` and acts
+ * on it, so there is no fake `run`. `Toolkit.run` reports it as `non_local_tool`.
+ */
+export type SignalTool<Name extends string, Input> = {
+  readonly _tag: "SignalTool"
+  readonly name: Name
+  readonly description: string
+  readonly inputSchema: ToolInputSchema<Input>
+}
+
+/**
+ * A typed request for an external actor (user, channel, frontend) to respond
+ * before the loop resumes. Like `SignalTool` it is decode-only, but its
+ * lifecycle differs: the loop usually stops/pauses and resumes later by
+ * appending a `function_call_output` once the actor replies.
+ */
+export type InteractionTool<Name extends string, Input> = {
+  readonly _tag: "InteractionTool"
+  readonly name: Name
+  readonly description: string
+  readonly inputSchema: ToolInputSchema<Input>
+}
+
+/** A local (executable) tool of any shape. Readability alias. */
+export type AnyLocalTool<R = any> = Tool<string, any, any, any, R>
+
+/** Any of the four model-visible tool kinds. */
+export type AnyTool<R = any> =
+  | Tool<string, any, any, any, R>
+  | ProviderTool<string, any, string, any>
+  | SignalTool<string, any>
+  | InteractionTool<string, any>
+
+/** A model-visible tool that carries a decodable input schema (every kind). */
+export type DecodableTool<Input> = {
+  readonly name: string
+  readonly inputSchema: ToolInputSchema<Input>
+}
+
+/** Extract the `R` of a local tool; non-local kinds contribute `never`. */
+export type ToolR<T> = T extends Tool<string, any, any, any, infer R> ? R : never
 
 /**
  * Provider-agnostic tool descriptor. Each provider maps `inputSchema`
@@ -128,9 +192,37 @@ export type ToolDescriptor = {
   readonly strict?: boolean
 }
 
+/** A model-visible tool with a local `Effect` executor. */
 export const make = <Name extends string, Input, Event, Output, R = never>(
-  spec: Tool<Name, Input, Event, Output, R>,
-): Tool<Name, Input, Event, Output, R> => spec
+  spec: Omit<Tool<Name, Input, Event, Output, R>, "_tag">,
+): Tool<Name, Input, Event, Output, R> => ({ _tag: "LocalTool", ...spec })
+
+/**
+ * A provider-hosted tool (native web search, code execution, RAG grounding).
+ * No local executor — `provider`/`config` drive the provider adapter's
+ * rendering. The model sees it; `Toolkit.run` reports it as `non_local_tool`.
+ */
+export const provider = <Name extends string, Input, Provider extends string, Config>(
+  spec: Omit<ProviderTool<Name, Input, Provider, Config>, "_tag">,
+): ProviderTool<Name, Input, Provider, Config> => ({ _tag: "ProviderTool", ...spec })
+
+/**
+ * A typed control-flow signal to the agent loop (escalate, pause, schedule,
+ * hand off). Decode-only: the loop interprets the call rather than executing a
+ * handler, so there is no `run`.
+ */
+export const signal = <Name extends string, Input>(
+  spec: Omit<SignalTool<Name, Input>, "_tag">,
+): SignalTool<Name, Input> => ({ _tag: "SignalTool", ...spec })
+
+/**
+ * A typed request for an external actor to respond before the loop resumes
+ * (frontend, Telegram, CLI prompt). Decode-only; the loop stops/pauses and
+ * resumes by appending the actor's `function_call_output`.
+ */
+export const interaction = <Name extends string, Input>(
+  spec: Omit<InteractionTool<Name, Input>, "_tag">,
+): InteractionTool<Name, Input> => ({ _tag: "InteractionTool", ...spec })
 
 /**
  * Return a copy of a tool under a new `name`. Useful for resolving a name
@@ -142,19 +234,32 @@ export const withName = <N extends string, T extends AnyTool>(
   name: N,
 ): Omit<T, "name"> & { readonly name: N } => ({ ...tool, name })
 
-/** Render tools to provider-agnostic descriptors. */
+/**
+ * Replace a local tool's `run`, keeping its model-facing definition (name,
+ * description, schema, `_tag`) identical. The new `run`'s `input` is typed from
+ * the original tool, so override/mock need no annotation:
+ *
+ *   const safe = { ...toolkit, send_email: Tool.withRun(toolkit.send_email,
+ *     ({ to }) => Effect.succeed({ status: "dry-run", to })) }
+ *
+ * Descriptors stay identical to production, so a mocked toolkit can't drift
+ * from the contract the model sees.
+ */
+export const withRun = <Name extends string, Input, Event, Output, R, Output2, R2 = never>(
+  tool: Tool<Name, Input, Event, Output, R>,
+  run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output2, unknown, R2>,
+): Tool<Name, Input, Event, Output2, R2> => ({ ...tool, run })
+
+/** Render tools to provider-agnostic descriptors. Every kind is model-visible. */
 export const toDescriptors = (tools: ReadonlyArray<AnyTool>): ReadonlyArray<ToolDescriptor> =>
   tools.map((tool) => {
     const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
       target: "draft-2020-12",
     })
-    return tool.strict !== undefined
-      ? {
-          name: tool.name,
-          description: tool.description,
-          inputSchema,
-          strict: tool.strict,
-        }
+    // `strict` only exists on local/provider kinds; signals/interactions omit it.
+    const strict = "strict" in tool ? tool.strict : undefined
+    return strict !== undefined
+      ? { name: tool.name, description: tool.description, inputSchema, strict }
       : { name: tool.name, description: tool.description, inputSchema }
   })
 
@@ -170,8 +275,8 @@ const toToolError = (call: ToolCall, toolName: string, message: string) => (caus
  * Malformed JSON fails with `ToolError`; a parsed body that violates
  * `inputSchema` fails with `ToolValidationError` carrying the issues.
  */
-export const decodeArgs = <Name extends string, Input, Event, Output, R>(
-  tool: Tool<Name, Input, Event, Output, R>,
+export const decodeArgs = <Input>(
+  tool: DecodableTool<Input>,
   call: ToolCall,
 ): Effect.Effect<Input, ToolError | ToolValidationError> =>
   Effect.gen(function* () {

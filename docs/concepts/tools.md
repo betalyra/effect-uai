@@ -10,10 +10,16 @@ The executor renders schemas, validates arguments, runs the tool, and turns
 success or failure into structured `ToolResult`s. You own `run` and every
 policy decision around it.
 
-A tool's `run` is an `Effect` that computes the model-facing `Output`. It also
-receives an `emit` function for streaming intermediate events to the consumer in
-real time (sub-agent reasoning, download progress). A plain tool just ignores
-`emit`; a streaming tool calls it. One shape, one `Tool.make`, one executor.
+Most tools have a local `run`: an `Effect` that computes the model-facing
+`Output`. It also receives an `emit` function for streaming intermediate events
+to the consumer in real time (sub-agent reasoning, download progress). A plain
+tool just ignores `emit`; a streaming tool calls it. `Tool.make` builds these.
+
+Some model-visible tools have **no** local `run` — they are executed by the
+provider, or they are signals the loop interprets. Those are the other three
+[tool kinds](#tool-kinds) (`Tool.provider`, `Tool.signal`, `Tool.interaction`);
+the executor reports them as `non_local_tool` rather than pretending to run a
+fake handler.
 
 ## `Tool.make` — defining a tool
 
@@ -42,6 +48,45 @@ out via the executor. The plain tool above never calls `emit`.
 (OpenAI's `strict: true`, Gemini's equivalent). The framework never
 rewrites your schema; if the rendered JSON Schema is incompatible with
 strict mode, the provider errors and you drop `strict` or simplify it.
+
+## Tool kinds
+
+Every tool is model-visible (it renders a descriptor), but only `Tool.make`
+tools are locally executable. The four kinds, discriminated by `_tag`:
+
+| Constructor        | Executed by                                              | Use for                                                   |
+| ------------------ | -------------------------------------------------------- | --------------------------------------------------------- |
+| `Tool.make`        | your `run`, via `Toolkit.run`                            | ordinary local tools (weather, send email)                |
+| `Tool.provider`    | the provider                                             | provider-hosted web search, code execution, RAG grounding |
+| `Tool.signal`      | nobody — the loop **interprets** the call                | escalate, pause, schedule, hand off                       |
+| `Tool.interaction` | an external actor — the loop **stops and resumes** later | "ask the user to choose an account"                       |
+
+`Tool.signal` and `Tool.interaction` replace the old workaround of a fake
+`run: () => Effect.succeed(...)`. They carry a `name`, `description`, and
+`inputSchema`, so you still `Tool.decodeArgs(signal, call)` the arguments — you
+just act on them (advance a tier, schedule a wake-up, stop for input) instead of
+running a handler:
+
+```ts
+const escalate = Tool.signal({
+  name: "escalate",
+  description: "Hand the question to a stronger model.",
+  inputSchema: Tool.fromEffectSchema(EscalateInput),
+})
+
+// in onTurnComplete:
+const call = Turn.getToolCalls(turn).find((c) => c.name === "escalate")
+if (call !== undefined) {
+  return Tool.decodeArgs(escalate, call).pipe(Effect.map((args) => next({ tier: 1, ...args })))
+}
+```
+
+If a non-local kind is ever passed to `Toolkit.run` (the loop forgot to
+intercept it), the executor returns `Failure(non_local_tool)` for that call
+rather than crashing — distinct from `unknown_tool` (no such tool at all).
+
+`Tool.provider` additionally carries `provider` and `config` for the provider
+adapter to render its hosted tool natively.
 
 ## Streaming with `emit`
 
@@ -118,12 +163,60 @@ const toolkit = Toolkit.make(
 const tools = Toolkit.descriptors(toolkit)
 ```
 
-`Toolkit.make` is variadic and indexes by `tool.name`; use
-`Toolkit.fromArray(tools)` for a runtime-built array (e.g. MCP). Descriptors are
-the provider-agnostic `ToolDescriptor[]` the generic `LanguageModel` accepts;
+`Toolkit.make` is variadic, indexes by `tool.name`, and **rejects a duplicate
+literal name at compile time** (plus validates that first-party names are
+provider-safe). Use `Toolkit.fromArray(tools)` for a runtime-built array (e.g.
+MCP), where names are trusted and last-wins. Descriptors are the
+provider-agnostic `ToolDescriptor[]` the generic `LanguageModel` accepts;
 providers map `inputSchema` to their own wire field (`parameters` for OpenAI,
-`input_schema` for Anthropic). Compose toolkits with native ops (concat the
-tools, re-`make`); resolve a name clash with `Tool.withName(tool, "new_name")`.
+`input_schema` for Anthropic).
+
+### Composing toolkits
+
+Combine independently-built toolkits (built-ins, MCP servers, signal sets) with
+`Toolkit.compose`. It is the application boundary where names from separate
+sources can collide, so it is effectful: a duplicate final name fails with
+`DuplicateToolName` naming the colliding inputs, instead of silently overwriting
+or 400-ing later at the provider. Static collisions are additionally a compile
+error.
+
+```ts
+const github = Toolkit.fromArray(githubTools)
+const linear = Toolkit.fromArray(linearTools)
+
+// both expose `search` -> DuplicateToolName{ name: "search", sources: [...] }
+const toolkit = yield * Toolkit.compose(github, linear)
+```
+
+Keep generic names distinct by prefixing first: `Toolkit.namespace("github",
+github)` renames every tool to `github__search`, so the compose succeeds.
+`Toolkit.makeNamespaced("github", ...tools)` does both in one step.
+
+### Middleware
+
+`Toolkit.wrap(middleware)` is a `Toolkit → Toolkit` transform applied up front;
+it wraps every local tool's `run` (logging, retry, auth, metrics) and leaves
+provider/signal/interaction kinds untouched. It tracks the middleware's added
+requirement `R2`, unioning it into the toolkit's requirements:
+
+```ts
+const logging: Toolkit.Middleware = (run, name) => (input, emit) =>
+  Effect.logInfo(`tool:${name}`).pipe(Effect.zipRight(run(input, emit)))
+
+const observed = pipe(toolkit, Toolkit.wrap(logging), Toolkit.wrap(withAuthz))
+```
+
+To override or mock a single tool while keeping its model-facing descriptor
+identical, spread the record and swap one `run` with `Tool.withRun`:
+
+```ts
+const dryRun = {
+  ...toolkit,
+  send_email: Tool.withRun(toolkit.send_email, ({ to }) =>
+    Effect.succeed({ status: "dry-run", to }),
+  ),
+}
+```
 
 ### Tools with service requirements
 
@@ -194,10 +287,11 @@ event variants:
 - **`ApprovalRequested`** — emitted by `fromQueue` for gated calls.
 
 Graceful by default: hallucinated tool names become `Failure(unknown_tool)`
-for that call only; input that fails the schema becomes
-`Failure(input_validation_error)` and runtime crashes become
-`Failure(execution_error)`. Concurrency defaults to `"unbounded"`; pass
-`{ concurrency: 4 }` to bound it.
+for that call only; a model-visible but non-local kind (provider/signal/
+interaction) that wasn't intercepted becomes `Failure(non_local_tool)`; input
+that fails the schema becomes `Failure(input_validation_error)` and runtime
+crashes become `Failure(execution_error)`. Concurrency defaults to
+`"unbounded"`; pass `{ concurrency: 4 }` to bound it.
 
 ## `ToolResult` — structured results
 
@@ -212,8 +306,8 @@ type ToolResult =
 ```
 
 Synthesizers from `@effect-uai/core/ToolResult`: `denied`, `cancelled`,
-`executionError`, plus `failed(call, kind, reason)` for any custom
-string kind. The executor doesn't inspect `kind` — it's recipe-level
+`executionError`, `nonLocalTool`, plus `failed(call, kind, reason)` for any
+custom string kind. The executor doesn't inspect `kind` — it's recipe-level
 metadata for audit logs and pattern-matching downstream.
 
 ## Wire conversion at the boundary

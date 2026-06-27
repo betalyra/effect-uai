@@ -105,6 +105,25 @@ describe("Tool.fromStandardSchema", () => {
   })
 })
 
+describe("Tool.withRun", () => {
+  const sendEmail = Tool.make({
+    name: "send_email",
+    description: "Send an email to a single recipient.",
+    inputSchema: Tool.fromStandardSchema(emailRecipientSchema),
+    run: ({ to }) => Effect.succeed(`sent: ${to}`),
+  })
+
+  it("swaps run while keeping the model-facing descriptor identical", async () => {
+    const dryRun = Tool.withRun(sendEmail, ({ to }) => Effect.succeed(`dry-run: ${to}`))
+
+    // Definition (name/description/schema) is byte-identical -> same descriptor.
+    expect(Tool.toDescriptors([dryRun])).toEqual(Tool.toDescriptors([sendEmail]))
+    // input is typed from the original tool, no annotation needed.
+    const out = await Effect.runPromise(dryRun.run({ to: "x@y.z" }, () => Effect.void))
+    expect(out).toBe("dry-run: x@y.z")
+  })
+})
+
 describe("Tool.decodeArgs", () => {
   const sendEmail = Tool.make({
     name: "send_email",

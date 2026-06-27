@@ -43,9 +43,9 @@ import { isOutput } from "./ToolEvent.js"
 // Toolkit: a name-indexed record of tools — "what the model sees". The record
 // gives O(1) dispatch and within-toolkit name-uniqueness for free; descriptors
 // are derived, not stored. Build a static one with `make` (compile-time
-// duplicate-name check + first-party name validation), a dynamic one with
-// `fromArray` (trusted single source, last-wins), and combine independent ones
-// with `compose` (the application boundary where cross-source names can clash).
+// duplicate-name check), a dynamic one with `fromArray` (trusted single source,
+// last-wins), and combine independent ones with `compose` (the application
+// boundary where cross-source names can clash).
 // ---------------------------------------------------------------------------
 
 export type ToolMap = Record<string, AnyTool>
@@ -57,15 +57,14 @@ const indexByName = (tools: ReadonlyArray<AnyTool>): ToolMap =>
 
 /**
  * Index literal tools by their `name`. Duplicate names are a compile error
- * (`UniqueTools`); first-party (local/signal/interaction) names are validated
- * provider-safe (throws `InvalidToolName`). Provider-defined names are trusted.
+ * (`UniqueTools`). Names are not otherwise checked: a malformed name is a
+ * developer typo in a literal that the provider rejects clearly on first use,
+ * and there is no single cross-provider name rule to enforce here anyway.
  */
 const buildStatic = <Tools extends ReadonlyArray<AnyTool>>(
   tools: Tools,
-): Toolkit<{ [T in Tools[number] as T["name"]]: T }> => {
-  validateFirstPartyNames(tools)
-  return indexByName(tools) as Toolkit<{ [T in Tools[number] as T["name"]]: T }>
-}
+): Toolkit<{ [T in Tools[number] as T["name"]]: T }> =>
+  indexByName(tools) as Toolkit<{ [T in Tools[number] as T["name"]]: T }>
 
 export const make = <const Tools extends ReadonlyArray<AnyTool>>(
   ...tools: UniqueTools<Tools>
@@ -157,19 +156,7 @@ type UnionToIntersection<U> = (U extends unknown ? (x: U) => void : never) exten
 type Composed<Kits extends ReadonlyArray<Toolkit>> =
   UnionToIntersection<Kits[number]> extends infer M ? (M extends ToolMap ? M : ToolMap) : ToolMap
 
-// --- name-validity / uniqueness errors -------------------------------------
-
-/**
- * A first-party tool or namespace name is not provider-safe. The default
- * validator is the cross-provider intersection `^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$`
- * (leading letter/underscore, no dots, ≤64), so a name we author never 400s on
- * any provider. Thrown (a programmer error) by `make` / `makeNamespaced` /
- * `namespace`; dynamic (`fromArray`) and provider-defined names are not checked.
- */
-export class InvalidToolName extends Data.TaggedError("InvalidToolName")<{
-  readonly name: string
-  readonly reason: string
-}> {}
+// --- uniqueness error ------------------------------------------------------
 
 /**
  * Two composed toolkits resolved to the same final name. Carries the colliding
@@ -181,37 +168,6 @@ export class DuplicateToolName extends Data.TaggedError("DuplicateToolName")<{
   readonly name: string
   readonly sources: ReadonlyArray<string>
 }> {}
-
-const TOOL_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$/
-
-const isProviderSafe = (name: string): boolean => TOOL_NAME_PATTERN.test(name)
-
-const ensureValidName = (name: string): void => {
-  if (!isProviderSafe(name)) {
-    throw new InvalidToolName({
-      name,
-      reason:
-        "Tool names must start with a letter or underscore and contain only letters, digits, underscores, and hyphens (≤64 chars)",
-    })
-  }
-}
-
-const ensureValidNamespace = (ns: string): void => {
-  ensureValidName(ns)
-  if (ns.includes("__")) {
-    throw new InvalidToolName({
-      name: ns,
-      reason: "Tool namespaces must not contain the reserved separator '__'",
-    })
-  }
-}
-
-/** Validate names we author; skip provider-defined names (the provider owns them). */
-const validateFirstPartyNames = (tools: ReadonlyArray<AnyTool>): void =>
-  Arr.findFirst(tools, (tool) => tool._tag !== "ProviderTool" && !isProviderSafe(tool.name)).pipe(
-    Option.map((tool) => ensureValidName(tool.name)),
-    Option.getOrElse(() => undefined),
-  )
 
 // --- namespacing -----------------------------------------------------------
 
@@ -237,14 +193,13 @@ type Namespaced<Prefix extends string, T extends ToolMap> = {
 /**
  * Prefix every tool name with `<namespace>__`, returning a new toolkit. Use it
  * to keep generic names (`search`) from two sources distinct before `compose`.
- * Throws `InvalidToolName` if the namespace isn't provider-safe or contains the
- * reserved `__`.
+ * If two namespaces collide at the `__` separator, the duplicate final name
+ * surfaces from `compose` as a `DuplicateToolName`.
  */
 export const namespace = <const Prefix extends string, const T extends ToolMap>(
   prefix: Prefix,
   toolkit: Toolkit<T>,
 ): Toolkit<Namespaced<Prefix, T>> => {
-  ensureValidNamespace(prefix)
   const renamed = Arr.map(Record.values(toolkit), (tool) => ({
     ...tool,
     name: `${prefix}__${tool.name}`,

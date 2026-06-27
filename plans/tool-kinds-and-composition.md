@@ -10,9 +10,11 @@ recorded here so the plan reads true:
   value. The record already gives O(1) dispatch and within-toolkit uniqueness; no
   `source`/`index`/`descriptors` fields are stored. This kept the change additive and
   left the executor (Part 1) untouched by Part 2.
-- **`make` stayed synchronous.** Compile-time `UniqueTools` catches duplicate literal
-  names; first-party name validation throws `InvalidToolName` (a programmer error).
-  Only `compose` is effectful.
+- **`make` stayed synchronous and total.** Compile-time `UniqueTools` catches duplicate
+  literal names. Name-charset validation was **dropped** (no `InvalidToolName`): a
+  malformed first-party name is a developer typo the provider rejects clearly on first
+  use, and there is no single cross-provider name rule worth enforcing in `make`. Only
+  `compose` is effectful (its `DuplicateToolName` covers real collisions).
 - **`compose` provenance is positional** (`sources: ["toolkit-0", "toolkit-1"]`), not a
   `source` label baked into every toolkit. It is compile-time-checked when names are
   statically known and runtime-checked (`DuplicateToolName`) for dynamic sources.

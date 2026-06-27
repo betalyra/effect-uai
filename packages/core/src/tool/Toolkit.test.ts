@@ -199,21 +199,6 @@ describe("Toolkit.make / compose / namespace - uniqueness", () => {
     Toolkit.make(a, b)
   })
 
-  it("throws InvalidToolName for a non-provider-safe first-party name", () => {
-    expect(() => Toolkit.make(tool("bad.name"))).toThrow(Toolkit.InvalidToolName)
-  })
-
-  it("does not validate provider-defined names (the provider owns them)", () => {
-    const dotted = Tool.provider({
-      name: "bad.name",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      provider: "gemini",
-      config: {},
-    })
-    expect(Object.keys(Toolkit.make(dotted))).toEqual(["bad.name"])
-  })
-
   it("fails compose with DuplicateToolName naming the colliding sources (dynamic)", async () => {
     const github = Toolkit.fromArray([tool("search")])
     const linear = Toolkit.fromArray([tool("search")])

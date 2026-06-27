@@ -60,8 +60,8 @@ omit `tools` entirely for a turn with none. `Toolkit.descriptors` still exists i
 you want the `ToolDescriptor[]` yourself.
 
 `Toolkit.make(...tools)` is variadic, indexes by `tool.name`, and rejects a
-duplicate literal name at compile time (plus validates first-party names); use
-`Toolkit.fromArray(tools)` for a runtime-built array (e.g. MCP, trusted/last-wins).
+duplicate literal name at compile time; use `Toolkit.fromArray(tools)` for a
+runtime-built array (e.g. MCP, trusted/last-wins).
 Combine independent toolkits with `Toolkit.compose(...kits)`
 (effectful; fails `DuplicateToolName` with source provenance, compile error for
 static clashes), prefixing generic names first with `Toolkit.namespace(prefix, kit)`
@@ -165,8 +165,8 @@ A provider-hosted tool you passed as a hand-built descriptor becomes
 - A non-local kind (provider/signal/interaction) passed to `Toolkit.run` yields
   `ToolResult.Failure` kind `"non_local_tool"` (the loop is meant to intercept
   it first) — distinct from `"unknown_tool"`.
-- `Toolkit.make` now rejects a duplicate literal tool name at compile time and
-  throws `InvalidToolName` for a non-provider-safe first-party name.
+- `Toolkit.make` now rejects a duplicate literal tool name at compile time. It
+  does not otherwise validate names (a malformed name 400s at the provider).
 
 ### After-migration checklist
 

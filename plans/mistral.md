@@ -11,6 +11,7 @@ All Mistral surfaces sit under `https://api.mistral.ai`, auth via
 `Authorization: Bearer $MISTRAL_API_KEY`. Sources are listed at the bottom.
 
 ### 1a. Chat completions (LLM)
+
 - `POST https://api.mistral.ai/v1/chat/completions`, SSE streaming with `stream: true`.
 - OpenAI-chat-shaped: `messages[]` with roles `system|user|assistant|tool`,
   streaming deltas at `choices[0].delta.content`.
@@ -28,6 +29,7 @@ All Mistral surfaces sit under `https://api.mistral.ai`, auth via
   `magistral-medium-latest` (reasoning). Usage returned as `usage: { prompt_tokens, completion_tokens, total_tokens }`.
 
 ### 1b. Voxtral realtime STT (streaming)
+
 - WebSocket: `wss://api.mistral.ai/...` (exact path to confirm against the SDK;
   auth via `Authorization: Bearer` header on the upgrade request).
 - Model: `voxtral-mini-transcribe-realtime-2602`. Latency configurable via
@@ -42,6 +44,7 @@ All Mistral surfaces sit under `https://api.mistral.ai`, auth via
 - Not compatible with `diarize` in realtime mode.
 
 ### 1c. Voxtral batch STT (offline)
+
 - `POST https://api.mistral.ai/v1/audio/transcriptions`, multipart form.
 - Fields: `file` (or `file_url` / `file_id`), `model`, `language?`,
   `diarize?` (bool, default false), `temperature?`,
@@ -52,6 +55,7 @@ All Mistral surfaces sit under `https://api.mistral.ai`, auth via
 - Streaming variant: same path with `stream=true`, returns SSE.
 
 ### 1d. Voxtral TTS
+
 - Model: `voxtral-mini-tts-2603`. Zero-shot voice cloning from 2-3s of audio.
 - Request fields: `model`, `input` (text), voice via `voice_id` (saved voice) or
   `ref_audio` (one-off reference clip for cloning), `response_format`.
@@ -63,8 +67,8 @@ All Mistral surfaces sit under `https://api.mistral.ai`, auth via
 
 ## 2. Package layout
 
-Mirror the existing split where OpenAI's *chat* lives in `@effect-uai/responses`
-and OpenAI's *audio* lives in `@effect-uai/openai`. For Mistral:
+Mirror the existing split where OpenAI's _chat_ lives in `@effect-uai/responses`
+and OpenAI's _audio_ lives in `@effect-uai/openai`. For Mistral:
 
 - `@effect-uai/mistral` -> LanguageModel only (chat completions protocol).
 - `@effect-uai/voxtral` -> Transcriber (realtime + batch) + SpeechSynthesizer (TTS).
@@ -105,7 +109,9 @@ in `pnpm-workspace.yaml` (already covered by `packages/providers/*`).
 ## 3. Implementation
 
 ### 3a. `@effect-uai/mistral` (LanguageModel)
+
 Follow the Anthropic/Responses pattern:
+
 - `MistralRequest = Omit<CommonRequest, "model"> & { model: MistralModel; safePrompt?: boolean; randomSeed?: number }`.
 - `make(cfg): Effect<MistralService, never, HttpClient>` and
   `layer(cfg): Layer<Mistral | LanguageModel, never, HttpClient>` registering both
@@ -126,6 +132,7 @@ Follow the Anthropic/Responses pattern:
   422/400 -> InvalidRequest, with `provider: "mistral"`.
 
 ### 3b. `@effect-uai/voxtral` Transcriber (batch)
+
 - Implement `TranscriberService.transcribe`: build multipart
   (`file`/`file_url`, `model`, `language`, `diarize`, `timestamp_granularities`,
   `context_bias`) -> decode `{ text, language, segments }` into `TranscriptResult`.
@@ -133,6 +140,7 @@ Follow the Anthropic/Responses pattern:
   `wordTimestamps -> timestamp_granularities: ["word"]`, `diarization -> diarize`.
 
 ### 3c. `@effect-uai/voxtral` Realtime Transcriber (streaming)
+
 - Reuse the OpenAI realtime pattern (`OpenAIRealtimeTranscriber.ts` +
   `realtimeStt.ts`): `Socket.fromWebSocket` with an auth-header WS constructor,
   a `Queue.make<TranscriptEvent, Cause.Done>()` drained as the output stream,
@@ -153,6 +161,7 @@ Follow the Anthropic/Responses pattern:
   `SttStreaming` capability marker.
 
 ### 3d. `@effect-uai/voxtral` Synthesizer (TTS)
+
 - `synthesize`: POST `model`, `input`, `voice_id`/`ref_audio`, `response_format`
   -> decode base64 `audio_data` -> `AudioBlob` with the matching `AudioFormat`.
 - `streamSynthesis` / `streamSynthesisFrom`: use the streaming TTS variant; emit
@@ -170,6 +179,7 @@ Follow the Anthropic/Responses pattern:
 `recipes/voice-loop/` currently wires Google (STT+LLM) + ElevenLabs (TTS) through
 the generic `Transcriber` / `LanguageModel` / `SpeechSynthesizer` tags, so swapping
 providers is a Layer change, not a code change. Steps:
+
 - Add `@effect-uai/mistral` + `@effect-uai/voxtral` to `recipes/package.json`.
 - Add a Mistral `PipelineConfig` preset:
   - `stt.model = "voxtral-mini-transcribe-realtime-2602"`,
@@ -186,6 +196,7 @@ providers is a Layer change, not a code change. Steps:
 - Keep the existing `phoneticize`/`settleBurst` logic unchanged.
 
 ## 5. Tests
+
 - `Mistral` codec unit tests: history+tools -> wire body; canned SSE -> `TurnEvent`
   sequence (text deltas, a tool call, usage, `TurnComplete`); `tool_choice` and
   `response_format` mapping; error-status -> `AiError` mapping.
@@ -198,6 +209,7 @@ providers is a Layer change, not a code change. Steps:
   that requirements stay `HttpClient` (per `feedback_no_scratch_type_checks`).
 
 ## 6. Open items to confirm during implementation
+
 - Exact realtime WebSocket URL/path and the JSON `type` discriminator per event
   (the SDK uses class names; confirm the wire `type` strings).
 - Whether realtime text deltas are incremental or cumulative (affects partial vs
@@ -208,6 +220,7 @@ providers is a Layer change, not a code change. Steps:
 - Confirm current chat model ids and `finish_reason` value set.
 
 ## Sources
+
 - Chat completions / function calling: https://docs.mistral.ai/studio-api/conversations/function-calling , https://docs.mistral.ai/api
 - Voxtral overview / news: https://mistral.ai/news/voxtral-transcribe-2/ , https://mistral.ai/news/voxtral-tts/
 - Realtime STT: https://docs.mistral.ai/studio-api/audio/speech_to_text/realtime_transcription

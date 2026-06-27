@@ -21,9 +21,21 @@
  * only emits one `transcription.done` at end-of-audio (no server-side
  * utterance segmentation). To satisfy the `Transcriber` contract's `final`
  * semantics for conversational use, this adapter synthesizes a `final` event
- * when the deltas go quiet for `utteranceSilenceMs`.
+ * when the deltas go quiet for `utteranceSilence`.
  */
-import { Clock, Cause, Effect, Encoding, Match, Queue, Redacted, Ref, Schema, Stream } from "effect"
+import {
+  Cause,
+  Clock,
+  Duration,
+  Effect,
+  Encoding,
+  Match,
+  Queue,
+  Redacted,
+  Ref,
+  Schema,
+  Stream,
+} from "effect"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
@@ -36,16 +48,16 @@ export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
   /** Target latency knob (`target_streaming_delay_ms`); lower = faster, less accurate. */
-  readonly targetStreamingDelayMs?: number
+  readonly targetStreamingDelay?: Duration.Duration
   /**
-   * Silence gap (ms) after which the accumulated deltas are committed as a
-   * synthetic `final`. Voxtral Realtime does no utterance segmentation, so
-   * this is how the adapter delimits turns. Default 700ms.
+   * Silence gap after which the accumulated deltas are committed as a synthetic
+   * `final`. Voxtral Realtime does no utterance segmentation, so this is how the
+   * adapter delimits turns. Default 700 ms.
    */
-  readonly utteranceSilenceMs?: number
+  readonly utteranceSilence?: Duration.Duration
 }
 
-const DEFAULT_SILENCE_MS = 700
+const DEFAULT_SILENCE = Duration.millis(700)
 
 // ---------------------------------------------------------------------------
 // AudioFormat gate — Voxtral Realtime ingests pcm_s16le @ 16000 mono only.
@@ -76,8 +88,8 @@ const sessionUpdateFrame = (cfg: Config) =>
     type: "session.update",
     session: {
       audio_format: { encoding: "pcm_s16le", sample_rate: 16000 },
-      ...(cfg.targetStreamingDelayMs !== undefined && {
-        target_streaming_delay_ms: cfg.targetStreamingDelayMs,
+      ...(cfg.targetStreamingDelay !== undefined && {
+        target_streaming_delay_ms: Duration.toMillis(cfg.targetStreamingDelay),
       }),
     },
   })
@@ -160,15 +172,17 @@ const handleServerMessage =
 const silenceFinalizer = (
   queue: Queue.Queue<TranscriptEvent, Cause.Done>,
   state: TurnState,
-  silenceMs: number,
-): Effect.Effect<never> =>
-  Effect.gen(function* () {
+  silence: Duration.Duration,
+): Effect.Effect<never> => {
+  const silenceMs = Duration.toMillis(silence)
+  return Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis
     const last = yield* Ref.get(state.lastActivityMs)
     const acc = yield* Ref.get(state.text)
     if (acc.trim().length > 0 && now - last >= silenceMs) yield* emitFinal(queue, state)
     yield* Effect.sleep("150 millis")
   }).pipe(Effect.forever)
+}
 
 // ---------------------------------------------------------------------------
 // Stream<Uint8Array> → Stream<TranscriptEvent>
@@ -221,7 +235,7 @@ export const streamTranscription =
           Effect.forkScoped,
         )
 
-        yield* silenceFinalizer(queue, state, cfg.utteranceSilenceMs ?? DEFAULT_SILENCE_MS).pipe(
+        yield* silenceFinalizer(queue, state, cfg.utteranceSilence ?? DEFAULT_SILENCE).pipe(
           Effect.forkScoped,
         )
 
@@ -229,15 +243,13 @@ export const streamTranscription =
         // `Queue.shutdown` would drop queued items and interrupt takes. A
         // connection/read failure is logged (otherwise the stream would end
         // silently with no transcripts).
-        yield* socket
-          .runString(handleServerMessage(queue, state))
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logWarning("[voxtral-realtime] socket closed", { cause }),
-            ),
-            Effect.ensuring(Queue.end(queue)),
-            Effect.forkScoped,
-          )
+        yield* socket.runString(handleServerMessage(queue, state)).pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("[voxtral-realtime] socket closed", { cause }),
+          ),
+          Effect.ensuring(Queue.end(queue)),
+          Effect.forkScoped,
+        )
 
         return Stream.fromQueue(queue)
       }),

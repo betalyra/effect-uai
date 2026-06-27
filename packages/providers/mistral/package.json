@@ -7,11 +7,11 @@
     "effect",
     "llm",
     "mistral",
-    "voxtral",
     "speech",
     "stt",
     "transcription",
-    "tts"
+    "tts",
+    "voxtral"
   ],
   "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/mistral",
   "bugs": {

@@ -110,12 +110,14 @@ type error at `Effect.provide`, not a runtime `Unsupported`.
 | ElevenLabs | —                 | ✓ (Scribe v2 Realtime)          | ✓        | ✓           | ✓                    |
 | Gemini     | ✓ (prompt-driven) | —                               | ✓        | —           | —                    |
 | Inworld    | ✓                 | ✓                               | ✓        | ✓           | ✓                    |
+| Mistral    | ✓ (Voxtral)       | ✓ (Voxtral Realtime)            | ✓        | ✓           | ✓ (buffered)         |
 
 Each provider's full surface — models, voice IDs, wire / auth notes —
 lives on its page: [OpenAI](/speech/providers/openai/),
 [ElevenLabs](/speech/providers/elevenlabs/),
 [Gemini](/speech/providers/gemini/),
-[Inworld](/speech/providers/inworld/).
+[Inworld](/speech/providers/inworld/),
+[Mistral](/speech/providers/mistral/).
 
 ## Next step
 

@@ -110,6 +110,7 @@ export default defineConfig({
                 { label: "Responses / OpenAI", slug: "providers/responses" },
                 { label: "Google Gemini", slug: "providers/gemini" },
                 { label: "Anthropic", slug: "providers/anthropic" },
+                { label: "Mistral", slug: "providers/mistral" },
               ],
             },
             {
@@ -184,6 +185,7 @@ export default defineConfig({
                 { label: "ElevenLabs", slug: "speech/providers/elevenlabs" },
                 { label: "Google Gemini", slug: "speech/providers/gemini" },
                 { label: "Inworld", slug: "speech/providers/inworld" },
+                { label: "Mistral", slug: "speech/providers/mistral" },
               ],
             },
             {

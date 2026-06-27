@@ -159,6 +159,24 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/providers/mistral:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.0
+
   packages/providers/openai:
     devDependencies:
       '@effect-uai/core':
@@ -236,6 +254,9 @@ importers:
       '@effect-uai/jina':
         specifier: workspace:*
         version: link:../packages/providers/jina
+      '@effect-uai/mistral':
+        specifier: workspace:*
+        version: link:../packages/providers/mistral
       '@effect-uai/openai':
         specifier: workspace:*
         version: link:../packages/providers/openai

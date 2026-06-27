@@ -169,9 +169,8 @@ explicit `Toolkit.descriptors(toolkit)` still exists if you want the
 `ToolDescriptor[]` yourself.)
 
 `Toolkit.make` is variadic, indexes by `tool.name`, and **rejects a duplicate
-literal name at compile time** (plus validates that first-party names are
-provider-safe). Use `Toolkit.fromArray(tools)` for a runtime-built array (e.g.
-MCP), where names are trusted and last-wins. The rendered descriptors are the
+literal name at compile time**. Use `Toolkit.fromArray(tools)` for a
+runtime-built array (e.g. MCP), where names are trusted and last-wins. The rendered descriptors are the
 provider-agnostic `ToolDescriptor[]` the generic `LanguageModel` accepts;
 providers map `inputSchema` to their own wire field (`parameters` for OpenAI,
 `input_schema` for Anthropic).

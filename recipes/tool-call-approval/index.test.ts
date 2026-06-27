@@ -74,7 +74,7 @@ describe("tool-call-approval", () => {
             .streamTurn({
               history: state.history,
               model: "mock",
-              tools: Toolkit.descriptors(toolkit),
+              tools: toolkit,
             })
             .pipe(
               onTurnComplete((turn) =>
@@ -327,7 +327,7 @@ describe("tool-call-approval (HTTP variant)", () => {
             .streamTurn({
               history: state.history,
               model: "mock",
-              tools: Toolkit.descriptors(toolkit),
+              tools: toolkit,
             })
             .pipe(
               onTurnComplete((turn) =>

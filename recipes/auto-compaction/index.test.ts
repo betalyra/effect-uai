@@ -107,7 +107,6 @@ describe("auto-compaction", () => {
                   ),
                 ],
                 model: "mock",
-                tools: [],
               })
               .pipe(
                 onTurnComplete((turn) =>
@@ -119,7 +118,7 @@ describe("auto-compaction", () => {
               )
           }
 
-          return lm.streamTurn({ history: state.history, model: "mock", tools: [] }).pipe(
+          return lm.streamTurn({ history: state.history, model: "mock" }).pipe(
             onTurnComplete((turn) =>
               Effect.sync(() => {
                 const nextState = advance(state, turn)

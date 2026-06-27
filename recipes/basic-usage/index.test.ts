@@ -68,7 +68,7 @@ describe("basic-usage", () => {
             .streamTurn({
               history: state.history,
               model: "mock",
-              tools: Toolkit.descriptors(toolkit),
+              tools: toolkit,
             })
             .pipe(
               onTurnComplete((turn) =>

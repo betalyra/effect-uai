@@ -102,7 +102,7 @@ Yield `LanguageModel` when your code should work under any provider:
 ```ts
 import { streamTurn } from "@effect-uai/core/LanguageModel"
 
-const program = streamTurn({ history, model: "gpt-5.4-mini", tools }).pipe(/* ... */)
+const program = streamTurn({ history, model: "gpt-5.4-mini", tools: toolkit }).pipe(/* ... */)
 ```
 
 Yield the typed tag when you need provider-specific options at the

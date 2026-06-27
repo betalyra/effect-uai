@@ -76,7 +76,6 @@ const deleteUser = Tool.make({
 })
 
 export const toolkit = Toolkit.make(searchEmails, sendEmail, deleteUser)
-const tools = Toolkit.descriptors(toolkit)
 
 const decisionEvents = (decision: Approval.ApprovalDecision): Stream.Stream<ToolEvent> =>
   decision._tag === "Approved"
@@ -139,7 +138,7 @@ export const httpConversation = (
           .streamTurn({
             history: current.history,
             model: "gpt-5.4-mini",
-            tools,
+            tools: toolkit,
             reasoning: { effort: "low" },
           })
           .pipe(
@@ -178,7 +177,7 @@ export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State =
           .streamTurn({
             history: current.history,
             model: "gpt-5.4-mini",
-            tools,
+            tools: toolkit,
             reasoning: { effort: "low" },
           })
           .pipe(

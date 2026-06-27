@@ -46,17 +46,23 @@ tools are unified into one `Tool.make` whose `run(input, emit)` returns an Effec
 `Toolkit.run`, and the descriptor rendering, now go through a `Toolkit` value
 instead of a flat tool array.
 
-| Before                      | After                                |
-| --------------------------- | ------------------------------------ |
-| `const tools = [a, b]`      | `const toolkit = Toolkit.make(a, b)` |
-| `Tool.toDescriptors(tools)` | `Toolkit.descriptors(toolkit)`       |
-| `Toolkit.run(tools, calls)` | `Toolkit.run(toolkit, calls)`        |
+| Before                               | After                                |
+| ------------------------------------ | ------------------------------------ |
+| `const tools = [a, b]`               | `const toolkit = Toolkit.make(a, b)` |
+| `streamTurn({ tools: descriptors })` | `streamTurn({ tools: toolkit })`     |
+| `streamTurn({ tools: [] })`          | `streamTurn({ /* omit tools */ })`   |
+| `Toolkit.run(tools, calls)`          | `Toolkit.run(toolkit, calls)`        |
+
+`streamTurn`'s `tools?` now takes the `Toolkit` directly (it renders descriptors
+at the provider boundary), so the `Toolkit.descriptors(toolkit)` /
+`Tool.toDescriptors([...])` call at the request site is gone — pass `toolkit`, and
+omit `tools` entirely for a turn with none. `Toolkit.descriptors` still exists if
+you want the `ToolDescriptor[]` yourself.
 
 `Toolkit.make(...tools)` is variadic, indexes by `tool.name`, and rejects a
 duplicate literal name at compile time (plus validates first-party names); use
 `Toolkit.fromArray(tools)` for a runtime-built array (e.g. MCP, trusted/last-wins).
-`Tool.toDescriptors` still exists as the low-level renderer, but call sites read
-`Toolkit.descriptors`. Combine independent toolkits with `Toolkit.compose(...kits)`
+Combine independent toolkits with `Toolkit.compose(...kits)`
 (effectful; fails `DuplicateToolName` with source provenance, compile error for
 static clashes), prefixing generic names first with `Toolkit.namespace(prefix, kit)`
 when needed. A function that takes a toolkit as a parameter types it as
@@ -105,13 +111,16 @@ Tool.make({
 const tools = [getTime, lookupWeather]
 const descriptors = Tool.toDescriptors(tools)
 // ...
+lm.streamTurn({ history, model, tools: descriptors })
+// ...
 return Toolkit.run(tools, calls).pipe(
   Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
 )
 
 // After
 const toolkit = Toolkit.make(getTime, lookupWeather)
-const descriptors = Toolkit.descriptors(toolkit)
+// ...
+lm.streamTurn({ history, model, tools: toolkit }) // toolkit straight in, no descriptors()
 // ...
 return Toolkit.run(toolkit, calls).pipe(
   Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
@@ -166,6 +175,8 @@ A provider-hosted tool you passed as a hand-built descriptor becomes
       `Tool.interaction`; provider-hosted tools to `Tool.provider`
 - [ ] `Toolkit.run` and `Toolkit.descriptors` take a `Toolkit` from
       `Toolkit.make(...)` / `Toolkit.fromArray(...)`, not a bare array
+- [ ] `streamTurn({ tools })` passed the `Toolkit` itself (not a rendered
+      `ToolDescriptor[]`); `tools: []` turns drop the field entirely
 - [ ] Cross-source toolkits combined with `Toolkit.compose` (not array concat)
 - [ ] Tool-array parameters retyped as `Toolkit.Toolkit`
 - [ ] `pnpm typecheck` clean

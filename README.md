@@ -57,7 +57,7 @@ export const conversation = loop(initial, (state) =>
   Effect.gen(function* () {
     const oai = yield* Responses // swap for Anthropic / Gemini any turn
     return oai
-      .streamTurn({ history: state.history, model, tools: Toolkit.descriptors(toolkit) }) // stream text, reasoning, tool events
+      .streamTurn({ history: state.history, model, tools: toolkit }) // stream text, reasoning, tool events
       .pipe(
         onTurnComplete((turn) =>
           Effect.sync(() => {

@@ -56,7 +56,7 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
             history: current.history,
             model: tier.model,
             // Only the cheap tier gets the escalate tool.
-            ...(current.tier === 0 ? { tools: escalateDescriptors } : {}),
+            ...(current.tier === 0 ? { tools: escalationToolkit } : {}),
           })
           .pipe(
             // `then` may return a step stream directly or an Effect of one -

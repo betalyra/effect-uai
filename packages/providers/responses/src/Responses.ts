@@ -9,6 +9,7 @@ import {
   turnFromStream,
 } from "@effect-uai/core/LanguageModel"
 import * as SSE from "@effect-uai/core/SSE"
+import { descriptorsOf } from "@effect-uai/core/Tool"
 import type { Turn, TurnEvent } from "@effect-uai/core/Turn"
 import { itemsToInput } from "./codec.js"
 import type { OpenAIModel } from "./models.js"
@@ -124,20 +125,20 @@ const buildText = (request: ResponsesRequest): Record<string, unknown> | undefin
 
 const buildBody = (request: ResponsesRequest): Record<string, unknown> => {
   const text = buildText(request)
+  const tools = descriptorsOf(request.tools)
   return {
     model: request.model,
     input: itemsToInput(request.history),
     stream: true,
-    ...(request.tools !== undefined &&
-      request.tools.length > 0 && {
-        tools: request.tools.map((t) => ({
-          type: "function",
-          name: t.name,
-          description: t.description,
-          parameters: t.inputSchema,
-          ...(t.strict !== undefined && { strict: t.strict }),
-        })),
-      }),
+    ...(tools.length > 0 && {
+      tools: tools.map((t) => ({
+        type: "function",
+        name: t.name,
+        description: t.description,
+        parameters: t.inputSchema,
+        ...(t.strict !== undefined && { strict: t.strict }),
+      })),
+    }),
     ...(request.toolChoice !== undefined && { tool_choice: request.toolChoice }),
     ...(request.temperature !== undefined && { temperature: request.temperature }),
     ...(request.maxOutputTokens !== undefined && {

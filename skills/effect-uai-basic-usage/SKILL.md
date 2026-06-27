@@ -37,7 +37,6 @@ const initial: State = {
 }
 
 const toolkit = Toolkit.make(/* getCurrentTime, ... */)
-const descriptors = Toolkit.descriptors(toolkit)
 
 export const conversation = pipe(
   initial,
@@ -48,7 +47,7 @@ export const conversation = pipe(
         .streamTurn({
           history: state.history,
           model: "gpt-5.4-mini",
-          tools: descriptors,
+          tools: toolkit,
           reasoning: { effort: "low" },
         })
         .pipe(
@@ -127,7 +126,7 @@ await Effect.runPromise(Stream.runDrain(conversation).pipe(Effect.provide(mainLa
 - **Don't run tools outside the loop body.** They need to be part of
   the same iteration so their outputs are visible in `state.history`
   before the next turn.
-- **Don't forget `tools: descriptors` on the request.** Without it the
+- **Don't forget `tools: toolkit` on the request.** Without it the
   model can't call your tools at all; it'll just answer in prose.
 
 ## See also

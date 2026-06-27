@@ -59,8 +59,6 @@ export const conversation = (
   toolkit: Toolkit.Toolkit,
   settle: Duration.Input = "150 millis",
 ) => {
-  const descriptors = Toolkit.descriptors(toolkit)
-
   return pipe(
     { history: [] } as State,
     loop((state) =>
@@ -69,7 +67,7 @@ export const conversation = (
         const history = [...state.history, ...incoming.map(Items.userText)]
 
         const lm = yield* LanguageModel
-        return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
+        return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: toolkit }).pipe(
           onTurnComplete((turn) =>
             Effect.sync(() => {
               const calls = Turn.getToolCalls(turn)

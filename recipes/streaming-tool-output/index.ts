@@ -155,7 +155,7 @@ export const buildConversation = (toolkit: Toolkit.Toolkit, initial: State) =>
           .streamTurn({
             history: state.history,
             model: "gpt-5.4-mini",
-            tools: Toolkit.descriptors(toolkit),
+            tools: toolkit,
           })
           .pipe(
             onTurnComplete((turn) =>

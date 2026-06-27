@@ -48,7 +48,6 @@ const getCurrentTime = Tool.make({
 })
 
 const toolkit = Toolkit.make(getCurrentTime)
-const tools = Toolkit.descriptors(toolkit)
 
 // ---------------------------------------------------------------------------
 // State and types
@@ -81,7 +80,7 @@ export const conversation = pipe(
         .streamTurn({
           history: state.history,
           model: "gpt-5.4-mini",
-          tools,
+          tools: toolkit,
         })
         .pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),

@@ -57,7 +57,7 @@ export const httpConversation = (
           .streamTurn({
             history: current.history,
             model: "gpt-5.4-mini",
-            tools: Toolkit.descriptors(toolkit),
+            tools: toolkit,
           })
           .pipe(
             onTurnComplete<typeof state, ToolEvent>((turn) =>

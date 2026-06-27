@@ -19,7 +19,7 @@ const lines = [
   },
   { code: "    return oai", label: "", description: "" },
   {
-    code: "      .streamTurn({ history: state.history, model, tools })",
+    code: "      .streamTurn({ history: state.history, model, tools: toolkit })",
     label: "Design the UX",
     description: "Stream tokens, tool events, and partial progress into any UI or transport.",
   },
@@ -40,7 +40,7 @@ const lines = [
     description: "Stop on a final answer, a budget limit, a policy decision, or your own condition.",
   },
   {
-    code: "          return Toolkit.run(tools, calls).pipe(",
+    code: "          return Toolkit.run(toolkit, calls).pipe(",
     label: "Expose real tools",
     description: "Run typed Effect tools with streaming output, errors, scopes, and dependencies.",
   },

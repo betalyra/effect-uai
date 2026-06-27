@@ -150,8 +150,7 @@ The same schema serves two purposes:
 ## Wiring tools up
 
 Group your tools into a `Toolkit` — a name-indexed record of tools — with
-`Toolkit.make(...tools)`, then render the descriptors with
-`Toolkit.descriptors`:
+`Toolkit.make(...tools)`, then pass the toolkit straight to `streamTurn`:
 
 ```ts
 import * as Toolkit from "@effect-uai/core/Toolkit"
@@ -160,13 +159,19 @@ const toolkit = Toolkit.make(
   getCurrentTime, // plain
   askSubagent, // streaming
 )
-const tools = Toolkit.descriptors(toolkit)
+
+lm.streamTurn({ history, model, tools: toolkit })
 ```
+
+`streamTurn` takes the `Toolkit` directly and renders the wire descriptors at
+the provider boundary, so there's no `descriptors` call at the call site. (The
+explicit `Toolkit.descriptors(toolkit)` still exists if you want the
+`ToolDescriptor[]` yourself.)
 
 `Toolkit.make` is variadic, indexes by `tool.name`, and **rejects a duplicate
 literal name at compile time** (plus validates that first-party names are
 provider-safe). Use `Toolkit.fromArray(tools)` for a runtime-built array (e.g.
-MCP), where names are trusted and last-wins. Descriptors are the
+MCP), where names are trusted and last-wins. The rendered descriptors are the
 provider-agnostic `ToolDescriptor[]` the generic `LanguageModel` accepts;
 providers map `inputSchema` to their own wire field (`parameters` for OpenAI,
 `input_schema` for Anthropic).

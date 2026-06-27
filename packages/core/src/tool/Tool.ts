@@ -263,6 +263,18 @@ export const toDescriptors = (tools: ReadonlyArray<AnyTool>): ReadonlyArray<Tool
       : { name: tool.name, description: tool.description, inputSchema }
   })
 
+/**
+ * Render a `Toolkit` (a name-indexed record of tools) to descriptors, treating
+ * an absent toolkit as no tools. The normalization point the `LanguageModel`
+ * boundary uses so a request can carry the toolkit itself instead of a
+ * pre-rendered descriptor array. Lives here (not on `Toolkit`) to keep providers
+ * free of a dependency on the toolkit module — it only needs the tool values.
+ */
+export const descriptorsOf = (
+  toolkit?: Readonly<Record<string, AnyTool>>,
+): ReadonlyArray<ToolDescriptor> =>
+  toolkit === undefined ? [] : toDescriptors(Object.values(toolkit))
+
 const toToolError = (call: ToolCall, toolName: string, message: string) => (cause: unknown) =>
   new ToolError({ call_id: call.call_id, tool: toolName, message, cause })
 

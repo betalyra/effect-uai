@@ -66,7 +66,6 @@ type State = {
 export const groundedAnswer = (cfg: GroundedAnswerConfig) => {
   const maxRounds = cfg.maxRounds ?? 5
   const toolkit = Toolkit.make(webSearchTool({ maxResults: cfg.maxResults ?? 5 }))
-  const descriptors = Toolkit.descriptors(toolkit)
 
   const initial: State = {
     history: [Items.systemText(SYSTEM_PROMPT), Items.userText(cfg.question)],
@@ -82,7 +81,7 @@ export const groundedAnswer = (cfg: GroundedAnswerConfig) => {
       return streamTurn({
         history: state.history,
         model: cfg.model,
-        ...(lastRound ? {} : { tools: descriptors }),
+        ...(lastRound ? {} : { tools: toolkit }),
       }).pipe(
         onTurnComplete((turn) =>
           Effect.sync(() => {

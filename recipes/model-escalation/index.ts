@@ -30,6 +30,7 @@ import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { loop, next, stop, onTurnComplete, value } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
+import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -52,7 +53,7 @@ export const escalate = Tool.signal({
   inputSchema: Tool.fromEffectSchema(EscalateInput),
 })
 
-const escalateDescriptors = Tool.toDescriptors([escalate])
+const escalationToolkit = Toolkit.make(escalate)
 
 // ---------------------------------------------------------------------------
 // System prompt for the cheap tier. The policy lives here - swap it for any
@@ -150,7 +151,7 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
           .streamTurn({
             history: requestHistory,
             model: tier.model,
-            ...(current.tier === 0 ? { tools: escalateDescriptors } : {}),
+            ...(current.tier === 0 ? { tools: escalationToolkit } : {}),
           })
           .pipe(
             onTurnComplete((turn) => {

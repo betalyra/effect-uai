@@ -48,7 +48,7 @@ loop((state) =>
     const history = [...state.history, ...incoming.map(Items.userText)]
 
     const lm = yield* LanguageModel
-    return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
+    return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: toolkit }).pipe(
       onTurnComplete<State, ToolEvent>((turn) =>
         Effect.sync(() => {
           const calls = Turn.functionCalls(turn)

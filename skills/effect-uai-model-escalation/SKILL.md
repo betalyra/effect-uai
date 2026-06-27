@@ -33,6 +33,8 @@ export const escalate = Tool.signal({
     "Hand the question off to a stronger, more expensive model. Use when the question requires deep expertise that a fast model can't deliver with high confidence.",
   inputSchema: Tool.fromEffectSchema(EscalateInput),
 })
+
+const escalationToolkit = Toolkit.make(escalate)
 ```
 
 There is no fake `run`. The loop intercepts the call at `onTurnComplete` and
@@ -46,7 +48,7 @@ const deltas = tier.service
   .streamTurn({
     history: requestHistory,
     model: tier.model,
-    ...(current.tier === 0 ? { tools: escalateDescriptors } : {}),
+    ...(current.tier === 0 ? { tools: escalationToolkit } : {}),
   })
   .pipe(
     // `then` may return a step stream directly or an Effect of one - bare

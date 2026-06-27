@@ -1,3 +1,4 @@
+/// <reference path="./worklet.d.ts" />
 /**
  * Ring-buffered streaming PCM playback. The main thread pushes
  * `Float32Array` chunks via `port.postMessage`; this worklet keeps a
@@ -13,13 +14,14 @@
 const WARMUP_SAMPLES = 0.2 * 48000 // ~200 ms at 48 kHz
 
 class PlaybackWorklet extends AudioWorkletProcessor {
+  private queue: Float32Array[] = []
+  private headOffset = 0
+  private bufferedSamples = 0
+  private started = false
+
   constructor() {
     super()
-    this.queue = []
-    this.headOffset = 0
-    this.bufferedSamples = 0
-    this.started = false
-    this.port.onmessage = (e) => {
+    this.port.onmessage = (e: MessageEvent) => {
       if (e.data instanceof Float32Array) {
         this.queue.push(e.data)
         this.bufferedSamples += e.data.length
@@ -37,12 +39,12 @@ class PlaybackWorklet extends AudioWorkletProcessor {
     }
   }
 
-  process(_inputs, outputs) {
+  process(_inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
     const out = outputs[0]?.[0]
     if (!out || !this.started) return true
     let written = 0
     while (written < out.length && this.queue.length > 0) {
-      const head = this.queue[0]
+      const head = this.queue[0]!
       const available = head.length - this.headOffset
       const need = out.length - written
       const copy = Math.min(available, need)

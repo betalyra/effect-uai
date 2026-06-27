@@ -6,7 +6,23 @@ import * as MockSynthesizer from "@effect-uai/core/testing/MockSpeechSynthesizer
 import * as MockTranscriber from "@effect-uai/core/testing/MockTranscriber"
 import type { TranscriptEvent } from "@effect-uai/core/Transcript"
 import type { Turn } from "@effect-uai/core/Turn"
-import { defaultConfig, runPipeline, type StatusEvent } from "./index.js"
+import { type PipelineConfig, runPipeline, type StatusEvent } from "./recipe.js"
+
+// Mock providers ignore model/voice names, so a minimal config suffices. The
+// short settle window keeps the test fast.
+const testConfig: PipelineConfig = {
+  stt: {
+    model: "mock-stt",
+    inputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 16000, channels: 1 },
+  },
+  llm: { model: "mock-llm", systemPrompt: "test" },
+  tts: {
+    model: "mock-tts",
+    voiceId: "mock",
+    outputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 48000, channels: 1 },
+  },
+  utteranceSettle: "20 millis",
+}
 
 // ---------------------------------------------------------------------------
 // Test harness — runs the recipe against mock providers and collects every
@@ -29,8 +45,7 @@ const runRecipe = (script: {
     const tts = MockSynthesizer.layer({ streamSynthesisFromChunks: script.ttsChunks })
 
     const program = runPipeline(
-      // shorter settle so the test runs fast
-      { ...defaultConfig, utteranceSettle: "20 millis" },
+      testConfig,
       audioIn,
       (event) => Ref.update(statusEvents, (xs) => [...xs, event]),
       (bytes) => Ref.update(audioOut, (xs) => [...xs, bytes]),

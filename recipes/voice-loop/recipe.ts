@@ -19,6 +19,10 @@
  * History lives in a top-level `Ref` rather than being threaded through a
  * stream-state combinator — simpler, and the interrupt handler can append a
  * partial assistant message without reaching into stream internals.
+ *
+ * This module is pure recipe logic. Provider selection, config presets, the
+ * HTTP/WebSocket server, and audio-format glue live in `app.ts`; the
+ * platform layers live in `run-{bun,node,deno}.ts`.
  */
 import { Cause, Effect, Fiber, Match, Ref, Result, Stream } from "effect"
 import type * as AiError from "@effect-uai/core/AiError"
@@ -57,46 +61,6 @@ export type PipelineConfig = {
   readonly utteranceSettle: Duration.Input
 }
 
-export const defaultConfig: PipelineConfig = {
-  stt: {
-    model: "scribe_v2_realtime",
-    inputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 16000, channels: 1 },
-  },
-  llm: {
-    model: "gemini-2.5-flash",
-    systemPrompt: [
-      // Always write the brand name as `effect-uai`. A server-side phonetic
-      // rewrite (`effect-uai` → `effect why`) handles pronunciation before
-      // text hits the TTS engine, so the UI still shows the proper name.
-      "You are a conversational voice assistant. Speak naturally and directly.",
-      "You're happy to discuss any topic — explain things, brainstorm, banter",
-      "lightly when it fits. Don't be performative, theatrical, or overly",
-      'enthusiastic; no exclamations like "Oh!" or "Alright!". Just answer.',
-      "",
-      "The user is a single person continuing one conversation. Don't role-play",
-      "or adopt personas based on how they phrase things — if they say",
-      '"this is the manager," they\'re just talking, not introducing a character.',
-      "",
-      "Background (only if asked who or what you are):",
-      "- You're powered by effect-uai, a TypeScript library built on Effect for",
-      "  writing AI applications by composing small primitives instead of",
-      "  configuring a framework.",
-      "",
-      "Voice-output rules:",
-      "- One or two short sentences per turn. No lists, code, or markdown.",
-      "- Always write the brand name as `effect-uai` (with the hyphen).",
-      "- Never refuse a question as off-topic. If you don't know, say so briefly",
-      "  and offer what you do know.",
-    ].join("\n"),
-  },
-  tts: {
-    model: "eleven_flash_v2_5",
-    voiceId: "JBFqnCBsd6RMkjVDRZzb",
-    outputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 48000, channels: 1 },
-  },
-  utteranceSettle: "350 millis",
-}
-
 // ---------------------------------------------------------------------------
 // Phonetic / markdown rewrites applied just before the TTS WS. UI sees the
 // LLM's original text; only the speech engine sees these substitutions.
@@ -110,11 +74,15 @@ const TTS_REWRITES: ReadonlyArray<readonly [pattern: RegExp, replacement: string
 const phoneticize = (text: string): string =>
   TTS_REWRITES.reduce((s, [pattern, replacement]) => s.replace(pattern, replacement), text)
 
-// Real-time duration of an s16le PCM chunk. The pacing sleep based on this
+// Bytes per audio sample for a raw PCM encoding.
+const bytesPerSample = (encoding: AudioFormat["encoding"]): number =>
+  encoding === "pcm_f32le" ? 4 : 2
+
+// Real-time duration of a raw PCM chunk. The pacing sleep based on this
 // duration keeps the assistant fiber alive while the browser plays audio,
 // so a stop-word `Fiber.interrupt` can cut it short mid-response.
 const chunkDurationMs = (bytes: number, format: AudioFormat): number =>
-  (bytes / (format.sampleRate * 2 * (format.channels ?? 1))) * 1000
+  (bytes / (format.sampleRate * bytesPerSample(format.encoding) * (format.channels ?? 1))) * 1000
 
 // ---------------------------------------------------------------------------
 // STT: side-effects (partial / error → status) flow through `Stream.tap`;

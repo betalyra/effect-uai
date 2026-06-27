@@ -27,9 +27,14 @@ framework:
 - `SpeechSynthesizer.streamSynthesisFrom` turns the LLM's text deltas
   into audio chunks.
 
-The pipeline is still ordinary Effect code. Provider selection lives in
-`run-bun.ts`; the recipe body works against the service tags and
-capability markers.
+The pipeline is still ordinary Effect code. Provider selection and the
+HTTP/WebSocket server live in `app.ts`; the recipe body in `index.ts`
+works against the service tags and capability markers, so swapping the
+whole STT/LLM/TTS stack is a Layer change, not a code change.
+
+Two stacks ship: the default `elevenlabs` stack (ElevenLabs STT/TTS +
+Gemini LLM) and an all-Mistral `mistral` stack (Voxtral Realtime STT,
+a Mistral chat model, Voxtral TTS). Pick one with `--provider`.
 
 ## Turn Handling
 
@@ -62,36 +67,47 @@ the current audio and queues the chemistry question as the next turn.
 
 ## Run it
 
+The recipe runs on Bun, Node, or Deno. The runtime-specific file only
+attaches platform layers (`HttpServer`, `FileSystem`, `Path`,
+`HttpClient`); `app.ts` and `index.ts` are shared.
+
 ```sh
+# Default stack: ElevenLabs STT/TTS + Gemini LLM
 ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... bun recipes/voice-loop/run-bun.ts
+ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/voice-loop/run-node.ts
+ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... deno run --allow-all recipes/voice-loop/run-deno.ts
+
+# All-Mistral stack (Voxtral STT/TTS + Mistral LLM)
+MISTRAL_API_KEY=... bun recipes/voice-loop/run-bun.ts --provider=mistral
 ```
 
 Open <http://localhost:3000>, click **Start**, allow mic access,
 speak.
 
-> Run with **`bun`** — the runner uses `Bun.serve` and `Bun.build`.
-
 Env vars:
 
-- `ELEVENLABS_API_KEY` — used for both STT (Scribe v2 Realtime) and
-  TTS (Flash v2.5).
-- `GOOGLE_API_KEY` — used for Gemini 2.5 Flash.
+- `ELEVENLABS_API_KEY` — `elevenlabs` stack: STT (Scribe v2 Realtime)
+  and TTS (Flash v2.5).
+- `GOOGLE_API_KEY` — `elevenlabs` stack: Gemini 2.5 Flash.
+- `MISTRAL_API_KEY` — `mistral` stack: Voxtral STT/TTS + Mistral LLM.
 - `PORT` — optional, defaults to `3000`.
+- `PIPELINE_DEBUG=1` — optional, logs every partial transcript.
 
 ## Architecture
 
 ```
 [Browser]  getUserMedia → AudioWorklet → WebSocket
    ↕
-[Bun server]  Effect pipeline (one per WS connection):
+[server]  Effect pipeline (one per WS connection), via HttpRouter +
+   HttpServerRequest.upgradeChannel — same code on Bun / Node / Deno:
    shared STT events (Stream.share)
      ├─► stop-word watcher    ─► Fiber.interrupt(activeTurn) on "stop" / …
      └─► utterance loop:
             settleBurst("350 millis")     ─► coalesce close-together finals
             forkChild(runAssistantTurn)   ─► one fiber per turn, awaited
               LanguageModel.streamTurn(...) → Turn.textDeltas
-              → SpeechSynthesizer.streamSynthesisFrom (ElevenLabs WS)
-              → PCM s16le 48 kHz chunks sent + paced
+              → SpeechSynthesizer.streamSynthesisFrom (provider WS)
+              → raw PCM chunks sent + paced
 [Browser]  ring-buffered AudioWorklet → speakers (cleared on cancel)
 ```
 
@@ -100,7 +116,8 @@ One WebSocket carries the demo traffic:
 - **Browser → server**: binary frames only. Each is ~50 ms of PCM
   s16le @ 16 kHz mono mic audio from `mic-worklet.js`.
 - **Server → browser**:
-  - **Binary frames** — PCM s16le @ 48 kHz mono TTS audio.
+  - **Binary frames** — PCM s16le mono TTS audio (sample rate per
+    `/config`: 48 kHz for the `elevenlabs` stack, 24 kHz for `mistral`).
   - **Text frames (JSON)** — `StatusEvent`: `user-partial` /
     `user-final` / `assistant-thinking` / `assistant-delta` /
     `assistant-done` / `assistant-cancelled` / `error`. The browser
@@ -127,4 +144,7 @@ TTS for a downstream service — the fiber-per-turn + `Stream.share` +
 stop-word watcher structure carries over without changes.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/voice-loop/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/voice-loop/recipe.ts)
+(pipeline logic) and
+[`app.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/voice-loop/app.ts)
+(provider selection + server).

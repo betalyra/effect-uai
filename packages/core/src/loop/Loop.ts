@@ -307,6 +307,9 @@ export const loop: {
             }
           })
 
+          // `Stream.fromPull` expects the generator to RETURN the pull effect,
+          // not run it; `return yield* pull` would execute a pull and break it.
+          // @effect-diagnostics-next-line effect/returnEffectInGen:off
           return pull
         }),
       ),

@@ -845,9 +845,7 @@ const buildService = (config: DenoSandboxConfig): DenoSandboxService => {
         Effect.gen(function* () {
           const sdk = portRegistry.get(instance)
           if (sdk === undefined) {
-            return yield* Effect.fail(
-              new SandboxError.SandboxNotFound({ provider: PROVIDER, id: instance.id }),
-            )
+            return yield* new SandboxError.SandboxNotFound({ provider: PROVIDER, id: instance.id })
           }
           const url = yield* Effect.tryPromise({
             try: () => sdk.exposeHttp({ port }),

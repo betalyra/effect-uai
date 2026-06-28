@@ -25,11 +25,7 @@ do what you like with each - here, log the metrics and keep the text:
 
 ```ts
 metered.pipe(
-  Stream.runForEach((event) =>
-    Metrics.isMetricEvent(event)
-      ? Console.log(event)
-      : Effect.void,
-  ),
+  Stream.runForEach((event) => (Metrics.isMetricEvent(event) ? Console.log(event) : Effect.void)),
 )
 ```
 
@@ -51,10 +47,7 @@ The meters are independent operators; pipe just the ones you want instead of
 `allMetrics`:
 
 ```ts
-LanguageModel.streamTurn(request).pipe(
-  Metrics.timeToFirstToken(),
-  Metrics.tokenTotals,
-)
+LanguageModel.streamTurn(request).pipe(Metrics.timeToFirstToken(), Metrics.tokenTotals)
 ```
 
 `throughput` reports a live rate. It counts characters by default (exact on
@@ -64,8 +57,7 @@ every provider); for tokens, hand it a tokenizer, or estimate:
 Metrics.throughput({
   every: "1 second",
   unit: "token",
-  tokenizer: (event) =>
-    Effect.succeed(event._tag === "TextDelta" ? event.text.length / 4 : 0),
+  tokenizer: (event) => Effect.succeed(event._tag === "TextDelta" ? event.text.length / 4 : 0),
 })
 ```
 
@@ -95,12 +87,9 @@ changes - you add a sink:
 ```ts
 import * as Telemetry from "@effect-uai/core/Telemetry"
 
-metered.pipe(
-  Telemetry.record({ attributes: { model: request.model } }),
-  Stream.runDrain,
-).pipe(
-  Effect.provide(Telemetry.layerOtlp({ url: "http://localhost:4318/v1/metrics" })),
-)
+metered
+  .pipe(Telemetry.record({ attributes: { model: request.model } }), Stream.runDrain)
+  .pipe(Effect.provide(Telemetry.layerOtlp({ url: "http://localhost:4318/v1/metrics" })))
 ```
 
 `layerOtlp` leaves the `HttpClient` to your runtime, so provide

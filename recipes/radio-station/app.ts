@@ -141,6 +141,8 @@ const parseClientFrame = (
   buf: Uint8Array,
 ): Effect.Effect<Option.Option<{ readonly type?: string }>> =>
   Effect.try({
+    // Plain JSON is the right tool for a raw WebSocket frame.
+    // @effect-diagnostics-next-line effect/preferSchemaOverJson:off
     try: () => JSON.parse(textDecoder.decode(buf)) as { readonly type?: string },
     catch: () => "malformed" as const,
   }).pipe(Effect.option)
@@ -225,7 +227,7 @@ export const main = Effect.gen(function* () {
   yield* Effect.logInfo(`radio-station (responses + ${provider} music: ${cfg.musicModel})`)
   yield* Effect.logInfo(`tracks cached at: ${tracksDir}`)
 
-  return Layer.launch(
+  return yield* Layer.launch(
     HttpRouter.serve(
       routesLayer({
         brief: cfg.brief,

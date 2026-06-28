@@ -105,6 +105,9 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
       }
       const events = Stream.unfold(0, (i: number) => {
         const step = next(i)
+        // `undefined` is unfold's "stop" sentinel here, not a void result, so
+        // Effect.void would not typecheck against `[event, state] | undefined`.
+        // @effect-diagnostics-next-line effect/effectSucceedWithVoid:off
         if (step === undefined) return Effect.succeed(undefined)
         return step[0].type === "result"
           ? Effect.succeed(step)

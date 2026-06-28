@@ -197,6 +197,17 @@ Because all three surfaces share one brand, the
 [Voice loop](https://effect-uai.betalyra.com/recipes/voice-loop/) runs an
 entire STT to LLM to TTS pipeline on Mistral alone (`--provider=mistral`).
 
+### Metrics reworked (one removal, rest additive)
+
+`@effect-uai/core/Metrics` drops the old generic stream helpers
+`withElapsed`, `timeToFirst`, and `withRate`. Replace them with the new
+turn-aware operators: `timeToFirstToken`, `throughput`, `tokenTotals`,
+`timeToCompletion`, or `allMetrics()` to stack all four. They emit typed
+`MetricEvent`s alongside the model's events; split them out downstream with
+`isMetricEvent`. The new `@effect-uai/core/Telemetry` adds `record()` plus
+`layerOtlp({ url })` to export the same events over OTLP. See the
+[Metrics](https://effect-uai.betalyra.com/concepts/metrics/) concept page.
+
 ---
 
 ## 0.7 → 0.8

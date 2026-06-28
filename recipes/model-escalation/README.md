@@ -26,7 +26,7 @@ reviews, or anything else you would rather not trust to the cheap tier.
 - **The policy is prompt-level.** Change `CHEAP_TIER_SYSTEM_PROMPT` to
   decide what counts as "too hard".
 - **The escalation tool is a control signal.** `escalate` is a
-  `Tool.signal` — model-visible and decodable, but with no local `run`.
+  `Tool.signal`, model-visible and decodable, but with no local `run`.
   The cheap model sees the descriptor; the recipe decodes and intercepts
   the call at `onTurnComplete` (advancing a tier) instead of executing a
   fake handler.

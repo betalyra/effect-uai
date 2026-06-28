@@ -36,18 +36,18 @@ plain `Stream<TurnEvent, AiError>` the rest of the loop expects.
 
 Three `AiError` tags get retried. Everything else propagates as-is.
 
-| Tag                     | Retried? | Why                                        |
-| ----------------------- | -------- | ------------------------------------------ |
-| `RateLimited`           | ✓        | transient — provider is asking us to wait  |
-| `Unavailable`           | ✓        | transient — transport / 5xx / DNS          |
-| `Timeout`               | ✓        | transient — slow request                   |
-| `ContentFiltered`       | ✗        | the request itself was rejected            |
-| `AuthFailed`            | ✗        | wrong key / wrong scope — won't fix itself |
-| `InvalidRequest`        | ✗        | schema / arg error — won't fix itself      |
-| `ContextLengthExceeded` | ✗        | needs compaction, not a retry              |
-| `Cancelled`             | ✗        | caller asked for it                        |
-| `IncompleteTurn`        | ✗        | provider broke contract                    |
-| `GenerationFailed`      | ✗        | mid-generation provider error              |
+| Tag                     | Retried? | Why                                       |
+| ----------------------- | -------- | ----------------------------------------- |
+| `RateLimited`           | ✓        | transient: provider is asking us to wait  |
+| `Unavailable`           | ✓        | transient: transport / 5xx / DNS          |
+| `Timeout`               | ✓        | transient: slow request                   |
+| `ContentFiltered`       | ✗        | the request itself was rejected           |
+| `AuthFailed`            | ✗        | wrong key / wrong scope, won't fix itself |
+| `InvalidRequest`        | ✗        | schema / arg error, won't fix itself      |
+| `ContextLengthExceeded` | ✗        | needs compaction, not a retry             |
+| `Cancelled`             | ✗        | caller asked for it                       |
+| `IncompleteTurn`        | ✗        | provider broke contract                   |
+| `GenerationFailed`      | ✗        | mid-generation provider error             |
 
 ## The pipeline
 
@@ -102,10 +102,10 @@ helper. Two carriers, same subset:
 ```ts
 import * as Retry from "@effect-uai/core/Retry"
 
-// Stream — same shape as this recipe
+// Stream: same shape as this recipe
 streamTurn(req).pipe(Retry.stream(backoff))
 
-// Effect — for `turn`, `embed`, `synthesize`, `transcribe`, …
+// Effect: for `turn`, `embed`, `synthesize`, `transcribe`, …
 turn(req).pipe(Retry.effect(backoff))
 embed(req).pipe(Retry.effect(backoff))
 ```
@@ -117,7 +117,7 @@ and `Unavailable` onto different schedules) without having to rediscover the
 trick.
 
 `Retry.stream` and `Retry.effect` deliberately don't collide with Effect's
-`Stream.retry` and `Effect.retry` — the namespace makes it obvious which one
+`Stream.retry` and `Effect.retry`. The namespace makes it obvious which one
 is the subset-aware variant.
 
 ## Caveat: stream replay

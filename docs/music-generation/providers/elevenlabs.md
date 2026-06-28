@@ -37,13 +37,13 @@ const mainLayer = music.pipe(Layer.provide(FetchHttpClient.layer))
 `elevenlabsMusicLayer` registers two service tags from one underlying
 implementation:
 
-- **`ElevenLabsMusicGenerator`** — the typed tag. Yield this for the
+- **`ElevenLabsMusicGenerator`**: the typed tag. Yield this for the
   full provider surface (composition plan, `forceInstrumental`,
   `signWithC2pa`, `createCompositionPlan`).
-- **`MusicGenerator`** — the generic tag. Yield this in
+- **`MusicGenerator`**: the generic tag. Yield this in
   provider-portable code.
 
-Does **not** register `MusicInteractiveSession` — calling
+Does **not** register `MusicInteractiveSession`: calling
 `streamGenerationFrom` is a compile error against this Layer alone.
 
 ## Models
@@ -81,7 +81,7 @@ yield * writeFile("out.mp3", result.primary.audio.bytes)
 
 Bucket-2 fields the Common request carries but ElevenLabs cannot
 honor in prompt mode (`lyrics`) are dropped with a structured
-`Effect.logWarning` — embed lyrics in your prompt yourself, or use
+`Effect.logWarning`. Embed lyrics in your prompt yourself, or use
 the composition plan below.
 
 ### Composition-plan mode
@@ -129,7 +129,7 @@ const result =
 
 `prompt` and `compositionPlan` are mutually exclusive on the wire;
 the adapter rejects with `AiError.InvalidRequest` if both are set.
-`duration` is rejected the same way when `compositionPlan` is set —
+`duration` is rejected the same way when `compositionPlan` is set:
 each section carries its own `duration`.
 
 ### Free composition-plan generator
@@ -177,7 +177,7 @@ yield * Stream.run(chunks, fileSink)
 ```
 
 Each `AudioChunk` is raw bytes in your requested `output_format`
-(default mp3 44.1 kHz 128 kbps). No fake single-chunk fallback — the
+(default mp3 44.1 kHz 128 kbps). No fake single-chunk fallback: the
 adapter forwards the SSE-encoded byte stream as-is.
 
 ## Request shape (provider-typed)
@@ -232,7 +232,7 @@ matching the rest of the ElevenLabs codec surface. Tier gates apply
 | `POST /v1/music/stream` | Chunked HTTP stream. Same body as sync.          |
 | `POST /v1/music/plan`   | Free composition-plan generator. Returns JSON.   |
 
-Auth: `xi-api-key` header — same key as TTS / STT. Regional bases
+Auth: `xi-api-key` header, same key as TTS / STT. Regional bases
 honored via the `region` field on `Config` (default / `eu` / `in`),
 shared with the rest of `@effect-uai/elevenlabs`.
 
@@ -250,11 +250,11 @@ Standard HTTP → `AiError` mapping. ElevenLabs-music-specific:
 
 ## See also
 
-- [Music generation overview](/music-generation/) — the generic
+- [Music generation overview](/music-generation/): the generic
   service tag and request shape.
-- [Google Lyria](/music-generation/providers/gemini/) — the other
+- [Google Lyria](/music-generation/providers/gemini/): the other
   music provider in tree today.
-- [Basic music generation](/recipes/basic-music-generation/) — the
+- [Basic music generation](/recipes/basic-music-generation/): the
   multi-provider recipe with `--provider=google|elevenlabs`.
-- [Speech / ElevenLabs](/speech/providers/elevenlabs/) — TTS + STT
+- [Speech / ElevenLabs](/speech/providers/elevenlabs/): TTS + STT
   on the same package.

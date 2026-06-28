@@ -4,7 +4,7 @@ description: Sync music generation via Lyria 3 over the Gemini REST API. 30 s MP
 ---
 
 Lyria 3 is Google's music model exposed through `@effect-uai/google`.
-Sync generation only — `streamGeneration` falls back to a single
+Sync generation only. `streamGeneration` falls back to a single
 chunk; `streamGenerationFrom` (bidi session updates) is a compile-time
 error against this Layer until Lyria RealTime lands.
 
@@ -38,12 +38,12 @@ const mainLayer = lyria.pipe(Layer.provide(FetchHttpClient.layer))
 `lyriaLayer` registers two service tags from one underlying
 implementation:
 
-- **`LyriaGenerator`** — the typed tag. Yield this for autocomplete on
+- **`LyriaGenerator`**: the typed tag. Yield this for autocomplete on
   `model: LyriaModel`.
-- **`MusicGenerator`** — the generic tag. Yield this in
+- **`MusicGenerator`**: the generic tag. Yield this in
   provider-portable code.
 
-Does **not** register `MusicInteractiveSession` — calling
+Does **not** register `MusicInteractiveSession`: calling
 `streamGenerationFrom` is a compile error.
 
 ## Models
@@ -53,7 +53,7 @@ Does **not** register `MusicInteractiveSession` — calling
 | `lyria-3-clip-preview` | Fixed 30 s   | MP3        | Default; fastest       |
 | `lyria-3-pro-preview`  | Up to ~2 min | MP3 or WAV | Slower, higher quality |
 
-`LyriaModel` is a literal union with `(string & {})` tail — pass any
+`LyriaModel` is a literal union with `(string & {})` tail: pass any
 string for models the SDK hasn't been updated for.
 
 ## Request shape
@@ -71,7 +71,7 @@ type LyriaGenerateRequest = {
 
 Lyria 3 sync's wire (`generateContent`) has no structured field for
 `lyrics`, `duration`, or `seed`. The 0.7 adapter does **not** splice
-those into your prompt text on your behalf — prompt construction is
+those into your prompt text on your behalf. Prompt construction is
 the developer's job. Setting them on the request logs a structured
 [`CapabilityWarning`](https://github.com/betalyra/effect-uai/blob/main/packages/core/src/capabilities/Capabilities.ts)
 and proceeds with the prompt unchanged. If you want vocals to follow
@@ -113,19 +113,19 @@ Same `GOOGLE_API_KEY` as the language-model and speech Gemini layers.
 
 Standard HTTP → `AiError` mapping. Lyria-specific:
 
-| Request shape                           | Error                                                                                                             |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| WAV requested on `lyria-3-clip-preview` | `AiError.Unsupported` (clip is MP3-only)                                                                          |
-| Output container ≠ mp3 / wav            | `AiError.Unsupported`                                                                                             |
-| Empty audio part in the response        | `AiError.GenerationFailed` (likely a prompt-filter rejection — Lyria filters artist names and copyrighted lyrics) |
-| `streamGenerationFrom` call             | Compile-time error (no marker)                                                                                    |
+| Request shape                           | Error                                                                                                            |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| WAV requested on `lyria-3-clip-preview` | `AiError.Unsupported` (clip is MP3-only)                                                                         |
+| Output container ≠ mp3 / wav            | `AiError.Unsupported`                                                                                            |
+| Empty audio part in the response        | `AiError.GenerationFailed` (likely a prompt-filter rejection: Lyria filters artist names and copyrighted lyrics) |
+| `streamGenerationFrom` call             | Compile-time error (no marker)                                                                                   |
 
 ## See also
 
-- [Music generation overview](/music-generation/) — the generic
+- [Music generation overview](/music-generation/): the generic
   service tag and request shape.
-- [ElevenLabs Music](/music-generation/providers/elevenlabs/) — the
+- [ElevenLabs Music](/music-generation/providers/elevenlabs/): the
   other music provider in tree (full songs, composition plans, native
   chunked streaming).
-- [Basic music generation](/recipes/basic-music-generation/) — the
+- [Basic music generation](/recipes/basic-music-generation/): the
   multi-provider recipe with `--provider=google|elevenlabs`.

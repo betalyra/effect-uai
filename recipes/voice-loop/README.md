@@ -96,12 +96,12 @@ speak.
 
 Env vars:
 
-- `ELEVENLABS_API_KEY` — `elevenlabs` stack: STT (Scribe v2 Realtime)
+- `ELEVENLABS_API_KEY`: `elevenlabs` stack: STT (Scribe v2 Realtime)
   and TTS (Flash v2.5).
-- `GOOGLE_API_KEY` — `elevenlabs` stack: Gemini 2.5 Flash.
-- `MISTRAL_API_KEY` — `mistral` stack: Voxtral STT/TTS + Mistral LLM.
-- `PORT` — optional, defaults to `3000`.
-- `PIPELINE_DEBUG=1` — optional, logs every partial transcript.
+- `GOOGLE_API_KEY`: `elevenlabs` stack: Gemini 2.5 Flash.
+- `MISTRAL_API_KEY`: `mistral` stack: Voxtral STT/TTS + Mistral LLM.
+- `PORT`: optional, defaults to `3000`.
+- `PIPELINE_DEBUG=1`: optional, logs every partial transcript.
 
 ## Architecture
 
@@ -109,7 +109,7 @@ Env vars:
 [Browser]  getUserMedia → AudioWorklet → WebSocket
    ↕
 [server]  Effect pipeline (one per WS connection), via HttpRouter +
-   HttpServerRequest.upgradeChannel — same code on Bun / Node / Deno:
+   HttpServerRequest.upgradeChannel, same code on Bun / Node / Deno:
    shared STT events (Stream.share)
      ├─► stop-word watcher    ─► Fiber.interrupt(activeTurn) on "stop" / …
      └─► utterance loop:
@@ -126,9 +126,9 @@ One WebSocket carries the demo traffic:
 - **Browser → server**: binary frames only. Each is ~50 ms of PCM
   s16le @ 16 kHz mono mic audio from `mic-worklet.js`.
 - **Server → browser**:
-  - **Binary frames** — PCM s16le mono TTS audio (sample rate per
+  - **Binary frames**: PCM s16le mono TTS audio (sample rate per
     `/config`: 48 kHz for the `elevenlabs` stack, 24 kHz for `mistral`).
-  - **Text frames (JSON)** — `StatusEvent`: `user-partial` /
+  - **Text frames (JSON)**: `StatusEvent`: `user-partial` /
     `user-final` / `assistant-thinking` / `assistant-delta` /
     `assistant-done` / `assistant-cancelled` / `error`. The browser
     updates the chat UI from these; `assistant-cancelled` also tells
@@ -144,13 +144,13 @@ The recipe is a worked example of three primitives composed with
 ordinary Effect concurrency. The same shape applies whenever you
 have:
 
-- A long-lived input stream that occasionally emits a _commit_
+- A long-lived input stream that occasionally emits a _commit_,
   (transcription finals; chat messages; sensor thresholds);
 - Work per commit that should run one-at-a-time;
 - An interrupt signal that needs to cut the active work cleanly.
 
 Swap STT for a Kafka topic, the LLM for any per-message Effect, and
-TTS for a downstream service — the fiber-per-turn + `Stream.share` +
+TTS for a downstream service. The fiber-per-turn + `Stream.share` +
 stop-word watcher structure carries over without changes.
 
 The full source lives next to this README at

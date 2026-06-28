@@ -1,6 +1,6 @@
 ---
 title: Tavily
-description: Tavily's Search API as a WebSearch backend — snippets and scores with a search-depth knob and topic filter.
+description: "Tavily's Search API as a WebSearch backend: snippets and scores with a search-depth knob and topic filter."
 ---
 
 [Tavily](https://docs.tavily.com/) is search shaped for agent pipelines:
@@ -34,9 +34,9 @@ const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
 
 `tavilyLayer` registers two service tags from one implementation:
 
-- **`TavilySearch`** — the typed tag. Yield this for the Tavily-specific
+- **`TavilySearch`**: the typed tag. Yield this for the Tavily-specific
   knobs below and the per-result `score`.
-- **`WebSearch`** — the generic tag for provider-portable code, including
+- **`WebSearch`**: the generic tag for provider-portable code, including
   [`webSearchTool`](/search/#drop-it-into-an-llm).
 
 ## Calling it
@@ -71,7 +71,7 @@ to the common [`SearchResult`](/search/#what-you-get-back) shape stays on
 
 ## See also
 
-- [Web search](/search/) — the cross-provider concept and the portable
+- [Web search](/search/): the cross-provider concept and the portable
   request / result shapes.
-- [Grounded answer](/recipes/grounded-answer/) — a streaming agent that
+- [Grounded answer](/recipes/grounded-answer/): a streaming agent that
   answers from live search with citations.

@@ -1,6 +1,6 @@
 ---
 title: Multimodal embedding
-description: Cross-modal retrieval — embed images and text in one batch, rank either against either.
+description: "Cross-modal retrieval: embed images and text in one batch, rank either against either."
 ---
 
 You have a corpus of product photos and product descriptions. A user
@@ -8,7 +8,7 @@ uploads an image. You want both kinds of results, ranked by relevance.
 
 This is what a multimodal embedding model is for. Images and text land
 in the same vector space, so cosine similarity works across the
-boundary — image vs. text, image vs. image, text vs. text — without a
+boundary (image vs. text, image vs. image, text vs. text) without a
 separate captioning pass.
 
 **Scenario.** One image as the query, a corpus mixing images and text.
@@ -59,14 +59,14 @@ const ranked = inputs
   .sort((a, b) => b.score - a.score)
 ```
 
-Same shape as [basic embedding](/recipes/basic-embedding/) — the only
+Same shape as [basic embedding](/recipes/basic-embedding/): the only
 difference is what's in `input` and `inputs`.
 
 ## A note on the modality gap
 
 Cross-modal scores are noisier than same-modality scores. In practice
 you'll often see image-image cosines clustered higher than image-text
-cosines — even when the image-text pairs are semantically closer. This
+cosines, even when the image-text pairs are semantically closer. This
 is the _modality gap_: joint embedding spaces tend to cluster by
 modality before clustering by content.
 
@@ -84,19 +84,19 @@ Two practical takeaways:
 
 Today, multimodal embedding lives on:
 
-- **`gemini-embedding-2`** — text, image, audio, video, PDF in one
+- **`gemini-embedding-2`**: text, image, audio, video, PDF in one
   vector space. Does not honour `task`; instead, prepend a task
   instruction in the prompt text.
-- **`jina-embeddings-v4`** — text + image, retrieval-tuned, also
+- **`jina-embeddings-v4`**: text + image, retrieval-tuned, also
   supports multivector and sparse output.
-- **`jina-clip-v2`** — CLIP-style image/text only.
+- **`jina-clip-v2`**: CLIP-style image/text only.
 
 OpenAI's embedding line is text-only. Cohere v4 and Voyage multimodal
 are on the embedding plan but not yet implemented.
 
 ## Image input shapes
 
-`ImageSource` is `url` / `base64` / `bytes` — the same primitives
+`ImageSource` is `url` / `base64` / `bytes`: the same primitives
 language model image inputs use. Provider acceptance varies:
 
 | Provider | URL                            | Base64 | Bytes             |
@@ -105,7 +105,7 @@ language model image inputs use. Provider acceptance varies:
 | Jina v4  | yes                            | yes    | yes (auto base64) |
 
 If a layer can't encode the shape you passed, it fails the request
-with `AiError.InvalidRequest` — no silent fallback.
+with `AiError.InvalidRequest`. No silent fallback.
 
 ## Run it
 
@@ -120,8 +120,8 @@ batch, and ranks against an image query.
 
 ## See also
 
-- [Embedding model](/embeddings/) — the concept page.
-- [Multivector embedding](/embeddings/multivector/) — token-level
+- [Embedding model](/embeddings/): the concept page.
+- [Multivector embedding](/embeddings/multivector/): token-level
   retrieval when single-vector cosine isn't precise enough.
-- [Reranking](/reranking/) (coming soon) — cross-encoder re-scoring
+- [Reranking](/reranking/) (coming soon): cross-encoder re-scoring
   for cross-modal precision.

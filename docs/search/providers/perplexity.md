@@ -1,6 +1,6 @@
 ---
 title: Perplexity
-description: Perplexity's Search API as a WebSearch backend — fast, current-events snippets with a search-context-size depth knob.
+description: "Perplexity's Search API as a WebSearch backend: fast, current-events snippets with a search-context-size depth knob."
 ---
 
 [Perplexity](https://docs.perplexity.ai/) is the quickest way to put fresh
@@ -37,9 +37,9 @@ const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
 
 `perplexityLayer` registers two service tags from one implementation:
 
-- **`PerplexitySearch`** — the typed tag. Yield this for the
+- **`PerplexitySearch`**: the typed tag. Yield this for the
   Perplexity-specific knobs below.
-- **`WebSearch`** — the generic tag for provider-portable code, including
+- **`WebSearch`**: the generic tag for provider-portable code, including
   [`webSearchTool`](/search/#drop-it-into-an-llm).
 
 ## Calling it
@@ -53,7 +53,7 @@ const program = Effect.gen(function* () {
     query: "effect-ts v4 release notes",
     maxResults: 5,
     recency: "week",
-    searchContextSize: "high", // low | medium | high — depth vs latency
+    searchContextSize: "high", // low | medium | high: depth vs latency
   })
 })
 ```
@@ -73,7 +73,7 @@ Perplexity returns a `snippet` on each result; it does not rank with a
 
 ## See also
 
-- [Web search](/search/) — the cross-provider concept and the portable
+- [Web search](/search/): the cross-provider concept and the portable
   request / result shapes.
-- [Grounded answer](/recipes/grounded-answer/) — a streaming agent that
+- [Grounded answer](/recipes/grounded-answer/): a streaming agent that
   answers from live search with citations.

@@ -1,10 +1,10 @@
 ---
 title: Google Gemini (embeddings)
-description: Gemini's embedding API — multimodal on v2, full task enum on v1, Matryoshka throughout.
+description: "Gemini's embedding API: multimodal on v2, full task enum on v1, Matryoshka throughout."
 ---
 
 Gemini covers more modalities than any other embedding provider on the
-list — text, image, audio, video, PDF — all in one vector space, on
+list (text, image, audio, video, PDF) all in one vector space, on
 `gemini-embedding-2`. The v1 line stays useful too: text-only but with
 the full Google task enum (`SEMANTIC_SIMILARITY`, `CLASSIFICATION`,
 `CLUSTERING`, `QUESTION_ANSWERING`, …).
@@ -35,9 +35,9 @@ const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
 `geminiEmbeddingLayer` registers two service tags from one underlying
 implementation:
 
-- **`GeminiEmbedding`** — the typed tag. Yield this when you want the
+- **`GeminiEmbedding`**: the typed tag. Yield this when you want the
   full task enum, document `title`, or the typed model union.
-- **`EmbeddingModel`** — the generic tag for provider-portable code.
+- **`EmbeddingModel`**: the generic tag for provider-portable code.
 
 ## Request shape
 
@@ -60,13 +60,13 @@ type GoogleEmbeddingTask =
   | "code_query"
 ```
 
-- **`task`** — Gemini's full task enum. Mapped internally to wire
+- **`task`**: Gemini's full task enum. Mapped internally to wire
   values (`RETRIEVAL_QUERY`, `SEMANTIC_SIMILARITY`, …). Honoured by
-  `gemini-embedding-001`. **Ignored** by `gemini-embedding-2` — that
+  `gemini-embedding-001`. **Ignored** by `gemini-embedding-2`: that
   model expects task hints as prefix text in the prompt itself.
-- **`title`** — optional document title for `RETRIEVAL_DOCUMENT` tasks
+- **`title`**: optional document title for `RETRIEVAL_DOCUMENT` tasks
   on `gemini-embedding-001`. Ignored elsewhere.
-- **`dimensions`** — Matryoshka truncation. `gemini-embedding-2`
+- **`dimensions`**: Matryoshka truncation. `gemini-embedding-2`
   supports 128–3072; `gemini-embedding-001` supports 128/256/512/1408.
 
 ## Calling it
@@ -116,11 +116,11 @@ Reference: [Gemini embeddings docs](https://ai.google.dev/gemini-api/docs/embedd
 
 ## Encoding support
 
-| `encoding`               | Behaviour                                        |
-| ------------------------ | ------------------------------------------------ |
-| `float32` (default)      | Native float32 from `embedding.values`.          |
-| `int8` / `binary`        | Rejected — Gemini doesn't ship quantized output. |
-| `sparse` / `multivector` | Rejected — same.                                 |
+| `encoding`               | Behaviour                                       |
+| ------------------------ | ----------------------------------------------- |
+| `float32` (default)      | Native float32 from `embedding.values`.         |
+| `int8` / `binary`        | Rejected: Gemini doesn't ship quantized output. |
+| `sparse` / `multivector` | Rejected: same.                                 |
 
 If you need quantized vectors against a Gemini index,
 [Jina](/embeddings/providers/jina/) ships `binary` natively.
@@ -129,9 +129,9 @@ If you need quantized vectors against a Gemini index,
 
 Gemini's embed endpoint takes inline base64. The layer accepts:
 
-- **`base64`** — passed through.
-- **`bytes`** — auto-encoded to base64.
-- **`url`** — rejected with `AiError.InvalidRequest`. Pre-uploading
+- **`base64`**: passed through.
+- **`bytes`**: auto-encoded to base64.
+- **`url`**: rejected with `AiError.InvalidRequest`. Pre-uploading
   via Google's Files API isn't free, so URL-form image inputs fail
   fast rather than silently doing extra work. Fetch the bytes and pass
   `imageBytes(...)` instead.
@@ -156,8 +156,8 @@ Gemini's embed endpoints don't return token-count metadata, so
 
 ## See also
 
-- [Embedding model](/embeddings/) — the cross-provider concept.
-- [Multimodal embedding](/embeddings/multimodal/) — recipe and details
+- [Embedding model](/embeddings/): the cross-provider concept.
+- [Multimodal embedding](/embeddings/multimodal/): recipe and details
   on the modality gap.
-- [Gemini language model](/providers/gemini/) — the same provider's
+- [Gemini language model](/providers/gemini/): the same provider's
   `streamGenerateContent` integration.

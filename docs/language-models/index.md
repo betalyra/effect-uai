@@ -85,7 +85,7 @@ turn(req).pipe(Retry.effect(backoff))
 ```
 
 `Retry.stream` and `Retry.effect` deliberately don't shadow Effect's
-own `Stream.retry` / `Effect.retry` — the `Retry` namespace marks
+own `Stream.retry` / `Effect.retry`. The `Retry` namespace marks
 these as the AI-subset-aware variants.
 
 The retry boundary is the **whole request**, not "resume from byte N" -

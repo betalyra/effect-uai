@@ -221,3 +221,180 @@ that exist. It could be generated from a small data file (or by globbing
 `docs/**/providers/*.md`) at build time so the table can never drift from the
 pages that actually exist. Worth doing only once the provider count makes
 hand-maintenance annoying; at twelve it is still fine by hand.
+
+---
+
+# Landing page redesign (free-hand mockup)
+
+A separate concern from the provider hub above (different page, same site),
+but the other half of the "we are underselling effect-uai" conversation, so
+it lives here too.
+
+## What the current page does, and what it misses
+
+Today the splash page (`docs/index.mdx`) renders three React components in
+order: **Hero** (tagline + two buttons) -> **Features** (7 philosophy cards in
+a 3-col grid) -> **Recipes** (curated cards + "28 and counting") -> **Get
+started**.
+
+It tells the "why this design" story well. It misses two things a first-time
+visitor wants in the first fifteen seconds:
+
+1. **A line of real code.** This is a developer library. One honest snippet
+   out-converts three adjectives, and the canonical loop is already written
+   (it is in the README, not on the landing page).
+2. **The breadth.** Nowhere does the page say effect-uai spans 7 capabilities
+   and 12 providers. The Features grid cannot carry that, because it answers
+   "why this design", not "what can I build". Those are different axes and
+   mixing them dilutes both.
+
+## Principles for the redesign
+
+- **Show code above the fold.** Drive, do not describe.
+- **Keep the two axes apart.** Philosophy (Features) and breadth
+  (Capabilities + Providers) are separate bands, never merged.
+- **Honest numbers, no hype.** 7 capabilities, 12 providers, 28 recipes, MIT.
+  "and counting" only where it genuinely grows.
+- **One idea per band, one CTA out.** Preserve the current clean rhythm.
+
+## The page, top to bottom
+
+### 1. Hero (revised copy + a stat strip)
+
+```
+                    [ effect-uai logo ]
+
+                   The loop is yours.
+
+      Low-level, typed, streaming primitives for AI
+      agents in Effect. One turn, one tool call,
+      composed by you. No framework, no runtime to
+      learn, no orchestrator to fight.
+
+          [ Get started -> ]   [ View on GitHub ]
+
+      7 capabilities · 12 providers · 28 recipes · MIT
+```
+
+Headline goes from "Effectful building blocks for agentic ai" to a sharper
+claim ("The loop is yours."), with the descriptive line as the sub. The
+mono stat strip is the first hint of breadth.
+
+### 2. Quick taste (NEW: code-first band, right under the hero)
+
+```
+## Stream a turn. Run the tools. Continue until done.
+
+  export const conversation = loop(initial, (state) =>
+    Effect.gen(function* () {
+      const lm = yield* LanguageModel        // swap provider any turn
+      return lm.streamTurn({ history: state.history, model, tools: toolkit })
+        .pipe(onTurnComplete((turn) =>
+          Effect.sync(() => {
+            const calls = Turn.getToolCalls(turn)
+            if (calls.length === 0) return stop()
+            return Toolkit.run(toolkit, calls).pipe(
+              Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)))
+          })))
+    }))
+
+  "This is the whole library: a stream you drive, not a runtime that drives you."
+```
+
+Reuse the README's canonical loop verbatim (single source of truth, rendered
+through the existing Shiki path). This is the single most persuasive thing on
+the page and it currently is not on it.
+
+### 3. Why effect-uai (Features, kept, grid filled to 9)
+
+Keep the philosophy cards. Fill the ragged 3-col grid by adding two cards
+that are still "why this design" but quietly seed breadth and testability:
+
+```
+ Explicit control     Built on Effect       Composable primitives
+ Streaming first      Typed errors          Carry your own state
+ Recipes for the      Provider-portable     Test without the
+ hard parts           (swap at the Layer)   network (MockProvider)
+```
+
+Now a full 3x3, no capability content smuggled in.
+
+### 4. Capabilities (NEW band: "what you can build")
+
+```
+## Build agents that do more than chat
+
+ [ Language models ]   [ Speech: STT + TTS ]   [ Embeddings ]
+ [ Music ]             [ Web search ]          [ Sandboxes ]
+
+ One consistent Effect interface per capability (generic tag +
+ typed tag). Coming soon: reranking, realtime, image, video.
+
+                    [ Explore capabilities -> ]
+```
+
+Six shipped capabilities, each a card linking to its overview
+(`/concepts/language-model/`, `/speech/`, `/embeddings/`,
+`/music-generation/`, `/search/`, `/sandboxes/`). The "coming soon" line
+links the existing stub pages. This band is the core anti-undersell move.
+
+### 5. Providers (NEW band: the hub's payoff)
+
+```
+## 12 providers. Swap at the Layer.
+
+ OpenAI · Anthropic · Google · Mistral · ElevenLabs · Inworld
+ · Jina · Perplexity · Exa · Tavily · Microsandbox · Deno
+
+ Write against the generic tag; change the backend with one
+ Layer. Mistral alone runs a full STT -> LLM -> TTS voice loop.
+
+                     [ Browse providers -> ]
+```
+
+The hero stat says "12 providers"; this proves it and links straight to the
+[Providers hub](#the-page-markdown-mockup) designed above. The Mistral line
+ties back to the voice-loop recipe.
+
+### 6. Recipes (kept)
+
+Keep the curated cards, the "28 and counting" badge, and "All recipes". Add
+one lead sentence: "Every hard part, worked end to end: approvals, fallback,
+compaction, voice, sandboxes."
+
+### 7. Get started (kept)
+
+Install snippet plus the three first steps (Installation, Quickstart, Basic
+usage), one primary CTA. As today.
+
+## What changed, in one view
+
+| Band         | Today | Proposed                                   |
+| ------------ | :---: | ------------------------------------------ |
+| Hero         |   ✓   | sharper headline + stat strip              |
+| Quick taste  |       | **new** (canonical loop, code-first)       |
+| Features     |   ✓   | filled to a clean 3x3 (9 cards)            |
+| Capabilities |       | **new** (6 capability cards + coming-soon) |
+| Providers    |       | **new** (12 providers + link to the hub)   |
+| Recipes      |   ✓   | one lead sentence, otherwise unchanged     |
+| Get started  |   ✓   | unchanged                                  |
+
+The rhythm stays the same (one idea per band, scannable), but a visitor now
+learns in seconds that this is code they own, across six capabilities and
+twelve providers, with twenty-eight worked recipes.
+
+## Build notes
+
+- Three new components mirroring `FeaturesSection.tsx` /
+  `RecipesSection.tsx`: `QuickTasteSection`, `CapabilitiesSection`,
+  `ProvidersSection`, each driven by a small local data array. A `StatStrip`
+  for the hero.
+- The breadth numbers (12 providers, 6 capabilities, 28 recipes) are exactly
+  the kind of thing to derive at build time (glob `packages/providers/*`,
+  capability overview pages, and `recipes/*/README.md` plus
+  `recipes-extras/*/README.md`) so the stat strip and badge can never drift.
+  Same motivation as the provider-matrix generator noted above.
+- Risk to watch: three new bands is more page. Keep each one short (a heading,
+  a grid or a single row, one CTA) so the page stays calm. If it feels heavy,
+  Capabilities and Providers can merge into one "What you can build" band
+  with the capability cards on top and the provider row beneath.

@@ -28,8 +28,8 @@ slim.
 
 ## Layers
 
-Pick the transcriber that matches how you feed audio — a recorded file
-(batch) or a live microphone (realtime) — and add the synthesizer for
+Pick the transcriber that matches how you feed audio, a recorded file
+(batch) or a live microphone (realtime), and add the synthesizer for
 speech output:
 
 | Layer                                            | Use it for                       | Provides                                   |
@@ -74,7 +74,7 @@ Voxtral transcribes 13 languages with diarization, word timestamps, and
 vocabulary biasing.
 
 **Live transcription** (`streamTranscriptionFrom`) consumes a stream of
-microphone audio — PCM s16le at 16 kHz mono — and emits partial
+microphone audio (PCM s16le at 16 kHz mono) and emits partial
 transcripts as you speak. Voxtral streams continuously rather than
 chopping speech into turns, so the transcriber commits a **final** after
 a brief pause; tune the pause with `utteranceSilence` (a `Duration`,
@@ -93,8 +93,8 @@ type MistralSynthesizeRequest = {
 }
 ```
 
-- **`synthesize`** — full text in, one audio blob out.
-- **`streamSynthesis`** / **`streamSynthesisFrom`** — stream audio out as
+- **`synthesize`**: full text in, one audio blob out.
+- **`streamSynthesis`** / **`streamSynthesisFrom`**: stream audio out as
   it's generated, the latter taking the text itself as a stream (it
   speaks one full utterance per call). Time-to-first-audio is around
   0.8 s with the `pcm` format.
@@ -126,8 +126,8 @@ Mid-stream transcription hiccups arrive as `TranscriptEvent`s tagged
 
 ## See also
 
-- [Voice loop](/recipes/voice-loop/) — runnable end-to-end with
+- [Voice loop](/recipes/voice-loop/): runnable end-to-end with
   `--provider mistral` (Voxtral STT + Mistral LLM + Voxtral TTS).
-- [Speech overview](/speech/) — the generic tags and capability markers.
-- [Mistral language model](/providers/mistral/) — the chat side of the
+- [Speech overview](/speech/): the generic tags and capability markers.
+- [Mistral language model](/providers/mistral/): the chat side of the
   same package.

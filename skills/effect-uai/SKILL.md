@@ -365,5 +365,6 @@ saw the history you expected.
 - Docs: https://effect-uai.betalyra.com (or `docs/` in the repo)
 - Recipes: `recipes/` in the repo. Each recipe has an `index.ts`,
   `index.test.ts`, and (when interactive) a `run.ts` runner.
-- Concepts: `docs/concepts/loop.md`, `docs/concepts/items-and-turns.md`,
-  `docs/concepts/tools.md`, `docs/concepts/language-model.md`.
+- Concepts: `docs/concepts/items-and-turns.md`,
+  `docs/language-models/index.md`, `docs/language-models/loop.md`,
+  `docs/language-models/tools.md`.

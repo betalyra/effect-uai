@@ -20,8 +20,8 @@ consumer. No special runner, no alternate conversation type.
 
 Transport is a projection over the output stream:
 
-- `toSSE` — one `TurnEvent` → one `SSE.Event`, or drop it.
-- `toJSONL` — one `TurnEvent` → one JSON line, or drop it.
+- `toSSE`: one `TurnEvent` → one `SSE.Event`, or drop it.
+- `toJSONL`: one `TurnEvent` → one JSON line, or drop it.
 
 Both are plain `Result.Result` filters, so they compose with `Stream.filterMap`
 directly. They live in the recipe, not core, because they encode product

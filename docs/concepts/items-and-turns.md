@@ -152,5 +152,5 @@ type ToolEvent =
 ```
 
 A consumer pattern-matches on `type` (TurnEvent) or `_tag` (ToolEvent)
-to drive UI / persistence / observability. See [Tools and toolkits](/concepts/tools/)
+to drive UI / persistence / observability. See [Tools and toolkits](/language-models/tools/)
 for `ToolEvent` and `ToolResult` details.

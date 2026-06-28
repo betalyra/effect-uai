@@ -190,7 +190,7 @@ export default function RecipesSection() {
         </div>
         <a
           href="/recipes/"
-          className="group inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-(--color-mark)"
+          className="group inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors outline-none hover:text-(--color-mark) focus-visible:text-(--color-mark) focus-visible:underline focus-visible:decoration-(--color-mark)"
         >
           All recipes
           <PiArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
@@ -199,7 +199,11 @@ export default function RecipesSection() {
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
         {recipes.map(({ title, description, href, Icon }) => (
-          <a key={href} href={href} className="group block no-underline">
+          <a
+            key={href}
+            href={href}
+            className="group block rounded-[14px] no-underline outline-none focus-visible:ring-1 focus-visible:ring-(--color-border) focus-visible:ring-offset-2 focus-visible:ring-offset-(--sl-color-bg) hover:focus-visible:ring-(--color-mark)"
+          >
             <Card className="h-full gap-5 rounded-[14px] border-border bg-card py-7 shadow-none transition-colors hover:border-(--color-mark)">
               <CardHeader className="gap-3 px-7">
                 <div className="flex items-center gap-3">

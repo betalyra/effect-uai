@@ -9,7 +9,7 @@ A model council is a stream graph.
 
 You have a question and three different models (OpenAI, Google, Anthropic).
 All three answer concurrently, each model scores the _others'_ answers, and
-the final stream surfaces the winner — both who won and what they said.
+the final stream surfaces the winner: both who won and what they said.
 Everything streams; nothing blocks longer than it has to.
 
 The only barrier is the `winner` event itself: it lands the moment
@@ -22,13 +22,13 @@ If you only want side-by-side answers without cross-evaluation, see
 
 ## What it shows
 
-- **Pure stream composition** — no `Queue`, no `Deferred`, no manual
+- **Pure stream composition**: no `Queue`, no `Deferred`, no manual
   forks. The dependency graph is implicit in where `flatMap` runs.
 - **`Stream.mapAccum`** for two jobs: per-candidate text accumulation
   (so the `candidate_complete` event can carry the full answer) and
   the global score tally (so the `winner` event can be emitted at the
   right moment).
-- **`Stream.flatMap` as a spawn point** — when a `candidate_complete`
+- **`Stream.flatMap` as a spawn point**: when a `candidate_complete`
   flows through, it's replaced with a merged stream of `[the event
 itself, ...judge streams for that subject]`. Judges over the same
   subject share the subject's answer in scope.
@@ -36,7 +36,7 @@ itself, ...judge streams for that subject]`. Judges over the same
 rationale}` JSON in one shot. Decode failures map to typed
   `AiError.InvalidRequest` and surface as `error` events with `phase:
 "judge"` instead of silently scoring zero.
-- **Per-phase error isolation** — a candidate's generate failure
+- **Per-phase error isolation**: a candidate's generate failure
   cancels nothing else; a judge's failure surfaces as one `error`
   event and the remaining judges continue.
 
@@ -62,7 +62,7 @@ The library bit lives in
 [`council.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-council/council.ts).
 The shape, in three layers:
 
-**Per candidate** — accumulate text, emit deltas live, emit complete
+**Per candidate**: accumulate text, emit deltas live, emit complete
 on terminal:
 
 ```ts
@@ -95,7 +95,7 @@ const candidatePipeline = (member, judges, history) =>
   )
 ```
 
-**Per judge** — accumulate the JSON, decode with a schema, emit one
+**Per judge**: accumulate the JSON, decode with a schema, emit one
 `score` event:
 
 ```ts
@@ -129,7 +129,7 @@ const judgeStream = (judge, subject, subjectAnswer, history) =>
     )
 ```
 
-**Top level** — merge all candidate pipelines, tally scores, emit
+**Top level**: merge all candidate pipelines, tally scores, emit
 winner on halt:
 
 ```ts
@@ -169,7 +169,7 @@ If one model returns malformed JSON, you don't want it to silently
 score zero (which would unfairly penalize the subject it was judging)
 _and_ you don't want it to take the whole council down. Schema decode
 failures become typed `AiError.InvalidRequest` events with `phase:
-"judge"` — the rest of the scores still land, the tally still
+"judge"`. The rest of the scores still land, the tally still
 averages over what arrived, and the winner is still emitted.
 
 Same for transport failures (`RateLimited`, `Unavailable`, etc.):
@@ -209,7 +209,7 @@ The full source lives next to this README at
 
 - **Self-bias.** Even with the no-self-judging rule, models tend to
   prefer answers that match their own style. Averaging across the two
-  judges per subject mitigates but does not eliminate this — read the
+  judges per subject mitigates but does not eliminate this. Read the
   scores, not just the winner.
 - **JSON discipline.** A judge model that ignores the "JSON only"
   instruction will produce a parse failure for that judge call. The

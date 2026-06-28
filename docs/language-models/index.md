@@ -96,6 +96,22 @@ For finer control (different policies per error kind, retry-with-jitter,
 etc.) the [model-retry recipe](/recipes/model-retry/) walks through the
 lift / `Stream.retry` / unlift pattern this helper is built on.
 
+## Measuring a generation
+
+To watch a turn as it streams - time to first token, throughput, token
+counts, completion time - stack the meter operators onto `streamTurn`. They
+emit typed samples you log live or export to OTLP, and leave the text deltas
+untouched:
+
+```ts
+import * as Metrics from "@effect-uai/core/Metrics"
+
+streamTurn(req).pipe(Metrics.allMetrics())
+```
+
+See [Metrics](/concepts/metrics/) for the meter catalogue, turn-vs-loop
+scope, OTLP export, and custom metrics.
+
 ## Portable vs. provider-specific
 
 Yield `LanguageModel` when your code should work under any provider:

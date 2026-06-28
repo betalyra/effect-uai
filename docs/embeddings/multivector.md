@@ -1,12 +1,12 @@
 ---
 title: Multivector embedding
-description: Late-interaction retrieval — one vector per token, scored with MaxSim.
+description: "Late-interaction retrieval: one vector per token, scored with MaxSim."
 ---
 
 A query like "store sourdough starter at room temperature" has four
 distinct ideas in it. Single-vector cosine compresses all four into one
 point and the right document wins or loses based on the average. Often
-the document you want has only three of the four ideas at the top —
+the document you want has only three of the four ideas at the top,
 and the average loses to a document that mentions all four superficially.
 
 Multivector embeddings keep the ideas separate. Each input becomes one
@@ -40,7 +40,7 @@ indexing (Vespa, Qdrant, PLAID).
 ## One model, two encodings
 
 Multivector lives on `jina-embeddings-v4` today. The same model also
-produces dense single vectors — you choose per request:
+produces dense single vectors: you choose per request:
 
 ```ts
 import { embed } from "@effect-uai/core/EmbeddingModel"
@@ -94,14 +94,14 @@ returning a dense vector.
 
 ## What to expect from MaxSim scores
 
-MaxSim scores are unbounded — sum of dot products, not normalized
+MaxSim scores are unbounded: sum of dot products, not normalized
 to `[-1, 1]`. A score of `9.4` versus `7.6` says one document beats
 another, but the absolute number depends on query length, vector
 dimension, and whether vectors are normalized. Use scores comparatively
 within one query, not as a transferable threshold.
 
 For short, distinct-topic corpora the ranking often matches cosine
-ranking on dense vectors of the same model — the multivector advantage
+ranking on dense vectors of the same model. The multivector advantage
 shows on longer documents with overlapping topics and specific terms.
 The recipe runs both side-by-side so you can see when they diverge.
 
@@ -130,9 +130,9 @@ the patterns side by side.
 
 ## See also
 
-- [Embedding model](/embeddings/) — the concept page, including the
+- [Embedding model](/embeddings/): the concept page, including the
   full `Embedding` union and `Vector.*` primitives.
-- [Multimodal embedding](/embeddings/multimodal/) — when you want
+- [Multimodal embedding](/embeddings/multimodal/): when you want
   cross-modal retrieval, not deeper single-modality precision.
-- [Reranking](/reranking/) (coming soon) — different precision tool,
+- [Reranking](/reranking/) (coming soon): different precision tool,
   same problem class.

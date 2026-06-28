@@ -98,7 +98,7 @@ boundary:
 ```ts
 import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 
-return Toolkit.run(allTools, calls).pipe(
+return Toolkit.run(toolkit, calls).pipe(
   Toolkit.continueWithResults((results) =>
     Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
   ),
@@ -152,5 +152,5 @@ type ToolEvent =
 ```
 
 A consumer pattern-matches on `type` (TurnEvent) or `_tag` (ToolEvent)
-to drive UI / persistence / observability. See [Tools and toolkits](/concepts/tools/)
+to drive UI / persistence / observability. See [Tools and toolkits](/language-models/tools/)
 for `ToolEvent` and `ToolResult` details.

@@ -9,6 +9,7 @@ import {
 } from "@effect-uai/core/LanguageModel"
 import { JsonParseError } from "@effect-uai/core/JSONL"
 import * as SSE from "@effect-uai/core/SSE"
+import { descriptorsOf } from "@effect-uai/core/Tool"
 import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
 import {
   type ChunkPart,
@@ -176,7 +177,7 @@ const buildNativeStream = (cfg: Config) => {
         const body = buildRequestBody(
           request.history,
           generationConfig,
-          request.tools ?? [],
+          descriptorsOf(request.tools),
           request.toolChoice,
         )
         const httpRequest = HttpClientRequest.post(url).pipe(

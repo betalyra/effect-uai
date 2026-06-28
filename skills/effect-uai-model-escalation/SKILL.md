@@ -17,7 +17,9 @@ Reach for this when the user says any of:
 
 ## The control tool
 
-Give the cheap tier an `escalate` tool descriptor:
+Give the cheap tier an `escalate` **signal**. `Tool.signal` is a model-visible,
+decodable tool with no local `run` — exactly right here, since the loop
+interprets the call rather than executing a handler:
 
 ```ts
 export const EscalateInput = Schema.Struct({
@@ -25,18 +27,19 @@ export const EscalateInput = Schema.Struct({
   question: Schema.String,
 })
 
-export const escalate = Tool.make({
+export const escalate = Tool.signal({
   name: "escalate",
   description:
     "Hand the question off to a stronger, more expensive model. Use when the question requires deep expertise that a fast model can't deliver with high confidence.",
   inputSchema: Tool.fromEffectSchema(EscalateInput),
-  run: () => Effect.succeed({ escalated: true }),
-  strict: true,
 })
+
+const escalationToolkit = Toolkit.make(escalate)
 ```
 
-`run` is not the point. The loop intercepts the call at
-`onTurnComplete` and turns it into a tier transition.
+There is no fake `run`. The loop intercepts the call at `onTurnComplete` and
+turns it into a tier transition; if it ever reached `Toolkit.run`, the executor
+would report it as `non_local_tool` rather than running anything.
 
 ## Loop shape
 
@@ -45,27 +48,30 @@ const deltas = tier.service
   .streamTurn({
     history: requestHistory,
     model: tier.model,
-    ...(current.tier === 0 ? { tools: escalateDescriptors } : {}),
+    ...(current.tier === 0 ? { tools: escalationToolkit } : {}),
   })
   .pipe(
-    onTurnComplete<State, EscalationEvent>((turn) =>
-      Effect.sync(() => {
-        if (current.tier === 1) return stop
+    // `then` may return a step stream directly or an Effect of one - bare
+    // `stop` for the guards, an Effect for the decode branch.
+    onTurnComplete<State, EscalationEvent>((turn) => {
+      if (current.tier === 1) return stop
 
-        const call = Turn.functionCalls(turn).find((c) => c.name === "escalate")
-        if (call === undefined) return stop
+      const call = Turn.functionCalls(turn).find((c) => c.name === "escalate")
+      if (call === undefined) return stop
 
-        return Result.match(decodeEscalateArgs(call.arguments), {
-          onFailure: () => stop,
-          onSuccess: (args) =>
-            nextAfter(Stream.succeed<EscalationEvent>({ _tag: "escalated", ...args }), {
-              history: current.history,
-              tier: 1,
-              escalation: args,
-            }),
-        })
-      }),
-    ),
+      // Decode against escalate's own schema via Tool.decodeArgs - no second
+      // decoder to keep in sync with the tool.
+      return Tool.decodeArgs(escalate, call).pipe(
+        Effect.map((args) =>
+          nextAfter(Stream.succeed<EscalationEvent>({ _tag: "escalated", ...args }), {
+            history: current.history,
+            tier: 1,
+            escalation: args,
+          }),
+        ),
+        Effect.catch(() => Effect.succeed(stop)),
+      )
+    }),
   )
 ```
 

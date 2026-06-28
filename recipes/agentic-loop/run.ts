@@ -19,6 +19,7 @@ import * as readline from "node:readline"
 import { Config, DateTime, Effect, Layer, Match, Option, Queue, Ref, Schema, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Tool from "@effect-uai/core/Tool"
+import * as Toolkit from "@effect-uai/core/Toolkit"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { conversation } from "./index.js"
 
@@ -61,7 +62,7 @@ const rollDice = Tool.make({
   strict: true,
 })
 
-const tools: ReadonlyArray<Tool.AnyTool> = [getCurrentTime, rollDice]
+const toolkit = Toolkit.make(getCurrentTime, rollDice)
 
 // ---------------------------------------------------------------------------
 // stdin -> queue. `Effect.async` registers the readline listener and
@@ -108,7 +109,7 @@ const renderConversation = (queue: Queue.Queue<string>, streaming: Ref.Ref<boole
   // The renderer flips `streaming` true on the first event of each
   // turn and back to false on `TurnComplete`, so the stdin handler
   // knows whether incoming lines are landing mid-turn.
-  Stream.runForEach(conversation(queue, tools, "1500 millis"), (event) =>
+  Stream.runForEach(conversation(queue, toolkit, "1500 millis"), (event) =>
     Match.value(event).pipe(
       Match.discriminators("_tag")({
         Output: ({ result }) =>

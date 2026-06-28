@@ -27,9 +27,9 @@ pnpm add @effect-uai/core @effect-uai/google effect
 
 ## Layers
 
-| Layer                                  | Registers                                 | Capability markers                         |
-| -------------------------------------- | ----------------------------------------- | ------------------------------------------ |
-| `@effect-uai/google/GeminiSynthesizer` | `GeminiSynthesizer` + `SpeechSynthesizer` | — (sync only; no `streamSynthesis` either) |
+| Layer                                  | Registers                                 | Capability markers                            |
+| -------------------------------------- | ----------------------------------------- | --------------------------------------------- |
+| `@effect-uai/google/GeminiSynthesizer` | `GeminiSynthesizer` + `SpeechSynthesizer` | none (sync only; no `streamSynthesis` either) |
 
 ```ts
 import { Config, Effect, Layer } from "effect"
@@ -58,10 +58,10 @@ TTS, use ElevenLabs or Inworld.
 | `gemini-2.5-pro-preview-tts`   | Higher quality, slower  |
 | `gemini-3.1-flash-tts-preview` | Newer flash preview     |
 
-30 prebuilt voices — `Kore`, `Puck`, `Zephyr`, `Enceladus`, `Charon`,
+30 prebuilt voices: `Kore`, `Puck`, `Zephyr`, `Enceladus`, `Charon`,
 `Aoede`, `Leda`, `Orus`, `Callirrhoe`, etc. (full list in
 `@effect-uai/google` models.ts). `GeminiVoiceName` is a literal-only
-union with no `(string & {})` escape — there's no cloning path on this
+union with no `(string & {})` escape. There's no cloning path on this
 surface.
 
 Output is PCM s16le at **24 kHz**, returned wrapped in a WAV RIFF header
@@ -72,14 +72,14 @@ by the adapter (so it drops into an `<audio>` tag directly).
 ```ts
 type GeminiSynthesizeRequest = {
   readonly model: GeminiTtsModel
-  readonly voiceId: GeminiVoiceName // literal-only — no cloning
+  readonly voiceId: GeminiVoiceName // literal-only, no cloning
   readonly text: string
-  readonly outputFormat?: AudioFormat // ignored — always wav/pcm 24 kHz
+  readonly outputFormat?: AudioFormat // ignored: always wav/pcm 24 kHz
   readonly styleInstructions?: string // prompt-level prosody direction
 }
 ```
 
-`styleInstructions` is free-form natural language —
+`styleInstructions` is free-form natural language:
 `"say this in a warm, conversational tone"`,
 `"emphasize the second sentence"`. Combine with inline prosody tags in
 the text (`[whispers]`, `[shouting]`) for finer control. No SSML, no
@@ -98,7 +98,7 @@ with `generationConfig.responseModalities` set to `["AUDIO"]`.
 
 ## See also
 
-- [Speech overview](/speech/) — capability markers and the wider
+- [Speech overview](/speech/): capability markers and the wider
   provider matrix.
-- [Basic speech synthesis](/recipes/basic-speech-synthesis/) — one-shot
+- [Basic speech synthesis](/recipes/basic-speech-synthesis/): one-shot
   Gemini TTS at 24 kHz WAV.

@@ -1,6 +1,6 @@
 ---
 title: OpenAI
-description: OpenAI Transcriber (sync + realtime) and Synthesizer — typed options, layer wiring, supported models.
+description: "OpenAI Transcriber (sync + realtime) and Synthesizer: typed options, layer wiring, supported models."
 ---
 
 OpenAI ships sync transcription via REST, realtime transcription via
@@ -21,15 +21,15 @@ pnpm add ws
 
 `ws` is only pulled in by `@effect-uai/openai/OpenAIRealtimeTranscriber`.
 The sync `OpenAITranscriber` and `OpenAISynthesizer` paths don't
-require it — edge / browser builds stay slim.
+require it: edge / browser builds stay slim.
 
 ## Layers
 
-| Layer                                          | Registers                                   | Capability markers                                                   |
-| ---------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------- |
-| `@effect-uai/openai/OpenAITranscriber`         | `OpenAITranscriber` + `Transcriber`         | —                                                                    |
-| `@effect-uai/openai/OpenAIRealtimeTranscriber` | `OpenAIRealtimeTranscriber` + `Transcriber` | `SttStreaming`                                                       |
-| `@effect-uai/openai/OpenAISynthesizer`         | `OpenAISynthesizer` + `SpeechSynthesizer`   | — (no `TtsIncrementalText` — OpenAI has no `/stream-input` endpoint) |
+| Layer                                          | Registers                                   | Capability markers                                                     |
+| ---------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------- |
+| `@effect-uai/openai/OpenAITranscriber`         | `OpenAITranscriber` + `Transcriber`         | none                                                                   |
+| `@effect-uai/openai/OpenAIRealtimeTranscriber` | `OpenAIRealtimeTranscriber` + `Transcriber` | `SttStreaming`                                                         |
+| `@effect-uai/openai/OpenAISynthesizer`         | `OpenAISynthesizer` + `SpeechSynthesizer`   | none (no `TtsIncrementalText`: OpenAI has no `/stream-input` endpoint) |
 
 ```ts
 import { Config, Effect, Layer } from "effect"
@@ -60,7 +60,7 @@ const mainLayer = openai.pipe(Layer.provide(FetchHttpClient.layer))
 | ------------------------ | ---- | --------------------------- | ------------------------------------------------ |
 | `gpt-4o-transcribe`      | ✓    | ✓ (`?intent=transcription`) | Plain text only                                  |
 | `gpt-4o-mini-transcribe` | ✓    | ✓                           | Plain text only, cheaper                         |
-| `whisper-1`              | ✓    | —                           | **Only model supporting `wordTimestamps: true`** |
+| `whisper-1`              | ✓    | none                        | **Only model supporting `wordTimestamps: true`** |
 
 `wordTimestamps: true` requires `whisper-1`. Passing it to a GPT-4o
 model surfaces the provider's wire rejection (HTTP 400) rather than a
@@ -78,7 +78,7 @@ Stock voices (no custom-voice path): `alloy`, `ash`, `ballad`, `coral`,
 `echo`, `fable`, `onyx`, `nova`, `sage`, `shimmer`, `verse`. `ballad`,
 `coral`, and `verse` are `gpt-4o-mini-tts`-only. Because there's no
 clone path, `OpenAISynthesizeRequest.voiceId` narrows to the
-stock-only literal union — passing an arbitrary string is a type
+stock-only literal union. Passing an arbitrary string is a type
 error.
 
 ## Request shape
@@ -107,7 +107,7 @@ type OpenAISynthesizeRequest = {
 }
 ```
 
-`instructions` is a free-form prompt for tone, emotion, pacing —
+`instructions` is a free-form prompt for tone, emotion, pacing:
 "sound apologetic," "read this slowly with emphasis on the second
 sentence." Honored only by `gpt-4o-mini-tts`; silently ignored by
 the legacy `tts-1` family.
@@ -119,7 +119,7 @@ the legacy `tts-1` family.
 two upgrade headers: `Authorization: Bearer …` and
 `OpenAI-Beta: realtime=v1`. Browser `WebSocket` can't set headers, so
 `OpenAIRealtimeTranscriber` uses the `ws` peer dep to construct the
-socket with those headers — that's why this transcriber lives at a
+socket with those headers. That's why this transcriber lives at a
 separate subpath. Use it from Node / Bun; for browser deployments,
 proxy through a server.
 
@@ -148,9 +148,9 @@ Standard HTTP → `AiError` mapping applies:
 
 ## See also
 
-- [Speech overview](/speech/) — generic tags and capability markers.
-- [Voice loop](/recipes/voice-loop/) — uses ElevenLabs by default;
+- [Speech overview](/speech/): generic tags and capability markers.
+- [Voice loop](/recipes/voice-loop/): uses ElevenLabs by default;
   the recipe's `runPipeline` typechecks against either provider via
   the marker contract.
-- [Streaming transcription](/recipes/streaming-transcription/) —
+- [Streaming transcription](/recipes/streaming-transcription/):
   default provider is OpenAI Realtime.

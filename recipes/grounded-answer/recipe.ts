@@ -27,7 +27,6 @@ import { Effect, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { streamTurn } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
-import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import { webSearchTool } from "@effect-uai/core/WebSearchTool"
@@ -66,8 +65,7 @@ type State = {
 
 export const groundedAnswer = (cfg: GroundedAnswerConfig) => {
   const maxRounds = cfg.maxRounds ?? 5
-  const tools = [webSearchTool({ maxResults: cfg.maxResults ?? 5 })]
-  const descriptors = Tool.toDescriptors(tools)
+  const toolkit = Toolkit.make(webSearchTool({ maxResults: cfg.maxResults ?? 5 }))
 
   const initial: State = {
     history: [Items.systemText(SYSTEM_PROMPT), Items.userText(cfg.question)],
@@ -83,7 +81,7 @@ export const groundedAnswer = (cfg: GroundedAnswerConfig) => {
       return streamTurn({
         history: state.history,
         model: cfg.model,
-        ...(lastRound ? {} : { tools: descriptors }),
+        ...(lastRound ? {} : { tools: toolkit }),
       }).pipe(
         onTurnComplete((turn) =>
           Effect.sync(() => {
@@ -94,7 +92,7 @@ export const groundedAnswer = (cfg: GroundedAnswerConfig) => {
 
             // Tool calls: stream tool events to the consumer, then continue
             // the loop with the appended turn + results.
-            return Toolkit.run(tools, calls).pipe(
+            return Toolkit.run(toolkit, calls).pipe(
               Toolkit.continueWithResults(
                 Toolkit.appendToolResults({ ...state, round: state.round + 1 }, turn),
               ),

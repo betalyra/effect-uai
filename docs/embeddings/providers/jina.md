@@ -1,17 +1,17 @@
 ---
 title: Jina (embeddings)
-description: Jina's embedding API — multimodal, multilingual, sparse, multivector, binary quantization.
+description: "Jina's embedding API: multimodal, multilingual, sparse, multivector, binary quantization."
 ---
 
 Jina's embedding line covers ground no other provider on the list does:
 **sparse** vectors for hybrid search (`elser-v2`), **multivector** late
 interaction (`jina-embeddings-v4`), and binary-quantized output for
-storage-tight indexes — alongside the standard text + image dense
+storage-tight indexes, alongside the standard text + image dense
 retrieval models.
 
 If embedding is the only thing you need from a provider, Jina is the
 broadest single surface. (Reranking is on the roadmap and uses the same
-auth — see [reranking](/reranking/).)
+auth: see [reranking](/reranking/).)
 
 ## Install
 
@@ -39,9 +39,9 @@ const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
 `jinaEmbeddingLayer` registers two service tags from one underlying
 implementation:
 
-- **`JinaEmbedding`** — the typed tag. Yield this for the full Jina
+- **`JinaEmbedding`**: the typed tag. Yield this for the full Jina
   task vocabulary and the narrow encoding union.
-- **`EmbeddingModel`** — the generic tag for provider-portable code.
+- **`EmbeddingModel`**: the generic tag for provider-portable code.
   The generic registration maps cross-provider `"query"` / `"document"`
   to Jina's `retrieval.query` / `retrieval.passage`.
 
@@ -138,12 +138,12 @@ Reference: [Jina embeddings](https://jina.ai/embeddings/).
 
 ## Encoding support
 
-| `encoding`          | Wire behaviour                                        |
-| ------------------- | ----------------------------------------------------- |
-| `float32` (default) | Default JSON `number[]`.                              |
-| `binary`            | `embedding_type: "binary"` — bit-packed `Uint8Array`. |
-| `sparse`            | No flag; the chosen model decides (e.g. `elser-v2`).  |
-| `multivector`       | `return_multivector: true` — one vector per token.    |
+| `encoding`          | Wire behaviour                                       |
+| ------------------- | ---------------------------------------------------- |
+| `float32` (default) | Default JSON `number[]`.                             |
+| `binary`            | `embedding_type: "binary"`: bit-packed `Uint8Array`. |
+| `sparse`            | No flag; the chosen model decides (e.g. `elser-v2`). |
+| `multivector`       | `return_multivector: true`: one vector per token.    |
 
 Compatibility is checked at the **response level**, not via a
 hardcoded model-encoding table. If you ask for an encoding the chosen
@@ -155,11 +155,11 @@ contains a … embedding"). New models work without an SDK update.
 
 Jina v4 accepts URL or base64 image inputs:
 
-- **`url`** — passed through; Jina fetches.
-- **`base64`** — passed through.
-- **`bytes`** — auto-encoded to base64.
+- **`url`**: passed through; Jina fetches.
+- **`base64`**: passed through.
+- **`bytes`**: auto-encoded to base64.
 
-Mixed `content[]` inputs with multiple parts are rejected — Jina's
+Mixed `content[]` inputs with multiple parts are rejected. Jina's
 flat `input[]` would lose the grouping. Split into separate `inputs[]`
 entries.
 
@@ -183,7 +183,7 @@ encoding) maps to `AiError.InvalidRequest` with `param: "encoding"`.
 
 ## See also
 
-- [Embedding model](/embeddings/) — the cross-provider concept.
-- [Multivector embedding](/embeddings/multivector/) — late-interaction
+- [Embedding model](/embeddings/): the cross-provider concept.
+- [Multivector embedding](/embeddings/multivector/): late-interaction
   scenario built on `jina-embeddings-v4`.
-- [Reranking](/reranking/) — coming soon, same provider, same auth.
+- [Reranking](/reranking/): coming soon, same provider, same auth.

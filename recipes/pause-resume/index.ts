@@ -81,7 +81,6 @@ const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) 
           .streamTurn({
             history: state.history,
             model: "gpt-5.4-mini",
-            tools: [],
             reasoning: { effort: "low" },
           })
           .pipe(

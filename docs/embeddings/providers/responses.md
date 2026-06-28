@@ -1,9 +1,9 @@
 ---
 title: Responses / OpenAI (embeddings)
-description: OpenAI's embedding API — text-only, Matryoshka dimensions, two model sizes.
+description: "OpenAI's embedding API: text-only, Matryoshka dimensions, two model sizes."
 ---
 
-OpenAI's embedding line is the boring, dependable choice — text in,
+OpenAI's embedding line is the boring, dependable choice: text in,
 dense float32 vectors out, nothing fancier. Two sizes, Matryoshka
 truncation, no task semantics. If you want sparse, multivector, or
 images, see [Jina](/embeddings/providers/jina/) or
@@ -35,9 +35,9 @@ const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
 `openaiEmbeddingLayer` registers two service tags from one underlying
 implementation:
 
-- **`OpenAIEmbedding`** — the typed tag. Yield this when you want the
+- **`OpenAIEmbedding`**: the typed tag. Yield this when you want the
   OpenAI-typed model union and the narrow request shape.
-- **`EmbeddingModel`** — the generic tag. Yield this in
+- **`EmbeddingModel`**: the generic tag. Yield this in
   provider-portable code.
 
 ## Request shape
@@ -51,7 +51,7 @@ interface OpenAIEmbedRequest extends Omit<CommonEmbedRequest, "model" | "task"> 
 ```
 
 Note what's _not_ there: **no `task`**. OpenAI's embedding API has no
-task-type semantics, so the field is omitted from the typed request —
+task-type semantics, so the field is omitted from the typed request:
 passing it is a compile error. The generic `EmbeddingModel` tag accepts
 and silently ignores `task` so portable code keeps working.
 
@@ -117,10 +117,10 @@ OpenAI's embedding endpoint takes a single text string per input. The
 layer accepts the full `EmbedInput` union for parity, with these
 behaviours:
 
-- **`string`** — passed through.
-- **`{ text }`** — passed through.
-- **`{ image }`** — rejected with `AiError.InvalidRequest`.
-- **`{ content: [...] }`** — text parts concatenated with newlines,
+- **`string`**: passed through.
+- **`{ text }`**: passed through.
+- **`{ image }`**: rejected with `AiError.InvalidRequest`.
+- **`{ content: [...] }`**: text parts concatenated with newlines,
   any image part rejected.
 
 ## Errors
@@ -142,8 +142,8 @@ Recover per-tag with `Effect.catchTag("RateLimited", handler)`.
 
 ## See also
 
-- [Embedding model](/embeddings/) — the cross-provider concept.
-- [Basic embedding](/recipes/basic-embedding/) — runnable example
+- [Embedding model](/embeddings/): the cross-provider concept.
+- [Basic embedding](/recipes/basic-embedding/): runnable example
   with a `--provider=openai` switch.
-- [OpenAI language model](/providers/responses/) — the same provider's
+- [OpenAI language model](/providers/responses/): the same provider's
   Responses API integration.

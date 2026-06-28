@@ -25,7 +25,6 @@ import { Duration, Effect, Queue, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, next, onTurnComplete } from "@effect-uai/core/Loop"
-import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
@@ -80,11 +79,9 @@ const needsUserInput = (state: State): boolean => {
 
 export const conversation = (
   queue: Queue.Queue<string>,
-  tools: ReadonlyArray<Tool.AnyTool>,
+  toolkit: Toolkit.Toolkit,
   settle: Duration.Input = "150 millis",
 ) => {
-  const descriptors = Tool.toDescriptors(tools)
-
   return pipe(
     initial,
     loop((state) =>
@@ -95,7 +92,7 @@ export const conversation = (
         const history = [...state.history, ...incoming.map(Items.userText)]
 
         const lm = yield* LanguageModel
-        return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: descriptors }).pipe(
+        return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: toolkit }).pipe(
           onTurnComplete((turn) =>
             Effect.sync(() => {
               const calls = Turn.getToolCalls(turn)
@@ -111,7 +108,7 @@ export const conversation = (
               // emit one `Loop.next` carrying the appended turn. The
               // next iteration runs the model again to incorporate
               // the outputs, skipping the queue check.
-              return Toolkit.run(tools, calls).pipe(
+              return Toolkit.run(toolkit, calls).pipe(
                 Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
               )
             }),

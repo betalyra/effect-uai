@@ -16,8 +16,8 @@ import * as Items from "../domain/Items.js"
 import { findUnansweredCalls, cancelAllPending, isReconciled } from "./HistoryCheck.js"
 import { type ToolResult, isFailure, isOk, toToolCallOutput } from "./ToolResult.js"
 import { type ApprovalMapEntry, type ApprovalDecision, fromMap, fromQueue } from "./Approval.js"
-import { fromEffectSchema, make as makeTool, streaming } from "./Tool.js"
-import { run } from "./Toolkit.js"
+import { fromEffectSchema, make as makeTool } from "./Tool.js"
+import { make as makeToolkit, run } from "./Toolkit.js"
 import { ToolEvent, isApprovalRequested, isProgress, isOutput } from "./ToolEvent.js"
 
 // ---------------------------------------------------------------------------
@@ -27,34 +27,35 @@ import { ToolEvent, isApprovalRequested, isProgress, isOutput } from "./ToolEven
 //   - delete_database : non-streaming, requires approval
 // ---------------------------------------------------------------------------
 
-const webSearch = streaming({
+const webSearch = makeTool({
   name: "web_search",
   description: "search",
   inputSchema: fromEffectSchema(Schema.Struct({ query: Schema.String })),
-  run: ({ query }) =>
-    Stream.fromIterable([
-      { url: "a", title: `${query} 1` },
-      { url: "b", title: `${query} 2` },
-      { url: "c", title: `${query} 3` },
-    ]),
-  finalize: (hits) => ({ count: hits.length }),
+  run: ({ query }, emit) =>
+    Effect.gen(function* () {
+      const hits = [
+        { url: "a", title: `${query} 1` },
+        { url: "b", title: `${query} 2` },
+        { url: "c", title: `${query} 3` },
+      ]
+      yield* Stream.runForEach(Stream.fromIterable(hits), emit)
+      return { count: hits.length }
+    }),
 })
 
-const bulkEmail = streaming({
+const bulkEmail = makeTool({
   name: "bulk_email",
   description: "send",
   inputSchema: fromEffectSchema(
     Schema.Struct({ recipients: Schema.Array(Schema.String), subject: Schema.String }),
   ),
-  run: ({ recipients }) =>
-    Stream.fromIterable(
-      recipients.map((_, i) => ({
-        type: "progress" as const,
-        sent: i + 1,
-        total: recipients.length,
-      })),
-    ),
-  finalize: (events) => ({ status: "sent" as const, delivered: events.length }),
+  run: ({ recipients }, emit) =>
+    Effect.gen(function* () {
+      yield* Effect.forEach(recipients, (_, i) =>
+        emit({ type: "progress" as const, sent: i + 1, total: recipients.length }),
+      )
+      return { status: "sent" as const, delivered: recipients.length }
+    }),
 })
 
 const deleteDatabase = makeTool({
@@ -64,7 +65,7 @@ const deleteDatabase = makeTool({
   run: ({ name }) => Effect.succeed({ status: "dropped", name }),
 })
 
-const allTools = [webSearch, bulkEmail, deleteDatabase]
+const allTools = makeToolkit(webSearch, bulkEmail, deleteDatabase)
 const SENSITIVE = new Set(["bulk_email", "delete_database"])
 const isSensitive = (call: Items.ToolCall) => SENSITIVE.has(call.name)
 

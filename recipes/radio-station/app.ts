@@ -141,6 +141,8 @@ const parseClientFrame = (
   buf: Uint8Array,
 ): Effect.Effect<Option.Option<{ readonly type?: string }>> =>
   Effect.try({
+    // Plain JSON is the right tool for a raw WebSocket frame.
+    // @effect-diagnostics-next-line effect/preferSchemaOverJson:off
     try: () => JSON.parse(textDecoder.decode(buf)) as { readonly type?: string },
     catch: () => "malformed" as const,
   }).pipe(Effect.option)
@@ -225,6 +227,10 @@ export const main = Effect.gen(function* () {
   yield* Effect.logInfo(`radio-station (responses + ${provider} music: ${cfg.musicModel})`)
   yield* Effect.logInfo(`tracks cached at: ${tracksDir}`)
 
+  // The rule's `return yield*` suggestion would surface the served layer's
+  // requirements onto main's R and break the runners' types, so keep returning
+  // the launch effect here.
+  // @effect-diagnostics-next-line effect/returnEffectInGen:off
   return Layer.launch(
     HttpRouter.serve(
       routesLayer({

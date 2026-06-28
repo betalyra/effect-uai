@@ -102,7 +102,6 @@ const conversation = pipe(
               ),
             ],
             model: "gpt-5.4-mini",
-            tools: [],
             reasoning: { effort: "low" },
           })
           .pipe(
@@ -123,7 +122,6 @@ const conversation = pipe(
         .streamTurn({
           history: state.history,
           model: "gpt-5.4",
-          tools: [],
           reasoning: { effort: "low" },
         })
         .pipe(

@@ -75,12 +75,11 @@ const deleteUser = Tool.make({
   strict: true,
 })
 
-export const allTools: ReadonlyArray<Tool.AnyTool> = [searchEmails, sendEmail, deleteUser]
-const tools = Tool.toDescriptors(allTools)
+export const toolkit = Toolkit.make(searchEmails, sendEmail, deleteUser)
 
 const decisionEvents = (decision: Approval.ApprovalDecision): Stream.Stream<ToolEvent> =>
   decision._tag === "Approved"
-    ? Toolkit.run(allTools, [decision.call])
+    ? Toolkit.run(toolkit, [decision.call])
     : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
 // ---------------------------------------------------------------------------
@@ -139,7 +138,7 @@ export const httpConversation = (
           .streamTurn({
             history: current.history,
             model: "gpt-5.4-mini",
-            tools,
+            tools: toolkit,
             reasoning: { effort: "low" },
           })
           .pipe(
@@ -150,7 +149,7 @@ export const httpConversation = (
 
                 const plan = Approval.fromMap(isSensitive, approvals)(calls)
                 return Stream.merge(
-                  Toolkit.run(allTools, plan.approved),
+                  Toolkit.run(toolkit, plan.approved),
                   Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
                 ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
               }),
@@ -178,7 +177,7 @@ export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State =
           .streamTurn({
             history: current.history,
             model: "gpt-5.4-mini",
-            tools,
+            tools: toolkit,
             reasoning: { effort: "low" },
           })
           .pipe(
@@ -199,7 +198,7 @@ export const queueConversation = (verdicts: Queue.Queue<Verdict>, state: State =
                     return Stream.merge(
                       approvalRequests,
                       Stream.merge(
-                        Toolkit.run(allTools, approved),
+                        Toolkit.run(toolkit, approved),
                         decisions.pipe(Stream.flatMap(decisionEvents)),
                       ),
                     )

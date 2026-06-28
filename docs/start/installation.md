@@ -26,9 +26,9 @@ loop.
 
 ## What You Installed
 
-- **`@effect-uai/core`** — the building blocks for your own agent loop.
-- **`@effect-uai/responses`** — the OpenAI Responses provider layer.
-- **`effect`** — the runtime, streaming, dependency, and error model.
+- **`@effect-uai/core`**: the building blocks for your own agent loop.
+- **`@effect-uai/responses`**: the OpenAI Responses provider layer.
+- **`effect`**: the runtime, streaming, dependency, and error model.
 
 The core package has no provider dependencies, so server, edge, and browser
 builds only pull in the providers you actually use.
@@ -43,7 +43,7 @@ primitives, and recipe patterns:
 npx skills add betalyra/effect-uai
 ```
 
-One main skill plus fourteen recipe sub-skills, loaded lazily —
+One main skill plus fourteen recipe sub-skills, loaded lazily.
 [Skills](/skills/) has the catalog and per-skill install commands.
 
 Next: [stream one model turn](/start/getting-started/).

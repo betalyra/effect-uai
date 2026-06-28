@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import { type ToolResult, toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
-import * as Tool from "@effect-uai/core/Tool"
+import * as Toolkit from "@effect-uai/core/Toolkit"
 import { isProgress, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Turn from "@effect-uai/core/Turn"
 import {
@@ -67,7 +67,7 @@ describe("streaming-tool-output: sub-agent pattern", () => {
       ])
 
     const subAgent = makeSubAgent(mockedInner)
-    const allTools: ReadonlyArray<Tool.AnyTool> = [subAgent]
+    const toolkit = Toolkit.make(subAgent)
 
     const turn1: Turn.Turn = {
       stop_reason: "tool_calls",
@@ -81,7 +81,7 @@ describe("streaming-tool-output: sub-agent pattern", () => {
     }
 
     const collected = await Effect.runPromise(
-      Stream.runCollect(buildConversation(allTools, initial)).pipe(
+      Stream.runCollect(buildConversation(toolkit, initial)).pipe(
         Effect.provide(MockProvider.layer([turn1, finalTurn])),
       ),
     )
@@ -110,7 +110,7 @@ describe("streaming-tool-output: progress + result pattern", () => {
   it("progress events flow through; finalize picks the result", async () => {
     // Zero per-chunk delay for fast test execution.
     const downloadArtifact = makeDownloadTool("0 millis")
-    const allTools: ReadonlyArray<Tool.AnyTool> = [downloadArtifact]
+    const toolkit = Toolkit.make(downloadArtifact)
 
     const turn1: Turn.Turn = {
       stop_reason: "tool_calls",
@@ -124,7 +124,7 @@ describe("streaming-tool-output: progress + result pattern", () => {
     }
 
     const collected = await Effect.runPromise(
-      Stream.runCollect(buildConversation(allTools, initial)).pipe(
+      Stream.runCollect(buildConversation(toolkit, initial)).pipe(
         Effect.provide(MockProvider.layer([turn1, finalTurn])),
       ),
     )

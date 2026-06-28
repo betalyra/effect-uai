@@ -2,7 +2,7 @@ import { Array as Arr, Context, Effect, Option, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { HistoryItem } from "../domain/Items.js"
 import type * as StructuredFormat from "../structured-format/StructuredFormat.js"
-import type { ToolDescriptor } from "../tool/Tool.js"
+import type { Toolkit } from "../tool/Toolkit.js"
 import { isTurnComplete, type Turn, type TurnEvent } from "../domain/Turn.js"
 
 /**
@@ -18,7 +18,12 @@ export type CommonRequest = {
    * so code that yields a typed provider tag gets autocompletion.
    */
   readonly model: string
-  readonly tools?: ReadonlyArray<ToolDescriptor>
+  /**
+   * The model-visible tools for this request, as a `Toolkit`. The provider
+   * renders it to wire descriptors (`Tool.descriptorsOf`); omit it for a turn
+   * with no tools.
+   */
+  readonly tools?: Toolkit
   readonly toolChoice?:
     | "auto"
     | "required"

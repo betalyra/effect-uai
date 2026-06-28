@@ -2,6 +2,8 @@ import type { IconType } from "react-icons"
 import {
   PiBackpack,
   PiClipboardText,
+  PiGlobe,
+  PiPlugs,
   PiPuzzlePiece,
   PiSlidersHorizontal,
   PiSquaresFour,
@@ -27,7 +29,7 @@ const features: ReadonlyArray<Feature> = [
   {
     title: "Built on Effect",
     description:
-      "**Retries**, **streams**, **concurrency**, **errors** — handled by Effect, not reinvented.",
+      "**Retries**, **streams**, **concurrency**, **errors**: handled by Effect, not reinvented.",
     Icon: PiPuzzlePiece,
   },
   {
@@ -38,7 +40,7 @@ const features: ReadonlyArray<Feature> = [
   {
     title: "Recipes for the hard parts",
     description:
-      "Copy-paste solutions for **model council**, **auto-compaction**, **pause and resume**, and more.",
+      "Copy-paste solutions for **common agentic use cases** that you can adapt as needed.",
     Icon: PiClipboardText,
   },
   {
@@ -56,8 +58,20 @@ const features: ReadonlyArray<Feature> = [
   {
     title: "Carry your own state",
     description:
-      "**History**, **budget**, scratchpad — track whatever your agent needs. It's just a value.",
+      "**History**, **budget**, scratchpad: track whatever your agent needs. It's just a value.",
     Icon: PiBackpack,
+  },
+  {
+    title: "Provider-portable",
+    description:
+      "Code against the generic tag. Swap **OpenAI**, **Anthropic**, **Gemini**, or **Mistral** by changing a Layer.",
+    Icon: PiPlugs,
+  },
+  {
+    title: "Platform-independent",
+    description:
+      "Built on Effect's platform layer, so the same agent code runs on **Bun**, **Node**, and **Deno**.",
+    Icon: PiGlobe,
   },
 ]
 

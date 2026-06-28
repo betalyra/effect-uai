@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest"
 import * as Items from "@effect-uai/core/Items"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
+import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import { conversation, drainBurst } from "./index.js"
 
@@ -125,7 +126,7 @@ describe("conversation", () => {
     const program = Effect.gen(function* () {
       const queue = yield* Queue.unbounded<string>()
       const fiber = yield* Effect.forkChild(
-        Stream.runDrain(conversation(queue, [getTime], "20 millis")),
+        Stream.runDrain(conversation(queue, Toolkit.make(getTime), "20 millis")),
       )
 
       // Burst 1: three messages within the settle window.

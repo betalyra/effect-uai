@@ -89,6 +89,8 @@ type AudioQueue = Queue.Queue<Uint8Array, Cause.Done<void>>
 const pipeline = (queue: AudioQueue, send: (json: string) => void) =>
   Stream.fromQueue(queue).pipe(
     transcribeMicStream(provider),
+    // Plain JSON is the right tool for serializing a WebSocket frame.
+    // @effect-diagnostics-next-line effect/preferSchemaOverJson:off
     Stream.runForEach((event) => Effect.sync(() => send(JSON.stringify(event)))),
     Effect.tapCause((cause) =>
       // Clean teardown (browser disconnect, upstream WS close) shows up as

@@ -1,6 +1,6 @@
 ---
 title: Speech
-description: Two service tags — Transcriber and SpeechSynthesizer — that cross the audio boundary in either direction.
+description: Two service tags (Transcriber and SpeechSynthesizer) that cross the audio boundary in either direction.
 ---
 
 Speech work usually starts with one of two user problems: "turn this
@@ -43,7 +43,7 @@ under its own typed tag (`OpenAITranscriber`, `ElevenLabsSynthesizer`,
 yields the generic tag is portable; code that yields the typed tag
 gets that provider's extended options.
 
-This is the same seam [`LanguageModel`](/concepts/language-model/) and
+This is the same seam [`LanguageModel`](/language-models/) and
 [`EmbeddingModel`](/embeddings/) use. Switching providers is swapping a
 Layer.
 
@@ -80,7 +80,7 @@ import {
 ```
 
 Sync helpers (`transcribe`, `synthesize`) only need the generic tag in
-their `R`. Streaming helpers additionally need a capability marker —
+their `R`. Streaming helpers additionally need a capability marker:
 see below.
 
 ## Capability markers
@@ -89,11 +89,11 @@ Streaming speech has real provider capability gaps. Capability markers
 make those gaps visible at `Effect.provide`, not halfway through a
 demo.
 
-- **`SttStreaming`** — required for `streamTranscriptionFrom`. Shipped
+- **`SttStreaming`**: required for `streamTranscriptionFrom`. Shipped
   by `OpenAIRealtimeTranscriber`, `ElevenLabsTranscriber`,
   `InworldRealtimeTranscriber`. Not shipped by `OpenAITranscriber`
   (sync) or `InworldTranscriber`.
-- **`TtsIncrementalText`** — required for `streamSynthesisFrom` (text
+- **`TtsIncrementalText`**: required for `streamSynthesisFrom` (text
   arrives as a `Stream<string>`, audio leaves as `Stream<AudioChunk>`,
   pacing tied to the upstream WS). Shipped by `ElevenLabsSynthesizer`
   and `InworldRealtimeSynthesizer`. Not shipped by `OpenAISynthesizer`
@@ -106,20 +106,22 @@ type error at `Effect.provide`, not a runtime `Unsupported`.
 
 | Provider   | STT sync          | STT streaming                   | TTS sync | TTS chunked | TTS incremental-text |
 | ---------- | ----------------- | ------------------------------- | -------- | ----------- | -------------------- |
-| OpenAI     | ✓                 | ✓ (`OpenAIRealtimeTranscriber`) | ✓        | ✓           | —                    |
-| ElevenLabs | —                 | ✓ (Scribe v2 Realtime)          | ✓        | ✓           | ✓                    |
-| Gemini     | ✓ (prompt-driven) | —                               | ✓        | —           | —                    |
+| OpenAI     | ✓                 | ✓ (`OpenAIRealtimeTranscriber`) | ✓        | ✓           | .                    |
+| ElevenLabs | .                 | ✓ (Scribe v2 Realtime)          | ✓        | ✓           | ✓                    |
+| Gemini     | ✓ (prompt-driven) | .                               | ✓        | .           | .                    |
 | Inworld    | ✓                 | ✓                               | ✓        | ✓           | ✓                    |
+| Mistral    | ✓ (Voxtral)       | ✓ (Voxtral Realtime)            | ✓        | ✓           | ✓ (buffered)         |
 
-Each provider's full surface — models, voice IDs, wire / auth notes —
+Each provider's full surface (models, voice IDs, wire / auth notes)
 lives on its page: [OpenAI](/speech/providers/openai/),
 [ElevenLabs](/speech/providers/elevenlabs/),
 [Gemini](/speech/providers/gemini/),
-[Inworld](/speech/providers/inworld/).
+[Inworld](/speech/providers/inworld/),
+[Mistral](/speech/providers/mistral/).
 
 ## Next step
 
-Build a voice assistant: [Voice loop](/recipes/voice-loop/) — STT, LLM,
+Build a voice assistant: [Voice loop](/recipes/voice-loop/). STT, LLM,
 and TTS streams composed as Effect fibers, with stop-word interrupt
 and turn queueing.
 
@@ -129,7 +131,7 @@ Or start with one primitive in isolation:
 
 ## See also
 
-- [Transcription](/speech/transcription/) — STT in depth.
-- [Synthesis](/speech/synthesis/) — TTS in depth.
-- [Realtime](/realtime/) — duplex voice / video sessions (planned).
-- [Voice loop recipe](/recipes/voice-loop/) — the flagship composition.
+- [Transcription](/speech/transcription/): STT in depth.
+- [Synthesis](/speech/synthesis/): TTS in depth.
+- [Realtime](/realtime/): duplex voice / video sessions (planned).
+- [Voice loop recipe](/recipes/voice-loop/): the flagship composition.

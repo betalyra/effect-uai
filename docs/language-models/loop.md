@@ -58,13 +58,13 @@ Loop.stop(state) // end the loop AND surface a final state
 values before them: emit a run of values then continue with
 `values.pipe(Stream.map(Loop.value), Stream.concat(Loop.next(state)))`,
 or just `Loop.next(state)` when there were no values. The streaming-tool
-helper [`Toolkit.continueWithResults`](/concepts/tools/) bundles that
+helper [`Toolkit.continueWithResults`](/language-models/tools/) bundles that
 pattern: it forwards every `ToolEvent` as `Loop.value`, accumulates the
 terminal `Output` events into a `ReadonlyArray<ToolResult>`, and concats
 one `Loop.next(build(results))` at end-of-stream.
 
 Reach for `stop(state)` when the loop ending _is_ the result you care
-about — a summarised state, a tallied result, a final checkpoint.
+about: a summarised state, a tallied result, a final checkpoint.
 `loopWithState` exposes that final state to the caller; with plain
 `stop()` it's discarded.
 
@@ -79,7 +79,6 @@ always the same: forward events to the consumer, wait for the terminal
 import { Effect } from "effect"
 import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
 import { toToolCallOutput } from "@effect-uai/core/ToolResult"
-import * as Tool from "@effect-uai/core/Tool"
 import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -95,17 +94,17 @@ pipe(
         .streamTurn({
           history: state.history,
           model: "gpt-5.4-mini",
-          tools: Tool.toDescriptors(allTools),
+          tools: toolkit,
         })
         .pipe(
-          onTurnComplete<State, ToolEvent>((turn) =>
+          onTurnComplete((turn) =>
             Effect.gen(function* () {
               const calls = Turn.getToolCalls(turn)
 
               // No tool calls means there is nothing to feed back.
               if (calls.length === 0) return stop()
 
-              return Toolkit.run(allTools, calls).pipe(
+              return Toolkit.run(toolkit, calls).pipe(
                 Toolkit.continueWithResults((results) =>
                   // Build the next state only after every tool call has an output.
                   Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
@@ -121,12 +120,12 @@ pipe(
 
 What it does:
 
-- Each `TurnEvent` passes through as `Loop.value(event)` — including
+- Each `TurnEvent` passes through as `Loop.value(event)`, including
   the terminal `TurnComplete`, so the consumer sees turn boundaries.
 - Once the terminal arrives, the callback runs with the assembled
   `Turn` and its returned event-stream is concatenated. Typically that
   stream comes from `Toolkit.run` threaded through `continueWithResults`
-  to advance — or just `stop()`.
+  to advance, or just `stop()`.
 - `ToolEvent`s emitted by the executor (`Progress`, `Output`,
   `ApprovalRequested`) flow through alongside the `TurnEvent`s.
 - Pre-pipe transforms work as you'd expect: `Stream.tap` for logging,

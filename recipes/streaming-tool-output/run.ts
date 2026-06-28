@@ -9,19 +9,19 @@
 import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import * as Items from "@effect-uai/core/Items"
-import * as Tool from "@effect-uai/core/Tool"
+import * as Toolkit from "@effect-uai/core/Toolkit"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { type State, buildConversation, makeDownloadTool } from "./index.js"
 
 const downloadArtifact = makeDownloadTool()
-const allTools: ReadonlyArray<Tool.AnyTool> = [downloadArtifact]
+const toolkit = Toolkit.make(downloadArtifact)
 
 const initial: State = {
   history: [Items.userText("Download https://example.com/big-blob and tell me the byte count.")],
   index: 0,
 }
 
-const program = Stream.runForEach(buildConversation(allTools, initial), (event) =>
+const program = Stream.runForEach(buildConversation(toolkit, initial), (event) =>
   Match.value(event).pipe(
     Match.when({ _tag: "Progress" }, (e) =>
       Effect.logInfo("download progress", { call_id: e.call_id, data: e.data }),

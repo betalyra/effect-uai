@@ -12,6 +12,7 @@ import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import { Responses } from "@effect-uai/responses/Responses"
+import { LanguageModel } from "@effect-uai/core/LanguageModel"
 
 // ---------------------------------------------------------------------------
 // Tool - get_current_time (uses Effect's DateTime)
@@ -46,8 +47,7 @@ const getCurrentTime = Tool.make({
   strict: true,
 })
 
-const allTools = [getCurrentTime]
-const tools = Tool.toDescriptors(allTools)
+const toolkit = Toolkit.make(getCurrentTime)
 
 // ---------------------------------------------------------------------------
 // State and types
@@ -74,14 +74,13 @@ export const conversation = pipe(
   initial,
   loop((state) =>
     Effect.gen(function* () {
-      const oai = yield* Responses
+      const lm = yield* LanguageModel
 
-      return oai
+      return lm
         .streamTurn({
           history: state.history,
           model: "gpt-5.4-mini",
-          tools,
-          reasoning: { effort: "low" },
+          tools: toolkit,
         })
         .pipe(
           Stream.tap((delta) => Effect.logDebug("delta", { delta })),
@@ -97,7 +96,7 @@ export const conversation = pipe(
               // `continueWithResults` is the broadcast pattern bundled into one
               // call - see `Loop.value` / `Toolkit.collectResults` /
               // `Loop.next` if you ever need to vary an arm.
-              return Toolkit.run(allTools, calls).pipe(
+              return Toolkit.run(toolkit, calls).pipe(
                 Toolkit.continueWithResults(
                   Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
                 ),

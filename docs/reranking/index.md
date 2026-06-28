@@ -1,6 +1,6 @@
 ---
 title: Reranking
-description: Better top-K than cosine — cross-encoder relevance scoring after retrieval.
+description: "Better top-K than cosine: cross-encoder relevance scoring after retrieval."
 ---
 
 The top-K vectors by cosine are not always the top-K results.
@@ -20,11 +20,11 @@ HTTP plumbing as embeddings, different model class.
 `@effect-uai/core` will ship a `Reranker` service tag and provider
 implementations, planned in this rough order:
 
-- **Jina** — `jina-reranker-v3` and `jina-reranker-m0` (multimodal,
+- **Jina**: `jina-reranker-v3` and `jina-reranker-m0` (multimodal,
   multilingual).
-- **Cohere** — `rerank-v3.5` and successors.
-- **Voyage** — `rerank-2` and `rerank-2-lite`.
-- **Mixedbread** — `mxbai-rerank-large-v2`.
+- **Cohere**: `rerank-v3.5` and successors.
+- **Voyage**: `rerank-2` and `rerank-2-lite`.
+- **Mixedbread**: `mxbai-rerank-large-v2`.
 
 The four providers' wire shapes already converge on
 `POST /rerank { model, query, documents } → { results: [...] }`, so

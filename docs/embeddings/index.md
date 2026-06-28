@@ -3,7 +3,7 @@ title: Embedding model
 description: One generic service tag, three providers, and the seam between portable and provider-specific vectorization.
 ---
 
-Search, retrieval, classification, clustering — all of them want to
+Search, retrieval, classification, clustering: all of them want to
 compare meanings. Embeddings turn that into vector arithmetic.
 
 `EmbeddingModel` is the generic provider tag for that work. Every
@@ -13,8 +13,13 @@ provider's `layer` registers itself under both its own typed tag
 providers; code that yields the typed tag gets that provider's extended
 options (full task enum, sparse / multivector encoding, document title).
 
-This is the same seam the [language model](/concepts/language-model/)
+This is the same seam the [language model](/language-models/)
 uses. Different shape, same idea.
+
+New to embeddings? [Basic embedding](/recipes/basic-embedding/) is the
+smallest end-to-end example: embed a query and a handful of documents,
+then rank them by cosine similarity. The rest of this page is the concept
+behind it.
 
 ## The shape
 
@@ -54,13 +59,13 @@ embedMany({ model, inputs }) // Effect<EmbedManyResponse, AiError, EmbeddingMode
 ```
 
 Both yield `EmbeddingModel`, so they work under any provider's layer.
-`embedMany` issues one HTTP call for the whole batch — usually cheaper
+`embedMany` issues one HTTP call for the whole batch, usually cheaper
 and faster than N parallel `embed`s, and the only way to get the same
 `task` applied uniformly across inputs.
 
 ## What you get back
 
-The `Embedding` returned to you is a tagged union — five arms, one for
+The `Embedding` returned to you is a tagged union: five arms, one for
 each wire shape a provider can produce:
 
 | Tag           | Shape                         | When you'd ask for it                                      |
@@ -86,17 +91,17 @@ if (Embedding.isFloat32(result.embedding)) {
 
 Two cross-cutting request fields shape what comes back:
 
-- **`encoding`** — picks one of the wire shapes above. `float32` is
+- **`encoding`**: picks one of the wire shapes above. `float32` is
   the default; provider layers reject unsupported values up front with
   `AiError.InvalidRequest`. Each provider narrows this to its supported
   set on its typed request, so writing
   `OpenAIEmbedRequest` with `encoding: "multivector"` is a compile
   error.
-- **`task`** — retrieval-task hint. `"query"` and `"document"` are the
+- **`task`**: retrieval-task hint. `"query"` and `"document"` are the
   cross-provider denominator. Cohere requires it on the wire; Jina
   needs it for retrieval-quality results; OpenAI ignores it;
   `gemini-embedding-2` ignores it. For provider-portable retrieval,
-  pass it everywhere — it's harmless when ignored.
+  pass it everywhere: it's harmless when ignored.
 
 Provider-specific extensions live on the typed request:
 `GeminiEmbedRequest` widens `task` to the full Gemini enum
@@ -116,7 +121,7 @@ type EmbedInput =
   | { readonly content: ReadonlyArray<EmbedContentPart> } // interleaved
 ```
 
-`ImageSource` is `url` / `base64` / `bytes` — the same media
+`ImageSource` is `url` / `base64` / `bytes`: the same media
 primitives that language model image inputs use, exported from
 `@effect-uai/core/Image`. Not every provider accepts every
 variant; the layer rejects what it can't encode. See
@@ -141,7 +146,7 @@ Vector.sparseDot(a, b)
 Vector.maxSim(q, d) // multivector / late-interaction
 ```
 
-These are recipe-volume primitives — allocation-free hot loops, but
+These are recipe-volume primitives: allocation-free hot loops, but
 plain JS. For vector-DB scale (millions of vectors, SIMD, GPU), reach
 for a dedicated library or a vector store with native indexing.
 
@@ -188,7 +193,7 @@ yield `EmbeddingModel` everywhere else.
 - **Not a reranker.** Cosine on top-K embeddings is an approximation;
   for cross-encoder re-scoring see [reranking](/reranking/) (planned).
 - **Not a chunker.** Splitting documents into embeddable units is
-  userland — the right strategy depends on your domain.
+  userland. The right strategy depends on your domain.
 
 ## Layer registration
 
@@ -211,14 +216,14 @@ providers, swap the layer.
 
 ## Next step
 
-Try [basic embedding](/recipes/basic-embedding/) — a query, a corpus,
+Try [basic embedding](/recipes/basic-embedding/): a query, a corpus,
 cosine ranking, three swappable providers.
 
 ## See also
 
-- [Multimodal embedding](/embeddings/multimodal/) — embed images and
+- [Multimodal embedding](/embeddings/multimodal/): embed images and
   text in one batch and rank cross-modally.
-- [Multivector embedding](/embeddings/multivector/) — late-interaction
+- [Multivector embedding](/embeddings/multivector/): late-interaction
   retrieval with Jina v4.
 - Provider specifics: [OpenAI](/embeddings/providers/responses/),
   [Gemini](/embeddings/providers/gemini/),

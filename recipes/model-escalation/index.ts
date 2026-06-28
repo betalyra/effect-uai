@@ -25,17 +25,19 @@
  * `index.ts` builds the conversation given two tiers. The runner in
  * `run-node.ts` wires real providers (OpenAI / Google / Anthropic).
  */
-import { Array as Arr, Effect, Option, Result, Schema, Stream, pipe } from "effect"
+import { Array as Arr, Effect, Option, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { loop, next, stop, onTurnComplete, value } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
+import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
-// The escalate "tool". `run` never executes - we intercept the call at
-// `onTurnComplete` and translate it into a tier advance. Only the descriptor
-// is sent to the cheap tier.
+// The escalate signal. A `Tool.signal` is model-visible and decodable but has
+// no local executor: the loop intercepts the call at `onTurnComplete` and
+// translates it into a tier advance. No fake `run` to pretend it executes.
+// Only the descriptor is sent to the cheap tier.
 // ---------------------------------------------------------------------------
 
 export const EscalateInput = Schema.Struct({
@@ -44,18 +46,14 @@ export const EscalateInput = Schema.Struct({
 })
 export type EscalateArgs = typeof EscalateInput.Type
 
-const decodeEscalateArgs = Schema.decodeResult(Schema.fromJsonString(EscalateInput))
-
-export const escalate = Tool.make({
+export const escalate = Tool.signal({
   name: "escalate",
   description:
     "Hand the question off to a stronger, more expensive model. Use when the question requires deep expertise that a fast model can't deliver with high confidence.",
   inputSchema: Tool.fromEffectSchema(EscalateInput),
-  run: () => Effect.succeed({ escalated: true }),
-  strict: true,
 })
 
-const escalateDescriptors = Tool.toDescriptors([escalate])
+const escalationToolkit = Toolkit.make(escalate)
 
 // ---------------------------------------------------------------------------
 // System prompt for the cheap tier. The policy lives here - swap it for any
@@ -153,51 +151,37 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
           .streamTurn({
             history: requestHistory,
             model: tier.model,
-            ...(current.tier === 0 ? { tools: escalateDescriptors } : {}),
+            ...(current.tier === 0 ? { tools: escalationToolkit } : {}),
           })
           .pipe(
-            onTurnComplete((turn) =>
-              Effect.sync(() =>
-                current.tier === 1
-                  ? stop()
-                  : pipe(
-                      Turn.getToolCalls(turn),
-                      Arr.findFirst((c) => c.name === "escalate"),
-                      Option.match({
-                        onNone: () => stop(),
-                        onSome: (call) =>
-                          Result.match(decodeEscalateArgs(call.arguments), {
-                            onFailure: (issue) =>
-                              Stream.unwrap(
-                                Effect.logError("escalate call had invalid arguments", {
-                                  call_id: call.call_id,
-                                  arguments: call.arguments,
-                                  issue: String(issue),
-                                }).pipe(Effect.as(stop())),
-                              ),
-                            onSuccess: (args) =>
-                              Stream.succeed<EscalationEvent>({
-                                _tag: "escalated",
-                                reason: args.reason,
-                                question: args.question,
-                              }).pipe(
-                                Stream.map(value),
-                                Stream.concat(
-                                  // Strong tier sees the same accumulated history
-                                  // the cheap tier saw - no system prompt, no
-                                  // cheap-tier turn, no escalate function call.
-                                  next({
-                                    history: current.history,
-                                    tier: 1,
-                                    escalation: args,
-                                  } satisfies State),
-                                ),
-                              ),
-                          }),
-                      }),
+            onTurnComplete((turn) => {
+              if (current.tier === 1) return stop()
+
+              const call = Turn.getToolCalls(turn).find((c) => c.name === "escalate")
+              if (call === undefined) return stop()
+
+              // Decode against escalate's own schema - the tool already owns
+              // it, so there's no second decoder to keep in sync. Bad arguments
+              // log and stop instead of escalating.
+              return Tool.decodeArgs(escalate, call).pipe(
+                Effect.map((args) =>
+                  // Strong tier sees the same accumulated history the cheap tier
+                  // saw - no system prompt, no cheap-tier turn, no escalate call.
+                  Stream.succeed(value<EscalationEvent>({ _tag: "escalated", ...args })).pipe(
+                    Stream.concat(
+                      next({ history: current.history, tier: 1, escalation: args } satisfies State),
                     ),
-              ),
-            ),
+                  ),
+                ),
+                Effect.catch((error) =>
+                  Effect.logError("escalate call had invalid arguments", {
+                    call_id: call.call_id,
+                    arguments: call.arguments,
+                    cause: error.cause,
+                  }).pipe(Effect.as(stop())),
+                ),
+              )
+            }),
           )
 
         return Stream.concat(announce, deltas)

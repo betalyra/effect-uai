@@ -1,9 +1,9 @@
 ---
 title: Transcription
-description: Audio in, text out — one-shot for finished files, streaming for live mics.
+description: Audio in, text out. One-shot for finished files, streaming for live mics.
 ---
 
-Caption a podcast, transcribe a meeting, or stream a live mic — they're
+Caption a podcast, transcribe a meeting, or stream a live mic. They're
 the same call with different inputs.
 
 Use `transcribe` when the audio already exists. Use
@@ -57,10 +57,10 @@ type CommonStreamTranscribeRequest = Omit<CommonTranscribeRequest, "audio"> & {
 ```
 
 Providers ignore options they don't support, or reject them up front
-with `AiError.Unsupported` / `AiError.InvalidRequest` — see the
+with `AiError.Unsupported` / `AiError.InvalidRequest`. See the
 per-provider pages.
 
-## Sync — `transcribe`
+## Sync: `transcribe`
 
 Use this for uploads, recordings, podcasts, and batch jobs. `audio` is
 an `AudioSource` (URL, base64, or bytes); the adapter handles the
@@ -93,11 +93,11 @@ type TranscriptResult = {
 
 `words` only appears when `wordTimestamps: true` was requested **and**
 the provider+model combination supports it. Today that means
-OpenAI `whisper-1` only — `gpt-4o-transcribe` and `gpt-4o-mini-transcribe`
+OpenAI `whisper-1` only. `gpt-4o-transcribe` and `gpt-4o-mini-transcribe`
 return text-only. Passing `wordTimestamps: true` to a model that doesn't
 support it surfaces the provider's wire rejection.
 
-## Streaming — `streamTranscriptionFrom`
+## Streaming: `streamTranscriptionFrom`
 
 Use this for live captions, voice search, or the front half of a voice
 assistant. Audio bytes go in as a `Stream<Uint8Array>`. Transcript
@@ -134,7 +134,7 @@ type TranscriptEvent =
   | { readonly _tag: "final"; readonly text: string; readonly words?: ...; readonly languageCode?: string }
   | { readonly _tag: "speech-started"; readonly atSeconds: number }
   | { readonly _tag: "utterance-ended"; readonly atSeconds: number }
-  | { readonly _tag: "audio-event"; readonly label: string; ...} // (laughter), (music) — ElevenLabs
+  | { readonly _tag: "audio-event"; readonly label: string; ...} // (laughter), (music): ElevenLabs
   | { readonly _tag: "metadata"; readonly raw: unknown }
   | { readonly _tag: "error"; readonly code?: string; readonly message: string }
 ```
@@ -165,13 +165,13 @@ type AudioFormat = {
 Mismatches with what the provider's wire can ingest fail up front with
 `AiError.Unsupported` (a per-Layer capability gap). Common targets:
 
-- **ElevenLabs Scribe v2 Realtime** — 16 kHz pcm s16le mono.
-- **OpenAI Realtime** — 24 kHz pcm s16le mono.
-- **Inworld realtime** — 16 kHz pcm s16le mono.
+- **ElevenLabs Scribe v2 Realtime**: 16 kHz pcm s16le mono.
+- **OpenAI Realtime**: 24 kHz pcm s16le mono.
+- **Inworld realtime**: 16 kHz pcm s16le mono.
 
 The browser side of a recipe typically uses an `AudioWorklet` to
 decimate mic audio to the right rate before posting frames over a
-WebSocket — see [streaming-transcription](/recipes/streaming-transcription/)
+WebSocket. See [streaming-transcription](/recipes/streaming-transcription/)
 for the worklet.
 
 VAD events (`speech-started`, `utterance-ended`) require
@@ -181,16 +181,16 @@ still use the Stream error channel.
 
 ## Next step
 
-- [Voice loop](/recipes/voice-loop/) — live mic → LLM → TTS, the
+- [Voice loop](/recipes/voice-loop/): live mic → LLM → TTS, the
   flagship use of `streamTranscriptionFrom`.
-- [Basic transcription](/recipes/basic-transcription/) — sync
+- [Basic transcription](/recipes/basic-transcription/): sync
   `transcribe` against OpenAI or Gemini.
-- [Streaming transcription](/recipes/streaming-transcription/) — Bun
+- [Streaming transcription](/recipes/streaming-transcription/): Bun
   server bridging a browser mic to the realtime endpoint.
 
 ## See also
 
-- [Synthesis](/speech/synthesis/) — the other direction.
+- [Synthesis](/speech/synthesis/): the other direction.
 - Provider specifics: [OpenAI](/speech/providers/openai/),
   [ElevenLabs](/speech/providers/elevenlabs/),
   [Gemini](/speech/providers/gemini/),

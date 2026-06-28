@@ -19,6 +19,7 @@ import {
   turnFromStream,
 } from "@effect-uai/core/LanguageModel"
 import * as SSE from "@effect-uai/core/SSE"
+import { descriptorsOf } from "@effect-uai/core/Tool"
 import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
 import {
   type Accumulator,
@@ -132,16 +133,18 @@ const resolvedMaxTokens = (cfg: Config, request: AnthropicRequest): number =>
 
 const toolDescriptors = (
   request: AnthropicRequest,
-): Option.Option<ReadonlyArray<Record<string, unknown>>> =>
-  request.tools !== undefined && request.tools.length > 0
+): Option.Option<ReadonlyArray<Record<string, unknown>>> => {
+  const descriptors = descriptorsOf(request.tools)
+  return descriptors.length > 0
     ? Option.some(
-        request.tools.map((t) => ({
+        descriptors.map((t) => ({
           name: t.name,
           description: t.description,
           input_schema: t.inputSchema,
         })),
       )
     : Option.none()
+}
 
 const toolChoiceWire = (request: AnthropicRequest): Option.Option<Record<string, unknown>> =>
   pipe(

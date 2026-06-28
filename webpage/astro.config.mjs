@@ -29,6 +29,13 @@ const plausibleHead = isVercelProduction
 
 export default defineConfig({
   site: "https://effect-uai.betalyra.com",
+  // Language-model docs moved out of /concepts/ to their own capability
+  // section at /language-models/, matching speech / embeddings / etc.
+  redirects: {
+    "/concepts/language-model": "/language-models",
+    "/concepts/loop": "/language-models/loop",
+    "/concepts/tools": "/language-models/tools",
+  },
   vite: {
     plugins: [tailwindcss()],
     optimizeDeps: {
@@ -88,28 +95,31 @@ export default defineConfig({
             { label: "Installation", slug: "start/installation" },
             { label: "Quickstart", slug: "start/getting-started" },
             { label: "Basic usage", slug: "recipes/basic-usage" },
-            { label: "Structured output", slug: "recipes/structured-output" },
-            { label: "Basic embedding", slug: "recipes/basic-embedding" },
             { label: "Recipes", slug: "recipes" },
             { label: "Skills", slug: "skills" },
           ],
         },
+        { label: "Providers", slug: "providers" },
         {
           label: "Concepts",
-          items: [{ label: "Items and turns", slug: "concepts/items-and-turns" }],
+          items: [
+            { label: "Items and turns", slug: "concepts/items-and-turns" },
+            { label: "Metrics", slug: "concepts/metrics" },
+          ],
         },
         {
           label: "Language models",
           items: [
-            { label: "Overview", slug: "concepts/language-model" },
-            { label: "The loop primitive", slug: "concepts/loop" },
-            { label: "Tools and toolkits", slug: "concepts/tools" },
+            { label: "Overview", slug: "language-models" },
+            { label: "The loop primitive", slug: "language-models/loop" },
+            { label: "Tools and toolkits", slug: "language-models/tools" },
             {
               label: "Providers",
               items: [
                 { label: "Responses / OpenAI", slug: "providers/responses" },
                 { label: "Google Gemini", slug: "providers/gemini" },
                 { label: "Anthropic", slug: "providers/anthropic" },
+                { label: "Mistral", slug: "providers/mistral" },
               ],
             },
             {
@@ -123,6 +133,10 @@ export default defineConfig({
                 {
                   label: "Streaming tool output",
                   slug: "recipes/streaming-tool-output",
+                },
+                {
+                  label: "Structured output",
+                  slug: "recipes/structured-output",
                 },
                 {
                   label: "Streaming structured output",
@@ -148,6 +162,7 @@ export default defineConfig({
                   slug: "recipes/multi-model-compare",
                 },
                 { label: "Model council", slug: "recipes/model-council" },
+                { label: "Basic metrics", slug: "recipes/basic-metrics" },
               ],
             },
           ],
@@ -169,6 +184,11 @@ export default defineConfig({
                 { label: "Jina", slug: "embeddings/providers/jina" },
               ],
             },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Basic embedding", slug: "recipes/basic-embedding" }],
+            },
           ],
         },
         {
@@ -184,6 +204,7 @@ export default defineConfig({
                 { label: "ElevenLabs", slug: "speech/providers/elevenlabs" },
                 { label: "Google Gemini", slug: "speech/providers/gemini" },
                 { label: "Inworld", slug: "speech/providers/inworld" },
+                { label: "Mistral", slug: "speech/providers/mistral" },
               ],
             },
             {
@@ -249,6 +270,14 @@ export default defineConfig({
           items: [
             { label: "Overview", slug: "search" },
             {
+              label: "Providers",
+              items: [
+                { label: "Perplexity", slug: "search/providers/perplexity" },
+                { label: "Exa", slug: "search/providers/exa" },
+                { label: "Tavily", slug: "search/providers/tavily" },
+              ],
+            },
+            {
               label: "Recipes",
               collapsed: true,
               items: [
@@ -281,6 +310,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.9", slug: "migrations/v0-9" },
             { label: "Migrating to 0.8", slug: "migrations/v0-8" },
             { label: "Migrating to 0.7", slug: "migrations/v0-7" },
             { label: "Migrating to 0.6", slug: "migrations/v0-6" },

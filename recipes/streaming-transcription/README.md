@@ -53,7 +53,7 @@ ELEVENLABS_API_KEY=... bun recipes/streaming-transcription/run-bun.ts --provider
 Open <http://localhost:3000>, click **Start**, allow mic access, and
 talk. Partial transcripts appear dimmed; finals commit and stay bold.
 
-> Run with **`bun`**, not `pnpm tsx` — the runner uses `Bun.serve` and
+> Run with **`bun`**, not `pnpm tsx`. The runner uses `Bun.serve` and
 > `Bun.build` globals.
 
 Env vars: `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` depending on

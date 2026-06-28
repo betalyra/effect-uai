@@ -3,8 +3,8 @@ title: Inworld
 description: First-party STT/TTS plus router-style passthroughs to AssemblyAI / Soniox / Groq Whisper under one Inworld key.
 ---
 
-Inworld covers the full speech surface — sync + streaming in both
-directions, both capability markers shipped — and adds router-style
+Inworld covers the full speech surface (sync + streaming in both
+directions, both capability markers shipped) and adds router-style
 passthroughs that proxy to other STT providers (AssemblyAI, Soniox,
 Groq Whisper) under the same Inworld auth and billing.
 
@@ -16,15 +16,15 @@ pnpm add @effect-uai/core @effect-uai/inworld effect
 
 ## Layers
 
-| Layer                                            | Registers                                          | Capability markers        |
-| ------------------------------------------------ | -------------------------------------------------- | ------------------------- |
-| `@effect-uai/inworld/InworldTranscriber`         | `InworldTranscriber` + `Transcriber`               | — (sync)                  |
-| `@effect-uai/inworld/InworldRealtimeTranscriber` | `InworldRealtimeTranscriber` + `Transcriber`       | `SttStreaming`            |
-| `@effect-uai/inworld/InworldSynthesizer`         | `InworldSynthesizer` + `SpeechSynthesizer`         | — (sync + chunked NDJSON) |
-| `@effect-uai/inworld/InworldRealtimeSynthesizer` | `InworldRealtimeSynthesizer` + `SpeechSynthesizer` | `TtsIncrementalText`      |
+| Layer                                            | Registers                                          | Capability markers           |
+| ------------------------------------------------ | -------------------------------------------------- | ---------------------------- |
+| `@effect-uai/inworld/InworldTranscriber`         | `InworldTranscriber` + `Transcriber`               | none (sync)                  |
+| `@effect-uai/inworld/InworldRealtimeTranscriber` | `InworldRealtimeTranscriber` + `Transcriber`       | `SttStreaming`               |
+| `@effect-uai/inworld/InworldSynthesizer`         | `InworldSynthesizer` + `SpeechSynthesizer`         | none (sync + chunked NDJSON) |
+| `@effect-uai/inworld/InworldRealtimeSynthesizer` | `InworldRealtimeSynthesizer` + `SpeechSynthesizer` | `TtsIncrementalText`         |
 
 The sync and realtime layers are separate so you can pull only what
-you need — the realtime paths add WS / JWT plumbing.
+you need. The realtime paths add WS / JWT plumbing.
 
 ```ts
 import { Config, Effect, Layer } from "effect"
@@ -50,17 +50,17 @@ const mainLayer = inworld.pipe(
 
 ### STT
 
-| Model                                         | Native                     | Streaming WS  |
-| --------------------------------------------- | -------------------------- | ------------- |
-| `inworld/inworld-stt-1`                       | First-party (experimental) | ✓             |
-| `assemblyai/universal-streaming-english`      | AssemblyAI passthrough     | ✓             |
-| `assemblyai/universal-streaming-multilingual` | AssemblyAI                 | ✓             |
-| `assemblyai/u3-rt-pro`                        | AssemblyAI                 | ✓             |
-| `assemblyai/whisper-rt`                       | AssemblyAI                 | ✓             |
-| `soniox/stt-rt-v4`                            | Soniox                     | ✓             |
-| `groq/whisper-large-v3`                       | Groq                       | — (sync only) |
+| Model                                         | Native                     | Streaming WS     |
+| --------------------------------------------- | -------------------------- | ---------------- |
+| `inworld/inworld-stt-1`                       | First-party (experimental) | ✓                |
+| `assemblyai/universal-streaming-english`      | AssemblyAI passthrough     | ✓                |
+| `assemblyai/universal-streaming-multilingual` | AssemblyAI                 | ✓                |
+| `assemblyai/u3-rt-pro`                        | AssemblyAI                 | ✓                |
+| `assemblyai/whisper-rt`                       | AssemblyAI                 | ✓                |
+| `soniox/stt-rt-v4`                            | Soniox                     | ✓                |
+| `groq/whisper-large-v3`                       | Groq                       | none (sync only) |
 
-Passthrough models are billed against your Inworld key — no separate
+Passthrough models are billed against your Inworld key, no separate
 contracts. Sync STT works for all; streaming WS is supported by
 everything except `groq/whisper-large-v3`.
 
@@ -73,7 +73,7 @@ everything except `groq/whisper-large-v3`.
 | `inworld-tts-1.5-mini` | ~120 ms       | 15        | Lowest latency                  |
 
 Voice IDs are human-readable names ("Sarah", "Edward", …) but Inworld
-doesn't publish a list-voices REST endpoint — browse via the Inworld
+doesn't publish a list-voices REST endpoint. Browse via the Inworld
 Portal. `InworldVoiceId` is typed as plain `string`.
 
 ## Request shape
@@ -97,7 +97,7 @@ type InworldSynthesizeRequest = {
 expressive prosody. Older models ignore it silently.
 
 `applyTextNormalization: "OFF"` skips the server-side text rewriter
-(expanding numbers, abbreviations, etc.) — faster, but punctuation
+(expanding numbers, abbreviations, etc.), faster, but punctuation
 pacing is on you.
 
 ## Wire / auth notes
@@ -124,7 +124,7 @@ stream's error channel; non-fatal mid-stream errors come through as
 
 ## See also
 
-- [Speech overview](/speech/) — capability markers and provider matrix.
-- [Streaming transcription](/recipes/streaming-transcription/) — Inworld
+- [Speech overview](/speech/): capability markers and provider matrix.
+- [Streaming transcription](/recipes/streaming-transcription/): Inworld
   can be slotted in as a third provider via the recipe's `--provider`
   argument pattern.

@@ -33,23 +33,19 @@ pipe(
   initial,
   loop((state) =>
     Effect.gen(function* () {
-      const oai = yield* Responses
+      const lm = yield* LanguageModel
 
-      return oai.streamTurn({ history: state.history, model: "gpt-5.4-mini", tools }).pipe(
-        onTurnComplete<State, ToolEvent>((turn) =>
+      return lm.streamTurn({ history: state.history, model: "gpt-5.4-mini", tools: toolkit }).pipe(
+        onTurnComplete((turn) =>
           Effect.sync(() => {
-            const calls = Turn.functionCalls(turn)
+            const calls = Turn.getToolCalls(turn)
             // No tool calls means the model produced its final answer.
-            if (calls.length === 0) return stop
+            if (calls.length === 0) return stop()
 
-            return Toolkit.executeAll(toolkit.tools, calls).pipe(
-              Toolkit.continueWith((results) =>
-                // Append the model's function_call items and the matching outputs.
-                Turn.appendTurn(
-                  { ...state, index: state.index + 1 },
-                  turn,
-                  results.map(toFunctionCallOutput),
-                ),
+            // Append the model's tool_call items and the matching outputs.
+            return Toolkit.run(toolkit, calls).pipe(
+              Toolkit.continueWithResults(
+                Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
               ),
             )
           }),
@@ -65,30 +61,36 @@ Read it from top to bottom:
 - `streamTurn` starts one model turn from the current history.
 - `onTurnComplete` forwards deltas while the turn is in flight, then
   hands you the assembled `Turn`.
-- `Turn.functionCalls(turn)` extracts what the model asked tools to do.
-- `Toolkit.executeAll` runs those calls and streams `ToolEvent`s.
-- `continueWith` collects terminal `ToolResult`s.
-- `Turn.appendTurn` appends both model items and tool outputs to history.
-- `stop` ends the loop when the model no longer asks for tools.
+- `Turn.getToolCalls(turn)` extracts what the model asked tools to do.
+- `Toolkit.run` runs those calls and streams `ToolEvent`s.
+- `continueWithResults` collects terminal `ToolResult`s and feeds them into the
+  continuation.
+- `Toolkit.appendToolResults` appends both model items and tool outputs to
+  history.
+- `stop()` ends the loop when the model no longer asks for tools.
 
 The important part is not the helper names. The important part is that every
 transition is visible as ordinary Effect code. Want fallback? Catch provider
 errors around the turn stream. Want approval? Split tool calls before
-`executeAll`. Want compaction? Transform `state.history` before the next
+`Toolkit.run`. Want compaction? Transform `state.history` before the next
 iteration.
 
 If the upstream ends without a `TurnComplete`, the resulting stream
-fails with `AiError.IncompleteTurn` - catch it via `Stream.catchTag`
+fails with `AiError.IncompleteTurn`. Catch it via `Stream.catchTag`
 if you want to recover.
 
 ## What This Generalizes To
 
 This same harness is used by the rest of the recipes:
 
-- tool approval gates calls before `executeAll`;
-- streaming tools add `Intermediate` events without changing the loop;
+- tool approval gates calls before `Toolkit.run`;
+- streaming tools add `Progress` events without changing the loop;
 - model fallback catches provider errors and continues with a new layer;
 - compaction rewrites history before the next turn.
+
+A common next step is [Structured output](/recipes/structured-output/):
+the same turn, but the model returns a schema-validated value instead of a
+freeform answer.
 
 ## Run it
 

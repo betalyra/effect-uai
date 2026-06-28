@@ -44,7 +44,7 @@ describe("tool-call-approval", () => {
     strict: true,
   })
 
-  const allTools: ReadonlyArray<Tool.AnyTool> = [searchEmails, sendEmail, deleteUser]
+  const toolkit = Toolkit.make(searchEmails, sendEmail, deleteUser)
 
   // --- Approval policy ----------------------------------------------------
   const SENSITIVE: ReadonlySet<string> = new Set(["send_email", "delete_user"])
@@ -52,7 +52,7 @@ describe("tool-call-approval", () => {
 
   const decisionEvents = (decision: Approval.ApprovalDecision): Stream.Stream<ToolEvent> =>
     decision._tag === "Approved"
-      ? Toolkit.run(allTools, [decision.call])
+      ? Toolkit.run(toolkit, [decision.call])
       : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
   // --- Loop builder (uses LanguageModel for testability) ------------------
@@ -74,7 +74,7 @@ describe("tool-call-approval", () => {
             .streamTurn({
               history: state.history,
               model: "mock",
-              tools: Tool.toDescriptors(allTools),
+              tools: toolkit,
             })
             .pipe(
               onTurnComplete((turn) =>
@@ -91,7 +91,7 @@ describe("tool-call-approval", () => {
                       return Stream.merge(
                         approvalRequests,
                         Stream.merge(
-                          Toolkit.run(allTools, approved),
+                          Toolkit.run(toolkit, approved),
                           decisions.pipe(Stream.flatMap(decisionEvents)),
                         ),
                       )
@@ -304,7 +304,7 @@ describe("tool-call-approval (HTTP variant)", () => {
     strict: true,
   })
 
-  const allTools: ReadonlyArray<Tool.AnyTool> = [searchEmails, sendEmail, deleteUser]
+  const toolkit = Toolkit.make(searchEmails, sendEmail, deleteUser)
   const SENSITIVE: ReadonlySet<string> = new Set(["send_email", "delete_user"])
   const isSensitive = (call: Items.ToolCall): boolean => SENSITIVE.has(call.name)
 
@@ -327,7 +327,7 @@ describe("tool-call-approval (HTTP variant)", () => {
             .streamTurn({
               history: state.history,
               model: "mock",
-              tools: Tool.toDescriptors(allTools),
+              tools: toolkit,
             })
             .pipe(
               onTurnComplete((turn) =>
@@ -337,7 +337,7 @@ describe("tool-call-approval (HTTP variant)", () => {
 
                   const plan = fromMap(isSensitive, approvals)(calls)
                   return Stream.merge(
-                    Toolkit.run(allTools, plan.approved),
+                    Toolkit.run(toolkit, plan.approved),
                     Stream.fromIterable(
                       plan.rejected.map((result) => ToolEvent.Output({ result })),
                     ),

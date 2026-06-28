@@ -1,18 +1,19 @@
 ---
 title: Language model
-description: One generic service tag, three providers, and the seam between portable and provider-specific code.
+description: One generic service tag, multiple providers, and the seam between portable and provider-specific code.
 ---
 
 Provider choice should be wiring, not program structure.
 
 `LanguageModel` is the generic provider tag. Every provider's `layer`
 registers itself under both its own typed tag (`Responses`, `Anthropic`,
-`Gemini`) _and_ `LanguageModel`. Code that yields `LanguageModel` is
-portable across providers; code that yields the typed tag gets that
-provider's extended options.
+`Gemini`, `Mistral`) _and_ `LanguageModel`. Code that yields
+`LanguageModel` is portable across providers; code that yields the typed
+tag gets that provider's extended options.
 
 This is the seam: write the agent harness once, then decide at the layer
-boundary whether it runs on OpenAI, Anthropic, Gemini, or a test provider.
+boundary whether it runs on OpenAI, Anthropic, Gemini, Mistral, or a test
+provider.
 
 ## The shape
 
@@ -84,7 +85,7 @@ turn(req).pipe(Retry.effect(backoff))
 ```
 
 `Retry.stream` and `Retry.effect` deliberately don't shadow Effect's
-own `Stream.retry` / `Effect.retry` — the `Retry` namespace marks
+own `Stream.retry` / `Effect.retry`. The `Retry` namespace marks
 these as the AI-subset-aware variants.
 
 The retry boundary is the **whole request**, not "resume from byte N" -
@@ -95,6 +96,22 @@ For finer control (different policies per error kind, retry-with-jitter,
 etc.) the [model-retry recipe](/recipes/model-retry/) walks through the
 lift / `Stream.retry` / unlift pattern this helper is built on.
 
+## Measuring a generation
+
+To watch a turn as it streams - time to first token, throughput, token
+counts, completion time - stack the meter operators onto `streamTurn`. They
+emit typed samples you log live or export to OTLP, and leave the text deltas
+untouched:
+
+```ts
+import * as Metrics from "@effect-uai/core/Metrics"
+
+streamTurn(req).pipe(Metrics.allMetrics())
+```
+
+See [Metrics](/concepts/metrics/) for the meter catalogue, turn-vs-loop
+scope, OTLP export, and custom metrics.
+
 ## Portable vs. provider-specific
 
 Yield `LanguageModel` when your code should work under any provider:
@@ -102,7 +119,7 @@ Yield `LanguageModel` when your code should work under any provider:
 ```ts
 import { streamTurn } from "@effect-uai/core/LanguageModel"
 
-const program = streamTurn({ history, model: "gpt-5.4-mini", tools }).pipe(/* ... */)
+const program = streamTurn({ history, model: "gpt-5.4-mini", tools: toolkit }).pipe(/* ... */)
 ```
 
 Yield the typed tag when you need provider-specific options at the

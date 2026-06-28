@@ -67,6 +67,16 @@ interface StepDef extends Data.TaggedEnum.WithGenerics<2> {
 
 const Step = Data.taggedEnum<StepDef>()
 
+/**
+ * Bare step constructors, so a loop body can emit `Value(...)`, `Next(...)`,
+ * `Stop()`, `StopWith(...)` directly inside a `Stream.make(...)` without the
+ * `Step.` prefix. (The `Step` object itself can't be exported under that name
+ * because it collides with the exported `Step` type.) For the common cases
+ * prefer the `value` / `next` / `stop` helpers, which also handle the
+ * single-element-stream wrapping for `next` / `stop`.
+ */
+export const { Value, Next, Stop, StopWith } = Step
+
 /** Wrap a value so it flows through the loop to downstream consumers. */
 export const value = <A>(a: A): Step<A, never> => Step.Value({ value: a })
 
@@ -103,6 +113,11 @@ export const stop = <S = never>(state?: S): Stream.Stream<Step<never, S>> =>
  * Pre-pipe transforms (`Stream.tap` / `Stream.map` / `Stream.filter`) on
  * the raw delta stream cover anything an `emit`-style callback would do.
  *
+ * `then` may return the step stream directly, or an `Effect` that produces
+ * it (for branches that need to read a `Ref`, decode tool args, log, etc.).
+ * Mirrors `loop`'s body: return a bare `stop()` / `next(s)` where no effect
+ * is needed, lift to `Effect` only where one is.
+ *
  * If the upstream ends without a `TurnComplete`, the resulting stream
  * fails with `AiError.IncompleteTurn`. Catch it via `Stream.catchTag` if
  * you want to recover.
@@ -110,21 +125,25 @@ export const stop = <S = never>(state?: S): Stream.Stream<Step<never, S>> =>
  * Dual: data-first `onTurnComplete(deltas, then)` and data-last
  * `deltas.pipe(onTurnComplete(then))` both work.
  */
+type TurnContinuation<S, A, E2, R2> =
+  | Stream.Stream<Step<A, S>, E2, R2>
+  | Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E2, R2>
+
 export const onTurnComplete: {
   <S, A, E2 = never, R2 = never>(
-    then: (turn: Turn) => Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E2, R2>,
+    then: (turn: Turn) => TurnContinuation<S, A, E2, R2>,
   ): <E, R>(
     deltas: Stream.Stream<TurnEvent, E, R>,
   ) => Stream.Stream<Step<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2>
   <S, A, E, R, E2 = never, R2 = never>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-    then: (turn: Turn) => Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E2, R2>,
+    then: (turn: Turn) => TurnContinuation<S, A, E2, R2>,
   ): Stream.Stream<Step<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2>
 } = Function.dual(
   2,
   <S, A, E, R, E2, R2>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-    then: (turn: Turn) => Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E2, R2>,
+    then: (turn: Turn) => TurnContinuation<S, A, E2, R2>,
   ): Stream.Stream<Step<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2> =>
     Stream.unwrap(
       Effect.gen(function* () {
@@ -141,7 +160,8 @@ export const onTurnComplete: {
           Effect.gen(function* () {
             const opt = yield* Ref.get(turnRef)
             if (Option.isNone(opt)) return yield* new IncompleteTurn({})
-            return yield* then(opt.value)
+            const result = then(opt.value)
+            return Effect.isEffect(result) ? yield* result : result
           }),
         )
 
@@ -287,6 +307,9 @@ export const loop: {
             }
           })
 
+          // `Stream.fromPull` expects the generator to RETURN the pull effect,
+          // not run it; `return yield* pull` would execute a pull and break it.
+          // @effect-diagnostics-next-line effect/returnEffectInGen:off
           return pull
         }),
       ),

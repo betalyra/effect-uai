@@ -1,6 +1,7 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
 import { Effect } from "effect"
 import { describe, expect, expectTypeOf, it } from "vitest"
+import type * as Items from "../domain/Items.js"
 import * as Tool from "./Tool.js"
 
 // ---------------------------------------------------------------------------
@@ -81,7 +82,7 @@ describe("Tool.fromStandardSchema", () => {
 
     // `run`'s parameter is typed as { to: string } via the schema's Output —
     // this property access compiles without annotation.
-    const result = await Effect.runPromise(sendEmail.run({ to: "x@y.z" }))
+    const result = await Effect.runPromise(sendEmail.run({ to: "x@y.z" }, () => Effect.void))
     expect(result).toBe("queued: x@y.z")
   })
 
@@ -99,7 +100,59 @@ describe("Tool.fromStandardSchema", () => {
       run: (input) => Effect.succeed(input),
     })
 
-    type InputOf<T> = T extends Tool.Tool<string, infer I, unknown, never> ? I : never
+    type InputOf<T> = T extends Tool.Tool<string, infer I, any, any, any> ? I : never
     expectTypeOf<InputOf<typeof tool>>().toEqualTypeOf<EmailRecipient>()
+  })
+})
+
+describe("Tool.withRun", () => {
+  const sendEmail = Tool.make({
+    name: "send_email",
+    description: "Send an email to a single recipient.",
+    inputSchema: Tool.fromStandardSchema(emailRecipientSchema),
+    run: ({ to }) => Effect.succeed(`sent: ${to}`),
+  })
+
+  it("swaps run while keeping the model-facing descriptor identical", async () => {
+    const dryRun = Tool.withRun(sendEmail, ({ to }) => Effect.succeed(`dry-run: ${to}`))
+
+    // Definition (name/description/schema) is byte-identical -> same descriptor.
+    expect(Tool.toDescriptors([dryRun])).toEqual(Tool.toDescriptors([sendEmail]))
+    // input is typed from the original tool, no annotation needed.
+    const out = await Effect.runPromise(dryRun.run({ to: "x@y.z" }, () => Effect.void))
+    expect(out).toBe("dry-run: x@y.z")
+  })
+})
+
+describe("Tool.decodeArgs", () => {
+  const sendEmail = Tool.make({
+    name: "send_email",
+    description: "Send an email to a single recipient.",
+    inputSchema: Tool.fromStandardSchema(emailRecipientSchema),
+    run: ({ to }) => Effect.succeed(`queued: ${to}`),
+  })
+
+  const callWith = (args: string): Items.ToolCall => ({
+    type: "function_call",
+    call_id: "call_1",
+    name: "send_email",
+    arguments: args,
+  })
+
+  it("decodes valid JSON arguments to the typed input", async () => {
+    const input = await Effect.runPromise(Tool.decodeArgs(sendEmail, callWith('{"to":"x@y.z"}')))
+    expect(input).toEqual({ to: "x@y.z" })
+    // The return type is the tool's Input, no annotation needed.
+    expectTypeOf(input).toEqualTypeOf<EmailRecipient>()
+  })
+
+  it("fails with ToolError when the arguments aren't valid JSON", async () => {
+    const exit = await Effect.runPromiseExit(Tool.decodeArgs(sendEmail, callWith("not json")))
+    expect(exit._tag).toBe("Failure")
+  })
+
+  it("fails with ToolError when the arguments don't satisfy the schema", async () => {
+    const exit = await Effect.runPromiseExit(Tool.decodeArgs(sendEmail, callWith('{"to":42}')))
+    expect(exit._tag).toBe("Failure")
   })
 })

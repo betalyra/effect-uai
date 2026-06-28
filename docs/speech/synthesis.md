@@ -1,6 +1,6 @@
 ---
 title: Synthesis
-description: Text in, audio out — one-shot, chunked, or token-streaming for low-latency TTS.
+description: Text in, audio out. One-shot, chunked, or token-streaming for low-latency TTS.
 ---
 
 Reading an answer aloud and starting playback before the model has
@@ -16,19 +16,19 @@ Use the simplest path that matches when your text exists:
 
 ```ts
 import {
-  synthesize, // Effect — full text in, full bytes out
-  streamSynthesis, // Stream — full text in, chunks out
-  streamSynthesisFrom, // Stream — incremental text in, chunks out
+  synthesize, // Effect: full text in, full bytes out
+  streamSynthesis, // Stream: full text in, chunks out
+  streamSynthesisFrom, // Stream: incremental text in, chunks out
 } from "@effect-uai/core/SpeechSynthesizer"
 ```
 
-- **`synthesize`** — finished text, single HTTP call, full
+- **`synthesize`**: finished text, single HTTP call, full
   `AudioBlob` back. Use it for "write to file", "attach to a message",
   or "drop into storage".
-- **`streamSynthesis`** — finished text, audio arrives as a
+- **`streamSynthesis`**: finished text, audio arrives as a
   `Stream<AudioChunk>`. Start playback on the first chunk; cancel
   cheaply mid-stream.
-- **`streamSynthesisFrom`** — incremental text as a `Stream<string>`,
+- **`streamSynthesisFrom`**: incremental text as a `Stream<string>`,
   audio chunks back. This is the LLM pipe: token deltas in, audio out,
   no waiting for the full sentence. Gated by the
   [`TtsIncrementalText`](/speech/#capability-markers) marker so
@@ -51,11 +51,11 @@ type CommonStreamSynthesizeRequest = Omit<CommonSynthesizeRequest, "text">
 
 `voiceId` is `string` here. Each provider's typed request narrows it
 to a literal union of stock voices plus a `(string & {})` escape for
-custom cloned voices — except providers that don't expose cloning
+custom cloned voices, except providers that don't expose cloning
 (OpenAI, Gemini), whose typed request keeps `voiceId` stock-only and
 rejects unknown values at the type level.
 
-## Sync — `synthesize`
+## Sync: `synthesize`
 
 The "make me a file" path:
 
@@ -73,7 +73,7 @@ const blob =
 // blob.bytes : Uint8Array, blob.format : AudioFormat
 ```
 
-## Chunked — `streamSynthesis`
+## Chunked: `streamSynthesis`
 
 The "I have the whole text, but playback can start early" path:
 
@@ -91,10 +91,10 @@ const chunks = SpeechSynthesizer.streamSynthesis({
 ```
 
 Providers without a native chunked endpoint (Gemini today) don't ship
-`streamSynthesis` at all — the call site is a compile error against
+`streamSynthesis` at all. The call site is a compile error against
 their Layer. ElevenLabs, OpenAI, and Inworld stream natively.
 
-## Incremental text — `streamSynthesisFrom`
+## Incremental text: `streamSynthesisFrom`
 
 The "the text is still being written" path. Text arrives as deltas,
 audio leaves as chunks, and the underlying WebSocket stays open for the
@@ -122,7 +122,7 @@ const audio = LanguageModel.streamTurn({
 Today only `ElevenLabsSynthesizer` and `InworldRealtimeSynthesizer`
 ship the `TtsIncrementalText` marker. Swap in `OpenAISynthesizer` or
 `GeminiSynthesizer` and the call becomes a type error at
-`Effect.provide` — TTS providers without a `/stream-input`-style
+`Effect.provide`. TTS providers without a `/stream-input`-style
 endpoint can't honor the contract.
 
 The [Voice loop](/recipes/voice-loop/) recipe uses this exact pipe.
@@ -169,16 +169,16 @@ cost of a few extra ms of decode.
 
 ## Next step
 
-- [Voice loop](/recipes/voice-loop/) — `streamSynthesisFrom` plugged
+- [Voice loop](/recipes/voice-loop/): `streamSynthesisFrom` plugged
   into an LLM with stop-word interrupt and turn queueing.
-- [Basic speech synthesis](/recipes/basic-speech-synthesis/) — sync
+- [Basic speech synthesis](/recipes/basic-speech-synthesis/): sync
   and chunked modes against OpenAI or Gemini.
-- [Streaming synthesis](/recipes/streaming-synthesis/) — incremental
+- [Streaming synthesis](/recipes/streaming-synthesis/): incremental
   text in over a Bun WebSocket, audio plays on the first chunk.
 
 ## See also
 
-- [Transcription](/speech/transcription/) — the other direction.
+- [Transcription](/speech/transcription/): the other direction.
 - Provider specifics: [OpenAI](/speech/providers/openai/),
   [ElevenLabs](/speech/providers/elevenlabs/),
   [Gemini](/speech/providers/gemini/),

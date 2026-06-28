@@ -1,12 +1,12 @@
 ---
 title: Image generation
-description: Prompt to picture — text-to-image, image edit, and inpainting.
+description: "Prompt to picture: text-to-image, image edit, and inpainting."
 ---
 
 Sometimes the answer is a picture, not a paragraph.
 
 Product mocks, illustration drafts, thumbnail variants, image edits
-inside an agent's tool loop — they all want the same shape: a prompt
+inside an agent's tool loop. They all want the same shape: a prompt
 (plus optionally a reference image and a mask) goes in, one or more
 images come out. Synchronous-ish: a few seconds, occasionally tens.
 
@@ -19,13 +19,13 @@ supported, so the core abstraction stays simple.
 `@effect-uai/core` will ship an `ImageGenerator` service tag covering
 text-to-image, image edit, and inpainting. Provider candidates:
 
-- **OpenAI** — `gpt-image-1`, `dall-e-3`.
-- **Google** — Imagen 3 / 4 via the Gemini API and Vertex.
-- **Black Forest Labs** — Flux family (`flux-pro`, `flux-dev`).
-- **Stability AI** — Stable Diffusion family.
+- **OpenAI**: `gpt-image-1`, `dall-e-3`.
+- **Google**: Imagen 3 / 4 via the Gemini API and Vertex.
+- **Black Forest Labs**: Flux family (`flux-pro`, `flux-dev`).
+- **Stability AI**: Stable Diffusion family.
 
-The output type reuses the existing `MediaSource` / `Image` domain —
-URL, base64, or bytes — so generated images compose with multimodal
+The output type reuses the existing `MediaSource` / `Image` domain
+(URL, base64, or bytes) so generated images compose with multimodal
 language models without extra glue.
 
 ## Show interest

@@ -32,6 +32,184 @@ The full migration prose (with rationale and edge cases) lives in
 
 ---
 
+## 0.8 → 0.9
+
+A tool-layer refactor. Two changes: (1) a `Toolkit` is now a name-indexed record
+that `Toolkit.run` takes directly (not a bare array), and (2) plain and streaming
+tools are unified into one `Tool.make` whose `run(input, emit)` returns an Effect
+(`Tool.streaming` / `finalize` are gone). Mostly mechanical at call sites.
+
+### Required rewrites
+
+#### `Toolkit` is a record; build it with `Toolkit.make`
+
+`Toolkit.run`, and the descriptor rendering, now go through a `Toolkit` value
+instead of a flat tool array.
+
+| Before                               | After                                |
+| ------------------------------------ | ------------------------------------ |
+| `const tools = [a, b]`               | `const toolkit = Toolkit.make(a, b)` |
+| `streamTurn({ tools: descriptors })` | `streamTurn({ tools: toolkit })`     |
+| `streamTurn({ tools: [] })`          | `streamTurn({ /* omit tools */ })`   |
+| `Toolkit.run(tools, calls)`          | `Toolkit.run(toolkit, calls)`        |
+
+`streamTurn`'s `tools?` now takes the `Toolkit` directly (it renders descriptors
+at the provider boundary), so the `Toolkit.descriptors(toolkit)` /
+`Tool.toDescriptors([...])` call at the request site is gone — pass `toolkit`, and
+omit `tools` entirely for a turn with none. `Toolkit.descriptors` still exists if
+you want the `ToolDescriptor[]` yourself.
+
+`Toolkit.make(...tools)` is variadic, indexes by `tool.name`, and rejects a
+duplicate literal name at compile time; use `Toolkit.fromArray(tools)` for a
+runtime-built array (e.g. MCP, trusted/last-wins).
+Combine independent toolkits with `Toolkit.compose(...kits)`
+(effectful; fails `DuplicateToolName` with source provenance, compile error for
+static clashes), prefixing generic names first with `Toolkit.namespace(prefix, kit)`
+when needed. A function that takes a toolkit as a parameter types it as
+`Toolkit.Toolkit`.
+
+#### `run(input, emit)`; `Tool.streaming` / `finalize` removed
+
+Plain and streaming tools are one shape. `run` returns the model-facing `Output`
+as an Effect and calls `emit(event)` for progress (it composes with
+`Stream.runForEach` / `Stream.runFoldEffect`). There is no `finalize` — fold the
+events into the output inside `run`. `Tool.streaming`, `StreamingTool`,
+`isStreamingTool`, `AnyStreamingTool`, and `AnyPlainTool` are removed; `AnyTool`
+gains an `Event` type param (`Tool<Name, Input, Event, Output, R>`).
+
+```ts
+// Before
+Tool.streaming({
+  name,
+  description,
+  inputSchema,
+  run: (input) => sourceStream(input),
+  finalize: (events) => reduce(events),
+})
+
+// After
+Tool.make({
+  name,
+  description,
+  inputSchema,
+  run: (input, emit) =>
+    sourceStream(input).pipe(
+      Stream.runFoldEffect(
+        () => init,
+        (acc, event) => emit(event).pipe(Effect.as(step(acc, event))),
+      ),
+      Effect.map((acc) => reduce(acc)),
+    ),
+  // optional: emitBufferSize to bound the emit queue (unbounded by default)
+})
+```
+
+#### Canonical loop body
+
+```ts
+// Before
+const tools = [getTime, lookupWeather]
+const descriptors = Tool.toDescriptors(tools)
+// ...
+lm.streamTurn({ history, model, tools: descriptors })
+// ...
+return Toolkit.run(tools, calls).pipe(
+  Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
+)
+
+// After
+const toolkit = Toolkit.make(getTime, lookupWeather)
+// ...
+lm.streamTurn({ history, model, tools: toolkit }) // toolkit straight in, no descriptors()
+// ...
+return Toolkit.run(toolkit, calls).pipe(
+  Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
+)
+```
+
+#### Control / provider tools get honest kinds
+
+Tools now have four kinds (discriminated by `_tag`): `Tool.make` (local),
+`Tool.provider`, `Tool.signal`, `Tool.interaction`. A control tool you faked
+with a throwaway `run: () => Effect.succeed(...)` (the loop intercepts the call
+in `onTurnComplete`) should become a `Tool.signal`; an "ask the user/channel"
+tool a `Tool.interaction`. Both are decode-only — keep `Tool.decodeArgs` — they
+just drop the fake `run`.
+
+```ts
+// Before
+export const escalate = Tool.make({
+  name: "escalate",
+  description,
+  inputSchema: Tool.fromEffectSchema(EscalateInput),
+  run: () => Effect.succeed({ escalated: true }),
+})
+
+// After
+export const escalate = Tool.signal({
+  name: "escalate",
+  description,
+  inputSchema: Tool.fromEffectSchema(EscalateInput),
+})
+```
+
+A provider-hosted tool you passed as a hand-built descriptor becomes
+`Tool.provider({ ..., provider, config })`.
+
+### Behavior changes (no rewrite, but observable)
+
+- Input-schema validation failures now produce a distinct `ToolResult.Failure`
+  kind `"input_validation_error"` (was bucketed under `"execution_error"`), and
+  `Tool.decodeArgs` fails with the new `Tool.ToolValidationError` instead of a
+  generic `ToolError`.
+- A non-local kind (provider/signal/interaction) passed to `Toolkit.run` yields
+  `ToolResult.Failure` kind `"non_local_tool"` (the loop is meant to intercept
+  it first) — distinct from `"unknown_tool"`.
+- `Toolkit.make` now rejects a duplicate literal tool name at compile time. It
+  does not otherwise validate names (a malformed name 400s at the provider).
+
+### After-migration checklist
+
+- [ ] No `Tool.streaming` / `finalize` / `isStreamingTool` / `AnyStreamingTool`
+- [ ] Faked control tools (`run: () => succeed`) switched to `Tool.signal` /
+      `Tool.interaction`; provider-hosted tools to `Tool.provider`
+- [ ] `Toolkit.run` and `Toolkit.descriptors` take a `Toolkit` from
+      `Toolkit.make(...)` / `Toolkit.fromArray(...)`, not a bare array
+- [ ] `streamTurn({ tools })` passed the `Toolkit` itself (not a rendered
+      `ToolDescriptor[]`); `tools: []` turns drop the field entirely
+- [ ] Cross-source toolkits combined with `Toolkit.compose` (not array concat)
+- [ ] Tool-array parameters retyped as `Toolkit.Toolkit`
+- [ ] `pnpm typecheck` clean
+
+### New: Mistral provider (additive, no rewrite)
+
+0.9 also ships `@effect-uai/mistral`, one brand covering three capability
+tags: `LanguageModel` (Mistral chat models), `Transcriber` (Voxtral batch +
+realtime STT), and `SpeechSynthesizer` (Voxtral TTS). Adopt it the same way
+as any provider: provide the layer, keep yielding the generic tag.
+
+```ts
+import { layer as mistral } from "@effect-uai/mistral/Mistral"
+// program.pipe(Effect.provide(mistral({ apiKey })))
+```
+
+Because all three surfaces share one brand, the
+[Voice loop](https://effect-uai.betalyra.com/recipes/voice-loop/) runs an
+entire STT to LLM to TTS pipeline on Mistral alone (`--provider=mistral`).
+
+### Metrics reworked (one removal, rest additive)
+
+`@effect-uai/core/Metrics` drops the old generic stream helpers
+`withElapsed`, `timeToFirst`, and `withRate`. Replace them with the new
+turn-aware operators: `timeToFirstToken`, `throughput`, `tokenTotals`,
+`timeToCompletion`, or `allMetrics()` to stack all four. They emit typed
+`MetricEvent`s alongside the model's events; split them out downstream with
+`isMetricEvent`. The new `@effect-uai/core/Telemetry` adds `record()` plus
+`layerOtlp({ url })` to export the same events over OTLP. See the
+[Metrics](https://effect-uai.betalyra.com/concepts/metrics/) concept page.
+
+---
+
 ## 0.7 → 0.8
 
 **No rewrites needed.** 0.8 is purely additive: a new `WebSearch`

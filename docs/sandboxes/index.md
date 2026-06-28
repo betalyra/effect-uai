@@ -1,6 +1,6 @@
 ---
 title: Sandboxes
-description: A contained OS your agent can exec into, stream stdout from, and read files out of — with destruction tied to an Effect Scope.
+description: A contained OS your agent can exec into, stream stdout from, and read files out of, with destruction tied to an Effect Scope.
 ---
 
 Sooner or later an agent wants to run code. Shell out, install a package,
@@ -28,13 +28,13 @@ await Effect.runPromise(program.pipe(Effect.scoped, Effect.provide(microsandboxL
 ```
 
 That's the whole story: provide a provider layer, `create` a sandbox,
-`exec` a command, let the scope close — the sandbox is destroyed
+`exec` a command, let the scope close: the sandbox is destroyed
 automatically. From here, every section below answers one "how do I…"
 question.
 
 ## Create and destroy
 
-You don't call `destroy()` on a sandbox — it doesn't exist as a
+You don't call `destroy()` on a sandbox. It doesn't exist as a
 method. Destruction is tied to an Effect `Scope`:
 
 ```ts
@@ -46,10 +46,10 @@ Effect.gen(function* () {
 
 Three idioms cover almost everything:
 
-- **`Effect.scoped`** — destroy when this Effect finishes. The common case.
-- **`Scope.make` + manual close** — when one sandbox should span many
+- **`Effect.scoped`**: destroy when this Effect finishes. The common case.
+- **`Scope.make` + manual close**: when one sandbox should span many
   calls inside a larger program; close the scope when you're done.
-- **`Sandbox.destroy(id)`** — escape hatch when you need to kill a
+- **`Sandbox.destroy(id)`**: escape hatch when you need to kill a
   sandbox from another fiber (or from outside its owning scope).
 
 If you need a sandbox that outlives any single Effect, see
@@ -66,7 +66,7 @@ Image.snapshot("ml-warm-1") // restore captured state (advanced)
 Image.dockerfile("FROM ubuntu...") // build custom (advanced, provider-dependent)
 ```
 
-`auto` is "I don't care, give me your default" — works on providers
+`auto` is "I don't care, give me your default": works on providers
 with a fixed base, errors on providers that require an explicit ref.
 For most agent work, you'll reach for `Image.registry(...)` with a
 slim official image (`python:3.12`, `node:22`, `alpine`).
@@ -96,18 +96,18 @@ The same Layer registers both `Sandbox` (generic, portable) and
 `MicrosandboxSandbox` (typed, provider-specific). Yield the generic
 tag for code that should work across providers; yield the typed tag
 when you need provider-specific knobs. Each provider's typed fields
-live on its page — for Microsandbox, see
+live on its page. For Microsandbox, see
 [the full request shape](/sandboxes/providers/microsandbox/#request-shape).
 
 ## Running commands
 
 Three methods, three lifecycles:
 
-| Method       | Lifetime             | Returns                                                | Reach for it when                                                |
-| ------------ | -------------------- | ------------------------------------------------------ | ---------------------------------------------------------------- |
-| `exec`       | one-shot, buffered   | `ExecResult` (exit, stdout, stderr, duration)          | short commands; you only care about the final result             |
-| `execStream` | one-shot, streamed   | `Stream<ExecEvent>` (`Stdout` / `Stderr` / `Complete`) | live progress, log tail, piping output back into a model         |
-| `spawn`      | scoped, long-running | `ProcessHandle` (`pid`, events, `kill`, `exit`)        | dev servers, watchers, `tail -f` — anything you start and forget |
+| Method       | Lifetime             | Returns                                                | Reach for it when                                               |
+| ------------ | -------------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
+| `exec`       | one-shot, buffered   | `ExecResult` (exit, stdout, stderr, duration)          | short commands; you only care about the final result            |
+| `execStream` | one-shot, streamed   | `Stream<ExecEvent>` (`Stdout` / `Stderr` / `Complete`) | live progress, log tail, piping output back into a model        |
+| `spawn`      | scoped, long-running | `ProcessHandle` (`pid`, events, `kill`, `exit`)        | dev servers, watchers, `tail -f`, anything you start and forget |
 
 ```ts
 // One-shot
@@ -122,7 +122,7 @@ const handle = yield * sb.spawn({ cmd: ["npm", "run", "dev"] })
 ```
 
 `cmd` accepts a string (run through the guest shell) or an array
-(direct argv, no shell parsing — safer when you're interpolating
+(direct argv, no shell parsing, safer when you're interpolating
 user input).
 
 ## Reading and writing files
@@ -138,14 +138,14 @@ yield * fs.mkdir("/work/out")
 yield * fs.remove("/work/script.py")
 ```
 
-`read` always returns `Uint8Array` (decode yourself — there's no
+`read` always returns `Uint8Array` (decode yourself, there's no
 implicit text encoding); `write` accepts either `string` or
 `Uint8Array`. Paths are absolute inside the guest OS.
 
 ## Inject secrets
 
 You probably want your sandbox to call OpenAI / GitHub / your internal
-API. The naive option is `env: { OPENAI_KEY: "sk-..." }` — but now
+API. The naive option is `env: { OPENAI_KEY: "sk-..." }`, but now
 the secret is in the guest's environment, visible to every process
 the LLM spawns. If the model writes a script that prints `process.env`
 (or just runs `env`), the key goes into the model's context window
@@ -173,7 +173,7 @@ const sb =
 ```
 
 Inside the sandbox, code reads a **placeholder** that looks like the
-secret but isn't — e.g. Microsandbox exposes `$MSB_OPENAI_KEY`. When
+secret but isn't, e.g. Microsandbox exposes `$MSB_OPENAI_KEY`. When
 the guest makes an HTTPS request to a host in `hosts`, the provider's
 egress proxy substitutes the real value into the `Authorization`
 header on the way out. The guest never holds the real string; logs,
@@ -182,14 +182,14 @@ header on the way out. The guest never holds the real string; logs,
 Three things to know:
 
 - **`hosts` is the safety boundary.** A leaked secret is only useful
-  on hosts you bound it to. Scope tight — `["api.openai.com"]`, not
+  on hosts you bound it to. Scope tight: `["api.openai.com"]`, not
   `["*"]`.
 - **`value` is `Redacted.Redacted`, never raw `string`.** It stays
   redacted in logs and traces until the adapter unwraps it for the
   proxy.
 - **Capability-gated.** Providers without proxy-layer rewriting (Modal,
   Daytona, CodeSandbox) don't ship the `SandboxSecretInjection`
-  marker — calls fail at `Effect.provide` with a type error.
+  marker: calls fail at `Effect.provide` with a type error.
 
 ## Restrict network traffic
 
@@ -197,7 +197,7 @@ Three things to know:
 import * as Network from "@effect-uai/core/SandboxNetwork"
 
 Network.open                                  // provider defaults apply
-Network.blocked                               // airgapped — no egress at all
+Network.blocked                               // airgapped: no egress at all
 Network.allowHosts("api.openai.com", "github.com")
 Network.allowCidrs("10.0.0.0/8")
 Network.allow({ hosts: [...], cidrs: [...] }) // mixed
@@ -214,7 +214,7 @@ const sb =
   })
 ```
 
-`open` doesn't mean "anything goes" — most providers still block
+`open` doesn't mean "anything goes": most providers still block
 private ranges by default; it just means "don't layer extra rules on
 top." Use `blocked` for sandboxes that should never call out (running
 fully untrusted code with no API needs). Hostname allowlists require
@@ -224,7 +224,7 @@ everywhere.
 ---
 
 That's the getting-started surface. The sections below cover advanced
-patterns — most agents won't need them at first.
+patterns. Most agents won't need them at first.
 
 ## Capabilities
 
@@ -255,13 +255,13 @@ provider rows live on each provider's page.
 The scope-bound default is right most of the time, but two cases want
 a sandbox that survives past the calling Effect:
 
-- **Reusing across many runs** — pay the cold-start once, hand the
+- **Reusing across many runs**: pay the cold-start once, hand the
   same sandbox to many calls.
-- **Surviving a process exit** — start it from one CLI invocation,
+- **Surviving a process exit**: start it from one CLI invocation,
   talk to it from another.
 
 ```ts
-// Create with detached: true — scope finalizer skips destroy.
+// Create with detached: true: scope finalizer skips destroy.
 const sb =
   yield *
   msb.create({
@@ -270,7 +270,7 @@ const sb =
     detached: true,
   })
 
-// Later — different fiber, different process, doesn't matter:
+// Later, different fiber, different process, doesn't matter:
 const sb = yield * Sandbox.attach(SandboxId("agent-sandbox"))
 ```
 
@@ -281,19 +281,19 @@ const sb = yield * Sandbox.attach(SandboxId("agent-sandbox"))
   scoped, but the finalizer detaches rather than destroys.
 - Pair `detached` with an explicit `name` so `attach` has a stable
   id to look up.
-- Cleanup is now your job — `Sandbox.destroy(id)` from anywhere, or
+- Cleanup is now your job: `Sandbox.destroy(id)` from anywhere, or
   the provider's CLI (`msb sandbox stop ...`).
 
 ## Volumes and snapshots
 
-Two ways to keep state across sandbox lifetimes — they answer
+Two ways to keep state across sandbox lifetimes, they answer
 different questions:
 
-- **Volume** — "a persistent directory I can mount into many
+- **Volume**: "a persistent directory I can mount into many
   sandboxes." Named, lives outside any single sandbox's lifecycle.
   Good for caches, model weights, shared datasets. Requires
   `SandboxVolumes`.
-- **Snapshot** — "capture this sandbox's filesystem state and restore
+- **Snapshot**: "capture this sandbox's filesystem state and restore
   it as a fresh sandbox later." Used via `Image.snapshot(id)` at
   create time. Good for warm-starts (pre-installed deps, cached
   imports). Requires `SandboxSnapshots`.
@@ -314,17 +314,17 @@ const warm = yield * Sandbox.create({ image: Image.snapshot(snapId) })
 ```
 
 Snapshots are **not** pause/resume. Restoring a snapshot gives you a
-fresh sandbox id with the same filesystem — RAM and running processes
+fresh sandbox id with the same filesystem: RAM and running processes
 are lost. In-place pause that preserves both lives behind a separate
 marker (`SandboxPauseResume`), supported by E2B and CodeSandbox but
 not by every provider that has snapshots.
 
 ## Provider matrix
 
-| Provider     | Snapshots          | Volumes        | Secrets | Hostname allowlist | Pause/Resume | Custom image | Port exposure        |
-| ------------ | ------------------ | -------------- | ------- | ------------------ | ------------ | ------------ | -------------------- |
-| Microsandbox | ✓                  | ✓              | ✓       | ✓                  | —            | —            | — (create-time only) |
-| Deno Sandbox | ◐ (volume-derived) | ✓ (`ord` only) | ✓       | ✓ (no CIDRs)       | —            | —            | ✓                    |
+| Provider     | Snapshots          | Volumes        | Secrets | Hostname allowlist | Pause/Resume | Custom image | Port exposure         |
+| ------------ | ------------------ | -------------- | ------- | ------------------ | ------------ | ------------ | --------------------- |
+| Microsandbox | ✓                  | ✓              | ✓       | ✓                  | no           | no           | no (create-time only) |
+| Deno Sandbox | ◐ (volume-derived) | ✓ (`ord` only) | ✓       | ✓ (no CIDRs)       | no           | no           | ✓                     |
 
 More providers (Vercel, E2B, Modal, Cloudflare, Daytona) land as
 their adapters ship; the matrix grows downward, not the API surface.
@@ -333,7 +333,7 @@ their adapters ship; the matrix grows downward, not the API surface.
 
 - **Not a container orchestrator.** No scheduling, no service mesh,
   no multi-replica anything. One sandbox, one handle.
-- **Not a deployment target.** Sandboxes are ephemeral by design —
+- **Not a deployment target.** Sandboxes are ephemeral by design:
   the scope finalizer destroys them. Use a real platform for
   long-lived services.
 - **Not a kernel session.** Jupyter-style rich output is a separate
@@ -344,9 +344,9 @@ their adapters ship; the matrix grows downward, not the API surface.
 
 Wire up an adapter:
 
-- **[Microsandbox](/sandboxes/providers/microsandbox/)** — local
+- **[Microsandbox](/sandboxes/providers/microsandbox/)**: local
   microVM runtime, no API key, runs against the `msb` daemon on your
   machine.
-- **[Deno Sandbox](/sandboxes/providers/deno/)** — cloud microVM on
+- **[Deno Sandbox](/sandboxes/providers/deno/)**: cloud microVM on
   the Deno Deploy edge with sub-second boot, hostname-allowlist
   egress, proxy-injected secrets, and public preview URLs.

@@ -1,10 +1,10 @@
 ---
 title: Microsandbox
-description: Local microVM sandbox provider — no API key, no cloud, runs against the msb daemon on your machine.
+description: "Local microVM sandbox provider: no API key, no cloud, runs against the msb daemon on your machine."
 ---
 
 [Microsandbox](https://microsandbox.dev) boots real microVMs locally
-(KVM on Linux, Apple Hypervisor on macOS) — fast cold start, kernel
+(KVM on Linux, Apple Hypervisor on macOS): fast cold start, kernel
 isolation, no network round-trip. This adapter wraps its
 [`microsandbox`](https://www.npmjs.com/package/microsandbox) Node SDK
 and maps it onto the core `SandboxService` shape.
@@ -36,17 +36,17 @@ import { Effect, Layer } from "effect"
 import { layer as microsandboxLayer } from "@effect-uai/microsandbox/MicrosandboxSandbox"
 
 const provider = microsandboxLayer({
-  defaultImage: "python:3.12", // optional — fallback when request omits `image`
+  defaultImage: "python:3.12", // optional, fallback when request omits `image`
 })
 ```
 
 `microsandboxLayer` registers two service tags and four capability
 markers from one underlying implementation:
 
-- **`MicrosandboxSandbox`** — the typed tag. Yield this for the
+- **`MicrosandboxSandbox`**: the typed tag. Yield this for the
   narrowed request shape (`cpus`, `memoryMib`, `replace`, `detached`,
   `idleTimeout`, …).
-- **`Sandbox`** — the generic tag. Yield this for provider-portable
+- **`Sandbox`**: the generic tag. Yield this for provider-portable
   code; only `CommonCreateRequest` is accepted at the call site.
 - Capability markers shipped: `SandboxSnapshots`, `SandboxVolumes`,
   `SandboxSecretInjection`, `SandboxHostnameAllowlist`. See
@@ -60,7 +60,7 @@ interface MicrosandboxConfig {
 }
 ```
 
-There's no API key — the daemon is local. `defaultImage` is the OCI
+There's no API key: the daemon is local. `defaultImage` is the OCI
 ref used when a create request omits `image` (or sets it to
 `ImageRef.Default`). Leaving it unset is fine if every call site
 supplies its own image.
@@ -85,23 +85,23 @@ interface MicrosandboxCreateRequest extends Omit<CommonCreateRequest, "secrets">
 On top of [`CommonCreateRequest`](/sandboxes/#picking-an-image)
 (`image`, `timeout`, `env`, `network`, `volumes`):
 
-- **`name`** — explicit sandbox id. Microsandbox keys by name; omit it
+- **`name`**: explicit sandbox id. Microsandbox keys by name; omit it
   and the adapter generates `eff-uai-<random>`.
-- **`cpus` / `memory`** — VM sizing. `memory` accepts a byte count, a
+- **`cpus` / `memory`**: VM sizing. `memory` accepts a byte count, a
   [`Memory`](/sandboxes/#cpu-memory-and-other-sizing-knobs) branded value, or a
-  human string like `"1 GiB"` / `"512 MiB"` — rounded up to whole MiB
+  human string like `"1 GiB"` / `"512 MiB"`, rounded up to whole MiB
   before handing off to the SDK. Defaults come from the SDK builder.
-- **`workdir` / `user`** — process cwd and effective user inside the
+- **`workdir` / `user`**: process cwd and effective user inside the
   guest.
-- **`maxDuration`** — hard wall-clock cap on the sandbox. Distinct
+- **`maxDuration`**: hard wall-clock cap on the sandbox. Distinct
   from `timeout` on `CommonCreateRequest`, which the adapter also maps
   here (both round up to whole seconds for the SDK).
-- **`idleTimeout`** — auto-shutdown after this much idle time. Useful
+- **`idleTimeout`**: auto-shutdown after this much idle time. Useful
   for "leave it running, but cap the bill" semantics.
-- **`replace`** — if a sandbox with the same `name` is alive, stop it
+- **`replace`**: if a sandbox with the same `name` is alive, stop it
   first. `true` uses the SDK's default grace; `{ graceMs }` waits then
   `SIGKILL`s.
-- **`detached`** — see [detached sandboxes](#detached-sandboxes) below.
+- **`detached`**: see [detached sandboxes](#detached-sandboxes) below.
 
 ### Detached sandboxes
 
@@ -116,7 +116,7 @@ const sb =
 ```
 
 The default lifetime model destroys the sandbox when its scope closes.
-`detached: true` skips that — the scope finalizer just drops the
+`detached: true` skips that: the scope finalizer just drops the
 connection, and the microVM keeps running. Clean up later with
 `Sandbox.destroy(id)` or via `msb sandbox stop`.
 
@@ -125,7 +125,7 @@ later Effect.
 
 ### Secrets
 
-See the [secrets section](/sandboxes/#secrets-—-what-theyre-for-and-why-a-placeholder)
+See the [secrets section](/sandboxes/#secrets-what-theyre-for-and-why-a-placeholder)
 in the overview for what `BoundSecret` is and why it exists.
 
 ```ts
@@ -147,7 +147,7 @@ Microsandbox-specific notes:
 
 - **Placeholder shape**: secrets surface inside the guest as
   `$MSB_<NAME>`. Reference them via the environment, not by interpolating
-  the real value — the real value isn't there.
+  the real value: the real value isn't there.
 - **Header fixed to `Authorization: Bearer <value>`**. No per-secret
   custom header. The typed `MicrosandboxBoundSecret` omits the `header`
   field at the type level; calls through the generic `Sandbox.create`
@@ -162,11 +162,11 @@ Microsandbox-specific notes:
 | `SandboxVolumes`           | ✓       | Named persistent volumes; `quotaBytes` rounded up to MiB.                                          |
 | `SandboxSecretInjection`   | ✓       | `Authorization: Bearer` only; see [secrets](#secrets).                                             |
 | `SandboxHostnameAllowlist` | ✓       | `allowDomain` rules in the policy builder.                                                         |
-| `SandboxPauseResume`       | —       | `stop()` + `start()` resumes from disk, not RAM. Different semantics.                              |
-| `SandboxCustomImage`       | —       | OCI registry refs and snapshots only — no Dockerfile.                                              |
-| `SandboxPortExposure`      | —       | Ports forward at **create** time via the SDK's port mapping; runtime `exposePort` isn't supported. |
-| `SandboxKernelSession`     | —       | No Jupyter/REPL surface.                                                                           |
-| `SandboxPty`               | —       | Use `execStream` for byte-oriented IO.                                                             |
+| `SandboxPauseResume`       | no      | `stop()` + `start()` resumes from disk, not RAM. Different semantics.                              |
+| `SandboxCustomImage`       | no      | OCI registry refs and snapshots only: no Dockerfile.                                               |
+| `SandboxPortExposure`      | no      | Ports forward at **create** time via the SDK's port mapping; runtime `exposePort` isn't supported. |
+| `SandboxKernelSession`     | no      | No Jupyter/REPL surface.                                                                           |
+| `SandboxPty`               | no      | Use `execStream` for byte-oriented IO.                                                             |
 
 Calling `snapshot(from)` or `exposePort(instance, port)` against an
 unmarked layer is a **compile-time** error, not a runtime
@@ -190,7 +190,7 @@ you reach into `service.ports.expose` directly past the marker check.
 Recover per-tag with `Effect.catchTag` / `Stream.catchTag`. The
 post-kill DB sync race (Microsandbox 0.4.6: ~200 ms between `kill()`
 and `status === "stopped"`) is handled inside the adapter via
-exponential-backoff retry — you don't see it.
+exponential-backoff retry: you don't see it.
 
 ## Known quirks
 

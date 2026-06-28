@@ -29,6 +29,13 @@ const plausibleHead = isVercelProduction
 
 export default defineConfig({
   site: "https://effect-uai.betalyra.com",
+  // Language-model docs moved out of /concepts/ to their own capability
+  // section at /language-models/, matching speech / embeddings / etc.
+  redirects: {
+    "/concepts/language-model": "/language-models",
+    "/concepts/loop": "/language-models/loop",
+    "/concepts/tools": "/language-models/tools",
+  },
   vite: {
     plugins: [tailwindcss()],
     optimizeDeps: {
@@ -100,9 +107,9 @@ export default defineConfig({
         {
           label: "Language models",
           items: [
-            { label: "Overview", slug: "concepts/language-model" },
-            { label: "The loop primitive", slug: "concepts/loop" },
-            { label: "Tools and toolkits", slug: "concepts/tools" },
+            { label: "Overview", slug: "language-models" },
+            { label: "The loop primitive", slug: "language-models/loop" },
+            { label: "Tools and toolkits", slug: "language-models/tools" },
             {
               label: "Providers",
               items: [

@@ -6,9 +6,9 @@ source: recipes/advanced-speech-synthesis
 
 Two TTS features that don't fit on the `text + voiceId` shape:
 
-- **Dialogue** — multiple voices in one audio file. The model receives
+- **Dialogue**: multiple voices in one audio file. The model receives
   every turn up front and renders a single mixed result.
-- **Pronunciation overrides** — IPA hints that adapters apply when
+- **Pronunciation overrides**: IPA hints that adapters apply when
   they can. Useful for brand names, technical terms, and regional
   pronunciation differences.
 
@@ -46,15 +46,15 @@ yield *
 `synthesizeDialogue` requires the `MultiSpeakerTts` capability marker
 in `R`. Provider Layers ship the marker only if they wire the
 operation to a native multi-speaker endpoint. Trying to use it against
-a Layer that doesn't is a **compile-time error**, not a runtime one —
-same pattern as `streamSynthesisFrom` + `TtsIncrementalText`.
+a Layer that doesn't is a **compile-time error**, not a runtime one.
+Same pattern as `streamSynthesisFrom` + `TtsIncrementalText`.
 
 The streaming variant `streamSynthesizeDialogue` returns a
 `Stream<AudioChunk>` for chunked-HTTP delivery.
 
 ## Per-turn pronunciation, with one global map
 
-The `pronunciations` field applies across the request — every
+The `pronunciations` field applies across the request: every
 occurrence of a phrase gets the same hint. To get different
 pronunciations per voice, key each entry on the spelling variant that
 turn uses (`to-MAY-to` in voice A's line, `to-MAH-to` in voice B's).
@@ -70,8 +70,8 @@ spelling itself nudges pronunciation in the right direction.
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **ElevenLabs**                                             | Wired: `POST /v1/text-to-dialogue` (sync) + `/stream` (chunked). Ships `MultiSpeakerTts`. | Inline SSML `<phoneme>` for the gated models `eleven_flash_v2`, `eleven_english_v1`, `eleven_monolingual_v1`. Other models silently drop. `x-sampa` is always dropped. |
 | **Inworld**                                                | `Unsupported`.                                                                            | Inline `/ipa/` rewrite. Only `ipa` entries honored; English-only.                                                                                                      |
-| **OpenAI**                                                 | `Unsupported`.                                                                            | Silently dropped — no phoneme surface.                                                                                                                                 |
-| **Google** (`@effect-uai/google`)                          | `Unsupported`.                                                                            | Silently dropped — Gemini API has no equivalent. Use Cloud TTS via `@effect-uai/google-speech` (coming) for native phoneme support.                                    |
+| **OpenAI**                                                 | `Unsupported`.                                                                            | Silently dropped, no phoneme surface.                                                                                                                                  |
+| **Google** (`@effect-uai/google`)                          | `Unsupported`.                                                                            | Silently dropped: Gemini API has no equivalent. Use Cloud TTS via `@effect-uai/google-speech` (coming) for native phoneme support.                                     |
 | **Hume** (future)                                          | Planned: `utterances[]` with per-turn `description` + `speed`.                            | Phoneme support is preview, not yet on REST.                                                                                                                           |
 | **Google Cloud TTS** (future, `@effect-uai/google-speech`) | Planned: Gemini-TTS multi-speaker markup.                                                 | Structured `customPronunciations` field; IPA + X-SAMPA.                                                                                                                |
 
@@ -109,7 +109,7 @@ recipe.
 The recipe deliberately uses the **generic** `SpeechSynthesizer`
 helpers, not `@effect-uai/elevenlabs`'s typed surface. Swapping in a
 future Hume or Google Cloud TTS Layer at the runner level keeps
-`index.ts` unchanged — same `synthesizeDialogue` + `pronunciations`
+`index.ts` unchanged: same `synthesizeDialogue` + `pronunciations`
 contract, different wire underneath.
 
 Source: [`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/advanced-speech-synthesis/index.ts).

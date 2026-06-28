@@ -1,10 +1,10 @@
 ---
 title: Mistral
-description: Use Mistral's chat models with effect-uai — wiring, per-call options, structured output, and the model lineup.
+description: "Use Mistral's chat models with effect-uai: wiring, per-call options, structured output, and the model lineup."
 ---
 
-Mistral's chat models — the fast, low-cost `mistral-small`, the
-flagship `mistral-large`, and the `magistral` reasoning line — plug into
+Mistral's chat models (the fast, low-cost `mistral-small`, the
+flagship `mistral-large`, and the `magistral` reasoning line) plug into
 effect-uai through the generic `LanguageModel` tag. Write your agent
 loop, tool calls, and structured-output flows once and run them on
 Mistral by swapping in this layer. The same package also ships Mistral's
@@ -35,7 +35,7 @@ const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
 
 The layer gives you two ways to reach the model:
 
-- yield **`LanguageModel`** for provider-portable code — switch
+- yield **`LanguageModel`** for provider-portable code: switch
   providers later by swapping the layer, nothing else;
 - yield **`Mistral`** when you want Mistral's extra request options.
 
@@ -48,7 +48,7 @@ interface Config {
 }
 ```
 
-`apiKey` is always `Redacted.Redacted` — read it with
+`apiKey` is always `Redacted.Redacted`. Read it with
 `Config.redacted("MISTRAL_API_KEY")` or wrap a string with
 `Redacted.make`. Set `baseUrl` only when you go through a proxy or
 gateway; most apps leave it unset. The model is chosen per call, not on
@@ -76,13 +76,13 @@ the assembled result in one `Effect` when you don't need streaming.
 
 ## Per-call options
 
-Each call takes a `model` plus the usual request fields — `history`,
+Each call takes a `model` plus the usual request fields (`history`,
 `tools`, `toolChoice`, `temperature`, `topP`, `maxOutputTokens`,
-`structured` — and two Mistral-specific extras you get when you yield the
+`structured`) and two Mistral-specific extras you get when you yield the
 typed `Mistral` tag:
 
-- **`safePrompt`** — prepend Mistral's safety guardrail system prompt.
-- **`randomSeed`** — fix the sampling seed for reproducible output.
+- **`safePrompt`**: prepend Mistral's safety guardrail system prompt.
+- **`randomSeed`**: fix the sampling seed for reproducible output.
 
 ### Tools
 
@@ -90,7 +90,7 @@ Pass a `Toolkit` as `tools` and use `toolChoice` to steer it: let the
 model decide (`"auto"`), force it to call a tool (`"required"`), forbid
 tools (`"none"`), or pin a specific function
 (`{ type: "function", name }`). Mistral supports parallel tool calls. See
-[tools and toolkits](/concepts/tools/).
+[tools and toolkits](/language-models/tools/).
 
 ### Structured output
 
@@ -104,16 +104,16 @@ matches your schema. Validate it with `Turn.decodeStructured`. See
 any string, so a freshly released model works without an SDK bump. Prefer
 the `-latest` aliases for evergreen pins.
 
-- **`mistral-large-latest`** — most capable; complex reasoning and
+- **`mistral-large-latest`**: most capable; complex reasoning and
   agentic work.
-- **`mistral-medium-latest`** — balanced quality and cost.
-- **`mistral-small-latest`** — fast and cheap; a good default for tool
+- **`mistral-medium-latest`**: balanced quality and cost.
+- **`mistral-small-latest`**: fast and cheap; a good default for tool
   loops and voice.
-- **`magistral-medium-latest`** / **`magistral-small-latest`** —
+- **`magistral-medium-latest`** / **`magistral-small-latest`**:
   reasoning models.
-- **`ministral-8b-latest`** / **`ministral-3b-latest`** — lightweight,
+- **`ministral-8b-latest`** / **`ministral-3b-latest`**: lightweight,
   edge-friendly.
-- **`codestral-latest`** — code-specialized.
+- **`codestral-latest`**: code-specialized.
 
 Reference: [Mistral models](https://docs.mistral.ai/getting-started/models/models_overview).
 

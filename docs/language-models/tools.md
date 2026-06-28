@@ -15,13 +15,13 @@ Most tools have a local `run`: an `Effect` that computes the model-facing
 to the consumer in real time (sub-agent reasoning, download progress). A plain
 tool just ignores `emit`; a streaming tool calls it. `Tool.make` builds these.
 
-Some model-visible tools have **no** local `run` — they are executed by the
+Some model-visible tools have **no** local `run`: they are executed by the
 provider, or they are signals the loop interprets. Those are the other three
 [tool kinds](#tool-kinds) (`Tool.provider`, `Tool.signal`, `Tool.interaction`);
 the executor reports them as `non_local_tool` rather than pretending to run a
 fake handler.
 
-## `Tool.make` — defining a tool
+## `Tool.make`: defining a tool
 
 ```ts
 import { Effect, Schema } from "effect"
@@ -58,8 +58,8 @@ tools are locally executable. The four kinds, discriminated by `_tag`:
 | ------------------ | -------------------------------------------------------- | --------------------------------------------------------- |
 | `Tool.make`        | your `run`, via `Toolkit.run`                            | ordinary local tools (weather, send email)                |
 | `Tool.provider`    | the provider                                             | provider-hosted web search, code execution, RAG grounding |
-| `Tool.signal`      | nobody — the loop **interprets** the call                | escalate, pause, schedule, hand off                       |
-| `Tool.interaction` | an external actor — the loop **stops and resumes** later | "ask the user to choose an account"                       |
+| `Tool.signal`      | nobody (the loop **interprets** the call)                | escalate, pause, schedule, hand off                       |
+| `Tool.interaction` | an external actor (the loop **stops and resumes** later) | "ask the user to choose an account"                       |
 
 `Tool.signal` and `Tool.interaction` are decode-only: they carry a `name`,
 `description`, and `inputSchema` but no `run`. You decode the arguments with
@@ -83,7 +83,7 @@ if (call !== undefined) {
 
 If a non-local kind is ever passed to `Toolkit.run` (the loop forgot to
 intercept it), the executor returns `Failure(non_local_tool)` for that call
-rather than crashing — distinct from `unknown_tool` (no such tool at all).
+rather than crashing, distinct from `unknown_tool` (no such tool at all).
 
 `Tool.provider` additionally carries `provider` and `config` for the provider
 adapter to render its hosted tool natively.
@@ -93,7 +93,7 @@ adapter to render its hosted tool natively.
 To stream progress, call `emit(event)` inside `run`. Each event reaches the
 consumer as a `ToolEvent.Progress` in real time; `run` still returns the single
 `Output` the model sees. `emit` is `(event) => Effect<void>`, so it drops
-straight into `Stream.runForEach` / `Stream.runFoldEffect` — fold the events into
+straight into `Stream.runForEach` / `Stream.runFoldEffect`: fold the events into
 the output in one pass (no buffering of the whole event log):
 
 ```ts
@@ -118,11 +118,11 @@ const askSubagent = Tool.make({
 ```
 
 Set `emitBufferSize` on the tool to bound its emit queue (unbounded by default)
-when it emits faster than the consumer drains. More patterns — text concat,
-result list, progress + terminal — sit side-by-side in the
+when it emits faster than the consumer drains. More patterns (text concat,
+result list, progress + terminal) sit side-by-side in the
 [Streaming tool output recipe](/recipes/streaming-tool-output/).
 
-## `inputSchema` — any Standard Schema
+## `inputSchema`: any Standard Schema
 
 `inputSchema` is `StandardSchemaV1 & StandardJSONSchemaV1`. Zod 4+,
 Valibot, and ArkType implement both directly; Effect Schema needs
@@ -130,26 +130,26 @@ Valibot, and ArkType implement both directly; Effect Schema needs
 
 Two adapters cover the two cases:
 
-- `Tool.fromEffectSchema(schema)` — wrap an Effect Schema so it
+- `Tool.fromEffectSchema(schema)`: wrap an Effect Schema so it
   carries the JSON Schema renderer.
-- `Tool.fromStandardSchema(schema)` — type-narrowing identity for
+- `Tool.fromStandardSchema(schema)`: type-narrowing identity for
   schemas that already implement both Standard interfaces (Zod 4+,
   Valibot, ArkType). Use this so TypeScript pins the inferred input
   type at the tool boundary instead of falling back to `unknown`.
 
 The same schema serves two purposes:
 
-- **Wire rendering** — descriptor rendering calls
+- **Wire rendering**: descriptor rendering calls
   `inputSchema.~standard.jsonSchema.input({ target: "draft-2020-12" })`
   to produce the JSON Schema each provider sends (`Toolkit.descriptors`,
   or the low-level `Tool.toDescriptors`).
-- **Argument validation** — when a `ToolCall` arrives, the executor
+- **Argument validation**: when a `ToolCall` arrives, the executor
   parses arguments, validates them, and either passes the parsed value
   to `run` or synthesizes a `Failure(input_validation_error)`.
 
 ## Wiring tools up
 
-Group your tools into a `Toolkit` — a name-indexed record of tools — with
+Group your tools into a `Toolkit` (a name-indexed record of tools) with
 `Toolkit.make(...tools)`, then pass the toolkit straight to `streamTurn`:
 
 ```ts
@@ -272,7 +272,7 @@ events.pipe(Stream.provide(Live))
 The compiler enforces that every required service is provided before
 the stream runs. Tools that need nothing keep `R = never`.
 
-## `Toolkit.run` — the executor
+## `Toolkit.run`: the executor
 
 ```ts
 import * as Toolkit from "@effect-uai/core/Toolkit"
@@ -285,10 +285,10 @@ const events = Toolkit.run(toolkit, calls)
 requested tool concurrently, and emits a `Stream<ToolEvent>` in real time. Three
 event variants:
 
-- **`Progress`** — one per event a tool emits via `emit`. Tools that never
+- **`Progress`**: one per event a tool emits via `emit`. Tools that never
   call `emit` produce none.
-- **`Output`** — one per call, terminal. Carries a structured `ToolResult`.
-- **`ApprovalRequested`** — emitted by `fromQueue` for gated calls.
+- **`Output`**: one per call, terminal. Carries a structured `ToolResult`.
+- **`ApprovalRequested`**: emitted by `fromQueue` for gated calls.
 
 Graceful by default: hallucinated tool names become `Failure(unknown_tool)`
 for that call only; a model-visible but non-local kind (provider/signal/
@@ -297,7 +297,7 @@ that fails the schema becomes `Failure(input_validation_error)` and runtime
 crashes become `Failure(execution_error)`. Concurrency defaults to
 `"unbounded"`; pass `{ concurrency: 4 }` to bound it.
 
-## `ToolResult` — structured results
+## `ToolResult`: structured results
 
 The executor speaks in `ToolResult` (structured), not `ToolCallOutput`
 (wire-shaped). Recipes can inspect, redact, audit, or re-route values
@@ -311,7 +311,7 @@ type ToolResult =
 
 Synthesizers from `@effect-uai/core/ToolResult`: `denied`, `cancelled`,
 `executionError`, `nonLocalTool`, plus `failed(call, kind, reason)` for any
-custom string kind. The executor doesn't inspect `kind` — it's recipe-level
+custom string kind. The executor doesn't inspect `kind`. It's recipe-level
 metadata for audit logs and pattern-matching downstream.
 
 ## Wire conversion at the boundary
@@ -406,8 +406,8 @@ Call these at known transition points; not from inside the loop.
 
 ## What's not built in
 
-- **No retry policies** — wrap `tool.run` with `Effect.retry`.
-- **No per-tool timeout** — compose with `Effect.timeout`.
-- **No magic history reconciliation** — `cancelAllPending` is explicit.
+- **No retry policies**: wrap `tool.run` with `Effect.retry`.
+- **No per-tool timeout**: compose with `Effect.timeout`.
+- **No magic history reconciliation**: `cancelAllPending` is explicit.
 
 Policy decisions stay in the recipe; the primitives give you the seam.

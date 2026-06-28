@@ -49,7 +49,7 @@ ELEVENLABS_API_KEY=... bun recipes/streaming-synthesis/run-bun.ts
 Open <http://localhost:3000>, paste text, click **Synthesize**. Audio
 should start within ~500 ms regardless of how long the text is.
 
-> Run with **`bun`**, not `pnpm tsx` — uses `Bun.serve` and
+> Run with **`bun`**, not `pnpm tsx`. Uses `Bun.serve` and
 > `Bun.build` globals.
 
 ## How The Demo Flows

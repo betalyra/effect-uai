@@ -1,6 +1,6 @@
 ---
 title: Basic music generation
-description: A short prompt is enough. Two providers behind one `MusicGenerator` service tag — switch via `--provider=`.
+description: "A short prompt is enough. Two providers behind one `MusicGenerator` service tag: switch via `--provider=`."
 ---
 
 A short prompt is enough to get useful music.
@@ -66,7 +66,7 @@ differences. The ones worth knowing:
 | Lyrics                                                     | No structured wire field; embed in prompt.    | Per-section `lines` in composition plan, or embed in prompt.           |
 | Watermark                                                  | Always `"synthid"` (mandatory).               | Opt-in `"c2pa"` via `signWithC2pa: true` (MP3 only).                   |
 | Vocals control                                             | Embed `"no vocals"` in your prompt.           | `forceInstrumental` on the typed request.                              |
-| Composition plan (per-section lyrics + styles + durations) | —                                             | Yes (`compositionPlan`). Free plan-generator at `POST /v1/music/plan`. |
+| Composition plan (per-section lyrics + styles + durations) | .                                             | Yes (`compositionPlan`). Free plan-generator at `POST /v1/music/plan`. |
 
 These provider-specific knobs live on the **typed** services
 (`LyriaGenerator`, `ElevenLabsMusicGenerator`), not on the

@@ -7,15 +7,15 @@ icon: PiRadio
 
 An AI radio station is a DJ that writes each track just before it plays.
 
-You give it a one-line brief — say `"late-night lo-fi study session"`
-— and the DJ writes the first track. While that track streams to
+You give it a one-line brief (say `"late-night lo-fi study session"`)
+and the DJ writes the first track. While that track streams to
 your speakers, the DJ is already writing and generating the next
 one. By the time the current track ends, the next is ready to play.
 After 10 tracks the station loops; from then on the same set replays
 straight from disk, free.
 
 **Scenario.** Open a tab, click **Start**, listen. First track plays
-after a few seconds. Tracks keep coming back-to-back — no gap, no
+after a few seconds. Tracks keep coming back-to-back: no gap, no
 manual queueing, no upfront wait for the full playlist. Cycle through
 twice and the second pass costs nothing.
 
@@ -78,7 +78,7 @@ const trackStream = (plan, i) =>
 
 The same producer feeds both the main loop (which forwards bytes
 downstream as `{ type: "data", bytes }`) and the prefetcher (which
-just drains it — the cache file is the side-effect that matters).
+just drains it: the cache file is the side-effect that matters).
 
 ## The loop
 
@@ -127,15 +127,15 @@ const body = (state: LoopState) =>
 
 `waitTrackEnded` is the recipe's only external input: an `Effect<void>`
 that resolves when the consumer signals the track finished playing.
-That's the backpressure — generation runs at most one track ahead of
+That's the backpressure: generation runs at most one track ahead of
 actual listening.
 
 ## Run it
 
 ```sh
 OPENAI_API_KEY=...     # planner (Responses)
-ELEVENLABS_API_KEY=... # music (ElevenLabs Music) — default
-GOOGLE_API_KEY=...     # music (Google Lyria) — alternative
+ELEVENLABS_API_KEY=... # music (ElevenLabs Music), default
+GOOGLE_API_KEY=...     # music (Google Lyria), alternative
 
 bun recipes/radio-station/run-bun.ts
 
@@ -153,7 +153,7 @@ Open `http://localhost:3000`, click **Start**. Tracks land in
 force fresh generation with a new plan; tracks are reused across runs.
 
 There are equivalent `run-node.ts` and `run-deno.ts` runners next to
-`run-bun.ts` — same recipe body, swapped platform layers.
+`run-bun.ts`, same recipe body, swapped platform layers.
 
 ## Cost shape
 
@@ -171,7 +171,7 @@ The Stream-as-output / cache-tee / next-fiber pattern is the shape
 any time you want to stream a generated resource to a live consumer
 while caching the bytes for replay, with the planner running
 concurrently with the previous resource's playback. Substitute music
-for video, image variants, or LLM tool output — only the call inside
+for video, image variants, or LLM tool output: only the call inside
 `Stream.unwrap` changes.
 
 Source: [`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/radio-station/recipe.ts).

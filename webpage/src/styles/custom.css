@@ -66,6 +66,39 @@
   --sl-color-text-accent: #fafafa;
 }
 
+/* Text selection: a strong brand-red highlight with white text. Body prose is
+   low-contrast grey, so a subtle wash washed out; solid red reads clearly.
+   Code blocks keep a lighter translucent wash so syntax colors stay legible. */
+::selection {
+  background-color: var(--color-mark);
+  color: #fff;
+}
+
+pre ::selection,
+code ::selection,
+.expressive-code ::selection {
+  background-color: color-mix(in srgb, var(--color-mark) 30%, transparent);
+  color: inherit;
+}
+
+/* Focus on text links in prose: skip the boxy ring and echo the hover state
+   instead, red text plus a thicker red underline. */
+.sl-markdown-content a:not(:where(.not-content *)):focus-visible {
+  outline: none;
+  color: var(--color-mark);
+  text-decoration-color: var(--color-mark);
+  text-decoration-thickness: 2px;
+}
+
+/* Navbar focus: a clean 1px red ring, offset, for the logo, social icons,
+   theme toggle, and search button. */
+.header a:focus-visible,
+.header button:focus-visible,
+.header select:focus-visible {
+  outline: 1px solid var(--color-mark);
+  outline-offset: 2px;
+}
+
 /* Headings: tight modernist tracking. */
 .sl-markdown-content h1,
 .sl-markdown-content h2,

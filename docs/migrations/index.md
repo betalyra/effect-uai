@@ -31,7 +31,7 @@ their editor).
   providers (`@effect-uai/perplexity`, `@effect-uai/exa`,
   `@effect-uai/tavily`), and two recipes (grounded answer, deep research).
   No breaking changes; bump dependencies and run typecheck.
-- [Migrating to 0.7](/migrations/v0-7/) — a capability-honesty pass
+- [Migrating to 0.7](/migrations/v0-7/): a capability-honesty pass
   across audio and embeddings. `AudioBlob.durationSeconds: number`
   becomes `duration: Duration.Duration` (flowing through STT, TTS, and
   music). STT: `GeminiTranscriber` removed (use OpenAI / ElevenLabs /
@@ -53,7 +53,7 @@ their editor).
   `@effect-uai/core/Capabilities` warn-and-drop helper, ElevenLabs
   `pronunciationDictionaryLocators`, multi-provider recipe runner via
   `--provider=`.
-- [Migrating to 0.6](/migrations/v0-6/) — the consistent-naming sweep
+- [Migrating to 0.6](/migrations/v0-6/): the consistent-naming sweep
   plus additive speech features. Breaking but mechanical: "function
   call" → "tool call" terminology (`Item` → `HistoryItem`,
   `FunctionCall` → `ToolCall`), modules `Outcome` → `ToolResult` and
@@ -63,27 +63,27 @@ their editor).
   `stop()` / `stop(state)`, `nextAfter` / `stopAfter` removed); the wire
   format is unchanged. Additive (no migration needed): multi-speaker
   dialogue and custom pronunciations on `SpeechSynthesizer`.
-- [Migrating to 0.5](/migrations/v0-5/) — `TurnEvent` migrated to
+- [Migrating to 0.5](/migrations/v0-5/): `TurnEvent` migrated to
   `Data.TaggedEnum` (`type` → `_tag`, snake_case → PascalCase),
   `Encoding` → `EmbedEncoding`, generic `EmbedResponse<E>`,
   `Toolkit.outputEvent` / `outputEvents` removed, Gemini tool calling,
   new `Loop.stopWith` / `loopFrom`, `LanguageModel.turn` / `retry`,
   `Tool.fromStandardSchema`.
-- [Migrating to 0.4](/migrations/v0-4/) — purely additive. New speech
+- [Migrating to 0.4](/migrations/v0-4/): purely additive. New speech
   (`Transcriber`, `SpeechSynthesizer`) and music (`MusicGenerator`)
   services, shared `Audio` / `Transcript` / `Music` domain, and three
   new provider packages (`@effect-uai/openai`, `@effect-uai/elevenlabs`,
   `@effect-uai/inworld`). No breaking changes.
-- [Migrating to 0.3](/migrations/v0-3/) — `streamUntilComplete` → `onTurnComplete`,
+- [Migrating to 0.3](/migrations/v0-3/): `streamUntilComplete` → `onTurnComplete`,
   `nextStateFrom` → `continueWith` (now pipe-friendly), `Match` module
   removed, tool requirements flow through `R`, new `loopWithState`,
   new embedding subsystem.
 
 ## Versioning policy
 
-- **`0.x.y`** — minor (`x`) bumps may break source compatibility; patch
+- **`0.x.y`**: minor (`x`) bumps may break source compatibility; patch
   (`y`) bumps don't. Migration pages live at this level.
-- **Post-1.0** — semver. Breaking changes only on majors; each major
+- **Post-1.0**: semver. Breaking changes only on majors; each major
   gets a migration page.
 
 ## Using Claude to migrate
@@ -102,7 +102,7 @@ here and the assistant. New release? Update both in the same PR (see
 
 ## Release process
 
-For maintainers — every release that contains a breaking change MUST
+For maintainers: every release that contains a breaking change MUST
 ship:
 
 1. A new `docs/migrations/v{X.Y}.md` page following the template of the

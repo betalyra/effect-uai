@@ -58,9 +58,9 @@ data or a typed failure.
 
 Structured output can fail in distinct ways:
 
-- **`RefusalRejected`** — the assistant refused instead of producing output.
-- **`JsonParseError`** — the assembled text was not valid JSON.
-- **`StructuredDecodeError`** — the JSON did not match the schema.
+- **`RefusalRejected`**: the assistant refused instead of producing output.
+- **`JsonParseError`**: the assembled text was not valid JSON.
+- **`StructuredDecodeError`**: the JSON did not match the schema.
 
 Those failures stay in the Effect error channel, so callers decide whether to
 retry, fall back, ask a repair model, or surface the problem.

@@ -1,9 +1,9 @@
 ---
 title: Video generation
-description: Prompt to video — minutes per request, async by nature.
+description: "Prompt to video: minutes per request, async by nature."
 ---
 
-Text-to-video is the slowest agentic AI primitive — minutes per
+Text-to-video is the slowest agentic AI primitive: minutes per
 request, not seconds.
 
 That changes the shape of the abstraction. A synchronous `Effect` that
@@ -23,12 +23,12 @@ progress events for UIs that want to show "rendering 38%".
 `@effect-uai/core` will ship a `VideoGenerator` service tag with this
 async-job shape. Provider candidates:
 
-- **Google Veo** — `veo-3` and successors.
-- **OpenAI Sora** — when the API is broadly available.
-- **Runway** — Gen-3 / Gen-4.
-- **Luma** — Dream Machine.
+- **Google Veo**: `veo-3` and successors.
+- **OpenAI Sora**: when the API is broadly available.
+- **Runway**: Gen-3 / Gen-4.
+- **Luma**: Dream Machine.
 
-The output reuses the existing `MediaSource` domain — URL or bytes —
+The output reuses the existing `MediaSource` domain (URL or bytes)
 so generated video composes with downstream tooling.
 
 ## Show interest

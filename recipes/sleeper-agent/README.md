@@ -9,7 +9,7 @@ Pause an agent loop until an external task completes, with no busy-waiting
 inside the loop body.
 
 An agent triggers a CI pipeline deploy via a tool call. The pipeline takes
-an unknown amount of time — could be seconds, could be minutes. Rather
+an unknown amount of time: could be seconds, could be minutes. Rather
 than blocking a model turn or polling inline, the recipe forks a
 dedicated polling fiber that repeatedly checks pipeline status and
 resolves a `Deferred` when a terminal state is reached. The main agent
@@ -23,7 +23,7 @@ loop awaits that `Deferred` at the top of the next iteration.
 - `forkPipelinePoller` as a self-contained primitive: create the
   `Deferred`, fork the polling fiber into an explicit scope with
   `Effect.forkIn`, return the `Deferred` for the caller to await.
-- `Deferred.into` so the awaiter is **always** released — success,
+- `Deferred.into` so the awaiter is **always** released: success,
   check failure, or interruption all complete the `Deferred`.
 - A side-channel `Queue` that bridges the tool's `run` function (which
   forks the poller) with the loop body (which drains the pending
@@ -50,7 +50,7 @@ export const forkPipelinePoller = (
 ```
 
 The caller gets back a `Deferred` it can await at any point. The polling
-fiber is forked into the scope passed as an explicit value — when that
+fiber is forked into the scope passed as an explicit value. When that
 scope closes, the poller is interrupted too. No leaked fibers. The poll
 effect ends in `Deferred.into(signal)`, so whether the pipeline reaches a
 terminal state or `checkStatus` fails, the `Deferred` is completed and
@@ -89,7 +89,7 @@ loop((state) =>
 
 When the queue is empty the loop runs a model turn immediately. When a
 pipeline is pending it blocks until the polling fiber resolves the
-`Deferred` — no provider call is open, no HTTP connection is held. Tool
+`Deferred`. No provider call is open, no HTTP connection is held. Tool
 results are folded back into history with
 `Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn))`,
 the same pattern the other tool-using recipes share.
@@ -99,7 +99,7 @@ the same pattern the other tool-using recipes share.
 The [pause-resume](../pause-resume/) recipe uses a `Latch` for
 open/close gating. A `Deferred` is the right choice here because the
 signal is **one-shot**: the pipeline finishes exactly once. A `Latch`
-can be opened and closed repeatedly — overkill for a single completion
+can be opened and closed repeatedly, overkill for a single completion
 event, and it doesn't carry a result value.
 
 The full source lives next to this README at

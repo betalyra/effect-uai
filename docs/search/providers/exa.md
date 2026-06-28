@@ -1,6 +1,6 @@
 ---
 title: Exa
-description: Exa's neural search as a WebSearch backend — semantic retrieval ranked by score, with a retrieval-strategy knob and content-vertical filter.
+description: "Exa's neural search as a WebSearch backend: semantic retrieval ranked by score, with a retrieval-strategy knob and content-vertical filter."
 ---
 
 [Exa](https://docs.exa.ai/) searches by meaning rather than keywords. It
@@ -36,9 +36,9 @@ const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
 
 `exaLayer` registers two service tags from one implementation:
 
-- **`ExaSearch`** — the typed tag. Yield this for the Exa-specific knobs
+- **`ExaSearch`**: the typed tag. Yield this for the Exa-specific knobs
   below and the per-result `score`.
-- **`WebSearch`** — the generic tag for provider-portable code, including
+- **`WebSearch`**: the generic tag for provider-portable code, including
   [`webSearchTool`](/search/#drop-it-into-an-llm).
 
 ## Calling it
@@ -71,7 +71,7 @@ capability. See [what web search is not](/search/#what-web-search-is-not).
 
 ## See also
 
-- [Web search](/search/) — the cross-provider concept and the portable
+- [Web search](/search/): the cross-provider concept and the portable
   request / result shapes.
-- [Grounded answer](/recipes/grounded-answer/) — a streaming agent that
+- [Grounded answer](/recipes/grounded-answer/): a streaming agent that
   answers from live search with citations.

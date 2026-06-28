@@ -6,8 +6,8 @@ description: Prompt → music. One service tag, three modes. Two providers in tr
 A short text prompt can be enough for a usable clip.
 
 Music generation is the audio sibling of image generation: describe
-the thing you want, get media bytes back. Two providers ship today —
-**Google Lyria** and **ElevenLabs Music** — behind the same
+the thing you want, get media bytes back. Two providers ship today
+(**Google Lyria** and **ElevenLabs Music**) behind the same
 `MusicGenerator` service tag, so swapping providers is a Layer swap.
 
 **Scenario.** You need background music for a video, a quick demo
@@ -22,13 +22,13 @@ inpainting) live on each provider's typed surface.
 import { generate, streamGeneration, streamGenerationFrom } from "@effect-uai/core/MusicGenerator"
 ```
 
-- **`generate`** — sync. Prompt in, full `GenerateResult` (`primary`
+- **`generate`**: sync. Prompt in, full `GenerateResult` (`primary`
   plus `variants[]`) out. Async / poll-based providers hide their
   poll loop inside the adapter; caller still sees a single `Effect`.
-- **`streamGeneration`** — prompt in, `Stream<AudioChunk>` out.
+- **`streamGeneration`**: prompt in, `Stream<AudioChunk>` out.
   Providers without a native chunked endpoint emit a single chunk
   (Lyria); providers with one stream natively (ElevenLabs).
-- **`streamGenerationFrom`** — bidirectional. A
+- **`streamGenerationFrom`**: bidirectional. A
   `Stream<MusicSessionInput>` (prompts + playback control) flows in;
   a `Stream<MusicStreamEvent>` (audio chunks + in-band warnings)
   flows out. Gated by the `MusicInteractiveSession` capability marker.
@@ -111,7 +111,7 @@ per call. Suno and Mureka always return two; `variants` ensures the
 second isn't dropped. Construct in your own adapter with
 `singleVariant(result)`.
 
-`MusicResult` composes `AudioBlob` rather than extending it — pass
+`MusicResult` composes `AudioBlob` rather than extending it: pass
 `result.primary.audio` to anything that takes an `AudioBlob` without
 spreading.
 
@@ -132,7 +132,7 @@ type MusicSessionInput =
 ```
 
 Provider-typed services widen this with their own `config` variant
-for model-specific knobs — for example
+for model-specific knobs. For example
 `LyriaRealtimeSessionInput = MusicSessionInput | { _tag: "config"; config: LyriaRealtimeConfig }`
 adds Lyria's density / brightness / mute-stems / BPM / scale knobs.
 
@@ -145,7 +145,7 @@ type MusicStreamEvent =
   | { readonly _tag: "filteredPrompt"; readonly prompt: string; readonly reason: string }
 ```
 
-In-band events alongside audio bytes — Lyria RealTime emits
+In-band events alongside audio bytes: Lyria RealTime emits
 `filteredPrompt` and `warning` server-side messages that flow on the
 same stream rather than to a side-channel log. Filter with
 `isAudioEvent` if you only want chunks.
@@ -164,10 +164,10 @@ Same phantom-marker pattern as
 
 ## Provider matrix
 
-| Provider                                                    | Sync         | Chunked stream          | Bidi session                |
-| ----------------------------------------------------------- | ------------ | ----------------------- | --------------------------- |
-| [Google Lyria](/music-generation/providers/gemini/)         | ✓ (clip+pro) | ✓ (single-chunk emul.)  | — (planned: Lyria RealTime) |
-| [ElevenLabs Music](/music-generation/providers/elevenlabs/) | ✓            | ✓ (native HTTP chunked) | —                           |
+| Provider                                                    | Sync         | Chunked stream          | Bidi session                   |
+| ----------------------------------------------------------- | ------------ | ----------------------- | ------------------------------ |
+| [Google Lyria](/music-generation/providers/gemini/)         | ✓ (clip+pro) | ✓ (single-chunk emul.)  | none (planned: Lyria RealTime) |
+| [ElevenLabs Music](/music-generation/providers/elevenlabs/) | ✓            | ✓ (native HTTP chunked) | none                           |
 
 Both providers also expose typed-surface extras (`LyriaGenerator`,
 `ElevenLabsMusicGenerator`) for provider-specific wire fields the
@@ -177,15 +177,15 @@ the same service-tag shape.
 
 ## Next step
 
-[Basic music generation](/recipes/basic-music-generation/) — the
+[Basic music generation](/recipes/basic-music-generation/): the
 multi-provider recipe with `--provider=google|elevenlabs` dispatch.
 
 ## See also
 
-- [Google Lyria provider](/music-generation/providers/gemini/) —
+- [Google Lyria provider](/music-generation/providers/gemini/):
   models, request shape, watermark notes.
-- [ElevenLabs Music provider](/music-generation/providers/elevenlabs/) —
+- [ElevenLabs Music provider](/music-generation/providers/elevenlabs/):
   composition plans, C2PA, free plan-generator endpoint.
-- [Speech](/speech/) — sibling capability for STT and TTS.
-- [Migrating to 0.7](/migrations/v0-7/) — the cross-provider trim
+- [Speech](/speech/): sibling capability for STT and TTS.
+- [Migrating to 0.7](/migrations/v0-7/): the cross-provider trim
   and the new ElevenLabs adapter.

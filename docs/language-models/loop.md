@@ -58,13 +58,13 @@ Loop.stop(state) // end the loop AND surface a final state
 values before them: emit a run of values then continue with
 `values.pipe(Stream.map(Loop.value), Stream.concat(Loop.next(state)))`,
 or just `Loop.next(state)` when there were no values. The streaming-tool
-helper [`Toolkit.continueWithResults`](/concepts/tools/) bundles that
+helper [`Toolkit.continueWithResults`](/language-models/tools/) bundles that
 pattern: it forwards every `ToolEvent` as `Loop.value`, accumulates the
 terminal `Output` events into a `ReadonlyArray<ToolResult>`, and concats
 one `Loop.next(build(results))` at end-of-stream.
 
 Reach for `stop(state)` when the loop ending _is_ the result you care
-about — a summarised state, a tallied result, a final checkpoint.
+about: a summarised state, a tallied result, a final checkpoint.
 `loopWithState` exposes that final state to the caller; with plain
 `stop()` it's discarded.
 
@@ -120,12 +120,12 @@ pipe(
 
 What it does:
 
-- Each `TurnEvent` passes through as `Loop.value(event)` — including
+- Each `TurnEvent` passes through as `Loop.value(event)`, including
   the terminal `TurnComplete`, so the consumer sees turn boundaries.
 - Once the terminal arrives, the callback runs with the assembled
   `Turn` and its returned event-stream is concatenated. Typically that
   stream comes from `Toolkit.run` threaded through `continueWithResults`
-  to advance — or just `stop()`.
+  to advance, or just `stop()`.
 - `ToolEvent`s emitted by the executor (`Progress`, `Output`,
   `ApprovalRequested`) flow through alongside the `TurnEvent`s.
 - Pre-pipe transforms work as you'd expect: `Stream.tap` for logging,

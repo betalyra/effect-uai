@@ -102,17 +102,17 @@ describe("layerOtlp", () => {
 
         // Provide the OTLP layer scoped to the recording program. The exporter
         // flushes on scope close (interval is long, so we rely on the flush).
-        yield* Stream.make(ev)
-          .pipe(record(), Stream.runDrain)
-          .pipe(
-            Effect.provide(
-              layerOtlp({
-                url: "http://localhost:4318/v1/metrics",
-                resource: { serviceName: "test-service" },
-                exportInterval: "10 minutes",
-              }).pipe(Layer.provide(clientLayer)),
-            ),
-          )
+        yield* Stream.make(ev).pipe(
+          record(),
+          Stream.runDrain,
+          Effect.provide(
+            layerOtlp({
+              url: "http://localhost:4318/v1/metrics",
+              resource: { serviceName: "test-service" },
+              exportInterval: "10 minutes",
+            }).pipe(Layer.provide(clientLayer)),
+          ),
+        )
 
         const captured = yield* Ref.get(bodies)
         expect(captured.length).toBeGreaterThanOrEqual(1)

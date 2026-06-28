@@ -81,10 +81,14 @@ describe("embed / embedMany free exports preserve E in their return type", () =>
     // of the cross-provider request set. Requesting them on the generic
     // helper is a compile error; they're reachable only via the typed
     // `JinaEmbedding` tag.
+    // These calls exist only to assert the encoding is a compile error; they
+    // are intentionally never run, so the floating-effect check is off here.
+    // @effect-diagnostics effect/floatingEffect:off
     // @ts-expect-error "multivector" is not an EmbedEncoding
     embedMany({ inputs: ["x"], model: "m", encoding: "multivector" })
     // @ts-expect-error "sparse" is not an EmbedEncoding
     embed({ input: "x", model: "m", encoding: "sparse" })
+    // @effect-diagnostics effect/floatingEffect:error
   })
 
   it("when the request is widened to CommonEmbedRequest, the response is the open union", () => {

@@ -293,6 +293,10 @@ export const decodeArgs = <Input>(
 ): Effect.Effect<Input, ToolError | ToolValidationError> =>
   Effect.gen(function* () {
     const parsed = yield* Effect.try({
+      // inputSchema validates through Standard Schema, not Effect Schema, so its
+      // JSON codecs don't apply; the parse is separate to keep ToolError (bad
+      // JSON) distinct from ToolValidationError (bad shape).
+      // @effect-diagnostics-next-line effect/preferSchemaOverJson:off
       try: () => JSON.parse(call.arguments) as unknown,
       catch: toToolError(call, tool.name, "Failed to parse JSON arguments"),
     })

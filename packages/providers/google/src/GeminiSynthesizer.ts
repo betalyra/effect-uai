@@ -129,14 +129,12 @@ const synthesizeImpl = (cfg: Config) => (request: GeminiSynthesizeRequest) =>
     // Gemini `:generateContent` TTS has no phoneme field. Pronunciations
     // are load-bearing (bucket 1), so reject rather than mispronounce.
     if (request.pronunciations !== undefined && request.pronunciations.length > 0) {
-      return yield* Effect.fail(
-        new AiError.Unsupported({
-          provider: "gemini",
-          capability: "pronunciations",
-          reason:
-            "Gemini `:generateContent` TTS has no phoneme field. Use Cloud Text-to-Speech (Chirp 3 HD) or a provider with inline phonemes (Inworld) for pronunciation overrides.",
-        }),
-      )
+      return yield* new AiError.Unsupported({
+        provider: "gemini",
+        capability: "pronunciations",
+        reason:
+          "Gemini `:generateContent` TTS has no phoneme field. Use Cloud Text-to-Speech (Chirp 3 HD) or a provider with inline phonemes (Inworld) for pronunciation overrides.",
+      })
     }
     // No speaking-rate or language parameters on this endpoint; bucket 2.
     yield* Capabilities.warnDroppedWhen(request.speed, {

@@ -292,7 +292,7 @@ export const main = Effect.gen(function* () {
     `voice-loop (${provider}: stt=${cfg.stt.model} llm=${cfg.llm.model} tts=${cfg.tts.model})`,
   )
 
-  return Layer.launch(
+  return yield* Layer.launch(
     HttpRouter.serve(
       routesLayer({ cfg, indexHtml, clientJs, micWorkletJs, playbackWorkletJs, minLevel }),
     ),

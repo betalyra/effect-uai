@@ -1,5 +1,7 @@
 # effect-uai
 
+## 0.9.0
+
 ## 0.8.0
 
 ### Minor Changes
@@ -160,13 +162,13 @@
 
   ```ts
   // Before
-  import { retry } from "@effect-uai/core/LanguageModel"
-  streamTurn(req).pipe(retry(schedule))
+  import { retry } from "@effect-uai/core/LanguageModel";
+  streamTurn(req).pipe(retry(schedule));
 
   // After
-  import * as Retry from "@effect-uai/core/Retry"
-  streamTurn(req).pipe(Retry.stream(schedule))
-  embed(req).pipe(Retry.effect(schedule))
+  import * as Retry from "@effect-uai/core/Retry";
+  streamTurn(req).pipe(Retry.stream(schedule));
+  embed(req).pipe(Retry.effect(schedule));
   ```
 
   `Retryable` and `isRetryable` move to the same module.

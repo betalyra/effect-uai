@@ -9,6 +9,7 @@
       "@effect-uai/responses",
       "@effect-uai/anthropic",
       "@effect-uai/google",
+      "@effect-uai/mistral",
       "@effect-uai/jina",
       "@effect-uai/openai",
       "@effect-uai/elevenlabs",

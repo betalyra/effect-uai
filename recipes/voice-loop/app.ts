@@ -292,7 +292,11 @@ export const main = Effect.gen(function* () {
     `voice-loop (${provider}: stt=${cfg.stt.model} llm=${cfg.llm.model} tts=${cfg.tts.model})`,
   )
 
-  return yield* Layer.launch(
+  // The rule's `return yield*` suggestion would surface the served layer's
+  // requirements onto main's R and break the runners' types, so keep returning
+  // the launch effect here.
+  // @effect-diagnostics-next-line effect/returnEffectInGen:off
+  return Layer.launch(
     HttpRouter.serve(
       routesLayer({ cfg, indexHtml, clientJs, micWorkletJs, playbackWorkletJs, minLevel }),
     ),

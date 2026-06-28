@@ -102,7 +102,10 @@ export default defineConfig({
         { label: "Providers", slug: "providers" },
         {
           label: "Concepts",
-          items: [{ label: "Items and turns", slug: "concepts/items-and-turns" }],
+          items: [
+            { label: "Items and turns", slug: "concepts/items-and-turns" },
+            { label: "Metrics", slug: "concepts/metrics" },
+          ],
         },
         {
           label: "Language models",
@@ -159,6 +162,7 @@ export default defineConfig({
                   slug: "recipes/multi-model-compare",
                 },
                 { label: "Model council", slug: "recipes/model-council" },
+                { label: "Basic metrics", slug: "recipes/basic-metrics" },
               ],
             },
           ],

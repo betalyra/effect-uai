@@ -227,7 +227,11 @@ export const main = Effect.gen(function* () {
   yield* Effect.logInfo(`radio-station (responses + ${provider} music: ${cfg.musicModel})`)
   yield* Effect.logInfo(`tracks cached at: ${tracksDir}`)
 
-  return yield* Layer.launch(
+  // The rule's `return yield*` suggestion would surface the served layer's
+  // requirements onto main's R and break the runners' types, so keep returning
+  // the launch effect here.
+  // @effect-diagnostics-next-line effect/returnEffectInGen:off
+  return Layer.launch(
     HttpRouter.serve(
       routesLayer({
         brief: cfg.brief,

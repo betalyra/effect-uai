@@ -35,6 +35,12 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Agentic loop](/recipes/agentic-loop/)                 | Drive a long-lived chat from a user-message queue while continuing model/tool work between clean turn boundaries. |
 | [Sleeper agent](/recipes/sleeper-agent/)               | Wait for a long-running tool call. The agent goes quiet while the work runs and wakes up when it's done.          |
 
+## Observability
+
+| Recipe                                   | One-line                                                                                                                                     |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Basic metrics](/recipes/basic-metrics/) | Stack time-to-first-token, throughput, token totals, and completion time onto a generation; log them live while the story streams to a file. |
+
 ## Transport
 
 | Recipe                                                 | One-line                                                                                   |

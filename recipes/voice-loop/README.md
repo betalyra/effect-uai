@@ -16,6 +16,16 @@ question. Ask a follow-up while the assistant is still speaking and it
 queues. Say "stop" mid-answer and playback is cancelled so you can ask
 the next thing.
 
+## Watch: the modular pipeline pattern
+
+For the architecture itself,
+[Julia Turc](https://www.youtube.com/@juliaturc1) has a
+nice independent explainer on building a STT→LLM→TTS voice pipeline with Mistral's Voxtral and chat models.
+Unaffiliated with effect-uai, but it captures the core modular idea well, and
+it is what prompted adding the all-Mistral stack (`--provider=mistral`) here.
+
+▶ **[Watch it on YouTube](https://www.youtube.com/watch?v=hyhANozV9Nw)**
+
 ## The Pipeline
 
 The recipe composes three provider surfaces without a voice-assistant

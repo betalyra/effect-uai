@@ -61,11 +61,11 @@ tools are locally executable. The four kinds, discriminated by `_tag`:
 | `Tool.signal`      | nobody — the loop **interprets** the call                | escalate, pause, schedule, hand off                       |
 | `Tool.interaction` | an external actor — the loop **stops and resumes** later | "ask the user to choose an account"                       |
 
-`Tool.signal` and `Tool.interaction` replace the old workaround of a fake
-`run: () => Effect.succeed(...)`. They carry a `name`, `description`, and
-`inputSchema`, so you still `Tool.decodeArgs(signal, call)` the arguments — you
-just act on them (advance a tier, schedule a wake-up, stop for input) instead of
-running a handler:
+`Tool.signal` and `Tool.interaction` are decode-only: they carry a `name`,
+`description`, and `inputSchema` but no `run`. You decode the arguments with
+`Tool.decodeArgs(signal, call)` and act on them (advance a tier, schedule a
+wake-up, stop for input) where the loop interprets the call, instead of running
+a handler:
 
 ```ts
 const escalate = Tool.signal({
@@ -326,7 +326,7 @@ round-trip below.
 The full pattern is in [Basic usage](/recipes/basic-usage/). The body:
 
 ```ts
-onTurnComplete<State, ToolEvent>((turn) =>
+onTurnComplete((turn) =>
   Effect.sync(() => {
     const calls = Turn.getToolCalls(turn)
     // If the model did not ask for tools, this conversation is done.

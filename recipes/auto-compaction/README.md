@@ -63,7 +63,7 @@ loop((state) =>
       onTurnComplete((turn) =>
         Effect.sync(() => {
           const next = advance(state, turn)
-          if (state.pendingPrompts.length === 0) return stop
+          if (state.pendingPrompts.length === 0) return stop()
           const [nextPrompt, ...rest] = state.pendingPrompts
           // The next user prompt is just another Item appended to history.
           return nextAfter(Stream.empty, {

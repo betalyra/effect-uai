@@ -81,14 +81,22 @@ JSON is complete), see the
 [Streaming structured output](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-structured-output)
 recipe.
 
-## What This Generalizes To
+## Where you'll reach for this
 
-Structured output composes with the same primitives as everything else:
+Any time you want a value back, not prose to parse:
 
-- use it inside a loop when every turn needs a typed decision;
-- catch typed decode failures and retry with a stricter prompt;
-- swap providers by changing the layer, not the program shape;
-- stream JSONL objects with the streaming structured-output recipe.
+- **Extraction and classification.** Pull a contact, an invoice, or a
+  support-ticket category out of free text and hand the rest of your
+  program a typed record it can trust.
+- **A typed decision inside a loop.** When a turn has to pick a branch,
+  decode the choice and `switch` on it instead of string-matching the
+  model's words.
+- **Trying another provider.** `structured` is honored by OpenAI,
+  Anthropic, and Gemini, so switching is a layer change, not a rewrite.
+
+When the objects should arrive one at a time as the model writes them (a
+live results list, a long batch you don't want to wait out), reach for
+[Streaming structured output](/recipes/streaming-structured-output/).
 
 ## Run it
 

@@ -15,6 +15,16 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.9](/migrations/v0-9/): a tool-layer refactor (breaking
+  but mechanical) plus an additive Mistral provider. A `Toolkit` is now a
+  name-indexed record built with `Toolkit.make` and passed straight to
+  `streamTurn` / `Toolkit.run` (no `Tool.toDescriptors` at the call site);
+  plain and streaming tools unify into one `Tool.make` whose
+  `run(input, emit)` returns an `Effect` (`Tool.streaming` / `finalize`
+  removed); control and provider tools get honest kinds (`Tool.signal`,
+  `Tool.interaction`, `Tool.provider`); independent toolkits combine with
+  `Toolkit.compose`. Additive: `@effect-uai/mistral` (Mistral LLM plus
+  Voxtral STT/TTS), enough to run an all-Mistral voice loop.
 - [Migrating to 0.8](/migrations/v0-8/): purely additive. A new
   `WebSearch` capability in `@effect-uai/core` (a generic search service
   plus a ready-made `webSearchTool` for grounding an LLM), three search

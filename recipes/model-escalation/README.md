@@ -59,12 +59,12 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
             ...(current.tier === 0 ? { tools: escalationToolkit } : {}),
           })
           .pipe(
-            // `then` may return a step stream directly or an Effect of one -
-            // bare `stop` for the guards, an Effect for the decode branch.
-            onTurnComplete<State, EscalationEvent>((turn) => {
-              if (current.tier === 1) return stop
-              const call = Turn.functionCalls(turn).find((c) => c.name === "escalate")
-              if (call === undefined) return stop
+            // `then` may return a step stream directly or an Effect of one:
+            // `stop()` for the guards, an Effect for the decode branch.
+            onTurnComplete((turn) => {
+              if (current.tier === 1) return stop()
+              const call = Turn.getToolCalls(turn).find((c) => c.name === "escalate")
+              if (call === undefined) return stop()
 
               // Decode against escalate's own schema - the tool already owns
               // it, so there's no second decoder to keep in sync.

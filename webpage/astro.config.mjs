@@ -88,12 +88,11 @@ export default defineConfig({
             { label: "Installation", slug: "start/installation" },
             { label: "Quickstart", slug: "start/getting-started" },
             { label: "Basic usage", slug: "recipes/basic-usage" },
-            { label: "Structured output", slug: "recipes/structured-output" },
-            { label: "Basic embedding", slug: "recipes/basic-embedding" },
             { label: "Recipes", slug: "recipes" },
             { label: "Skills", slug: "skills" },
           ],
         },
+        { label: "Providers", slug: "providers" },
         {
           label: "Concepts",
           items: [{ label: "Items and turns", slug: "concepts/items-and-turns" }],
@@ -124,6 +123,10 @@ export default defineConfig({
                 {
                   label: "Streaming tool output",
                   slug: "recipes/streaming-tool-output",
+                },
+                {
+                  label: "Structured output",
+                  slug: "recipes/structured-output",
                 },
                 {
                   label: "Streaming structured output",
@@ -169,6 +172,11 @@ export default defineConfig({
                 { label: "Google Gemini", slug: "embeddings/providers/gemini" },
                 { label: "Jina", slug: "embeddings/providers/jina" },
               ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Basic embedding", slug: "recipes/basic-embedding" }],
             },
           ],
         },
@@ -251,6 +259,14 @@ export default defineConfig({
           items: [
             { label: "Overview", slug: "search" },
             {
+              label: "Providers",
+              items: [
+                { label: "Perplexity", slug: "search/providers/perplexity" },
+                { label: "Exa", slug: "search/providers/exa" },
+                { label: "Tavily", slug: "search/providers/tavily" },
+              ],
+            },
+            {
               label: "Recipes",
               collapsed: true,
               items: [
@@ -283,6 +299,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.9", slug: "migrations/v0-9" },
             { label: "Migrating to 0.8", slug: "migrations/v0-8" },
             { label: "Migrating to 0.7", slug: "migrations/v0-7" },
             { label: "Migrating to 0.6", slug: "migrations/v0-6" },

@@ -97,7 +97,7 @@ pipe(
           tools: toolkit,
         })
         .pipe(
-          onTurnComplete<State, ToolEvent>((turn) =>
+          onTurnComplete((turn) =>
             Effect.gen(function* () {
               const calls = Turn.getToolCalls(turn)
 

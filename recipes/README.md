@@ -14,7 +14,7 @@ that double as living regression tests for the primitive surface.
 - [`structured-output/`](./structured-output/) - one schema as provider
   contract and local validator.
 - [`tool-call-approval/`](./tool-call-approval/) - gate sensitive calls before
-  `executeAll`; still return one result per model-requested tool call.
+  `run`; still return one result per model-requested tool call.
 - [`streaming-tool-output/`](./streaming-tool-output/) - show inner tool work
   to the user while returning one clean output to the model.
 - [`streaming-structured-output/`](./streaming-structured-output/) - decode

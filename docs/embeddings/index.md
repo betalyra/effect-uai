@@ -16,6 +16,11 @@ options (full task enum, sparse / multivector encoding, document title).
 This is the same seam the [language model](/concepts/language-model/)
 uses. Different shape, same idea.
 
+New to embeddings? [Basic embedding](/recipes/basic-embedding/) is the
+smallest end-to-end example: embed a query and a handful of documents,
+then rank them by cosine similarity. The rest of this page is the concept
+behind it.
+
 ## The shape
 
 ```ts

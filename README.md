@@ -82,18 +82,22 @@ fallback, see the [docs](#docs--learn) or the
 
 ## Packages
 
-| Package                                                         | What it is                                                                                                                                                                        |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@effect-uai/core`](./packages/core)                           | The primitives: `Loop`, `LanguageModel`, `Tool`, `Toolkit`, `Items`, `Turn`, `Transcriber`, `SpeechSynthesizer`, `EmbeddingModel`, `MusicGenerator`, `Sandbox`. No provider deps. |
-| [`@effect-uai/responses`](./packages/providers/responses)       | OpenAI Responses provider. Implements `LanguageModel` over OpenAI's `/v1/responses` endpoint.                                                                                     |
-| [`@effect-uai/anthropic`](./packages/providers/anthropic)       | Anthropic Messages provider, including extended thinking.                                                                                                                         |
-| [`@effect-uai/google`](./packages/providers/google)             | Google Gemini: language model, embeddings, speech (sync STT + TTS), and Lyria music generation.                                                                                   |
-| [`@effect-uai/openai`](./packages/providers/openai)             | OpenAI speech: `Transcriber` (sync + realtime WS) and `Synthesizer` (sync + chunked HTTP).                                                                                        |
-| [`@effect-uai/elevenlabs`](./packages/providers/elevenlabs)     | ElevenLabs speech: Scribe v2 Realtime STT and Flash v2.5 TTS with incremental-text-in WS.                                                                                         |
-| [`@effect-uai/inworld`](./packages/providers/inworld)           | Inworld speech: first-party STT/TTS plus router-style passthroughs (AssemblyAI / Soniox / Groq Whisper).                                                                          |
-| [`@effect-uai/jina`](./packages/providers/jina)                 | Jina embeddings: dense, sparse (ELSER), and multivector (ColBERT-style) variants.                                                                                                 |
-| [`@effect-uai/microsandbox`](./packages/providers/microsandbox) | Local Firecracker microVM sandboxes via [microsandbox](https://github.com/microsandbox/microsandbox). Run untrusted code in isolation.                                            |
-| [`@effect-uai/deno`](./packages/providers/deno)                 | Hosted Firecracker microVM sandboxes on [Deno Deploy](https://docs.deno.com/deploy/). No local infra to run.                                                                      |
+| Package                                                         | What it is                                                                                                                                                                                     |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@effect-uai/core`](./packages/core)                           | The primitives: `Loop`, `LanguageModel`, `Tool`, `Toolkit`, `Items`, `Turn`, `Transcriber`, `SpeechSynthesizer`, `EmbeddingModel`, `MusicGenerator`, `WebSearch`, `Sandbox`. No provider deps. |
+| [`@effect-uai/responses`](./packages/providers/responses)       | OpenAI Responses provider. Implements `LanguageModel` over OpenAI's `/v1/responses` endpoint.                                                                                                  |
+| [`@effect-uai/anthropic`](./packages/providers/anthropic)       | Anthropic Messages provider, including extended thinking.                                                                                                                                      |
+| [`@effect-uai/google`](./packages/providers/google)             | Google Gemini: language model, embeddings, speech (sync STT + TTS), and Lyria music generation.                                                                                                |
+| [`@effect-uai/mistral`](./packages/providers/mistral)           | Mistral: `LanguageModel` (chat) plus Voxtral speech: realtime + batch STT and TTS. One brand for a full STT to LLM to TTS pipeline.                                                            |
+| [`@effect-uai/openai`](./packages/providers/openai)             | OpenAI speech: `Transcriber` (sync + realtime WS) and `Synthesizer` (sync + chunked HTTP).                                                                                                     |
+| [`@effect-uai/elevenlabs`](./packages/providers/elevenlabs)     | ElevenLabs speech: Scribe v2 Realtime STT and Flash v2.5 TTS with incremental-text-in WS.                                                                                                      |
+| [`@effect-uai/inworld`](./packages/providers/inworld)           | Inworld speech: first-party STT/TTS plus router-style passthroughs (AssemblyAI / Soniox / Groq Whisper).                                                                                       |
+| [`@effect-uai/jina`](./packages/providers/jina)                 | Jina embeddings: dense, sparse (ELSER), and multivector (ColBERT-style) variants.                                                                                                              |
+| [`@effect-uai/perplexity`](./packages/providers/perplexity)     | Perplexity web search: fast, current-events snippets for grounding an LLM.                                                                                                                     |
+| [`@effect-uai/exa`](./packages/providers/exa)                   | Exa web search: neural / semantic retrieval ranked by relevance score.                                                                                                                         |
+| [`@effect-uai/tavily`](./packages/providers/tavily)             | Tavily web search: snippets and scores with search-depth control.                                                                                                                              |
+| [`@effect-uai/microsandbox`](./packages/providers/microsandbox) | Local Firecracker microVM sandboxes via [microsandbox](https://github.com/microsandbox/microsandbox). Run untrusted code in isolation.                                                         |
+| [`@effect-uai/deno`](./packages/providers/deno)                 | Hosted Firecracker microVM sandboxes on [Deno Deploy](https://docs.deno.com/deploy/). No local infra to run.                                                                                   |
 
 Each provider is its own package - edge / browser builds only pull in
 what you actually use.
@@ -108,13 +112,17 @@ what you actually use.
 │       ├── responses/         # @effect-uai/responses - OpenAI Responses
 │       ├── anthropic/         # @effect-uai/anthropic
 │       ├── google/            # @effect-uai/google - Gemini + speech + Lyria
+│       ├── mistral/           # @effect-uai/mistral - LLM + Voxtral speech (STT/TTS)
 │       ├── openai/            # @effect-uai/openai - speech (STT/TTS)
 │       ├── elevenlabs/        # @effect-uai/elevenlabs - speech
 │       ├── inworld/           # @effect-uai/inworld - speech
 │       ├── jina/              # @effect-uai/jina - embeddings
+│       ├── perplexity/        # @effect-uai/perplexity - web search
+│       ├── exa/               # @effect-uai/exa - web search
+│       ├── tavily/            # @effect-uai/tavily - web search
 │       ├── microsandbox/      # @effect-uai/microsandbox - local sandboxes
 │       └── deno/              # @effect-uai/deno - hosted sandboxes
-├── recipes/                   # 26 working examples (type-checked, tested) covering
+├── recipes/                   # 27 worked recipes (type-checked, tested) covering
 │                              # tools, approvals, fallback, voice, sandboxes, …
 ├── recipes-extras/            # Recipes that need extra infra to run (e.g. sandbox-code-interpreter)
 ├── docs/                      # Source for the docs site (concepts, recipes, providers)

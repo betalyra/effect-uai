@@ -181,6 +181,22 @@ A provider-hosted tool you passed as a hand-built descriptor becomes
 - [ ] Tool-array parameters retyped as `Toolkit.Toolkit`
 - [ ] `pnpm typecheck` clean
 
+### New: Mistral provider (additive, no rewrite)
+
+0.9 also ships `@effect-uai/mistral`, one brand covering three capability
+tags: `LanguageModel` (Mistral chat models), `Transcriber` (Voxtral batch +
+realtime STT), and `SpeechSynthesizer` (Voxtral TTS). Adopt it the same way
+as any provider: provide the layer, keep yielding the generic tag.
+
+```ts
+import { layer as mistral } from "@effect-uai/mistral/Mistral"
+// program.pipe(Effect.provide(mistral({ apiKey })))
+```
+
+Because all three surfaces share one brand, the
+[Voice loop](https://effect-uai.betalyra.com/recipes/voice-loop/) runs an
+entire STT to LLM to TTS pipeline on Mistral alone (`--provider=mistral`).
+
 ---
 
 ## 0.7 → 0.8

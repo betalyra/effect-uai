@@ -110,6 +110,10 @@
       "types": "./dist/transcriber/Transcriber.d.mts",
       "import": "./dist/transcriber/Transcriber.mjs"
     },
+    "./WebRead": {
+      "types": "./dist/web-read/WebRead.d.mts",
+      "import": "./dist/web-read/WebRead.mjs"
+    },
     "./WebSearch": {
       "types": "./dist/web-search/WebSearch.d.mts",
       "import": "./dist/web-search/WebSearch.mjs"

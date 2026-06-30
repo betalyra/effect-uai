@@ -18,7 +18,8 @@
       "@effect-uai/deno",
       "@effect-uai/perplexity",
       "@effect-uai/exa",
-      "@effect-uai/tavily"
+      "@effect-uai/tavily",
+      "@effect-uai/firecrawl"
     ]
   ],
   "linked": [],

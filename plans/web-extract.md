@@ -123,8 +123,8 @@ developer expects it from a generic reader. Support matrix:
 | Field | FC | Jina | Exa | Tavily | Spider | ScrBee | BD | Oxy | Common? |
 | --- | :--: | :--: | :--: | :--: | :--: | :--: | :--: | :--: | :--: |
 | `url` (single) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **yes** |
-| `mainContentOnly` | ✓ | default | ✓ | impl | ✓ | ✓ | ✓ | ✓ | **yes** (default true) |
-| `js` (render on/off) | ✓ | ✓ | ✓ | depth | ✓ | ✓ | ✓ | ✓ | **yes** |
+| `mainContentOnly` (toggle) | bool | default | default | default | bool | bool | bool | bool | no -> typed |
+| `js` (render on/off) | on-only | engine enum | auto | depth | bool | bool | bool | bool | no -> typed |
 | `format` markdown | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **yes** (default; universal) |
 | `format` html | ✓ | ✓ | ✓ tags | ✗ | ✓ | ✓ | ✓ | ✓ | **yes** (7/8; Tavily warn) |
 | `format` rawHtml (unmodified) | ✓ | ~ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | no -> typed |
@@ -136,18 +136,24 @@ developer expects it from a generic reader. Support matrix:
 export type CommonReadRequest = {
   readonly url: string
   readonly format?: "markdown" | "html" // markdown default; html is 7/8 (Tavily warn-falls-back); rawHtml stays provider-typed
-  readonly mainContentOnly?: boolean // default true; the cookie-banner/popup/nav strip
-  readonly js?: boolean // render with a headless browser
   readonly timeout?: Duration.Duration
 }
 ```
 
 Decisions baked in:
 
-- **`mainContentOnly` defaults to `true`.** It is the shared default
-  behavior (FC `onlyMainContent`, Jina readability, Exa text, Spider
-  markdown), not a uniform toggle, so we promise the default and map the
-  toggle where it exists, `warnDropped` where it does not.
+- **`mainContentOnly` and `js` are provider-typed, not common.** Clean
+  main-content output is the shared *default behavior* (every provider
+  strips boilerplate by default), so the capability promises that default.
+  but the *toggles* are not unified: only the scraper-family providers
+  expose a real `mainContentOnly` boolean and a real JS on/off, while the
+  reader-family (Jina engine enum, Exa auto-render, Tavily depth, Firecrawl
+  always-on) express it differently or not at all. Forcing a `boolean`
+  onto the floor would fake a uniformity that isn't there, so both live on
+  the provider-typed request where they're genuinely supported (e.g.
+  `FirecrawlRead.onlyMainContent`, `JinaReader.engine`). Note: Exa
+  `livecrawl` is cache-*freshness*, not JS rendering. the two are
+  orthogonal and neither maps to a common `js`.
 - **`format` floor is `markdown | html`.** Two representations, no more.
   Markdown is universal and the default (the LLM-ready point of the
   capability). The June-2026 re-check (section 2 note [2]) promotes
@@ -282,7 +288,7 @@ cannot fetch a named page. `R = WebRead`.
 ```ts
 export const webReadTool = (options?: {
   readonly name?: string // default "read_url"
-  readonly mainContentOnly?: boolean // app default true
+  readonly format?: ReadFormat // app default "markdown"
   readonly maxChars?: number // truncate the returned content (default e.g. 50_000); see below
 }): Tool.Tool<"read_url", { url: string }, string, WebRead> => /* read(args.url) -> content string */
 ```
@@ -307,9 +313,6 @@ tool form, added with the recipe.
 Existing three buckets (`Unsupported` / `Capabilities.warnDropped` /
 silent-provider-typed):
 
-- **`mainContentOnly: false` on always-clean providers** (Exa, where
-  cleaning is implicit) -> `warnDropped`, since we cannot return raw
-  boilerplate there.
 - **`format: "html"` on Tavily** (the lone read provider with no HTML
   path) -> `warnDropped` + fall back to markdown. Resolved to
   warn-fallback, not `Unsupported`: HTML is a representation choice, not a
@@ -318,8 +321,10 @@ silent-provider-typed):
   ([ExaSearch.ts:199-209](../packages/providers/exa/src/ExaSearch.ts#L199-L209))
   via `Capabilities.warnDroppedWhen`. Every other read provider maps
   `html` natively.
-- **`js` toggle** where a provider only auto-decides (Exa) -> map to the
-  nearest mode, `warnDropped` if forced off is impossible.
+- **`mainContentOnly` / `js` are not on the common floor** (they are
+  provider-typed, see section 4), so there is nothing to warn or drop on
+  the generic surface. Each provider's typed request exposes whatever
+  toggle it genuinely has.
 - **Provider-only knobs** (FC `actions`/`proxy`, Jina `x-engine`/
   `x-with-generated-alt`, Exa `livecrawlTimeout`) -> silent,
   provider-typed request only.
@@ -387,5 +392,7 @@ build-on-demand (below), not part of the initial scope.
 4. **Jina extraction headers** unverified (section 2 note [1]); confirm
    before wiring Jina into `ServerSideExtract`. HTML output is already
    confirmed, so it does not block the read path.
-5. **`mainContentOnly` semantics**: promise-the-default vs require-a-
-   toggle. Recommend promise-the-default, warn where no toggle.
+5. **`mainContentOnly` / `js` placement.** **Resolved:** off the common
+   floor, onto provider-typed requests (section 4). Clean main-content is
+   the promised default behavior; the *toggles* aren't unified across
+   providers, so a common `boolean` would fake uniformity that isn't there.

@@ -11,12 +11,14 @@
  * `firecrawlLayer` with any other `WebRead` backend, or `geminiLayer` with any
  * other `LanguageModel`, and `recipe.ts` is untouched.
  */
-import { Config, Console, Effect, Layer, Logger, References, Result } from "effect"
+import { Config, Console, Effect, Layer, Logger, Match, References, Result } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import { WebRead } from "@effect-uai/core/WebRead"
+import { layer as exaLayer } from "@effect-uai/exa/ExaContents"
 import { layer as firecrawlLayer } from "@effect-uai/firecrawl/FirecrawlRead"
 import { layer as geminiLayer } from "@effect-uai/google/Gemini"
 import { layer as jinaLayer } from "@effect-uai/jina/JinaReader"
+import { layer as tavilyLayer } from "@effect-uai/tavily/TavilyRead"
 import { marketIntel, type Product } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
@@ -92,19 +94,30 @@ export const main = Effect.gen(function* () {
 // App-level layer: Firecrawl (WebRead) + Gemini (LanguageModel) + logging.
 // ---------------------------------------------------------------------------
 
+// Each WebRead backend reads its own API key from a different env var.
+const apiKeyEnvFor = (provider: string): string =>
+  Match.value(provider).pipe(
+    Match.when("jina", () => "JINA_API_KEY"),
+    Match.when("exa", () => "EXA_API_KEY"),
+    Match.when("tavily", () => "TAVILY_API_KEY"),
+    Match.orElse(() => "FIRECRAWL_API_KEY"),
+  )
+
 // Pick the WebRead backend from `READ_PROVIDER` (default firecrawl). This is
 // the recipe's portability payoff: the read provider swaps here, the recipe
-// code does not. Firecrawl needs `FIRECRAWL_API_KEY`, Jina needs
-// `JINA_API_KEY`.
+// code does not. Only the selected provider's key is read. Every branch
+// registers the generic `WebRead` tag, so the annotation widens the Match
+// union to it (Layer is covariant in its output).
 const readProviderLayer = Layer.unwrap(
   Effect.gen(function* () {
     const provider = yield* Config.string("READ_PROVIDER").pipe(Config.withDefault("firecrawl"))
-    // Both register the generic `WebRead` tag; widen to it so the branches
-    // unify (Layer is covariant in its output).
-    const layer: Layer.Layer<WebRead, never, HttpClient.HttpClient> =
-      provider === "jina"
-        ? jinaLayer({ apiKey: yield* Config.redacted("JINA_API_KEY") })
-        : firecrawlLayer({ apiKey: yield* Config.redacted("FIRECRAWL_API_KEY") })
+    const apiKey = yield* Config.redacted(apiKeyEnvFor(provider))
+    const layer: Layer.Layer<WebRead, never, HttpClient.HttpClient> = Match.value(provider).pipe(
+      Match.when("jina", () => jinaLayer({ apiKey })),
+      Match.when("exa", () => exaLayer({ apiKey })),
+      Match.when("tavily", () => tavilyLayer({ apiKey })),
+      Match.orElse(() => firecrawlLayer({ apiKey })),
+    )
     return layer
   }),
 )

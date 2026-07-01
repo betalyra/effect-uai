@@ -296,6 +296,8 @@ export default defineConfig({
               items: [
                 { label: "Firecrawl", slug: "web-reading/providers/firecrawl" },
                 { label: "Jina Reader", slug: "web-reading/providers/jina" },
+                { label: "Exa Contents", slug: "web-reading/providers/exa" },
+                { label: "Tavily Extract", slug: "web-reading/providers/tavily" },
               ],
             },
             {

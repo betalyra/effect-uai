@@ -75,18 +75,23 @@ and the model both swappable.
 
 Provide one provider `layer` and your `WebRead`-yielding code resolves.
 
-| Provider     | Package                 | Notes                                          |
-| ------------ | ----------------------- | ---------------------------------------------- |
-| Firecrawl    | `@effect-uai/firecrawl` | JS render, main-content strip, markdown/html   |
-| Jina Reader  | `@effect-uai/jina`      | Header-driven, token-priced, markdown/html     |
+| Provider       | Package                 | Notes                                        |
+| -------------- | ----------------------- | -------------------------------------------- |
+| Firecrawl      | `@effect-uai/firecrawl` | JS render, main-content strip, markdown/html |
+| Jina Reader    | `@effect-uai/jina`      | Header-driven, token-priced, markdown/html   |
+| Exa Contents   | `@effect-uai/exa`       | Cache-freshness knob, markdown/html          |
+| Tavily Extract | `@effect-uai/tavily`    | Depth knob, markdown only (html warns)       |
 
 ```ts
 import { layer as firecrawl } from "@effect-uai/firecrawl/FirecrawlRead"
 import { layer as jina } from "@effect-uai/jina/JinaReader"
+import { layer as exa } from "@effect-uai/exa/ExaContents"
+import { layer as tavily } from "@effect-uai/tavily/TavilyRead"
 ```
 
-More backends (Exa contents, Tavily extract) register the same `WebRead` tag
-and slot in with no code change. To switch, switch the layer.
+They all register the same `WebRead` tag, so switching is switching the layer.
+Exa and Tavily share their package with the matching search provider, so one
+key covers both capabilities.
 
 ## What web reading is not
 

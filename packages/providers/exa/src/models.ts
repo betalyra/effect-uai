@@ -37,3 +37,16 @@ export type ExaCategory =
   | "people"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
+
+/**
+ * Exa `/contents` freshness knob. Controls whether the page is fetched live
+ * or served from Exa's cache. Provider-specific, so it lives on
+ * `ExaContentsRequest`.
+ */
+export type ExaLivecrawl =
+  | "never"
+  | "fallback"
+  | "preferred"
+  | "always"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})

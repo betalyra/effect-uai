@@ -7,8 +7,8 @@
     "effect",
     "search",
     "tavily",
-    "web-search",
-    "web-read"
+    "web-read",
+    "web-search"
   ],
   "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/tavily",
   "bugs": {

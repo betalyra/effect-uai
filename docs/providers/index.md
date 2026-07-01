@@ -23,27 +23,27 @@ A ✓ links to the usage page for that provider and capability.
 
 ### Models
 
-| Provider       | LLM                        | Embeddings                            | Speech                             | Music                                        |
+| Provider       |            LLM             |              Embeddings               |               Speech               |                    Music                     |
 | -------------- | :------------------------: | :-----------------------------------: | :--------------------------------: | :------------------------------------------: |
-| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/responses/) | [✓](/speech/providers/openai/)     |                                              |
-| **Google**     | [✓](/providers/gemini/)    | [✓](/embeddings/providers/gemini/)    | [✓](/speech/providers/gemini/)     | [✓](/music-generation/providers/gemini/)     |
+| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/responses/) |   [✓](/speech/providers/openai/)   |                                              |
+| **Google**     |  [✓](/providers/gemini/)   |  [✓](/embeddings/providers/gemini/)   |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |
 | **Anthropic**  | [✓](/providers/anthropic/) |                                       |                                    |                                              |
-| **Mistral**    | [✓](/providers/mistral/)   |                                       | [✓](/speech/providers/mistral/)    |                                              |
+| **Mistral**    |  [✓](/providers/mistral/)  |                                       |  [✓](/speech/providers/mistral/)   |                                              |
 | **ElevenLabs** |                            |                                       | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |
-| **Jina**       |                            | [✓](/embeddings/providers/jina/)      |                                    |                                              |
-| **Inworld**    |                            |                                       | [✓](/speech/providers/inworld/)    |                                              |
+| **Jina**       |                            |   [✓](/embeddings/providers/jina/)    |                                    |                                              |
+| **Inworld**    |                            |                                       |  [✓](/speech/providers/inworld/)   |                                              |
 
 ### Web and sandbox
 
-| Provider         | Web search                         | Web reading                            | Sandbox                                 |
+| Provider         |             Web search             |              Web reading               |                 Sandbox                 |
 | ---------------- | :--------------------------------: | :------------------------------------: | :-------------------------------------: |
-| **Exa**          | [✓](/search/providers/exa/)        | [✓](/web-reading/providers/exa/)       |                                         |
+| **Exa**          |    [✓](/search/providers/exa/)     |    [✓](/web-reading/providers/exa/)    |                                         |
 | **Perplexity**   | [✓](/search/providers/perplexity/) |                                        |                                         |
-| **Tavily**       | [✓](/search/providers/tavily/)     | [✓](/web-reading/providers/tavily/)    |                                         |
+| **Tavily**       |   [✓](/search/providers/tavily/)   |  [✓](/web-reading/providers/tavily/)   |                                         |
 | **Firecrawl**    |                                    | [✓](/web-reading/providers/firecrawl/) |                                         |
-| **Jina**         |                                    | [✓](/web-reading/providers/jina/)      |                                         |
+| **Jina**         |                                    |   [✓](/web-reading/providers/jina/)    |                                         |
 | **Microsandbox** |                                    |                                        | [✓](/sandboxes/providers/microsandbox/) |
-| **Deno**         |                                    |                                        | [✓](/sandboxes/providers/deno/)         |
+| **Deno**         |                                    |                                        |     [✓](/sandboxes/providers/deno/)     |
 
 ## OpenAI
 

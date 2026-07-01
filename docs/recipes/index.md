@@ -65,7 +65,7 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 ## Web reading
 
 | Recipe                                 | One-line                                                                                                                                                             |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Market intel](/recipes/market-intel/) | Read a batch of vendor pages to clean markdown and extract a typed pricing record from each, concurrently; no selectors, so pages that share no layout still decode. |
 
 ## Speech

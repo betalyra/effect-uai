@@ -57,12 +57,12 @@ const program = Effect.gen(function* () {
 Every field from [`CommonReadRequest`](/web-reading/#what-you-ask-for) works
 here. The typed request adds:
 
-| Field              | Type                    | Meaning                                       |
-| ------------------ | ----------------------- | --------------------------------------------- |
-| `engine`           | `browser` `curl` `auto` | Fetching engine. `browser` renders JS.        |
-| `targetSelector`   | `string`                | CSS selector to extract instead of the page.  |
-| `noCache`          | `boolean`               | Bypass Jina's page cache.                     |
-| `withLinksSummary` | `boolean`               | Return the page's links on `links`.           |
+| Field              | Type                    | Meaning                                      |
+| ------------------ | ----------------------- | -------------------------------------------- |
+| `engine`           | `browser` `curl` `auto` | Fetching engine. `browser` renders JS.       |
+| `targetSelector`   | `string`                | CSS selector to extract instead of the page. |
+| `noCache`          | `boolean`               | Bypass Jina's page cache.                    |
+| `withLinksSummary` | `boolean`               | Return the page's links on `links`.          |
 
 Links are opt-in (`withLinksSummary`) because they add tokens to the response,
 which is what Jina bills on.

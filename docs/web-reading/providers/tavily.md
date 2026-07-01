@@ -57,9 +57,9 @@ const program = Effect.gen(function* () {
 Every field from [`CommonReadRequest`](/web-reading/#what-you-ask-for) works
 here. The typed request adds:
 
-| Field          | Type                | Meaning                                       |
-| -------------- | ------------------- | --------------------------------------------- |
-| `extractDepth` | `basic` `advanced`  | `advanced` pulls more (tables, embeds) at 2x cost. |
+| Field          | Type               | Meaning                                            |
+| -------------- | ------------------ | -------------------------------------------------- |
+| `extractDepth` | `basic` `advanced` | `advanced` pulls more (tables, embeds) at 2x cost. |
 
 ## See also
 

@@ -54,10 +54,10 @@ const program = Effect.gen(function* () {
 Every field from [`CommonReadRequest`](/web-reading/#what-you-ask-for) works
 here. The typed request adds:
 
-| Field           | Type                                   | Meaning                                |
-| --------------- | -------------------------------------- | -------------------------------------- |
-| `livecrawl`     | `never` `fallback` `preferred` `always` | Fetch live vs serve from Exa's cache.  |
-| `maxCharacters` | `number`                               | Cap the returned content length.       |
+| Field           | Type                                    | Meaning                               |
+| --------------- | --------------------------------------- | ------------------------------------- |
+| `livecrawl`     | `never` `fallback` `preferred` `always` | Fetch live vs serve from Exa's cache. |
+| `maxCharacters` | `number`                                | Cap the returned content length.      |
 
 ## See also
 

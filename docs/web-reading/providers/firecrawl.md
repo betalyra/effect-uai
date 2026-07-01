@@ -62,8 +62,8 @@ here. The typed request adds:
 | `includeTags`     | `string[]`          | Restrict extraction to these tags/selectors.  |
 | `excludeTags`     | `string[]`          | Drop these tags/selectors before extraction.  |
 | `waitFor`         | `Duration`          | Wait for the page to settle (JS-heavy sites). |
-| `mobile`          | `boolean`           | Emulate a mobile device.                       |
-| `proxy`           | `basic` `stealth` … | Proxy tier for anti-bot protection.            |
+| `mobile`          | `boolean`           | Emulate a mobile device.                      |
+| `proxy`           | `basic` `stealth` … | Proxy tier for anti-bot protection.           |
 
 ## See also
 

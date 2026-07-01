@@ -26,27 +26,27 @@ not the primitive.
   nothing.
 - **CSS/XPath-selector extraction** (Spider `css_extraction_map`, Oxylabs
   Custom Parser, Diffbot Custom API, ScrapingBee legacy `extract_rules`).
-  This is a *different operation* (deterministic, selector-driven, no
+  This is a _different operation_ (deterministic, selector-driven, no
   LLM) and must not be folded into `WebExtract`. Out.
 - **anti-bot / proxy tuning** beyond a single `js` flag (residential
   pools, stealth, CAPTCHA, fingerprinting). Provider-typed only.
 
 ## 2. Provider reality (researched June 2026)
 
-| Provider | read -> md | boilerplate strip | extract (LLM + arbitrary schema) | js render | batch | pricing model |
-| --- | :--: | :--: | :--: | :--: | :--: | --- |
-| **Firecrawl** `/scrape` | ✓ | ✓ default `onlyMainContent` + `blockAds` | ✓ `json` format / `/extract` (server LLM) | ✓ default | ✓ | credits (1/pg; extract 5/pg) |
-| **Jina Reader** `r.jina.ai` | ✓ | ✓ default readability | ✓ ReaderLM-v2 (`x-respond-with: readerlm-v2` + json-schema header) [1] | ✓ `x-engine` | — | token PAYG (~$0.05/1M tok) |
-| **Exa** `/contents` | ✓ | ✓ explicit | ✓ `summary` + JSON schema | ✓ `livecrawl` | ✓ `ids[]` | $1/1k pages per content-type |
-| **Tavily** `/extract` | ✓ | implicit | ✗ | ✓ `extract_depth` | ✓ ≤20 | credits (1/5 urls) |
-| **Spider.cloud** `/scrape` | ✓ | ✓ `return_format=markdown` | ✗ (CSS only) | ✓ `request` modes | ✓ | PAYG bandwidth+CPU (~$0.48/1k) |
-| **Apify WCC** | ✓ | ✓ `saveMarkdown` default | ✗ (separate actors) | ✓ Playwright/Cheerio | ✓ | compute-unit (~$0.2-5/1k) |
-| **ScrapingBee** | ✓ `return_page_markdown` | ✓ `markdown_relevant` | ✓ `ai_extract_rules` + `ai_query` | ✓ default | — | credits (+5/extract) |
-| **Bright Data** Web Unlocker | ✓ `data_format:markdown` | ✓ | ✗ (per-domain scrapers only) | ✓ best-in-class | — | pay-per-success (~$1.5-3/1k) |
-| **Oxylabs** Web Scraper API | ✓ `markdown:true` | ✓ | ✗ (CSS Custom Parser only) | ✓ `render:html` | — | pay-per-result (~$0.4-2/1k) |
-| **Diffbot** Analyze/Article | ✗ (clean `text`) | ✓ | ✗ (fixed ontology + CSS) | auto | ✓ | credits (1/pg, $299/mo+) |
-| **Zyte** API | ✗ (HTML, no md) | ✓ | ✓ `customAttributes` (OpenAPI-subset schema + LLM) | ✓ `browserHtml` | ✓ | pay-per-success, tiered |
-| **ScrapeGraphAI** `/smartscraper` | ~ (separate endpoint) | ✓ | ✓ `output_schema` (Zod/Pydantic) | ✓ | — | credits (~5/call) |
+| Provider                          |        read -> md        |            boilerplate strip             |                    extract (LLM + arbitrary schema)                    |      js render       |   batch   | pricing model                  |
+| --------------------------------- | :----------------------: | :--------------------------------------: | :--------------------------------------------------------------------: | :------------------: | :-------: | ------------------------------ |
+| **Firecrawl** `/scrape`           |            ✓             | ✓ default `onlyMainContent` + `blockAds` |               ✓ `json` format / `/extract` (server LLM)                |      ✓ default       |     ✓     | credits (1/pg; extract 5/pg)   |
+| **Jina Reader** `r.jina.ai`       |            ✓             |          ✓ default readability           | ✓ ReaderLM-v2 (`x-respond-with: readerlm-v2` + json-schema header) [1] |     ✓ `x-engine`     |     —     | token PAYG (~$0.05/1M tok)     |
+| **Exa** `/contents`               |            ✓             |                ✓ explicit                |                       ✓ `summary` + JSON schema                        |    ✓ `livecrawl`     | ✓ `ids[]` | $1/1k pages per content-type   |
+| **Tavily** `/extract`             |            ✓             |                 implicit                 |                                   ✗                                    |  ✓ `extract_depth`   |   ✓ ≤20   | credits (1/5 urls)             |
+| **Spider.cloud** `/scrape`        |            ✓             |        ✓ `return_format=markdown`        |                              ✗ (CSS only)                              |  ✓ `request` modes   |     ✓     | PAYG bandwidth+CPU (~$0.48/1k) |
+| **Apify WCC**                     |            ✓             |         ✓ `saveMarkdown` default         |                          ✗ (separate actors)                           | ✓ Playwright/Cheerio |     ✓     | compute-unit (~$0.2-5/1k)      |
+| **ScrapingBee**                   | ✓ `return_page_markdown` |          ✓ `markdown_relevant`           |                   ✓ `ai_extract_rules` + `ai_query`                    |      ✓ default       |     —     | credits (+5/extract)           |
+| **Bright Data** Web Unlocker      | ✓ `data_format:markdown` |                    ✓                     |                      ✗ (per-domain scrapers only)                      |   ✓ best-in-class    |     —     | pay-per-success (~$1.5-3/1k)   |
+| **Oxylabs** Web Scraper API       |    ✓ `markdown:true`     |                    ✓                     |                       ✗ (CSS Custom Parser only)                       |   ✓ `render:html`    |     —     | pay-per-result (~$0.4-2/1k)    |
+| **Diffbot** Analyze/Article       |     ✗ (clean `text`)     |                    ✓                     |                        ✗ (fixed ontology + CSS)                        |         auto         |     ✓     | credits (1/pg, $299/mo+)       |
+| **Zyte** API                      |     ✗ (HTML, no md)      |                    ✓                     |           ✓ `customAttributes` (OpenAPI-subset schema + LLM)           |   ✓ `browserHtml`    |     ✓     | pay-per-success, tiered        |
+| **ScrapeGraphAI** `/smartscraper` |  ~ (separate endpoint)   |                    ✓                     |                    ✓ `output_schema` (Zod/Pydantic)                    |          ✓           |     —     | credits (~5/call)              |
 
 [1] Jina splits two header families. **HTML output is confirmed**:
 `X-Return-Format: html` (also `markdown`/`text`/`screenshot`/`pageshot`).
@@ -57,7 +57,7 @@ headers against live docs before wiring Jina into `ServerSideExtract`
 (section 6).
 
 [2] **HTML output, re-checked June 2026 (see section 4 `format`).** The
-scraper-family providers are HTML-native and treat markdown as the *added*
+scraper-family providers are HTML-native and treat markdown as the _added_
 cleaning pass, so HTML is broadly available, not rare: Firecrawl (`html`
 cleaned + `rawHtml` unmodified), Jina (`X-Return-Format: html`), Spider,
 ScrapingBee, Bright Data, Oxylabs all return it, and **Exa** does too via
@@ -77,7 +77,7 @@ an optional server-side fast-path, not a primitive. Excluded:
 **Browserbase/Stagehand** (`page.extract()` is stateful navigate-then-
 extract, not one-shot `read(url)`); **Perplexity** (its `/search` has
 `search_context_size` / `max_tokens_per_page`, but those scope how much
-text comes back *from search results* — there is no `read(url) -> content`
+text comes back _from search results_ — there is no `read(url) -> content`
 operation; you cannot hand it a URL and get that page, so it stays
 `WebSearch`-only); **SerpApi** (SERP parsing, belongs to `WebSearch`);
 Olostep / Scrapingdog (niche).
@@ -91,7 +91,7 @@ clean-markdown) cannot be reconstructed from `HttpClient` + an LLM, so
 it is a provider protocol, the exact shape of `WebSearch`. The
 differentiator across providers (cleaning quality, render fidelity,
 anti-bot success) is non-portable; the capability guarantees the
-*contract* (url -> markdown), not the quality, identical to how
+_contract_ (url -> markdown), not the quality, identical to how
 `LanguageModel` abstracts wildly varying model quality.
 
 ## 4. Core types
@@ -120,17 +120,17 @@ export const read = (
 Field earns the common floor only if most providers support it and a
 developer expects it from a generic reader. Support matrix:
 
-| Field | FC | Jina | Exa | Tavily | Spider | ScrBee | BD | Oxy | Common? |
-| --- | :--: | :--: | :--: | :--: | :--: | :--: | :--: | :--: | :--: |
-| `url` (single) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **yes** |
-| `mainContentOnly` (toggle) | bool | default | default | default | bool | bool | bool | bool | no -> typed |
-| `js` (render on/off) | on-only | engine enum | auto | depth | bool | bool | bool | bool | no -> typed |
-| `format` markdown | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **yes** (default; universal) |
-| `format` html | ✓ | ✓ | ✓ tags | ✗ | ✓ | ✓ | ✓ | ✓ | **yes** (7/8; Tavily warn) |
-| `format` rawHtml (unmodified) | ✓ | ~ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | no -> typed |
-| `timeout` | ✓ | ✓ | ✓ | ✓ | ~ | ~ | ~ | ~ | **yes** (optional) |
-| `query` (relevance chunks) | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | no -> typed |
-| `urls[]` (batch) | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | no -> typed (see below) |
+| Field                         |   FC    |    Jina     |   Exa   | Tavily  | Spider | ScrBee |  BD  | Oxy  |           Common?            |
+| ----------------------------- | :-----: | :---------: | :-----: | :-----: | :----: | :----: | :--: | :--: | :--------------------------: |
+| `url` (single)                |    ✓    |      ✓      |    ✓    |    ✓    |   ✓    |   ✓    |  ✓   |  ✓   |           **yes**            |
+| `mainContentOnly` (toggle)    |  bool   |   default   | default | default |  bool  |  bool  | bool | bool |         no -> typed          |
+| `js` (render on/off)          | on-only | engine enum |  auto   |  depth  |  bool  |  bool  | bool | bool |         no -> typed          |
+| `format` markdown             |    ✓    |      ✓      |    ✓    |    ✓    |   ✓    |   ✓    |  ✓   |  ✓   | **yes** (default; universal) |
+| `format` html                 |    ✓    |      ✓      | ✓ tags  |    ✗    |   ✓    |   ✓    |  ✓   |  ✓   |  **yes** (7/8; Tavily warn)  |
+| `format` rawHtml (unmodified) |    ✓    |      ~      |    ✗    |    ✗    |   ✓    |   ✓    |  ✗   |  ✗   |         no -> typed          |
+| `timeout`                     |    ✓    |      ✓      |    ✓    |    ✓    |   ~    |   ~    |  ~   |  ~   |      **yes** (optional)      |
+| `query` (relevance chunks)    |    ✗    |      ✗      |    ✓    |    ✓    |   ✗    |   ✗    |  ✗   |  ✗   |         no -> typed          |
+| `urls[]` (batch)              |    ✓    |      ✗      |    ✓    |    ✓    |   ✓    |   ✗    |  ✗   |  ✗   |   no -> typed (see below)    |
 
 ```ts
 export type CommonReadRequest = {
@@ -143,16 +143,16 @@ export type CommonReadRequest = {
 Decisions baked in:
 
 - **`mainContentOnly` and `js` are provider-typed, not common.** Clean
-  main-content output is the shared *default behavior* (every provider
+  main-content output is the shared _default behavior_ (every provider
   strips boilerplate by default), so the capability promises that default.
-  but the *toggles* are not unified: only the scraper-family providers
+  but the _toggles_ are not unified: only the scraper-family providers
   expose a real `mainContentOnly` boolean and a real JS on/off, while the
   reader-family (Jina engine enum, Exa auto-render, Tavily depth, Firecrawl
   always-on) express it differently or not at all. Forcing a `boolean`
   onto the floor would fake a uniformity that isn't there, so both live on
   the provider-typed request where they're genuinely supported (e.g.
   `FirecrawlRead.onlyMainContent`, `JinaReader.engine`). Note: Exa
-  `livecrawl` is cache-*freshness*, not JS rendering. the two are
+  `livecrawl` is cache-_freshness_, not JS rendering. the two are
   orthogonal and neither maps to a common `js`.
 - **`format` floor is `markdown | html`.** Two representations, no more.
   Markdown is universal and the default (the LLM-ready point of the
@@ -162,7 +162,7 @@ Decisions baked in:
   most are HTML-native scrapers with markdown as the added clean pass. The
   lone holdout is **Tavily**, which `warnDropped`s and falls back to
   markdown. `"html"` means "an HTML representation, cleaned where the
-  provider cleans"; a *guaranteed unmodified* `rawHtml` is a stronger
+  provider cleans"; a _guaranteed unmodified_ `rawHtml` is a stronger
   contract only FC/Spider/ScrapingBee expose distinctly, so it stays
   provider-typed. **`text` is dropped from the floor**: it is just
   formatting-stripped markdown, trivially derivable by the caller, and
@@ -198,14 +198,14 @@ differs intentionally from an earlier `markdown`-named draft.
 
 ## 5. Provider packages
 
-| Provider | npm package | typed tag | note |
-| --- | --- | --- | --- |
-| Firecrawl | `@effect-uai/firecrawl` | `FirecrawlRead` | **new** — the one new package; flagship (read + extract) |
-| Jina | `@effect-uai/jina` | `JinaReader` | extend (already has `JinaEmbedding`) |
-| Exa | `@effect-uai/exa` | `ExaContents` | extend (already has `ExaSearch`) |
-| Tavily | `@effect-uai/tavily` | `TavilyRead` | extend (already has `TavilySearch`) |
-| ScrapingBee | `@effect-uai/scrapingbee` | `ScrapingBeeRead` | *deferred* (section 11) — read + ai-extract |
-| Bright Data | `@effect-uai/brightdata` | `BrightDataRead` | *deferred* (section 11) — anti-bot tier |
+| Provider    | npm package               | typed tag         | note                                                     |
+| ----------- | ------------------------- | ----------------- | -------------------------------------------------------- |
+| Firecrawl   | `@effect-uai/firecrawl`   | `FirecrawlRead`   | **new** — the one new package; flagship (read + extract) |
+| Jina        | `@effect-uai/jina`        | `JinaReader`      | extend (already has `JinaEmbedding`)                     |
+| Exa         | `@effect-uai/exa`         | `ExaContents`     | extend (already has `ExaSearch`)                         |
+| Tavily      | `@effect-uai/tavily`      | `TavilyRead`      | extend (already has `TavilySearch`)                      |
+| ScrapingBee | `@effect-uai/scrapingbee` | `ScrapingBeeRead` | _deferred_ (section 11) — read + ai-extract              |
+| Bright Data | `@effect-uai/brightdata`  | `BrightDataRead`  | _deferred_ (section 11) — anti-bot tier                  |
 
 The initial scope is the top four: **Firecrawl** (the only new package)
 plus a second tag on the existing **jina / exa / tavily** packages.
@@ -295,7 +295,7 @@ export const webReadTool = (options?: {
 
 **The length ceiling is the one real divergence from `webSearchTool`.**
 A search tool's output is naturally bounded (`maxResults` × a ~500-char
-snippet); a *read* tool returns a whole page, and a single readable
+snippet); a _read_ tool returns a whole page, and a single readable
 article is routinely 50-200 KB of markdown. Unbounded, one `read_url`
 call can blow the model's context window in a single turn. So `webReadTool`
 takes an app-set `maxChars` (a cost/context ceiling, model-invisible like
@@ -367,9 +367,9 @@ build-on-demand (below), not part of the initial scope.
    `ExaSearch.ts`). Now read spans 4 backends on 3 maintained packages,
    zero further new packages.
 3. **`WebExtract` recipe + `ServerSideExtract` marker.** Recipe over read
-   + structured-output (works on all 4 backends); mark **FC/Jina/Exa** for
-   the JSON-Schema server-side path (section 6). No new provider in this
-   phase.
+   - structured-output (works on all 4 backends); mark **FC/Jina/Exa** for
+     the JSON-Schema server-side path (section 6). No new provider in this
+     phase.
 4. **Deferred — build on demand.** **ScrapingBee** (read +
    `ai_extract_rules`), **Bright Data** / **Oxylabs** (anti-bot tier for
    hard/protected sites), **Spider**, **Apify WCC**, **Diffbot**. None
@@ -394,5 +394,5 @@ build-on-demand (below), not part of the initial scope.
    confirmed, so it does not block the read path.
 5. **`mainContentOnly` / `js` placement.** **Resolved:** off the common
    floor, onto provider-typed requests (section 4). Clean main-content is
-   the promised default behavior; the *toggles* aren't unified across
+   the promised default behavior; the _toggles_ aren't unified across
    providers, so a common `boolean` would fake uniformity that isn't there.

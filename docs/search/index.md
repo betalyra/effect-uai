@@ -124,9 +124,9 @@ switch the layer.
 ## What web search is not
 
 - **Not extract or crawl.** Search returns ranked links and short
-  snippets. Pulling full page text (Exa's `contents`, Tavily's `extract`)
-  is a separate, planned capability. Exa's pure search, for instance,
-  returns no snippet until you fetch contents.
+  snippets. Pulling a full page's clean content is [web
+  reading](/web-reading/), a separate capability. Exa's pure search, for
+  instance, returns no snippet until you read the page.
 - **Not an answer engine.** Provider answer modes (Perplexity Sonar,
   Tavily's `include_answer`) synthesize prose for you. effect-uai keeps
   search and the LLM separate so you choose the model. that is what

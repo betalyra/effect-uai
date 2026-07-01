@@ -1,6 +1,7 @@
 import type { IconType } from "react-icons"
 import {
   PiArrowRight,
+  PiArticle,
   PiBrain,
   PiCube,
   PiGraph,
@@ -50,6 +51,12 @@ const capabilities: ReadonlyArray<Capability> = [
     description: "**Ground** answers in live web results, with citations.",
     href: "/search/",
     Icon: PiMagnifyingGlass,
+  },
+  {
+    title: "Web reading",
+    description: "Turn any **URL into clean markdown**, then extract typed data from it.",
+    href: "/web-reading/",
+    Icon: PiArticle,
   },
   {
     title: "Sandboxes",

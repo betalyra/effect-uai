@@ -19,6 +19,7 @@ import {
   PiPulse,
   PiShieldCheck,
   PiStairs,
+  PiTable,
   PiTerminalWindow,
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
@@ -165,6 +166,13 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/deep-research/",
     Icon: PiAtom,
   },
+  {
+    title: "Market intel",
+    description:
+      "**Extract typed data from any page.** Read a batch of vendor pages and pull a structured pricing record from each, no selectors, concurrently.",
+    href: "/recipes/market-intel/",
+    Icon: PiTable,
+  },
 ]
 
 const markdownComponents: Components = {
@@ -181,7 +189,7 @@ export default function RecipesSection() {
           <div className="flex items-baseline gap-3">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
             <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
-              28 and counting
+              29 and counting
             </span>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">

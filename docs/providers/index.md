@@ -14,20 +14,21 @@ the generic tag keeps working when you change the backend.
 
 ## Capability matrix
 
-| Provider         |            LLM             |              Embeddings               |               Speech               |                    Music                     |             Web search             |                 Sandbox                 |
-| ---------------- | :------------------------: | :-----------------------------------: | :--------------------------------: | :------------------------------------------: | :--------------------------------: | :-------------------------------------: |
-| **OpenAI**       | [✓](/providers/responses/) | [✓](/embeddings/providers/responses/) |   [✓](/speech/providers/openai/)   |                                              |                                    |                                         |
-| **Google**       |  [✓](/providers/gemini/)   |  [✓](/embeddings/providers/gemini/)   |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |                                    |                                         |
-| **Anthropic**    | [✓](/providers/anthropic/) |                                       |                                    |                                              |                                    |                                         |
-| **Mistral**      |  [✓](/providers/mistral/)  |                                       |  [✓](/speech/providers/mistral/)   |                                              |                                    |                                         |
-| **ElevenLabs**   |                            |                                       | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |                                    |                                         |
-| **Jina**         |                            |   [✓](/embeddings/providers/jina/)    |                                    |                                              |                                    |                                         |
-| **Inworld**      |                            |                                       |  [✓](/speech/providers/inworld/)   |                                              |                                    |                                         |
-| **Exa**          |                            |                                       |                                    |                                              |    [✓](/search/providers/exa/)     |                                         |
-| **Perplexity**   |                            |                                       |                                    |                                              | [✓](/search/providers/perplexity/) |                                         |
-| **Tavily**       |                            |                                       |                                    |                                              |   [✓](/search/providers/tavily/)   |                                         |
-| **Microsandbox** |                            |                                       |                                    |                                              |                                    | [✓](/sandboxes/providers/microsandbox/) |
-| **Deno**         |                            |                                       |                                    |                                              |                                    |     [✓](/sandboxes/providers/deno/)     |
+| Provider         | LLM                        | Embeddings                            | Speech                             | Music                                        | Web search                         | Web reading                                   | Sandbox                                 |
+| ---------------- | :------------------------: | :-----------------------------------: | :--------------------------------: | :------------------------------------------: | :--------------------------------: | :-------------------------------------------: | :-------------------------------------: |
+| **OpenAI**       | [✓](/providers/responses/) | [✓](/embeddings/providers/responses/) | [✓](/speech/providers/openai/)     |                                              |                                    |                                               |                                         |
+| **Google**       | [✓](/providers/gemini/)    | [✓](/embeddings/providers/gemini/)    | [✓](/speech/providers/gemini/)     | [✓](/music-generation/providers/gemini/)     |                                    |                                               |                                         |
+| **Anthropic**    | [✓](/providers/anthropic/) |                                       |                                    |                                              |                                    |                                               |                                         |
+| **Mistral**      | [✓](/providers/mistral/)   |                                       | [✓](/speech/providers/mistral/)    |                                              |                                    |                                               |                                         |
+| **ElevenLabs**   |                            |                                       | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |                                    |                                               |                                         |
+| **Jina**         |                            | [✓](/embeddings/providers/jina/)      |                                    |                                              |                                    |                                               |                                         |
+| **Inworld**      |                            |                                       | [✓](/speech/providers/inworld/)    |                                              |                                    |                                               |                                         |
+| **Exa**          |                            |                                       |                                    |                                              | [✓](/search/providers/exa/)        |                                               |                                         |
+| **Perplexity**   |                            |                                       |                                    |                                              | [✓](/search/providers/perplexity/) |                                               |                                         |
+| **Tavily**       |                            |                                       |                                    |                                              | [✓](/search/providers/tavily/)     |                                               |                                         |
+| **Firecrawl**    |                            |                                       |                                    |                                              |                                    | [✓](/web-reading/providers/firecrawl/)        |                                         |
+| **Microsandbox** |                            |                                       |                                    |                                              |                                    |                                               | [✓](/sandboxes/providers/microsandbox/) |
+| **Deno**         |                            |                                       |                                    |                                              |                                    |                                               | [✓](/sandboxes/providers/deno/)         |
 
 A ✓ links to the usage page for that provider and capability.
 
@@ -118,6 +119,14 @@ Fast, current-events web search snippets.
 Web search with snippets, scores, and depth control.
 
 - Web search: [Tavily](/search/providers/tavily/)
+
+## Firecrawl
+
+`@effect-uai/firecrawl`
+
+JS-rendered pages turned into clean markdown or HTML.
+
+- Web reading: [Firecrawl](/web-reading/providers/firecrawl/)
 
 ## Microsandbox
 

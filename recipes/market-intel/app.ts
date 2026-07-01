@@ -12,8 +12,11 @@
  * other `LanguageModel`, and `recipe.ts` is untouched.
  */
 import { Config, Console, Effect, Layer, Logger, References, Result } from "effect"
+import { HttpClient } from "effect/unstable/http"
+import { WebRead } from "@effect-uai/core/WebRead"
 import { layer as firecrawlLayer } from "@effect-uai/firecrawl/FirecrawlRead"
 import { layer as geminiLayer } from "@effect-uai/google/Gemini"
+import { layer as jinaLayer } from "@effect-uai/jina/JinaReader"
 import { marketIntel, type Product } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
@@ -89,10 +92,20 @@ export const main = Effect.gen(function* () {
 // App-level layer: Firecrawl (WebRead) + Gemini (LanguageModel) + logging.
 // ---------------------------------------------------------------------------
 
-const firecrawlProviderLayer = Layer.unwrap(
+// Pick the WebRead backend from `READ_PROVIDER` (default firecrawl). This is
+// the recipe's portability payoff: the read provider swaps here, the recipe
+// code does not. Firecrawl needs `FIRECRAWL_API_KEY`, Jina needs
+// `JINA_API_KEY`.
+const readProviderLayer = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("FIRECRAWL_API_KEY")
-    return firecrawlLayer({ apiKey })
+    const provider = yield* Config.string("READ_PROVIDER").pipe(Config.withDefault("firecrawl"))
+    // Both register the generic `WebRead` tag; widen to it so the branches
+    // unify (Layer is covariant in its output).
+    const layer: Layer.Layer<WebRead, never, HttpClient.HttpClient> =
+      provider === "jina"
+        ? jinaLayer({ apiKey: yield* Config.redacted("JINA_API_KEY") })
+        : firecrawlLayer({ apiKey: yield* Config.redacted("FIRECRAWL_API_KEY") })
+    return layer
   }),
 )
 
@@ -111,7 +124,7 @@ const logLevelLayer = Layer.unwrap(
 )
 
 export const appLayer = Layer.mergeAll(
-  firecrawlProviderLayer,
+  readProviderLayer,
   geminiProviderLayer,
   Logger.layer([Logger.consolePretty()]),
   logLevelLayer,

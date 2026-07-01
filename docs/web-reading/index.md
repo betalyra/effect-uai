@@ -75,16 +75,18 @@ and the model both swappable.
 
 Provide one provider `layer` and your `WebRead`-yielding code resolves.
 
-| Provider  | Package                 | Notes                                        |
-| --------- | ----------------------- | -------------------------------------------- |
-| Firecrawl | `@effect-uai/firecrawl` | JS render, main-content strip, markdown/html |
+| Provider     | Package                 | Notes                                          |
+| ------------ | ----------------------- | ---------------------------------------------- |
+| Firecrawl    | `@effect-uai/firecrawl` | JS render, main-content strip, markdown/html   |
+| Jina Reader  | `@effect-uai/jina`      | Header-driven, token-priced, markdown/html     |
 
 ```ts
 import { layer as firecrawl } from "@effect-uai/firecrawl/FirecrawlRead"
+import { layer as jina } from "@effect-uai/jina/JinaReader"
 ```
 
-More backends (Jina, Exa contents, Tavily extract) register the same
-`WebRead` tag and slot in with no code change. To switch, switch the layer.
+More backends (Exa contents, Tavily extract) register the same `WebRead` tag
+and slot in with no code change. To switch, switch the layer.
 
 ## What web reading is not
 

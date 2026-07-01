@@ -288,6 +288,21 @@ export default defineConfig({
           ],
         },
         {
+          label: "Web reading",
+          items: [
+            { label: "Overview", slug: "web-reading" },
+            {
+              label: "Providers",
+              items: [{ label: "Firecrawl", slug: "web-reading/providers/firecrawl" }],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Market intel", slug: "recipes/market-intel" }],
+            },
+          ],
+        },
+        {
           label: "Sandboxes",
           items: [
             { label: "Overview", slug: "sandboxes" },

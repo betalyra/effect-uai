@@ -62,6 +62,12 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Grounded answer](/recipes/grounded-answer/) | Answer a current-events question from live web search with inline citations; swap the LLM and backend at will.    |
 | [Deep research](/recipes/deep-research/)     | Plan a broad question into sub-questions, investigate each with a streaming sub-agent, synthesize a cited report. |
 
+## Web reading
+
+| Recipe                                 | One-line                                                                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Market intel](/recipes/market-intel/) | Read a batch of vendor pages to clean markdown and extract a typed pricing record from each, concurrently; no selectors, so pages that share no layout still decode. |
+
 ## Speech
 
 | Recipe                                                       | One-line                                                                                            |

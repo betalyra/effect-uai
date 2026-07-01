@@ -37,9 +37,9 @@ A ✓ links to the usage page for that provider and capability.
 
 | Provider         | Web search                         | Web reading                            | Sandbox                                 |
 | ---------------- | :--------------------------------: | :------------------------------------: | :-------------------------------------: |
-| **Exa**          | [✓](/search/providers/exa/)        |                                        |                                         |
+| **Exa**          | [✓](/search/providers/exa/)        | [✓](/web-reading/providers/exa/)       |                                         |
 | **Perplexity**   | [✓](/search/providers/perplexity/) |                                        |                                         |
-| **Tavily**       | [✓](/search/providers/tavily/)     |                                        |                                         |
+| **Tavily**       | [✓](/search/providers/tavily/)     | [✓](/web-reading/providers/tavily/)    |                                         |
 | **Firecrawl**    |                                    | [✓](/web-reading/providers/firecrawl/) |                                         |
 | **Jina**         |                                    | [✓](/web-reading/providers/jina/)      |                                         |
 | **Microsandbox** |                                    |                                        | [✓](/sandboxes/providers/microsandbox/) |
@@ -115,9 +115,11 @@ Text-to-speech.
 
 `@effect-uai/exa`
 
-Neural web search ranked by relevance score.
+Neural web search ranked by relevance score, plus `/contents` for reading a
+URL to clean markdown.
 
 - Web search: [Exa](/search/providers/exa/)
+- Web reading: [Exa Contents](/web-reading/providers/exa/)
 
 ## Perplexity
 
@@ -131,9 +133,11 @@ Fast, current-events web search snippets.
 
 `@effect-uai/tavily`
 
-Web search with snippets, scores, and depth control.
+Web search with snippets, scores, and depth control, plus `/extract` for
+reading a URL to clean markdown.
 
 - Web search: [Tavily](/search/providers/tavily/)
+- Web reading: [Tavily Extract](/web-reading/providers/tavily/)
 
 ## Firecrawl
 

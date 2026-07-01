@@ -293,7 +293,10 @@ export default defineConfig({
             { label: "Overview", slug: "web-reading" },
             {
               label: "Providers",
-              items: [{ label: "Firecrawl", slug: "web-reading/providers/firecrawl" }],
+              items: [
+                { label: "Firecrawl", slug: "web-reading/providers/firecrawl" },
+                { label: "Jina Reader", slug: "web-reading/providers/jina" },
+              ],
             },
             {
               label: "Recipes",

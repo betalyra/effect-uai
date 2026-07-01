@@ -55,14 +55,19 @@ blocks the others, and every input URL gets exactly one row out.
 ## Swap providers freely
 
 `recipe.ts` names no provider. it is written against the generic `WebRead` and
-`LanguageModel` tags. The backends are chosen by the Layers in `app.ts`:
-Firecrawl for reading, Gemini Flash for extracting. Replace either Layer (any
-`WebRead` backend, any `LanguageModel`) and the recipe is untouched.
+`LanguageModel` tags. The backends are chosen by the Layers in `app.ts`. The
+read backend is picked by `READ_PROVIDER` (`firecrawl` or `jina`), the model
+by the Gemini Layer. Point `READ_PROVIDER` at a different backend and the
+recipe code does not change at all; that is the whole point of the generic
+tag.
 
 ## Run it
 
 ```bash
 FIRECRAWL_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run-node.ts
+
+# read with Jina instead of Firecrawl, same recipe:
+READ_PROVIDER=jina JINA_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run-node.ts
 
 # override the pages, model, or concurrency:
 URLS="https://stripe.com/pricing,https://www.notion.so/pricing" CONCURRENCY=2 \

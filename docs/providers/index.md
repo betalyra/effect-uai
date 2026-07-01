@@ -14,23 +14,36 @@ the generic tag keeps working when you change the backend.
 
 ## Capability matrix
 
-| Provider         | LLM                        | Embeddings                            | Speech                             | Music                                        | Web search                         | Web reading                                   | Sandbox                                 |
-| ---------------- | :------------------------: | :-----------------------------------: | :--------------------------------: | :------------------------------------------: | :--------------------------------: | :-------------------------------------------: | :-------------------------------------: |
-| **OpenAI**       | [✓](/providers/responses/) | [✓](/embeddings/providers/responses/) | [✓](/speech/providers/openai/)     |                                              |                                    |                                               |                                         |
-| **Google**       | [✓](/providers/gemini/)    | [✓](/embeddings/providers/gemini/)    | [✓](/speech/providers/gemini/)     | [✓](/music-generation/providers/gemini/)     |                                    |                                               |                                         |
-| **Anthropic**    | [✓](/providers/anthropic/) |                                       |                                    |                                              |                                    |                                               |                                         |
-| **Mistral**      | [✓](/providers/mistral/)   |                                       | [✓](/speech/providers/mistral/)    |                                              |                                    |                                               |                                         |
-| **ElevenLabs**   |                            |                                       | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |                                    |                                               |                                         |
-| **Jina**         |                            | [✓](/embeddings/providers/jina/)      |                                    |                                              |                                    |                                               |                                         |
-| **Inworld**      |                            |                                       | [✓](/speech/providers/inworld/)    |                                              |                                    |                                               |                                         |
-| **Exa**          |                            |                                       |                                    |                                              | [✓](/search/providers/exa/)        |                                               |                                         |
-| **Perplexity**   |                            |                                       |                                    |                                              | [✓](/search/providers/perplexity/) |                                               |                                         |
-| **Tavily**       |                            |                                       |                                    |                                              | [✓](/search/providers/tavily/)     |                                               |                                         |
-| **Firecrawl**    |                            |                                       |                                    |                                              |                                    | [✓](/web-reading/providers/firecrawl/)        |                                         |
-| **Microsandbox** |                            |                                       |                                    |                                              |                                    |                                               | [✓](/sandboxes/providers/microsandbox/) |
-| **Deno**         |                            |                                       |                                    |                                              |                                    |                                               | [✓](/sandboxes/providers/deno/)         |
+Two tables, split on a line the library itself draws. **Model** capabilities
+take a `model` id: you pick a model and quality varies by which one. **Web and
+sandbox** capabilities have no model: you pick a backend service. A provider
+can appear in both (Jina does).
 
 A ✓ links to the usage page for that provider and capability.
+
+### Models
+
+| Provider       | LLM                        | Embeddings                            | Speech                             | Music                                        |
+| -------------- | :------------------------: | :-----------------------------------: | :--------------------------------: | :------------------------------------------: |
+| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/responses/) | [✓](/speech/providers/openai/)     |                                              |
+| **Google**     | [✓](/providers/gemini/)    | [✓](/embeddings/providers/gemini/)    | [✓](/speech/providers/gemini/)     | [✓](/music-generation/providers/gemini/)     |
+| **Anthropic**  | [✓](/providers/anthropic/) |                                       |                                    |                                              |
+| **Mistral**    | [✓](/providers/mistral/)   |                                       | [✓](/speech/providers/mistral/)    |                                              |
+| **ElevenLabs** |                            |                                       | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |
+| **Jina**       |                            | [✓](/embeddings/providers/jina/)      |                                    |                                              |
+| **Inworld**    |                            |                                       | [✓](/speech/providers/inworld/)    |                                              |
+
+### Web and sandbox
+
+| Provider         | Web search                         | Web reading                            | Sandbox                                 |
+| ---------------- | :--------------------------------: | :------------------------------------: | :-------------------------------------: |
+| **Exa**          | [✓](/search/providers/exa/)        |                                        |                                         |
+| **Perplexity**   | [✓](/search/providers/perplexity/) |                                        |                                         |
+| **Tavily**       | [✓](/search/providers/tavily/)     |                                        |                                         |
+| **Firecrawl**    |                                    | [✓](/web-reading/providers/firecrawl/) |                                         |
+| **Jina**         |                                    | [✓](/web-reading/providers/jina/)      |                                         |
+| **Microsandbox** |                                    |                                        | [✓](/sandboxes/providers/microsandbox/) |
+| **Deno**         |                                    |                                        | [✓](/sandboxes/providers/deno/)         |
 
 ## OpenAI
 
@@ -84,9 +97,11 @@ Streaming speech-to-text, text-to-speech, and music generation.
 
 `@effect-uai/jina`
 
-Text and multimodal embeddings, including multivector output.
+Text and multimodal embeddings, including multivector output, plus the
+Reader for turning URLs into clean markdown.
 
 - Embeddings: [Jina](/embeddings/providers/jina/)
+- Web reading: [Jina Reader](/web-reading/providers/jina/)
 
 ## Inworld
 

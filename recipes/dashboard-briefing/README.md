@@ -1,19 +1,18 @@
 ---
 title: Dashboard briefing
-description: Point an agent at a dashboard you check by hand and get back a typed briefing, the trend, the anomalies, the headline numbers. When the chart renders client-side, the dashboard is the only API you have; a vision model reads it exactly like you do.
+description: Point an agent at a dashboard you check by hand and get back a typed briefing with the trend, the anomalies, and the headline numbers. When the chart renders client-side, the dashboard is the only API you have; a vision model reads it the way you would.
 source: recipes/dashboard-briefing
 icon: PiChartLineUp
 ---
 
-Everyone has dashboards they glance at every morning: analytics, ops, a
-vendor's usage page. Often the dashboard is the only API you have. Your SaaS
-vendor's usage graphs, a Grafana you can view but whose datasource you can't
-query, an analytics share link. The charts exist only after the app renders
-them client-side: fetch the page with a reader and you get an empty shell.
+Some numbers you can only get by looking at a dashboard: a SaaS vendor's
+usage graphs with no export, a Grafana you can view but not query, an
+analytics share link. The charts are drawn in the browser after the app
+loads, so fetching those pages with a reader returns an empty shell.
 
-This recipe reads the dashboard the way you do. It opens the page in a real
-browser, screenshots it, and has a vision model turn the pixels into a typed
-briefing:
+This recipe reads the dashboard for you. It opens the page in a real
+browser, takes a screenshot, and asks a vision model to turn what it sees
+into a typed briefing:
 
 ```
 DASHBOARD BRIEFING - https://plausible.io/plausible.io
@@ -30,31 +29,23 @@ stands out against an otherwise steady trend; worth checking what shipped
 or got posted that day.
 ```
 
-Because the output is a `Schema`, not prose, the briefing is data: pipe it
-into Slack, diff it against last week's, alert when `anomalies` is
-non-empty. Run it on a schedule and nobody has to remember to look.
+The output is a `Schema`, so the briefing is data rather than prose. You can
+post it to Slack, diff it against last week's, or alert when `anomalies` is
+non-empty. Put it on a schedule and nobody has to remember to look.
 
 ## Try it
 
-Start a real headless Chromium with its DevTools port open (a render is
-only as good as its renderer, so this recipe wants a real engine rather
-than a partial one like obscura):
+Start a headless Chromium with its DevTools port open (screenshots need a
+real rendering engine; see the [CDP provider](/browser/providers/cdp/) for
+other ways to get one):
 
 ```sh
 docker run -d --name chromium -p 127.0.0.1:9222:9222 chromedp/headless-shell
 ```
 
-Or use a locally installed Chrome (a non-default profile dir is required
-for remote debugging):
-
-```sh
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --headless --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-cdp
-```
-
-Then run it. The default target is [Plausible's live public
-dashboard](https://plausible.io/plausible.io), real traffic data, shared by
-design:
+Then run it. The default target is [Plausible's own public
+dashboard](https://plausible.io/plausible.io), live traffic for
+plausible.io, public on purpose:
 
 ```sh
 GOOGLE_API_KEY=... pnpm tsx recipes/dashboard-briefing/run-node.ts
@@ -67,11 +58,6 @@ Grafana, or any URL you can open in a browser:
 DASHBOARD_URL="https://plausible.io/share/yoursite.com?auth=..." \
   GOOGLE_API_KEY=... pnpm tsx recipes/dashboard-briefing/run-node.ts
 ```
-
-Fetch the default target with a reader and compare: the markdown contains a
-page shell and no data at all. The chart exists only after the browser runs
-the app and draws it, which is exactly why this composition needs a browser
-and a vision model rather than a scraper.
 
 ## Configuration
 
@@ -86,12 +72,12 @@ and a vision model rather than a scraper.
 
 ## How it works
 
-No agent loop; this is the judge pattern. Open the page, let it settle,
-screenshot the full page, and decode a single vision `LanguageModel` turn
-against the `Briefing` schema (period, trend, headline metrics, anomalies,
-summary). The schema's field annotations double as the model's
-instructions, and the prompt pins it to what is visible: values verbatim,
-estimates marked with `~`, no invented numbers.
+There is no agent loop here. The recipe opens the page, waits a moment for
+it to render, screenshots the full page, and decodes one vision
+`LanguageModel` turn against the `Briefing` schema (period, trend, headline
+metrics, anomalies, summary). The schema's field annotations double as
+instructions to the model, and the prompt holds it to what is visible:
+values read verbatim, estimates marked with `~`, no invented numbers.
 
 - `recipe.ts`: the briefing schema and the screenshot-then-decode flow.
 - `app.ts`: composition (Chromium `Browser` Layer, Gemini `LanguageModel`

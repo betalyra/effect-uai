@@ -341,6 +341,10 @@ export default defineConfig({
                   label: "Agent usability testing",
                   slug: "recipes/browser-usability",
                 },
+                {
+                  label: "Dashboard briefing",
+                  slug: "recipes/dashboard-briefing",
+                },
               ],
             },
           ],

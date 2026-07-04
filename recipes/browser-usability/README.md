@@ -23,11 +23,10 @@ generated on demand against any URL, cheap enough for CI.
 
 ## Try it
 
-Start [obscura](https://github.com/h4ckf0r0day/obscura), a from-scratch
-headless browser engine (no Chrome needed):
+Start a headless Chromium with its DevTools port open:
 
 ```sh
-docker run -d --name obscura -p 127.0.0.1:9222:9222 h4ckf0r0day/obscura
+docker run -d --name chromium -p 127.0.0.1:9222:9222 chromedp/headless-shell
 ```
 
 The default goal is a real shopping task against
@@ -50,22 +49,21 @@ GOAL="Find the pricing page and read the top tier" \
 
 The default is chosen to show what a real usability test catches: a goal the
 site cannot satisfy (a kitchen mug in an art store) returns `goalAchieved=false`
-with friction noting the absence instead of inventing a product, and a broken
-control (NextFaster's client-rendered search may never respond against a
-partial engine) shows up as reported friction while the agent falls back to
-browsing. Both are the honest reports a human tester would file.
+with friction noting the absence instead of inventing a product, and a control
+that misbehaves shows up as reported friction while the agent finds another
+way. Both are the honest reports a human tester would file.
 
 ## Configuration
 
-| Env var           | Default                                | Meaning                                        |
-| ----------------- | -------------------------------------- | ---------------------------------------------- |
-| `GOOGLE_API_KEY`  | (required)                             | Gemini API key for the decision model.         |
-| `GOAL`            | Shop for calligraphy brush pens (…).   | The task you want a first-time user to finish. |
-| `START_URL`       | `https://next-faster.vercel.app`       | Where the agent begins.                        |
-| `MODEL`           | `gemini-3-flash-preview`               | Decision model id.                             |
-| `MAX_STEPS`       | `20`                                   | Hard cap on loop iterations.                   |
-| `OBSCURA_CDP_URL` | `ws://127.0.0.1:9222/devtools/browser` | Browser-level CDP WebSocket endpoint.          |
-| `LOG_LEVEL`       | `Info`                                 | Set `Debug` to see each step live.             |
+| Env var          | Default                              | Meaning                                                                                                     |
+| ---------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_API_KEY` | (required)                           | Gemini API key for the decision model.                                                                      |
+| `GOAL`           | Shop for calligraphy brush pens (…). | The task you want a first-time user to finish.                                                              |
+| `START_URL`      | `https://next-faster.vercel.app`     | Where the agent begins.                                                                                     |
+| `MODEL`          | `gemini-3-flash-preview`             | Decision model id.                                                                                          |
+| `MAX_STEPS`      | `20`                                 | Hard cap on loop iterations.                                                                                |
+| `CDP_URL`        | `http://127.0.0.1:9222`              | Chromium debug address (`http://` is resolved to the `ws://` endpoint automatically) or a full `ws://` URL. |
+| `LOG_LEVEL`      | `Info`                               | Set `Debug` to see each step live.                                                                          |
 
 ## How it works
 
@@ -83,10 +81,12 @@ loop. The `Browser` provider owns only the wire; the recipe owns everything
 about how to test.
 
 - `recipe.ts`: the loop, the `finish` tool, and the trail bookkeeping.
-- `app.ts`: composition (obscura `Browser` Layer, Gemini `LanguageModel`
+- `app.ts`: composition (Chromium `Browser` Layer, Gemini `LanguageModel`
   Layer), env config, and the report formatter.
 - `run-node.ts`: attaches the Node `HttpClient` and starts the runtime.
 
-`app.ts` drives any CDP WebSocket endpoint. Point it at a local Chromium
-(`--remote-debugging-port=9222`) or a hosted CDP vendor by changing only
-`OBSCURA_CDP_URL`. `recipe.ts` never changes.
+`app.ts` drives any CDP endpoint. Point `CDP_URL` at a locally installed
+Chrome (`--remote-debugging-port=9222`), a hosted CDP vendor, or even
+[obscura](https://github.com/h4ckf0r0day/obscura), a from-scratch partial
+CDP engine this recipe's vision-free grounding also runs on. `recipe.ts`
+never changes.

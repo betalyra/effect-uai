@@ -99,7 +99,7 @@ const readPageTool = (session: CoreBrowser.BrowserSession) =>
     name: "browser_read_page",
     description:
       "Read the current page: its full main content as markdown plus the interactive elements, each with an @ref usable in browser_click / browser_fill. Call it after navigating or acting to see the result.",
-    inputSchema: Tool.fromEffectSchema(Schema.Struct({})),
+    inputSchema: Tool.noInput,
     run: () =>
       Effect.gen(function* () {
         const { elements, markdown, url } = yield* Effect.all(
@@ -302,6 +302,7 @@ export const runUsabilityTest = (
         ),
         recoverActionable,
       )
+      yield* Effect.logInfo(`DESCRIPTORS: ${JSON.stringify(Toolkit.descriptors(actions), null, 2)}`)
       // On the last allowed round the model only sees `finish`, forcing a
       // report - so the agent always terminates with one.
       const finishOnly = Toolkit.make(finishTool)

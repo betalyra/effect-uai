@@ -71,7 +71,8 @@ if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
 fi
 
 # ---------------------------------------------------------------------------
-# Build combined release notes: core first, then providers sorted by name.
+# Build combined release notes: core first, then provider and compat
+# packages sorted by path.
 # Per-package sections come from each package's own CHANGELOG.md.
 # ---------------------------------------------------------------------------
 
@@ -80,7 +81,7 @@ notes_file="$(mktemp)"
 packages=(packages/core packages/effect-uai)
 while IFS= read -r dir; do
   packages+=("$dir")
-done < <(find packages/providers -maxdepth 1 -mindepth 1 -type d | sort)
+done < <(find packages/providers packages/compat -maxdepth 1 -mindepth 1 -type d | sort)
 
 for dir in "${packages[@]}"; do
   pkg_json="${dir}/package.json"

@@ -1,10 +1,13 @@
 packages:
   - "packages/*"
   - "packages/providers/*"
+  - "packages/compat/*"
   - "recipes"
   - "webpage"
   - "integration-tests/*"
   # Excluded: standalone packages with heavy native deps. Install with
-  # `pnpm install --ignore-workspace` from inside each folder.
+  # `pnpm install --ignore-workspace` from inside each folder. The examples/
+  # apps are deliberately NOT globbed here so a repo-wide install never pulls
+  # their frameworks (Next.js, etc.); each installs standalone.
   - "!integration-tests/sandbox-microsandbox"
   - "!integration-tests/sandbox-deno"

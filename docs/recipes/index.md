@@ -90,3 +90,10 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | Recipe                                                 | One-line                                                                                                               |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | [Run, fix, repeat](/recipes/sandbox-code-interpreter/) | LLMs are bad at exact computation. Give them Python. Tracebacks from a sandboxed microVM feed back into the next turn. |
+
+## Browser
+
+| Recipe                                                 | One-line                                                                                                             |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| [Agent usability testing](/recipes/browser-usability/) | Give an agent a goal and a URL; it drives the site like a first-time visitor and reports where the UX tripped it up. |
+| [Dashboard briefing](/recipes/dashboard-briefing/)     | Screenshot a dashboard whose charts only exist client-side and decode one vision turn into a typed briefing.         |

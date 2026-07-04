@@ -128,6 +128,9 @@ fails with `BrowserUnsupported` while `content` and `query` keep working.
 
 Wire up an adapter:
 
-- **[Generic CDP](/browser/providers/cdp/)**: point it at any Chrome DevTools
-  Protocol WebSocket endpoint, a local Chromium (`--remote-debugging-port`),
-  [obscura](https://github.com/h4ckf0r0day/obscura), or a hosted CDP vendor.
+- **[Generic CDP](/browser/providers/cdp/)**: one adapter for everything that
+  speaks the Chrome DevTools Protocol, which in practice is the whole field: a
+  headless Chromium container, a local Chrome (`--remote-debugging-port`), a
+  from-scratch engine like [obscura](https://github.com/h4ckf0r0day/obscura),
+  or a hosted browser cloud's connect URL (Browserbase, Browserless, and the
+  like).

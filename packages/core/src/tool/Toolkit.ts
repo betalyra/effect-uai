@@ -1,3 +1,4 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec"
 import {
   Array as Arr,
   Cause,
@@ -10,7 +11,6 @@ import {
   Queue,
   Record,
   Ref,
-  Schema,
   Stream,
 } from "effect"
 import * as Loop from "../loop/Loop.js"
@@ -19,18 +19,21 @@ import { appendToHistory, type Turn } from "../domain/Turn.js"
 import {
   type AnyLocalTool,
   type AnyTool,
+  type DecodeResult,
+  decodeCallInput,
   type Emit,
   type InteractionTool,
   type ProviderTool,
   type SignalTool,
   type Tool,
   type ToolDescriptor,
+  type ToolE,
+  ToolFailed,
   type ToolR,
   toDescriptors,
 } from "./Tool.js"
 import {
   ToolResult,
-  executionError,
   failed,
   nonLocalTool,
   toToolCallOutput,
@@ -92,6 +95,15 @@ export const descriptors = (toolkit: Toolkit): ReadonlyArray<ToolDescriptor> =>
  * resulting stream's `R`. Concrete toolkits from `make` keep their precise R.
  */
 export type ToolkitR<T extends Toolkit> = ToolMap extends T ? never : ToolR<T[keyof T]>
+
+/**
+ * Union of every tool's `E` error type in a toolkit. `Toolkit.run` reports
+ * `Exclude<ToolkitE<T>, string | ToolFailed>` on its stream: the sentinel
+ * failures are absorbed into results, everything else propagates typed. The
+ * same `ToolMap extends T` guard as `ToolkitR` keeps a wide toolkit at
+ * `never` rather than `any`.
+ */
+export type ToolkitE<T extends Toolkit> = ToolMap extends T ? never : ToolE<T[keyof T]>
 
 // ---------------------------------------------------------------------------
 // Uniqueness & composition. `make` rejects duplicate literal names at compile
@@ -257,45 +269,99 @@ export const compose = <const Kits extends ReadonlyArray<Toolkit>>(
 // widening every tool's type.
 // ---------------------------------------------------------------------------
 
-type Handler<Input, Event, Output, R> = (
+type Handler<Input, Event, Output, E, R> = (
   input: Input,
   emit: Emit<Event>,
-) => Effect.Effect<Output, unknown, R>
+) => Effect.Effect<Output, E, R>
 
-export type Middleware<R2 = never> = <Input, Event, Output, R>(
-  run: Handler<Input, Event, Output, R>,
+/**
+ * A `run` transform, tracking an added requirement `R2` and optional added
+ * error `E2`. The tool's own `E` is preserved; `describeFailures` is the
+ * combinator that *replaces* it (mapping every error to `string`).
+ */
+export type Middleware<R2 = never, E2 = never> = <Input, Event, Output, E, R>(
+  run: Handler<Input, Event, Output, E, R>,
   name: string,
-) => Handler<Input, Event, Output, R | R2>
+) => Handler<Input, Event, Output, E | E2, R | R2>
 
-type WrapTool<T extends AnyTool, R2> =
-  T extends Tool<infer N, infer I, infer Ev, infer O, infer R> ? Tool<N, I, Ev, O, R | R2> : T
+type WrapTool<T extends AnyTool, R2, E2> =
+  T extends Tool<infer N, infer I, infer Ev, infer O, infer E, infer R>
+    ? Tool<N, I, Ev, O, E | E2, R | R2>
+    : T
 
-type WrapToolkit<T extends ToolMap, R2> = {
-  readonly [K in keyof T]: T[K] extends AnyTool ? WrapTool<T[K], R2> : T[K]
+type WrapToolkit<T extends ToolMap, R2, E2> = {
+  readonly [K in keyof T]: T[K] extends AnyTool ? WrapTool<T[K], R2, E2> : T[K]
 }
 
 /**
  * Wrap every local tool's `run` with a middleware, preserving each tool's
  * `Input`/`Output` and unioning the middleware's requirement `R2` into the
  * toolkit's `ToolkitR`. Non-local kinds pass through unchanged. Stack with
- * `pipe`:
+ * `pipe` - inner-first, so the last `wrap` applied is the outermost and runs
+ * first:
  *
  *   const observed = pipe(toolkit, Toolkit.wrap(logging), Toolkit.wrap(authz))
- *   Toolkit.run(observed, calls) // R = ToolkitR<typeof toolkit> | <authz R>
+ *   Toolkit.run(observed, calls) // authz runs, then logging, then the tool
  *
- * A middleware that `Effect.fail`s surfaces as a `ToolResult.Failure` from the
- * executor like any run failure; use the `Approval` flow for a distinct
- * "denied" verdict.
+ * A middleware that fails with `string` / `ToolFailed` is absorbed by the
+ * executor into a `ToolResult.Failure`; any other error propagates typed. Use
+ * `describeFailures` for the total "everything to the model" case, or the
+ * `Approval` flow for a distinct "denied" verdict.
  */
 export const wrap: {
-  <R2>(middleware: Middleware<R2>): <T extends Toolkit>(toolkit: T) => WrapToolkit<T, R2>
-  <T extends Toolkit, R2>(toolkit: T, middleware: Middleware<R2>): WrapToolkit<T, R2>
+  <R2, E2>(
+    middleware: Middleware<R2, E2>,
+  ): <T extends Toolkit>(toolkit: T) => WrapToolkit<T, R2, E2>
+  <T extends Toolkit, R2, E2>(toolkit: T, middleware: Middleware<R2, E2>): WrapToolkit<T, R2, E2>
 } = Function.dual(
   2,
-  <T extends Toolkit, R2>(toolkit: T, middleware: Middleware<R2>): WrapToolkit<T, R2> =>
+  <T extends Toolkit, R2, E2>(toolkit: T, middleware: Middleware<R2, E2>): WrapToolkit<T, R2, E2> =>
     Record.map(toolkit, (tool) =>
       tool._tag === "LocalTool" ? { ...tool, run: middleware(tool.run, tool.name) } : tool,
-    ) as WrapToolkit<T, R2>,
+    ) as WrapToolkit<T, R2, E2>,
+)
+
+// ---------------------------------------------------------------------------
+// describeFailures: map every local tool's error to a model-visible string,
+// opting its failures into recovery. Group tools by recovery policy, wrap
+// each group, then compose.
+// ---------------------------------------------------------------------------
+
+type DescribeTool<T extends AnyTool> =
+  T extends Tool<infer N, infer I, infer Ev, infer O, any, infer R>
+    ? Tool<N, I, Ev, O, string, R>
+    : T
+
+type DescribeToolkit<T extends ToolMap> = {
+  readonly [K in keyof T]: T[K] extends AnyTool ? DescribeTool<T[K]> : T[K]
+}
+
+/**
+ * Map every local tool's error to a `string`, so `Toolkit.run` absorbs those
+ * failures into `ToolResult.Failure` the model reads and adapts to. Pairs
+ * with the domain `describe` helpers (`AiError.describe`,
+ * `BrowserError.describe`). Non-local kinds pass through.
+ *
+ *   const kit = yield* Toolkit.compose(
+ *     Toolkit.describeFailures(searchKit, AiError.describe),
+ *     browserToolkit(session), // failures stay typed
+ *   )
+ */
+export const describeFailures: {
+  <E>(describe: (e: E) => string): <T extends Toolkit>(toolkit: T) => DescribeToolkit<T>
+  <T extends Toolkit>(toolkit: T, describe: (e: ToolkitE<T>) => string): DescribeToolkit<T>
+} = Function.dual(
+  2,
+  <T extends Toolkit>(toolkit: T, describe: (e: any) => string): DescribeToolkit<T> =>
+    Record.map(toolkit, (tool) =>
+      tool._tag === "LocalTool"
+        ? {
+            ...tool,
+            run: (input: unknown, emit: Emit<unknown>) =>
+              (tool as AnyLocalTool).run(input, emit).pipe(Effect.mapError(describe)),
+          }
+        : tool,
+    ) as DescribeToolkit<T>,
 )
 
 // ---------------------------------------------------------------------------
@@ -307,17 +373,26 @@ export type ExecuteOptions = {
   readonly concurrency?: number | "unbounded"
 }
 
-/** Execute every provided call. Approval/rejection policy belongs upstream. */
+/**
+ * Execute every provided call. Approval/rejection policy belongs upstream.
+ *
+ * String and `ToolFailed` failures are absorbed into `ToolResult.Failure`
+ * (the model reads and adapts to them); every other tool error propagates
+ * typed on the stream, so `Exclude<ToolkitE<T>, string | ToolFailed>` is
+ * what a caller catches or lets end the run. If one call in a concurrent
+ * batch fails the stream, siblings may go unanswered: a loop that catches
+ * and continues must reconcile history first (`HistoryCheck.cancelAllPending`).
+ */
 export const run = <T extends Toolkit>(
   toolkit: T,
   calls: ReadonlyArray<ToolCall>,
   options?: ExecuteOptions,
-): Stream.Stream<ToolEvent, never, ToolkitR<T>> =>
+): Stream.Stream<ToolEvent, Exclude<ToolkitE<T>, string | ToolFailed>, ToolkitR<T>> =>
   Stream.fromIterable(calls).pipe(
     Stream.flatMap((call) => runOne(toolkit, call), {
       concurrency: options?.concurrency ?? "unbounded",
     }),
-  ) as Stream.Stream<ToolEvent, never, ToolkitR<T>>
+  ) as Stream.Stream<ToolEvent, Exclude<ToolkitE<T>, string | ToolFailed>, ToolkitR<T>>
 
 const okResult = (call: ToolCall, tool: string, value: unknown): ToolResult =>
   ToolResult.Ok({ call_id: call.call_id, tool, value })
@@ -325,8 +400,11 @@ const okResult = (call: ToolCall, tool: string, value: unknown): ToolResult =>
 const outputEvent = (result: ToolResult): Stream.Stream<ToolEvent, never, any> =>
   Stream.succeed(ToolEvent.Output({ result }))
 
-const runOne = (toolkit: ToolMap, call: ToolCall): Stream.Stream<ToolEvent, never, any> =>
-  Match.value(toolkit[call.name]).pipe(
+const runOne = (toolkit: ToolMap, call: ToolCall): Stream.Stream<ToolEvent, unknown, any> => {
+  // Own-property lookup: a hallucinated call named `constructor` / `toString`
+  // must not resolve to a prototype method.
+  const tool = Object.hasOwn(toolkit, call.name) ? toolkit[call.name] : undefined
+  return Match.value(tool).pipe(
     // No such tool. Graceful: emit a synthetic Failure so OTHER calls in this
     // turn still execute. LLMs hallucinate tool names; MCP tools come and go.
     Match.when(Match.undefined, () =>
@@ -338,23 +416,46 @@ const runOne = (toolkit: ToolMap, call: ToolCall): Stream.Stream<ToolEvent, neve
     // execution; reaching here means it didn't, so report it rather than crash.
     Match.orElse(() => outputEvent(nonLocalTool(call))),
   )
+}
 
-const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
+const describeIssues = (issues: ReadonlyArray<StandardSchemaV1.Issue>): string =>
+  issues
+    .map((issue) => {
+      const path = (issue.path ?? [])
+        .map((seg) => (typeof seg === "object" && seg !== null ? String(seg.key) : String(seg)))
+        .join(".")
+      return path === "" ? issue.message : `${path}: ${issue.message}`
+    })
+    .join("; ")
+    .slice(0, 500)
 
-const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<ToolEvent, never, any> =>
+// A decode failure is the model's contract violation: report it as a result
+// (never a stream failure) so the model can correct its next call.
+const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<ToolEvent, unknown, any> =>
+  Stream.unwrap(
+    decodeCallInput(tool, call).pipe(
+      Effect.map(
+        Match.type<DecodeResult<unknown>>().pipe(
+          Match.tag("parseError", () =>
+            outputEvent(validationError(call, "arguments are not valid JSON")),
+          ),
+          Match.tag("invalid", ({ issues }) =>
+            outputEvent(validationError(call, describeIssues(issues))),
+          ),
+          Match.tag("ok", ({ input }) => runValidated(tool, call, input)),
+          Match.exhaustive,
+        ),
+      ),
+    ),
+  )
+
+const runValidated = (
+  tool: AnyLocalTool,
+  call: ToolCall,
+  input: unknown,
+): Stream.Stream<ToolEvent, unknown, any> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const parsed = yield* parseJsonUnknown(call.arguments).pipe(
-        Effect.mapError(() => "json_parse_error" as const),
-      )
-      const validated = yield* Effect.tryPromise({
-        try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
-        catch: () => "validation_threw" as const,
-      })
-      if (validated.issues !== undefined) {
-        return Stream.succeed<ToolEvent>(ToolEvent.Output({ result: validationError(call) }))
-      }
-
       // Per-call queue: `emit` offers events as `run` produces them; the
       // progress stream drains them in real time; `Queue.end` (in the
       // `ensuring`) flushes pending events then signals a clean end, which
@@ -363,7 +464,7 @@ const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<ToolEvent, n
       const queue = yield* Queue.make<unknown, Cause.Done>({ capacity: tool.emitBufferSize })
       const emit = (event: unknown) => Effect.asVoid(Queue.offer(queue, event))
       const fiber = yield* tool
-        .run(validated.value, emit)
+        .run(input, emit)
         .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
 
       const progress = Stream.fromQueue(queue).pipe(
@@ -371,23 +472,37 @@ const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<ToolEvent, n
       )
       const output = Stream.fromEffect(
         Fiber.join(fiber).pipe(
-          Effect.map((value) => ToolEvent.Output({ result: okResult(call, tool.name, value) })),
-          Effect.catchCause(() =>
-            Effect.succeed(
-              ToolEvent.Output({ result: executionError(call, "Tool execution failed") }),
-            ),
-          ),
+          Effect.matchCauseEffect({
+            onSuccess: (value: unknown) =>
+              Effect.succeed(ToolEvent.Output({ result: okResult(call, tool.name, value) })),
+            onFailure: (cause: Cause.Cause<unknown>) => routeCause(call, cause),
+          }),
         ),
       )
       return progress.pipe(Stream.concat(output))
     }),
-  ).pipe(
-    // Backstop for the input-parsing failures (`json_parse_error`,
-    // `validation_threw`) and any defect before the run fiber is forked.
-    Stream.catchCause(() =>
-      Stream.succeed(ToolEvent.Output({ result: executionError(call, "Tool execution failed") })),
-    ),
   )
+
+// A clean single string / ToolFailed failure is absorbed as a model-visible
+// result; interruption, defects, and typed non-sentinel errors propagate.
+const routeCause = (
+  call: ToolCall,
+  cause: Cause.Cause<unknown>,
+): Effect.Effect<ToolEvent, unknown> => {
+  const only = cause.reasons.length === 1 ? cause.reasons[0] : undefined
+  if (only !== undefined && Cause.isFailReason(only)) {
+    const error = only.error
+    if (typeof error === "string") {
+      return Effect.succeed(ToolEvent.Output({ result: failed(call, "tool_failed", error) }))
+    }
+    if (error instanceof ToolFailed) {
+      return Effect.succeed(
+        ToolEvent.Output({ result: failed(call, error.kind ?? "tool_failed", error.message) }),
+      )
+    }
+  }
+  return Effect.failCause(cause)
+}
 
 // ---------------------------------------------------------------------------
 // `continueWithResults` - bridge from a `Stream<ToolEvent>` to the loop's
@@ -455,19 +570,17 @@ export const collectResults = <E, R>(
 export const continueWithResults: {
   <S>(
     build: (results: ReadonlyArray<ToolResult>) => S,
-  ): <R>(
-    stream: Stream.Stream<ToolEvent, never, R>,
-  ) => Stream.Stream<Loop.Step<ToolEvent, S>, never, R>
-  <S, R>(
-    stream: Stream.Stream<ToolEvent, never, R>,
+  ): <E, R>(stream: Stream.Stream<ToolEvent, E, R>) => Stream.Stream<Loop.Step<ToolEvent, S>, E, R>
+  <S, E, R>(
+    stream: Stream.Stream<ToolEvent, E, R>,
     build: (results: ReadonlyArray<ToolResult>) => S,
-  ): Stream.Stream<Loop.Step<ToolEvent, S>, never, R>
+  ): Stream.Stream<Loop.Step<ToolEvent, S>, E, R>
 } = Function.dual(
   2,
-  <S, R>(
-    stream: Stream.Stream<ToolEvent, never, R>,
+  <S, E, R>(
+    stream: Stream.Stream<ToolEvent, E, R>,
     build: (results: ReadonlyArray<ToolResult>) => S,
-  ): Stream.Stream<Loop.Step<ToolEvent, S>, never, R> =>
+  ): Stream.Stream<Loop.Step<ToolEvent, S>, E, R> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const ref = yield* Ref.make<ReadonlyArray<ToolResult>>([])

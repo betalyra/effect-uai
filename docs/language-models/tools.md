@@ -41,8 +41,10 @@ const getCurrentTime = Tool.make({
 ```
 
 A `Tool` is `{ name, description, inputSchema, run, emitBufferSize?, strict? }`.
-`run` is `(input, emit) => Effect<Output, unknown, R>`; its requirements flow
-out via the executor. The plain tool above never calls `emit`.
+`run` is `(input, emit) => Effect<Output, E, R>`; `Tool.make` infers both the
+error type `E` and the requirements `R` from the body, and the executor
+surfaces them (see [Failures](#failures)). The plain tool above never calls
+`emit`.
 
 `strict` (default `true`) toggles the provider's strict-mode flag
 (OpenAI's `strict: true`, Gemini's equivalent). The framework never
@@ -313,6 +315,50 @@ Synthesizers from `@effect-uai/core/ToolResult`: `denied`, `cancelled`,
 `executionError`, `nonLocalTool`, plus `failed(call, kind, reason)` for any
 custom string kind. The executor doesn't inspect `kind`. It's recipe-level
 metadata for audit logs and pattern-matching downstream.
+
+On the wire, an `Ok` string output passes through raw (models read plain text
+best; a structured value is JSON, and an empty output is `"null"`), and a
+`Failure` renders as one distinctive object: `{"error":{"kind","message"}}`.
+
+## Failures
+
+A tool's `run` fails through its typed error channel `E`. The executor splits
+those failures two ways, and this is the one rule to internalize:
+
+- **Absorbed into a result** (the model sees it and can adapt): a failure with
+  a `string`, or with the `ToolFailed` sentinel from `Tool.fail(message,
+{ kind? })`. It becomes a `ToolResult.Failure` and the run continues.
+- **Propagated typed on the stream** (the loop's decision): every other error.
+  `Toolkit.run` reports `Exclude<ToolkitE<T>, string | ToolFailed>` on its
+  error channel, so you `catchTag` a specific tool error or let it end the run.
+  Defects die.
+
+```ts
+// deliberately speak a failure to the model
+run: ({ id }) =>
+  findPage(id).pipe(
+    Effect.flatMap((page) =>
+      page === undefined ? Tool.fail(`page ${id} not found`, { kind: "not_found" }) : render(page),
+    ),
+  )
+```
+
+To make a whole toolkit's failures model-visible in one line, map its errors to
+strings with `Toolkit.describeFailures`. Group tools by recovery policy, wrap
+each group, then compose:
+
+```ts
+const kit =
+  yield *
+  Toolkit.compose(
+    Toolkit.describeFailures(searchKit, AiError.describe), // search failures reach the model
+    browserToolkit(session), // browser failures stay typed and can end the run
+  )
+```
+
+Because a propagated failure can leave sibling calls in a concurrent batch
+unanswered, a loop that catches and continues must reconcile history first with
+`HistoryCheck.cancelAllPending` before the next provider request.
 
 ## Wire conversion at the boundary
 

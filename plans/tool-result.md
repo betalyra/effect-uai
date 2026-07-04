@@ -28,7 +28,7 @@ Three findings from building the browser/web-read tools:
 - **One failure envelope.** `ToolResult.Failure { kind, reason }` is the
   only shape a failed call has, for the model and the app alike.
 - **Recoverability is the loop's decision.** The executor always reports a
-  failure result (the loop continues; the model sees it). How *readable*
+  failure result (the loop continues; the model sees it). How _readable_
   that failure is for the model is opt-in via middleware, not baked into
   the tool.
 
@@ -48,12 +48,12 @@ Tool<Name, Input, Event, Output, E = unknown, R = never>
 - Canonical tool signatures become self-documenting:
   `webSearchTool(): Tool<string, Args, never, string, AiError, WebSearch>`.
 
-This is load-bearing, not documentation: it is what lets a loop *catch
-specific tool errors*. Without it every failure is `unknown` and the only
+This is load-bearing, not documentation: it is what lets a loop _catch
+specific tool errors_. Without it every failure is `unknown` and the only
 handling possible is string matching.
 
 - `Tool.execute` propagates `E` unwrapped (`E | ToolError |
-  ToolValidationError`), so one-shot callers `catchTag` the tool's own
+ToolValidationError`), so one-shot callers `catchTag` the tool's own
   errors directly.
 - The streaming path propagates `E` on the stream's error channel; see (2).
 
@@ -73,9 +73,9 @@ Toolkit.run(toolkit, calls)
 ```
 
 - No bespoke routing callback: which errors reach the model is decided
-  *before* the executor with ordinary combinators (`Effect.mapError`,
+  _before_ the executor with ordinary combinators (`Effect.mapError`,
   `catchTag`, `catchIf`) inside a middleware; which errors end the run is
-  decided *after* it on the stream's typed error channel.
+  decided _after_ it on the stream's typed error channel.
 - No lossy projections: an unhandled tagged error is not flattened to a
   string, it arrives typed where `catchTag` works.
 - Defects die instead of being masked as results (a crashing tool is a
@@ -86,7 +86,7 @@ Toolkit.run(toolkit, calls)
 
 Cost, documented explicitly: if one call in a concurrent batch fails the
 stream, sibling calls may go unanswered. A loop that catches and
-*continues* must reconcile history first (`HistoryCheck.cancelAllPending`
+_continues_ must reconcile history first (`HistoryCheck.cancelAllPending`
 exists for exactly this). A loop that treats the failure as fatal just
 ends; nothing to reconcile.
 
@@ -104,12 +104,13 @@ Selective case is just `mapError` in a middleware, no dedicated API:
 
 ```ts
 // session death ends the run (typed); everything else goes to the model
-const kit = Toolkit.wrap(toolkit, (run) => (input, emit) =>
-  run(input, emit).pipe(
-    Effect.mapError((e) =>
-      e._tag === "BrowserSessionExpired" ? e : BrowserError.describe(e),
+const kit = Toolkit.wrap(
+  toolkit,
+  (run) => (input, emit) =>
+    run(input, emit).pipe(
+      Effect.mapError((e) => (e._tag === "BrowserSessionExpired" ? e : BrowserError.describe(e))),
     ),
-  ))
+)
 ```
 
 `describeFailures(describe)` is only `mapError` lifted over a toolkit; it
@@ -147,17 +148,17 @@ caller asserts. Decide during implementation.
 
 ## Impact
 
-| Area | Change | Risk |
-| --- | --- | --- |
-| `tool/Tool.ts` | ADT gains `E`; `make`/`withRun` thread it; `execute` propagates `E` | breaking for explicit `Tool<...>` annotations (none outside core) |
-| `tool/Toolkit.ts` | string failures absorbed verbatim, others propagate; defects die; `describeFailures`; `ToolkitE`; `continueWithResults` threads `E` | behavior change: `run` was total, now fails on unhandled errors; loops that continue after catching must reconcile history |
-| `ToolResult`, `ToolEvent`, `Approval`, `HistoryCheck` | none | none |
-| `WebSearchTool` | output back to `string`; `E = AiError` | output shape changes vs 0.9 (was already changing) |
-| `WebReadTool`, `BrowserTool` | new modules, bare shape | new API |
-| Providers | none (they consume `ToolDescriptor` only) | none |
-| Recipes | `Tool.make`/`Tool.signal` call sites unaffected (inference). `grounded-answer` adds one `describeFailures(AiError.describe)` so failed searches stay model-recoverable (and demonstrates the pattern). `browser-usability` gains recipe-local `readPageTool`, selective middleware, simpler `outcomeOf` | low |
-| Docs | `tools.md`: ADT signature, middleware section, "ready-made tools are simple defaults" note; search/web-reading/browser pages mention their tool | none |
-| Versioning | one changeset, minor bump of the fixed group; migration note for the `Tool` type param | pre-1.0 |
+| Area                                                  | Change                                                                                                                                                                                                                                                                                                  | Risk                                                                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `tool/Tool.ts`                                        | ADT gains `E`; `make`/`withRun` thread it; `execute` propagates `E`                                                                                                                                                                                                                                     | breaking for explicit `Tool<...>` annotations (none outside core)                                                          |
+| `tool/Toolkit.ts`                                     | string failures absorbed verbatim, others propagate; defects die; `describeFailures`; `ToolkitE`; `continueWithResults` threads `E`                                                                                                                                                                     | behavior change: `run` was total, now fails on unhandled errors; loops that continue after catching must reconcile history |
+| `ToolResult`, `ToolEvent`, `Approval`, `HistoryCheck` | none                                                                                                                                                                                                                                                                                                    | none                                                                                                                       |
+| `WebSearchTool`                                       | output back to `string`; `E = AiError`                                                                                                                                                                                                                                                                  | output shape changes vs 0.9 (was already changing)                                                                         |
+| `WebReadTool`, `BrowserTool`                          | new modules, bare shape                                                                                                                                                                                                                                                                                 | new API                                                                                                                    |
+| Providers                                             | none (they consume `ToolDescriptor` only)                                                                                                                                                                                                                                                               | none                                                                                                                       |
+| Recipes                                               | `Tool.make`/`Tool.signal` call sites unaffected (inference). `grounded-answer` adds one `describeFailures(AiError.describe)` so failed searches stay model-recoverable (and demonstrates the pattern). `browser-usability` gains recipe-local `readPageTool`, selective middleware, simpler `outcomeOf` | low                                                                                                                        |
+| Docs                                                  | `tools.md`: ADT signature, middleware section, "ready-made tools are simple defaults" note; search/web-reading/browser pages mention their tool                                                                                                                                                         | none                                                                                                                       |
+| Versioning                                            | one changeset, minor bump of the fixed group; migration note for the `Tool` type param                                                                                                                                                                                                                  | pre-1.0                                                                                                                    |
 
 ## Steps
 

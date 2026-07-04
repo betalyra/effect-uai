@@ -1,10 +1,28 @@
 import { Context, Effect, Layer, pipe, Schema, Stream } from "effect"
 import { describe, expect, expectTypeOf, it } from "vitest"
+import * as AiError from "../domain/AiError.js"
 import type { ToolCall } from "../domain/Items.js"
-import { isOutput } from "./ToolEvent.js"
-import { isOk } from "./ToolResult.js"
+import { type ToolEvent, isOutput, isProgress } from "./ToolEvent.js"
+import { isFailure, isOk, toToolCallOutput } from "./ToolResult.js"
 import * as Tool from "./Tool.js"
 import * as Toolkit from "./Toolkit.js"
+
+const Empty = Schema.Struct({})
+const toolCall = (name: string, id: string, args = "{}"): ToolCall => ({
+  type: "function_call",
+  call_id: id,
+  name,
+  arguments: args,
+})
+const runToArray = <T extends Toolkit.Toolkit>(
+  toolkit: T,
+  calls: ReadonlyArray<ToolCall>,
+  options?: Toolkit.ExecuteOptions,
+) =>
+  Toolkit.run(toolkit, calls, options).pipe(
+    Stream.runCollect,
+    Effect.map((events): ReadonlyArray<ToolEvent> => Array.from(events)),
+  )
 
 describe("Tool.toDescriptors", () => {
   const GetWeatherInput = Schema.Struct({ city: Schema.String })
@@ -297,5 +315,156 @@ describe("Toolkit.wrap - middleware", () => {
     // Signal kind is left alone by wrap -> still reported non-local.
     const s = byCall.get("s1")
     expect(s?._tag === "Failure" && s.kind).toBe("non_local_tool")
+  })
+})
+
+describe("Toolkit.run - executor outcomes", () => {
+  const plain = <N extends string>(name: N, out: unknown) =>
+    Tool.make({
+      name,
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Empty),
+      run: () => Effect.succeed(out),
+    })
+
+  it("absorbs a bare string failure as a tool_failed result", async () => {
+    const t = Tool.make({
+      name: "t",
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Empty),
+      run: () => Effect.fail("nope"),
+    })
+    const events = await Effect.runPromise(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
+    const result = events.filter(isOutput)[0]?.result
+    expect(result).toMatchObject({ _tag: "Failure", kind: "tool_failed", reason: "nope" })
+  })
+
+  it("absorbs Tool.fail with a custom kind", async () => {
+    const t = Tool.make({
+      name: "t",
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Empty),
+      run: () => Tool.fail("missing", { kind: "not_found" }),
+    })
+    const events = await Effect.runPromise(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
+    const result = events.filter(isOutput)[0]?.result
+    expect(result).toMatchObject({ _tag: "Failure", kind: "not_found", reason: "missing" })
+  })
+
+  it("propagates a typed non-sentinel failure on the stream", async () => {
+    const t = Tool.make({
+      name: "t",
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Empty),
+      run: () => Effect.fail(new AiError.RateLimited({ provider: "x", raw: null })),
+    })
+    const exit = await Effect.runPromiseExit(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
+    expect(exit._tag).toBe("Failure")
+  })
+
+  it("dies on a defect instead of masking it as a result", async () => {
+    const t = Tool.make({
+      name: "t",
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Empty),
+      run: () => Effect.die(new Error("boom")),
+    })
+    const exit = await Effect.runPromiseExit(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
+    expect(exit._tag).toBe("Failure")
+  })
+
+  it("streams progress events strictly before the terminal output", async () => {
+    const t = Tool.make({
+      name: "t",
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Empty),
+      run: (_input, emit) =>
+        emit("a").pipe(Effect.andThen(emit("b")), Effect.andThen(Effect.succeed("done"))),
+    })
+    const events = await Effect.runPromise(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
+    expect(events.map((e) => e._tag)).toEqual(["Progress", "Progress", "Output"])
+    expect(events.filter(isProgress).map((p) => p.data)).toEqual(["a", "b"])
+  })
+
+  it("reports input validation failures as a result carrying the issue detail", async () => {
+    const t = Tool.make({
+      name: "t",
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Schema.Struct({ x: Schema.Number })),
+      run: () => Effect.succeed(1),
+    })
+    const events = await Effect.runPromise(
+      runToArray(Toolkit.make(t), [toolCall("t", "1", '{"x":"nope"}')]),
+    )
+    const result = events.filter(isOutput)[0]?.result
+    expect(result).toMatchObject({ _tag: "Failure", kind: "input_validation_error" })
+    expect(result !== undefined && isFailure(result) && result.reason).toBeTruthy()
+  })
+
+  it("normalizes empty arguments to {} for a zero-arg tool", async () => {
+    const events = await Effect.runPromise(
+      runToArray(Toolkit.make(plain("t", "ok")), [toolCall("t", "1", "")]),
+    )
+    const result = events.filter(isOutput)[0]?.result
+    expect(result).toMatchObject({ _tag: "Ok", value: "ok" })
+  })
+
+  it("reports unparseable arguments as input_validation_error", async () => {
+    const events = await Effect.runPromise(
+      runToArray(Toolkit.make(plain("t", "ok")), [toolCall("t", "1", "not json")]),
+    )
+    const result = events.filter(isOutput)[0]?.result
+    expect(result).toMatchObject({ _tag: "Failure", kind: "input_validation_error" })
+  })
+
+  it("a call named constructor is unknown_tool, not non_local_tool", async () => {
+    const events = await Effect.runPromise(
+      runToArray(Toolkit.make(plain("t", "ok")), [toolCall("constructor", "1")]),
+    )
+    const result = events.filter(isOutput)[0]?.result
+    expect(result).toMatchObject({ _tag: "Failure", kind: "unknown_tool" })
+  })
+
+  it('serializes an undefined output as "null" on the wire', async () => {
+    const t = Tool.make({
+      name: "t",
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Empty),
+      run: () => Effect.void,
+    })
+    const events = await Effect.runPromise(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
+    const result = events.filter(isOutput)[0]?.result
+    expect(result !== undefined && toToolCallOutput(result).output).toBe("null")
+  })
+
+  it("preserves call order with concurrency 1", async () => {
+    const kit = Toolkit.make(plain("a", "A"), plain("b", "B"))
+    const events = await Effect.runPromise(
+      runToArray(kit, [toolCall("a", "a1"), toolCall("b", "b1")], { concurrency: 1 }),
+    )
+    expect(events.filter(isOutput).map((e) => e.result.call_id)).toEqual(["a1", "b1"])
+  })
+
+  it("type: run of a describeFailures toolkit has no stream error", () => {
+    const t = Tool.make({
+      name: "t",
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Empty),
+      run: () => Effect.fail(new AiError.RateLimited({ provider: "x", raw: null })),
+    })
+    const kit = Toolkit.describeFailures(Toolkit.make(t), AiError.describe)
+    const stream = Toolkit.run(kit, [])
+    expectTypeOf(stream).toEqualTypeOf<Stream.Stream<ToolEvent, never, never>>()
+  })
+
+  it("type: run of a typed toolkit propagates the tool's E", () => {
+    const t = Tool.make({
+      name: "t",
+      description: "",
+      inputSchema: Tool.fromEffectSchema(Empty),
+      run: () => Effect.fail(new AiError.RateLimited({ provider: "x", raw: null })),
+    })
+    const stream = Toolkit.run(Toolkit.make(t), [])
+    expectTypeOf(stream).toEqualTypeOf<Stream.Stream<ToolEvent, AiError.RateLimited, never>>()
   })
 })

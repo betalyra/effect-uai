@@ -15,7 +15,13 @@ import { describe, expect, it } from "vitest"
 import * as Items from "../domain/Items.js"
 import { findUnansweredCalls, cancelAllPending, isReconciled } from "./HistoryCheck.js"
 import { type ToolResult, isFailure, isOk, toToolCallOutput } from "./ToolResult.js"
-import { type ApprovalMapEntry, type ApprovalDecision, fromMap, fromQueue } from "./Approval.js"
+import {
+  type ApprovalMapEntry,
+  type ApprovalDecision,
+  type Verdict,
+  fromMap,
+  fromQueue,
+} from "./Approval.js"
 import { fromEffectSchema, make as makeTool } from "./Tool.js"
 import { make as makeToolkit, run } from "./Toolkit.js"
 import { ToolEvent, isApprovalRequested, isProgress, isOutput } from "./ToolEvent.js"
@@ -249,6 +255,50 @@ describe("fromQueue + run", () => {
       reason: "too risky",
     })
   })
+
+  it("router retires per round, so sequential rounds over one queue both resolve", async () => {
+    // A verdict-per-round over one shared queue and scope. The old
+    // never-terminating router would still be alive for round 1 and steal
+    // round 2's verdict (not in its map), hanging round 2.
+    const decisions = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const verdicts = yield* Queue.unbounded<Verdict>()
+          const round = (id: string) => [fc(id, "delete_database", { name: "prod" })]
+
+          const r1 = yield* fromQueue(isSensitive, verdicts)(round("c1"))
+          yield* Queue.offer(verdicts, { call_id: "c1", decision: "approve" })
+          const d1 = Array.from(yield* Stream.runCollect(r1.decisions))
+
+          const r2 = yield* fromQueue(isSensitive, verdicts)(round("c2"))
+          yield* Queue.offer(verdicts, { call_id: "c2", decision: "deny", reason: "no" })
+          const d2 = Array.from(yield* Stream.runCollect(r2.decisions))
+
+          return { d1, d2 }
+        }),
+      ),
+    )
+    expect(decisions.d1[0]).toMatchObject({ _tag: "Approved" })
+    expect(decisions.d2[0]).toMatchObject({ _tag: "Rejected", result: { kind: "denied" } })
+  })
+
+  it("timeout resolves an unanswered gated call as cancelled", async () => {
+    const decisions = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const verdicts = yield* Queue.unbounded<Verdict>()
+          const { decisions } = yield* fromQueue(isSensitive, verdicts, { timeout: "10 millis" })([
+            fc("c1", "delete_database", { name: "prod" }),
+          ])
+          return Array.from(yield* Stream.runCollect(decisions))
+        }),
+      ),
+    )
+    expect(decisions[0]).toMatchObject({
+      _tag: "Rejected",
+      result: { _tag: "Failure", kind: "cancelled" },
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -313,7 +363,7 @@ describe("toToolCallOutput", () => {
     expect(JSON.parse(out.output)).toEqual({ count: 3 })
   })
 
-  it("round-trips a Failure result with reason", () => {
+  it("renders a Failure with reason as a nested error object", () => {
     const r: ToolResult = {
       _tag: "Failure",
       call_id: "c2",
@@ -322,10 +372,10 @@ describe("toToolCallOutput", () => {
       reason: "spam concern",
     }
     const out = toToolCallOutput(r)
-    expect(JSON.parse(out.output)).toEqual({ kind: "denied", reason: "spam concern" })
+    expect(JSON.parse(out.output)).toEqual({ error: { kind: "denied", message: "spam concern" } })
   })
 
-  it("round-trips a Failure result without reason (omits the field)", () => {
+  it("renders a Failure without reason (omits message)", () => {
     const r: ToolResult = {
       _tag: "Failure",
       call_id: "c3",
@@ -333,7 +383,7 @@ describe("toToolCallOutput", () => {
       kind: "cancelled",
     }
     const out = toToolCallOutput(r)
-    expect(JSON.parse(out.output)).toEqual({ kind: "cancelled" })
+    expect(JSON.parse(out.output)).toEqual({ error: { kind: "cancelled" } })
   })
 })
 

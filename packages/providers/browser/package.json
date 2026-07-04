@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/browser",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Generic Chrome DevTools Protocol browser provider for @effect-uai/core.",
   "keywords": [
     "agents",

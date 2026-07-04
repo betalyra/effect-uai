@@ -1,5 +1,48 @@
 # @effect-uai/core
 
+## 0.10.0
+
+### Minor Changes
+
+- 98ee12c: New `Browser` capability (additive). Drive a real browser over the Chrome
+  DevTools Protocol: navigate, click, fill, press, scroll, and read a page as
+  markdown with its interactive elements labeled.
+  - **`@effect-uai/core/Browser`**: the generic `Browser` tag and session
+    surface, with a typed `BrowserError`.
+  - **`@effect-uai/core/BrowserTool`**: verb tools (`gotoTool`, `clickTool`,
+    `fillTool`, `pressTool`, `scrollTool`) and `browserToolkit(session)` that
+    bundles them, for handing the browser to an agent loop.
+  - **`@effect-uai/browser`** (new package): a CDP adapter. Point
+    `@effect-uai/browser/Connect`'s `layer({ endpoint })` at any browser-level
+    CDP WebSocket, which covers the whole field: a headless Chromium container,
+    a local Chrome or Edge, a from-scratch engine like obscura, or a hosted
+    browser cloud.
+
+- ed33aab: Tool failures: typed error channel, one failure envelope.
+  - `Tool` gains a typed error parameter (`Tool<Name, Input, Event, Output, E, R>`), inferred by `Tool.make` from `run`. `Tool.fail(message, { kind? })` and the `ToolFailed` sentinel let a tool speak a failure to the model deliberately.
+  - `Toolkit.run` absorbs `string` / `ToolFailed` failures into `ToolResult.Failure` (the model reads and adapts to them) and propagates every other tool error typed on its stream (`Exclude<ToolkitE<T>, string | ToolFailed>`); defects die. `Toolkit.describeFailures(describe)` opts a toolkit's failures into model visibility by mapping them to strings.
+  - Input decoding is shared and hardened: empty arguments normalize to `{}`, a throwing validator is captured, unparseable or invalid arguments come back as an `input_validation_error` result carrying the issue detail, and tool lookup is own-property only.
+  - Wire format: successful string outputs pass through raw; failures render as `{"error":{"kind","message"}}`; a `run` returning nothing serializes to `"null"`.
+  - Canonical tools are bare: `webSearchTool` and `webReadTool` return the rendered string as their `Output` and fail with `AiError` on the typed channel.
+  - `Approval.fromQueue` takes an optional `timeout` (unanswered gated calls resolve as `cancelled`) and its router retires once a round is fully resolved instead of running forever.
+
+  Breaking: `run`'s error channel goes from `unknown` to a typed `E`, so code that wrote out a full `Tool<...>` type annotation must add the `E` parameter before `R`. Tools built with `Tool.make` infer `E` from `run` and need no change. See the [0.10 migration guide](https://effect-uai.betalyra.com/migrations/v0-10/).
+
+- 98ee12c: New `WebRead` capability (additive). Turn a URL into clean markdown or HTML,
+  then extract typed data from it. It mirrors `WebSearch`: one generic tag,
+  several provider layers, and a ready-made tool.
+  - **`@effect-uai/core/WebRead`**: the generic `WebRead` tag and `read(request)`
+    helper. A request is `{ url, format?, timeout? }`; a response is
+    `{ url, content, title?, links?, raw }`. Every implementor answers `read`,
+    so the capability needs no marker tags.
+  - **`@effect-uai/core/WebReadTool`**: `webReadTool(options?)` hands the
+    capability to a model as a tool, the same way `webSearchTool` does for
+    search. `Output` is the rendered string; it fails with `AiError`.
+  - Four providers register the generic `WebRead` tag, swappable as a Layer:
+    `@effect-uai/firecrawl` (new package, JS-rendered pages),
+    `@effect-uai/exa/ExaContents`, `@effect-uai/tavily/TavilyRead`, and
+    `@effect-uai/jina/JinaReader`.
+
 ## 0.9.0
 
 ### Minor Changes
@@ -291,13 +334,13 @@
 
   ```ts
   // Before
-  import { retry } from "@effect-uai/core/LanguageModel"
-  streamTurn(req).pipe(retry(schedule))
+  import { retry } from "@effect-uai/core/LanguageModel";
+  streamTurn(req).pipe(retry(schedule));
 
   // After
-  import * as Retry from "@effect-uai/core/Retry"
-  streamTurn(req).pipe(Retry.stream(schedule))
-  embed(req).pipe(Retry.effect(schedule))
+  import * as Retry from "@effect-uai/core/Retry";
+  streamTurn(req).pipe(Retry.stream(schedule));
+  embed(req).pipe(Retry.effect(schedule));
   ```
 
   `Retryable` and `isRetryable` move to the same module.

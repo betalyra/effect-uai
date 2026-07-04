@@ -7,8 +7,8 @@ import {
   PiCube,
   PiGraph,
   PiMagnifyingGlass,
-  PiMicrophone,
   PiMusicNotes,
+  PiWaveform,
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
 
@@ -33,7 +33,7 @@ const capabilities: ReadonlyArray<Capability> = [
     title: "Speech",
     description: "**Transcribe** audio and **synthesize** speech, batch or live, for voice agents.",
     href: "/speech/",
-    Icon: PiMicrophone,
+    Icon: PiWaveform,
   },
   {
     title: "Embeddings",

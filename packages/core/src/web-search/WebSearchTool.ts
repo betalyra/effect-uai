@@ -1,6 +1,11 @@
-import { Effect, Schema } from "effect"
+import { Effect, Result, Schema } from "effect"
+import * as AiError from "../domain/AiError.js"
 import * as Tool from "../tool/Tool.js"
 import { search, SearchRecency, type SearchResult, WebSearch } from "./WebSearch.js"
+
+/** Operator problems stay on the error channel; the model cannot fix a key. */
+const isModelActionable = (e: AiError.AiError): e is Exclude<AiError.AiError, AiError.AuthFailed> =>
+  e._tag !== "AuthFailed"
 
 /**
  * Model-facing argument schema. Deliberately narrow: `query` plus the one
@@ -60,13 +65,19 @@ export type WebSearchToolOptions = {
  *
  * The model controls only `query` and `recency`; domain scoping and the
  * result cap are app policy, fixed here on the constructor. `Output` is
- * rendered text, not raw `SearchResult[]`: the model reads the list, while
- * the app still gets the structured results through the normal tool-result
- * channel. Pass `render` to change the format.
+ * `Result<string, string>`: rendered text on success (the model reads a
+ * numbered list better than raw `SearchResult[]`; pass `render` to change
+ * the format), and a model-readable failure message when the search itself
+ * failed - signal the model adapts to. Auth failures stay on the error
+ * channel; they are the operator's problem, not the model's.
+ *
+ * This is a simple default implementation for quick use. For more elaborate
+ * cases (a different output contract, more model-facing knobs), build your
+ * own tool with `Tool.make` over the same `search` helper.
  */
 export const webSearchTool = (
   options?: WebSearchToolOptions,
-): Tool.Tool<string, WebSearchToolArgs, never, string, WebSearch> => {
+): Tool.Tool<string, WebSearchToolArgs, never, Result.Result<string, string>, WebSearch> => {
   const name = options?.name ?? "web_search"
   const render = options?.render ?? defaultRender
   const maxResults = options?.maxResults ?? 5
@@ -90,7 +101,8 @@ export const webSearchTool = (
         ...(excludeDomains !== undefined && { excludeDomains }),
       }).pipe(
         Effect.tap((r) => Effect.annotateCurrentSpan("web_search.result_count", r.results.length)),
-        Effect.map((r) => render(r.results)),
+        Effect.map((r) => Result.succeed(render(r.results))),
+        Effect.catchIf(isModelActionable, (e) => Effect.succeed(Result.fail(AiError.describe(e)))),
         Effect.withSpan(name, {
           kind: "client",
           attributes: {

@@ -63,6 +63,21 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/providers/browser:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      devtools-protocol:
+        specifier: ^0.0.1651496
+        version: 0.0.1651496
+      effect:
+        specifier: 4.0.0-beta.57
+        version: 4.0.0-beta.57
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/providers/deno:
     devDependencies:
       '@deno/sandbox':
@@ -248,6 +263,9 @@ importers:
       '@effect-uai/anthropic':
         specifier: workspace:*
         version: link:../packages/providers/anthropic
+      '@effect-uai/browser':
+        specifier: workspace:*
+        version: link:../packages/providers/browser
       '@effect-uai/core':
         specifier: workspace:*
         version: link:../packages/core
@@ -3037,6 +3055,9 @@ packages:
 
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
+
+  devtools-protocol@0.0.1651496:
+    resolution: {integrity: sha512-aJNGsTbQSN63p6E6DVW0+X4yVUK7BoRlkHFCYPN/dGIQTBwC/6bxucK9GjdK0yrq0HXK1mXddH7+xbOQyg85qw==}
 
   diff@8.0.4:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
@@ -7608,6 +7629,8 @@ snapshots:
   devlop@1.1.0:
     dependencies:
       dequal: 2.0.3
+
+  devtools-protocol@0.0.1651496: {}
 
   diff@8.0.4: {}
 

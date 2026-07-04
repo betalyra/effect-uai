@@ -3,6 +3,7 @@ import {
   PiArrowRight,
   PiArticle,
   PiBrain,
+  PiBrowser,
   PiCube,
   PiGraph,
   PiMagnifyingGlass,
@@ -63,6 +64,12 @@ const capabilities: ReadonlyArray<Capability> = [
     description: "Run **model-written code** in isolated microVMs.",
     href: "/sandboxes/",
     Icon: PiCube,
+  },
+  {
+    title: "Browser",
+    description: "Drive a **real browser**: navigate, click, fill, and read pages as markdown.",
+    href: "/browser/",
+    Icon: PiBrowser,
   },
 ]
 

@@ -326,6 +326,26 @@ export default defineConfig({
           ],
         },
         {
+          label: "Browser",
+          items: [
+            { label: "Overview", slug: "browser" },
+            {
+              label: "Providers",
+              items: [{ label: "Generic CDP", slug: "browser/providers/cdp" }],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                {
+                  label: "Agent usability testing",
+                  slug: "recipes/browser-usability",
+                },
+              ],
+            },
+          ],
+        },
+        {
           label: "Migrations",
           collapsed: true,
           items: [

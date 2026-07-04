@@ -110,6 +110,25 @@ export const fromStandardSchema = <S extends StandardSchemaV1 & StandardJSONSche
   schema as S & ToolInputSchema<StandardSchemaV1.InferOutput<S>>
 
 /**
+ * Input schema for a tool that takes no arguments. Renders a clean
+ * `{ type: "object", properties: {} }`; validation accepts anything and
+ * yields `{}`. Use it instead of `fromEffectSchema(Schema.Struct({}))`,
+ * which renders a degenerate `anyOf` (object-or-array) that strict
+ * providers like Gemini reject.
+ */
+export const noInput: ToolInputSchema<Record<string, never>> = {
+  "~standard": {
+    version: 1,
+    vendor: "effect-uai",
+    validate: () => ({ value: {} }),
+    jsonSchema: {
+      input: () => ({ type: "object", properties: {} }),
+      output: () => ({ type: "object", properties: {} }),
+    },
+  },
+}
+
+/**
  * Emit one intermediate `Event` from inside a tool's `run`. Backed by the
  * executor's per-call queue, so it returns an `Effect` (backpressure) and
  * composes with `Stream.runForEach(emit)`.

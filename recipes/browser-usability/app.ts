@@ -11,7 +11,7 @@
  * replace `obscuraLayer` with any other `Browser` provider (a hosted CDP
  * vendor, a local Chromium), and `recipe.ts` is untouched.
  */
-import { Config, Console, Effect, Layer, Logger, References } from "effect"
+import { Cause, Config, Console, Effect, Layer, Logger, References } from "effect"
 import { layer as cdpLayer } from "@effect-uai/browser/Connect"
 import { layer as geminiLayer } from "@effect-uai/google/Gemini"
 import { runUsabilityTest, type UsabilityReport } from "./recipe.js"
@@ -76,7 +76,15 @@ export const main = Effect.gen(function* () {
   const report = yield* runUsabilityTest(cfg)
 
   yield* Console.log(`\n${formatReport(report)}`)
-}).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
+}).pipe(
+  Effect.tapCause((cause) =>
+    Effect.gen(function* () {
+      yield* Effect.logError("[main] failed", { cause })
+      const err = Cause.squash(cause) as { readonly raw?: unknown }
+      if (err?.raw !== undefined) yield* Console.error("RAW ERROR BODY:", err.raw)
+    }),
+  ),
+)
 
 // ---------------------------------------------------------------------------
 // App-level layer: obscura (Browser) + Gemini (LanguageModel) + logging.

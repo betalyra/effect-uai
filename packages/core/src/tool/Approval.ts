@@ -5,7 +5,7 @@
  * results must be returned to the model. Tool execution stays explicit at
  * the recipe boundary via `Toolkit.run`.
  */
-import { Data, Deferred, Effect, Queue, Scope, Stream } from "effect"
+import { Data, Deferred, type Duration, Effect, Queue, Ref, Scope, Stream } from "effect"
 import type { ToolCall } from "../domain/Items.js"
 import { type ToolResult, cancelled, denied } from "./ToolResult.js"
 import { ToolEvent } from "./ToolEvent.js"
@@ -53,13 +53,30 @@ export type Verdict = {
   readonly reason?: string
 }
 
+export type FromQueueOptions = {
+  /**
+   * Resolve any still-pending gated call as `cancelled` once this elapses,
+   * so a lost or never-sent verdict cannot hang the decisions stream
+   * forever. Omit to wait indefinitely.
+   */
+  readonly timeout?: Duration.Input
+}
+
 /**
  * Queue-backed approval planner. Safe calls are returned immediately in
  * `approved`; gated calls emit `ApprovalRequested` events and later produce
  * one `ApprovalDecision` when their matching verdict arrives.
+ *
+ * The verdict queue is a single-consumer transport: run one approval round
+ * at a time (the router retires once every gated call of the round is
+ * resolved). For overlapping rounds, use one queue per round.
  */
 export const fromQueue =
-  (predicate: (call: ToolCall) => boolean, verdicts: Queue.Dequeue<Verdict>) =>
+  (
+    predicate: (call: ToolCall) => boolean,
+    verdicts: Queue.Dequeue<Verdict>,
+    options?: FromQueueOptions,
+  ) =>
   (
     calls: ReadonlyArray<ToolCall>,
   ): Effect.Effect<
@@ -76,37 +93,65 @@ export const fromQueue =
       const approved = calls.filter((call) => !predicate(call))
 
       const entries = yield* Effect.forEach(gated, (call) =>
-        Deferred.make<Verdict>().pipe(Effect.map((d) => [call.call_id, d] as const)),
+        Deferred.make<ApprovalDecision>().pipe(Effect.map((d) => [call.call_id, d] as const)),
       )
-      const deferreds: ReadonlyMap<string, Deferred.Deferred<Verdict>> = new Map(entries)
+      const deferreds: ReadonlyMap<string, Deferred.Deferred<ApprovalDecision>> = new Map(entries)
+      const callById: ReadonlyMap<string, ToolCall> = new Map(gated.map((c) => [c.call_id, c]))
+      const outstanding = yield* Ref.make(gated.length)
 
-      // Router is forked into the surrounding Scope so it lives as long
-      // as the consumer is pulling events. Recipes typically supply the
-      // scope by wrapping the events construction in `Stream.unwrap`.
-      yield* Effect.forkScoped(
-        Effect.forever(
-          Effect.gen(function* () {
-            const v = yield* Queue.take(verdicts)
-            const d = deferreds.get(v.call_id)
-            if (d !== undefined) yield* Deferred.succeed(d, v)
-          }),
+      // Complete a deferred once; decrement only on the winning transition so
+      // a late verdict for an already-resolved call is a no-op.
+      const resolve = (call: ToolCall, decision: ApprovalDecision) =>
+        Deferred.succeed(deferreds.get(call.call_id)!, decision).pipe(
+          Effect.flatMap((won) => (won ? Ref.update(outstanding, (n) => n - 1) : Effect.void)),
+        )
+
+      // Router retires once every gated call is resolved (by verdict or
+      // timeout), so sequential rounds over one queue do not accumulate
+      // racing routers. Recursive + suspended: stack-safe, no imperative loop.
+      const route: Effect.Effect<void> = Effect.suspend(() =>
+        Ref.get(outstanding).pipe(
+          Effect.flatMap((n) =>
+            n <= 0
+              ? Effect.void
+              : Queue.take(verdicts).pipe(
+                  Effect.flatMap((v) => {
+                    const call = callById.get(v.call_id)
+                    return (
+                      call === undefined
+                        ? Effect.void
+                        : resolve(
+                            call,
+                            v.decision === "approve"
+                              ? approve(call)
+                              : reject(denied(call, v.reason)),
+                          )
+                    ).pipe(Effect.andThen(route))
+                  }),
+                ),
+          ),
         ),
       )
 
-      const decisions = Stream.fromIterable(gated).pipe(
-        Stream.flatMap(
-          (call) => {
-            const d = deferreds.get(call.call_id)!
-            return Stream.fromEffect(
-              Deferred.await(d).pipe(
-                Effect.map((v) =>
-                  v.decision === "approve" ? approve(call) : reject(denied(call, v.reason)),
+      if (gated.length > 0) {
+        yield* Effect.forkScoped(route)
+        if (options?.timeout !== undefined) {
+          yield* Effect.forkScoped(
+            Effect.sleep(options.timeout).pipe(
+              Effect.andThen(
+                Effect.forEach(gated, (call) =>
+                  resolve(call, reject(cancelled(call, "approval timed out"))),
                 ),
               ),
-            )
-          },
-          { concurrency: "unbounded" },
-        ),
+            ),
+          )
+        }
+      }
+
+      const decisions = Stream.fromIterable(gated).pipe(
+        Stream.flatMap((call) => Stream.fromEffect(Deferred.await(deferreds.get(call.call_id)!)), {
+          concurrency: "unbounded",
+        }),
       )
 
       const approvalRequests = Stream.fromIterable<ToolEvent>(gated.map(approvalRequested))

@@ -288,6 +288,26 @@ export default defineConfig({
           ],
         },
         {
+          label: "Web reading",
+          items: [
+            { label: "Overview", slug: "web-reading" },
+            {
+              label: "Providers",
+              items: [
+                { label: "Firecrawl", slug: "web-reading/providers/firecrawl" },
+                { label: "Jina Reader", slug: "web-reading/providers/jina" },
+                { label: "Exa Contents", slug: "web-reading/providers/exa" },
+                { label: "Tavily Extract", slug: "web-reading/providers/tavily" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Market intel", slug: "recipes/market-intel" }],
+            },
+          ],
+        },
+        {
           label: "Sandboxes",
           items: [
             { label: "Overview", slug: "sandboxes" },
@@ -306,10 +326,35 @@ export default defineConfig({
           ],
         },
         {
+          label: "Browser",
+          items: [
+            { label: "Overview", slug: "browser" },
+            {
+              label: "Providers",
+              items: [{ label: "Generic CDP", slug: "browser/providers/cdp" }],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                {
+                  label: "Agent usability testing",
+                  slug: "recipes/browser-usability",
+                },
+                {
+                  label: "Dashboard briefing",
+                  slug: "recipes/dashboard-briefing",
+                },
+              ],
+            },
+          ],
+        },
+        {
           label: "Migrations",
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.10", slug: "migrations/v0-10" },
             { label: "Migrating to 0.9", slug: "migrations/v0-9" },
             { label: "Migrating to 0.8", slug: "migrations/v0-8" },
             { label: "Migrating to 0.7", slug: "migrations/v0-7" },

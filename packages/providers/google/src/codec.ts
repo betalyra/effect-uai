@@ -37,6 +37,9 @@ const FunctionCallPart = Schema.Struct({
     name: Schema.String,
     args: Schema.optional(Schema.Unknown),
   }),
+  // Gemini 3 thinking models attach an opaque signature to each function-call
+  // part that must be replayed on the next request, or the call is rejected.
+  thoughtSignature: Schema.optional(Schema.String),
 })
 
 const Part = Schema.Union([TextPart, FunctionCallPart])
@@ -74,7 +77,14 @@ export type WireChunk = typeof WireChunk.Type
 type RequestPart =
   | { readonly text: string }
   | { readonly inlineData: { readonly mimeType: string; readonly data: string } }
-  | { readonly functionCall: { readonly name: string; readonly args: unknown } }
+  | {
+      readonly functionCall: {
+        readonly id?: string
+        readonly name: string
+        readonly args: unknown
+      }
+      readonly thoughtSignature?: string
+    }
   | {
       readonly functionResponse: {
         readonly name: string
@@ -244,22 +254,36 @@ const nameForCallId = (
   )
 
 /**
- * Extract the Gemini-3 wire id we stashed in `providerData` on the way out.
- * Schema-driven so the shape lives in one place; failure → `Option.none()`.
+ * Extract the Gemini-3 wire id and thought signature we stashed in
+ * `providerData` on the way out. Schema-driven so the shape lives in one
+ * place; failure or absence → `Option.none()`.
  */
-const ProviderDataWithGeminiId = Schema.Struct({
-  gemini: Schema.Struct({ id: Schema.String }),
+const ProviderDataGemini = Schema.Struct({
+  gemini: Schema.Struct({
+    id: Schema.optional(Schema.String),
+    thoughtSignature: Schema.optional(Schema.String),
+  }),
 })
-const decodeProviderId = Schema.decodeUnknownResult(ProviderDataWithGeminiId)
+const decodeGemini = Schema.decodeUnknownResult(ProviderDataGemini)
 
-const providerIdFor = (item: ToolCall): Option.Option<string> =>
+const geminiField = (
+  item: ToolCall,
+  pick: (g: {
+    readonly id?: string | undefined
+    readonly thoughtSignature?: string | undefined
+  }) => string | undefined,
+): Option.Option<string> =>
   pipe(
-    decodeProviderId(item.providerData),
+    decodeGemini(item.providerData),
     Result.match({
-      onSuccess: (d) => Option.some(d.gemini.id),
+      onSuccess: (d) => Option.fromNullishOr(pick(d.gemini)),
       onFailure: () => Option.none<string>(),
     }),
   )
+
+const providerIdFor = (item: ToolCall): Option.Option<string> => geminiField(item, (g) => g.id)
+const signatureFor = (item: ToolCall): Option.Option<string> =>
+  geminiField(item, (g) => g.thoughtSignature)
 
 const itemToContent =
   (history: ReadonlyArray<HistoryItem>) =>
@@ -272,6 +296,10 @@ const itemToContent =
             role: "model" as const,
             parts: [
               {
+                ...Option.match(signatureFor(f), {
+                  onSome: (thoughtSignature) => ({ thoughtSignature }),
+                  onNone: () => ({}),
+                }),
                 functionCall: {
                   ...Option.match(providerIdFor(f), {
                     onSome: (id) => ({ id }),
@@ -414,6 +442,8 @@ export type AccumulatedFunctionCall = {
   readonly name: string
   /** Wire id from Gemini 3, when present - echoed back on `functionResponse`. */
   readonly providerId: Option.Option<string>
+  /** Thought signature from Gemini 3, replayed on the next request's part. */
+  readonly signature: Option.Option<string>
   /** Args as JSON-encoded string, mirroring `Items.ToolCall.arguments`. */
   readonly arguments: string
 }
@@ -451,6 +481,7 @@ export type ChunkPart =
   | {
       readonly kind: "function_call"
       readonly id: Option.Option<string>
+      readonly signature: Option.Option<string>
       readonly name: string
       readonly args: unknown
     }
@@ -470,6 +501,7 @@ const functionCallToChunkParts = (p: WireFunctionCallPart): ReadonlyArray<ChunkP
   {
     kind: "function_call",
     id: Option.fromNullishOr(p.functionCall.id),
+    signature: Option.fromNullishOr(p.thoughtSignature),
     name: p.functionCall.name,
     args: p.functionCall.args ?? {},
   },
@@ -537,6 +569,7 @@ const chunkCallToAccumulated = (
   callId: synthesizeCallId(call, prior),
   name: call.name,
   providerId: call.id,
+  signature: call.signature,
   // `functionCallToChunkParts` already replaced null/undefined with `{}`,
   // so `call.args` is always a JSON-encodable value here.
   arguments: JSON.stringify(call.args),
@@ -584,13 +617,19 @@ const assistantMessageItems = (acc: Accumulator): ReadonlyArray<HistoryItem> =>
 const functionCallItems = (acc: Accumulator): ReadonlyArray<HistoryItem> =>
   pipe(
     acc.functionCalls,
-    Arr.map((c) => ({
-      type: "function_call" as const,
-      call_id: c.callId,
-      name: c.name,
-      arguments: c.arguments,
-      ...(Option.isSome(c.providerId) && { providerData: { gemini: { id: c.providerId.value } } }),
-    })),
+    Arr.map((c) => {
+      const gemini = {
+        ...(Option.isSome(c.providerId) && { id: c.providerId.value }),
+        ...(Option.isSome(c.signature) && { thoughtSignature: c.signature.value }),
+      }
+      return {
+        type: "function_call" as const,
+        call_id: c.callId,
+        name: c.name,
+        arguments: c.arguments,
+        ...(Object.keys(gemini).length > 0 && { providerData: { gemini } }),
+      }
+    }),
   )
 
 export const accumulatorToTurn = (acc: Accumulator): Turn => ({

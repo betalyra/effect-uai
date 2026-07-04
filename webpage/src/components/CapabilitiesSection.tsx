@@ -1,12 +1,14 @@
 import type { IconType } from "react-icons"
 import {
   PiArrowRight,
+  PiArticle,
   PiBrain,
+  PiBrowser,
   PiCube,
   PiGraph,
   PiMagnifyingGlass,
-  PiMicrophone,
   PiMusicNotes,
+  PiWaveform,
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
 
@@ -31,7 +33,7 @@ const capabilities: ReadonlyArray<Capability> = [
     title: "Speech",
     description: "**Transcribe** audio and **synthesize** speech, batch or live, for voice agents.",
     href: "/speech/",
-    Icon: PiMicrophone,
+    Icon: PiWaveform,
   },
   {
     title: "Embeddings",
@@ -52,10 +54,22 @@ const capabilities: ReadonlyArray<Capability> = [
     Icon: PiMagnifyingGlass,
   },
   {
+    title: "Web reading",
+    description: "Turn any **URL into clean markdown**, then extract typed data from it.",
+    href: "/web-reading/",
+    Icon: PiArticle,
+  },
+  {
     title: "Sandboxes",
     description: "Run **model-written code** in isolated microVMs.",
     href: "/sandboxes/",
     Icon: PiCube,
+  },
+  {
+    title: "Browser",
+    description: "Drive a **real browser**: navigate, click, fill, and read pages as markdown.",
+    href: "/browser/",
+    Icon: PiBrowser,
   },
 ]
 

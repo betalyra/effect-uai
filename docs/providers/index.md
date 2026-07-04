@@ -14,22 +14,44 @@ the generic tag keeps working when you change the backend.
 
 ## Capability matrix
 
-| Provider         |            LLM             |              Embeddings               |               Speech               |                    Music                     |             Web search             |                 Sandbox                 |
-| ---------------- | :------------------------: | :-----------------------------------: | :--------------------------------: | :------------------------------------------: | :--------------------------------: | :-------------------------------------: |
-| **OpenAI**       | [✓](/providers/responses/) | [✓](/embeddings/providers/responses/) |   [✓](/speech/providers/openai/)   |                                              |                                    |                                         |
-| **Google**       |  [✓](/providers/gemini/)   |  [✓](/embeddings/providers/gemini/)   |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |                                    |                                         |
-| **Anthropic**    | [✓](/providers/anthropic/) |                                       |                                    |                                              |                                    |                                         |
-| **Mistral**      |  [✓](/providers/mistral/)  |                                       |  [✓](/speech/providers/mistral/)   |                                              |                                    |                                         |
-| **ElevenLabs**   |                            |                                       | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |                                    |                                         |
-| **Jina**         |                            |   [✓](/embeddings/providers/jina/)    |                                    |                                              |                                    |                                         |
-| **Inworld**      |                            |                                       |  [✓](/speech/providers/inworld/)   |                                              |                                    |                                         |
-| **Exa**          |                            |                                       |                                    |                                              |    [✓](/search/providers/exa/)     |                                         |
-| **Perplexity**   |                            |                                       |                                    |                                              | [✓](/search/providers/perplexity/) |                                         |
-| **Tavily**       |                            |                                       |                                    |                                              |   [✓](/search/providers/tavily/)   |                                         |
-| **Microsandbox** |                            |                                       |                                    |                                              |                                    | [✓](/sandboxes/providers/microsandbox/) |
-| **Deno**         |                            |                                       |                                    |                                              |                                    |     [✓](/sandboxes/providers/deno/)     |
+Three tables, split on lines the library itself draws. **Model**
+capabilities take a `model` id: you pick a model and quality varies by which
+one. **Web** capabilities are backend services you send requests to.
+**Runtime** capabilities are environments your agent acts inside: a sandbox
+it runs code in, a browser it drives. A provider can appear in more than one
+(Jina does).
 
 A ✓ links to the usage page for that provider and capability.
+
+### Models
+
+| Provider       |            LLM             |              Embeddings               |               Speech               |                    Music                     |
+| -------------- | :------------------------: | :-----------------------------------: | :--------------------------------: | :------------------------------------------: |
+| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/responses/) |   [✓](/speech/providers/openai/)   |                                              |
+| **Google**     |  [✓](/providers/gemini/)   |  [✓](/embeddings/providers/gemini/)   |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |
+| **Anthropic**  | [✓](/providers/anthropic/) |                                       |                                    |                                              |
+| **Mistral**    |  [✓](/providers/mistral/)  |                                       |  [✓](/speech/providers/mistral/)   |                                              |
+| **ElevenLabs** |                            |                                       | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |
+| **Jina**       |                            |   [✓](/embeddings/providers/jina/)    |                                    |                                              |
+| **Inworld**    |                            |                                       |  [✓](/speech/providers/inworld/)   |                                              |
+
+### Web
+
+| Provider       |             Web search             |              Web reading               |
+| -------------- | :--------------------------------: | :------------------------------------: |
+| **Exa**        |    [✓](/search/providers/exa/)     |    [✓](/web-reading/providers/exa/)    |
+| **Perplexity** | [✓](/search/providers/perplexity/) |                                        |
+| **Tavily**     |   [✓](/search/providers/tavily/)   |  [✓](/web-reading/providers/tavily/)   |
+| **Firecrawl**  |                                    | [✓](/web-reading/providers/firecrawl/) |
+| **Jina**       |                                    |   [✓](/web-reading/providers/jina/)    |
+
+### Runtimes
+
+| Provider                                           |                 Sandbox                 |           Browser            |
+| -------------------------------------------------- | :-------------------------------------: | :--------------------------: |
+| **Microsandbox**                                   | [✓](/sandboxes/providers/microsandbox/) |                              |
+| **Deno**                                           |     [✓](/sandboxes/providers/deno/)     |                              |
+| **CDP** (Chromium, obscura, hosted browser clouds) |                                         | [✓](/browser/providers/cdp/) |
 
 ## OpenAI
 
@@ -83,9 +105,11 @@ Streaming speech-to-text, text-to-speech, and music generation.
 
 `@effect-uai/jina`
 
-Text and multimodal embeddings, including multivector output.
+Text and multimodal embeddings, including multivector output, plus the
+Reader for turning URLs into clean markdown.
 
 - Embeddings: [Jina](/embeddings/providers/jina/)
+- Web reading: [Jina Reader](/web-reading/providers/jina/)
 
 ## Inworld
 
@@ -99,9 +123,11 @@ Text-to-speech.
 
 `@effect-uai/exa`
 
-Neural web search ranked by relevance score.
+Neural web search ranked by relevance score, plus `/contents` for reading a
+URL to clean markdown.
 
 - Web search: [Exa](/search/providers/exa/)
+- Web reading: [Exa Contents](/web-reading/providers/exa/)
 
 ## Perplexity
 
@@ -115,9 +141,19 @@ Fast, current-events web search snippets.
 
 `@effect-uai/tavily`
 
-Web search with snippets, scores, and depth control.
+Web search with snippets, scores, and depth control, plus `/extract` for
+reading a URL to clean markdown.
 
 - Web search: [Tavily](/search/providers/tavily/)
+- Web reading: [Tavily Extract](/web-reading/providers/tavily/)
+
+## Firecrawl
+
+`@effect-uai/firecrawl`
+
+JS-rendered pages turned into clean markdown or HTML.
+
+- Web reading: [Firecrawl](/web-reading/providers/firecrawl/)
 
 ## Microsandbox
 
@@ -134,3 +170,15 @@ Isolated microVM sandboxes for running model-generated code.
 Sandboxed code execution on the Deno runtime.
 
 - Sandbox: [Deno Sandbox](/sandboxes/providers/deno/)
+
+## CDP
+
+`@effect-uai/browser`
+
+One adapter for everything that speaks the Chrome DevTools Protocol, which
+in practice is the whole browser-automation field: a headless Chromium
+container, a locally installed Chrome or Edge, a from-scratch engine like
+obscura, or a hosted browser cloud's connect URL (Browserbase, Browserless,
+and the like).
+
+- Browser: [Generic CDP](/browser/providers/cdp/)

@@ -1,4 +1,4 @@
-import { Data, Duration } from "effect"
+import { Data, Duration, Match } from "effect"
 
 export type Scope = "rpm" | "tpm" | "rpd" | "tpd"
 
@@ -112,3 +112,29 @@ export type AiError =
   | IncompleteTurn
   | GenerationFailed
   | Unsupported
+
+const withReason = (base: string, reason: string | undefined): string =>
+  reason === undefined ? base : `${base}: ${reason}`
+
+/**
+ * Short human-readable description of an error, for logs and model-facing
+ * failure messages. Prose, not a contract; branch on `_tag` instead.
+ */
+export const describe: (e: AiError) => string = Match.type<AiError>().pipe(
+  Match.discriminatorsExhaustive("_tag")({
+    RateLimited: (e) => `rate limited by ${e.provider}; try again later`,
+    Unavailable: (e) => `${e.provider} is temporarily unavailable`,
+    Timeout: (e) => `the ${e.provider} request timed out`,
+    ContentFiltered: (e) => withReason(`blocked by ${e.provider}'s content filter`, e.reason),
+    ContextLengthExceeded: (e) => `the request exceeded ${e.provider}'s context limit`,
+    InvalidRequest: (e) =>
+      e.param === undefined
+        ? `${e.provider} rejected the request`
+        : `${e.provider} rejected the request (param: ${e.param})`,
+    AuthFailed: (e) => `authentication against ${e.provider} failed (${e.subtype})`,
+    Cancelled: (e) => `the ${e.provider} request was cancelled`,
+    IncompleteTurn: () => "the provider stream ended without completing",
+    GenerationFailed: (e) => e.message ?? `${e.provider} failed mid-generation`,
+    Unsupported: (e) => withReason(`${e.provider} does not support ${e.capability}`, e.reason),
+  }),
+)

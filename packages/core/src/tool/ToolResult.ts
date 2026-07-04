@@ -95,14 +95,20 @@ export const validationError = (call: ToolCall, reason?: string): ToolResult =>
 // Wire conversion - the one place structured → string happens.
 // ---------------------------------------------------------------------------
 
+/**
+ * Serialize a success value for the wire. A `string` passes through raw
+ * (models read plain text best; JSON.stringify would quote and escape it);
+ * `undefined` becomes `"null"`; anything else is JSON.
+ */
+export const serializeValue = (value: unknown): string =>
+  typeof value === "string" ? value : JSON.stringify(value ?? null)
+
+/** The one failure shape the model sees: `{"error":{"kind","message"}}`. */
+const failureBody = (kind: string, message?: string): string =>
+  JSON.stringify({ error: message !== undefined ? { kind, message } : { kind } })
+
 export const toToolCallOutput = (r: ToolResult): ToolCallOutput =>
   ToolResult.$match(r, {
-    Ok: (v) => toolCallOutput(v.call_id, JSON.stringify(v.value)),
-    Failure: (f) =>
-      toolCallOutput(
-        f.call_id,
-        JSON.stringify(
-          f.reason !== undefined ? { kind: f.kind, reason: f.reason } : { kind: f.kind },
-        ),
-      ),
+    Ok: (v) => toolCallOutput(v.call_id, serializeValue(v.value)),
+    Failure: (f) => toolCallOutput(f.call_id, failureBody(f.kind, f.reason)),
   })

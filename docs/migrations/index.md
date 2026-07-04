@@ -15,6 +15,17 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.10](/migrations/v0-10/): mostly additive. One small
+  breaking change to the tool layer: a `Tool` now carries a typed error `E`
+  (added before `R`, so only hand-written full `Tool<...>` annotations need
+  editing), and `Toolkit.run` propagates tool failures typed rather than
+  silently showing them to the model (fail with a `string` / `Tool.fail`, or
+  wrap the toolkit in `Toolkit.describeFailures`, to keep a failure
+  model-visible). Additive: a `WebRead` capability (URL to clean markdown,
+  providers `@effect-uai/firecrawl`, `@effect-uai/exa`, `@effect-uai/tavily`,
+  `@effect-uai/jina`, plus `webReadTool`) and a `Browser` capability (drive a
+  real browser over CDP via `@effect-uai/browser`, with `browserToolkit` and
+  the verb tools).
 - [Migrating to 0.9](/migrations/v0-9/): a tool-layer refactor (breaking
   but mechanical) plus an additive Mistral provider. A `Toolkit` is now a
   name-indexed record built with `Toolkit.make` and passed straight to

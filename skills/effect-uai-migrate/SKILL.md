@@ -32,6 +32,75 @@ The full migration prose (with rationale and edge cases) lives in
 
 ---
 
+## 0.9 → 0.10
+
+Mostly additive. One breaking change to the tool layer: a `Tool` now carries a
+typed error `E`, and `Toolkit.run` propagates tool failures typed instead of
+silently folding them into a model-visible result. Plus two additive
+capabilities: `WebRead` (URL to clean markdown, four providers) and `Browser`
+(drive a real browser over CDP).
+
+### Required rewrites
+
+#### Tools carry a typed error `E`
+
+`run`'s error channel goes from `unknown` to a typed `E`, inserted before `R`.
+
+| Before                                | After                                    |
+| ------------------------------------- | ---------------------------------------- |
+| `Tool<Name, Input, Event, Output, R>` | `Tool<Name, Input, Event, Output, E, R>` |
+
+`Tool.make` infers `E` from `run`, so tools built with it need no change. Only a
+**hand-written full `Tool<...>` annotation** breaks: a requirement that used to
+sit in the fifth slot now lands in the error slot. Add `unknown` (or the real
+error) as the fifth argument and shift `R` to sixth. New `Tool.ToolE<T>`
+extractor exists alongside `Tool.ToolR<T>`.
+
+#### Failed tools propagate; opt them back into the model
+
+`Toolkit.run` now splits tool failures two ways:
+
+- A `string`, or `Tool.fail(message, { kind? })` (fails with the `ToolFailed`
+  sentinel), is **absorbed** into a `ToolResult.Failure` the model reads.
+- Every other tool error stays **typed on the channel** and propagates
+  (`Exclude<..., string | ToolFailed>`); the loop handles it (`catchTag`,
+  fallback, or fail). Defects die.
+
+If you relied on arbitrary tool failures reaching the model, either fail with a
+`string` / `Tool.fail(...)`, or wrap the toolkit:
+`Toolkit.describeFailures(describe)` maps its failures to model-visible strings
+(built on 0.9's `Toolkit.wrap`).
+
+### Behavior changes (no rewrite)
+
+- `Approval.fromQueue` takes an optional `timeout` (unanswered gated calls
+  resolve `cancelled`); its router retires once a round is resolved.
+- Tool input decoding hardened: empty args normalize to `{}`, a throwing
+  validator is caught, bad args return a `ToolResult.Failure` kind
+  `input_validation_error`.
+
+### Additive (no migration needed)
+
+- **`WebRead`**: `import { read } from "@effect-uai/core/WebRead"` (request
+  `{ url, format?, timeout? }`), `webReadTool` from
+  `@effect-uai/core/WebReadTool`. Providers register the generic `WebRead`
+  tag: `@effect-uai/firecrawl` (new), `@effect-uai/exa/ExaContents`,
+  `@effect-uai/tavily/TavilyRead`, `@effect-uai/jina/JinaReader`.
+- **`Browser`**: `@effect-uai/core/Browser` tag + `@effect-uai/core/BrowserTool`
+  (`gotoTool` / `clickTool` / `fillTool` / `pressTool` / `scrollTool`,
+  `browserToolkit(session)`). Provider `@effect-uai/browser/Connect` `layer({
+  endpoint })` connects to any CDP WebSocket (Chromium container, local
+  Chrome/Edge, obscura, hosted browser cloud).
+
+### After-migration checklist
+
+- [ ] Hand-written `Tool<...>` annotations have `E` before `R`
+- [ ] Tools whose failures the model must see use `string` / `Tool.fail` or a
+      `describeFailures`-wrapped toolkit
+- [ ] `pnpm typecheck` clean
+
+---
+
 ## 0.8 → 0.9
 
 A tool-layer refactor. Two changes: (1) a `Toolkit` is now a name-indexed record
@@ -834,6 +903,8 @@ ToolResult.$match({ Value: ..., Failure: ... })(result) // matcher
 
 ## See also
 
+- [Migration guide for 0.10](https://effect-uai.betalyra.com/migrations/v0-10/)
+- [Migration guide for 0.9](https://effect-uai.betalyra.com/migrations/v0-9/)
 - [Migration guide for 0.8](https://effect-uai.betalyra.com/migrations/v0-8/)
 - [Migration guide for 0.7](https://effect-uai.betalyra.com/migrations/v0-7/)
 - [Migration guide for 0.6](https://effect-uai.betalyra.com/migrations/v0-6/)

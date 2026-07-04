@@ -1,12 +1,13 @@
 {
   "name": "@effect-uai/tavily",
   "version": "0.9.0",
-  "description": "Tavily provider for @effect-uai/core (web search).",
+  "description": "Tavily provider for @effect-uai/core (web search, web read).",
   "keywords": [
     "ai",
     "effect",
     "search",
     "tavily",
+    "web-read",
     "web-search"
   ],
   "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/tavily",
@@ -33,6 +34,10 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./TavilyRead": {
+      "types": "./dist/TavilyRead.d.mts",
+      "import": "./dist/TavilyRead.mjs"
     },
     "./TavilySearch": {
       "types": "./dist/TavilySearch.d.mts",

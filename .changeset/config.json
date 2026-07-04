@@ -15,10 +15,12 @@
       "@effect-uai/elevenlabs",
       "@effect-uai/inworld",
       "@effect-uai/microsandbox",
+      "@effect-uai/browser",
       "@effect-uai/deno",
       "@effect-uai/perplexity",
       "@effect-uai/exa",
-      "@effect-uai/tavily"
+      "@effect-uai/tavily",
+      "@effect-uai/firecrawl"
     ]
   ],
   "linked": [],

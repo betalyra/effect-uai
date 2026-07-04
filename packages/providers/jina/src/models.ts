@@ -25,3 +25,15 @@ export type JinaEmbeddingModel =
   | "jina-clip-v2"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
+
+/**
+ * Reader fetching engine (`X-Engine`). `browser` renders JavaScript,
+ * `curl` is a fast static fetch, `auto` picks per page. Provider-specific,
+ * so it lives on `JinaReadRequest`.
+ */
+export type JinaEngine =
+  | "browser"
+  | "curl"
+  | "auto"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})

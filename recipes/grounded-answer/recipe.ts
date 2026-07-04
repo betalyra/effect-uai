@@ -24,6 +24,7 @@
  * the runners (`run-node.ts`, ...) supply the platform HttpClient.
  */
 import { Effect, pipe } from "effect"
+import * as AiError from "@effect-uai/core/AiError"
 import * as Items from "@effect-uai/core/Items"
 import { streamTurn } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
@@ -65,7 +66,13 @@ type State = {
 
 export const groundedAnswer = (cfg: GroundedAnswerConfig) => {
   const maxRounds = cfg.maxRounds ?? 5
-  const toolkit = Toolkit.make(webSearchTool({ maxResults: cfg.maxResults ?? 5 }))
+  // Search failures fail typed on `AiError`; `describeFailures` maps them to a
+  // model-visible string so the agent can adapt (search again, answer with
+  // what it has) instead of the run ending.
+  const toolkit = Toolkit.describeFailures(
+    Toolkit.make(webSearchTool({ maxResults: cfg.maxResults ?? 5 })),
+    AiError.describe,
+  )
 
   const initial: State = {
     history: [Items.systemText(SYSTEM_PROMPT), Items.userText(cfg.question)],

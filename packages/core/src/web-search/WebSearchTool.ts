@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import type * as AiError from "../domain/AiError.js"
 import * as Tool from "../tool/Tool.js"
 import { search, SearchRecency, type SearchResult, WebSearch } from "./WebSearch.js"
 
@@ -59,14 +60,19 @@ export type WebSearchToolOptions = {
  * `LanguageModel` tool-calling loop.
  *
  * The model controls only `query` and `recency`; domain scoping and the
- * result cap are app policy, fixed here on the constructor. `Output` is
- * rendered text, not raw `SearchResult[]`: the model reads the list, while
- * the app still gets the structured results through the normal tool-result
- * channel. Pass `render` to change the format.
+ * result cap are app policy, fixed here on the constructor. `Output` is the
+ * rendered text (the model reads a numbered list better than raw
+ * `SearchResult[]`; pass `render` to change the format); failures stay typed
+ * on the `AiError` channel. To let the model recover from a failed search,
+ * wrap the toolkit in `Toolkit.describeFailures(AiError.describe)`.
+ *
+ * This is a simple default implementation for quick use. For more elaborate
+ * cases (a different output contract, more model-facing knobs), build your
+ * own tool with `Tool.make` over the same `search` helper.
  */
 export const webSearchTool = (
   options?: WebSearchToolOptions,
-): Tool.Tool<string, WebSearchToolArgs, never, string, WebSearch> => {
+): Tool.Tool<string, WebSearchToolArgs, never, string, AiError.AiError, WebSearch> => {
   const name = options?.name ?? "web_search"
   const render = options?.render ?? defaultRender
   const maxResults = options?.maxResults ?? 5

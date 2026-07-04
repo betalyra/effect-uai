@@ -1,12 +1,13 @@
 {
   "name": "@effect-uai/exa",
   "version": "0.9.0",
-  "description": "Exa provider for @effect-uai/core (web search).",
+  "description": "Exa provider for @effect-uai/core (web search, web read).",
   "keywords": [
     "ai",
     "effect",
     "exa",
     "search",
+    "web-read",
     "web-search"
   ],
   "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/exa",
@@ -33,6 +34,10 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./ExaContents": {
+      "types": "./dist/ExaContents.d.mts",
+      "import": "./dist/ExaContents.mjs"
     },
     "./ExaSearch": {
       "types": "./dist/ExaSearch.d.mts",

@@ -10,12 +10,12 @@
  * what to do next.
  * The recipe is just the standard tool-calling loop: `Loop.loop` +
  * `onTurnComplete` + `Toolkit.run`, the same machinery as every other agent
- * recipe. Swap obscura for any CDP endpoint by changing only the Layer in
- * `app.ts`.
+ * recipe. Swap the engine for any CDP endpoint by changing only the Layer
+ * in `app.ts`.
  *
  * Grounding is deliberately vision-free: `browser_read_page` returns the
  * page as markdown plus interactive elements (each carrying an `@ref`
- * usable as a selector). That works against a partial CDP engine like
+ * usable as a selector). That even works against a partial CDP engine like
  * obscura, which has no accessibility domain and needs no screenshots.
  */
 import { Data, Effect, Option, pipe, Schema, Stream } from "effect"
@@ -302,7 +302,6 @@ export const runUsabilityTest = (
         ),
         recoverActionable,
       )
-      yield* Effect.logInfo(`DESCRIPTORS: ${JSON.stringify(Toolkit.descriptors(actions), null, 2)}`)
       // On the last allowed round the model only sees `finish`, forcing a
       // report - so the agent always terminates with one.
       const finishOnly = Toolkit.make(finishTool)

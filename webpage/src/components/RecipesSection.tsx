@@ -5,6 +5,7 @@ import {
   PiArrowsInLineHorizontal,
   PiAtom,
   PiRadio,
+  PiChartLineUp,
   PiChatCircleDots,
   PiClockCounterClockwise,
   PiCursorClick,
@@ -181,6 +182,13 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/browser-usability/",
     Icon: PiCursorClick,
   },
+  {
+    title: "Dashboard briefing",
+    description:
+      "**Read dashboards like a human.** Screenshot a client-rendered dashboard and get a typed briefing: trend, anomalies, headline numbers.",
+    href: "/recipes/dashboard-briefing/",
+    Icon: PiChartLineUp,
+  },
 ]
 
 const markdownComponents: Components = {
@@ -197,7 +205,7 @@ export default function RecipesSection() {
           <div className="flex items-baseline gap-3">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
             <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
-              29 and counting
+              32 and counting
             </span>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">

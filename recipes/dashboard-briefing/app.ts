@@ -1,48 +1,48 @@
 /**
- * Composition + reporting for the browser-usability recipe.
+ * Composition + reporting for the dashboard-briefing recipe.
  *
  * Runtime-agnostic wiring lives here: the CDP browser Layer (generic
- * `Browser` tag) pointed at a headless Chromium, the Gemini Flash model
- * Layer (generic `LanguageModel` tag), env-driven config (`GOAL`,
- * `START_URL`, `MODEL`, `MAX_STEPS`, `CDP_URL`), the report formatter, and
- * the bootstrap `main`. The runner supplies the platform `HttpClient`.
+ * `Browser` tag) pointed at a real Chromium, the Gemini vision-model Layer
+ * (generic `LanguageModel` tag), env-driven config (`DASHBOARD_URL`,
+ * `MODEL`, `CDP_URL`, `SETTLE`), the briefing formatter, and the bootstrap
+ * `main`. The runner supplies the platform `HttpClient`.
  *
- * Swapping the browser backend is a one-line change here and nothing else:
- * point `CDP_URL` at any other CDP endpoint (a hosted vendor, a local
- * Chrome, obscura), and `recipe.ts` is untouched.
+ * `CDP_URL` accepts either a full `ws://` endpoint or an `http://` debug
+ * address (e.g. `http://127.0.0.1:9222`): Chromium mints a fresh
+ * `/devtools/browser/<uuid>` WebSocket URL on every start, so the http form
+ * is resolved via `/json/version` at boot instead of asking you to curl and
+ * paste it.
  */
-import { Cause, Config, Console, Effect, Layer, Logger, References, Schema } from "effect"
+import { Config, Console, Duration, Effect, Layer, Logger, References, Schema } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import { layer as cdpLayer } from "@effect-uai/browser/Connect"
 import { layer as geminiLayer } from "@effect-uai/google/Gemini"
-import { runUsabilityTest, type UsabilityReport } from "./recipe.js"
+import { type Briefing, briefDashboard } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
 // Reporting
 // ---------------------------------------------------------------------------
 
-const formatReport = (report: UsabilityReport): string => {
-  const verdict = report.goalAchieved ? "✓ GOAL REACHED" : "✗ GOAL NOT REACHED"
-  const trail = report.trail.map((s) => {
-    const why = s.reasoning === "" ? "" : `\n     ${s.reasoning}`
-    return `  ${s.n}. ${s.action}${why}\n     -> ${s.outcome}`
-  })
-  const friction =
-    report.friction.length === 0
-      ? "  (none reported)"
-      : report.friction.map((f) => `  - ${f}`).join("\n")
+const TREND = { up: "↑ trending up", down: "↓ trending down", flat: "→ flat" } as const
+
+const formatBriefing = (url: string, briefing: Briefing): string => {
+  const headline =
+    briefing.headline.length === 0
+      ? []
+      : [briefing.headline.map((m) => `  ${m.metric}: ${m.value}`).join("\n"), ""]
+  const anomalies =
+    briefing.anomalies.length === 0
+      ? "  (nothing unusual)"
+      : briefing.anomalies.map((a) => `  - ${a.when}: ${a.what}`).join("\n")
   return [
-    `${verdict}  (${report.stepsUsed} steps)`,
-    `Goal: ${report.goal}`,
+    `DASHBOARD BRIEFING - ${url}`,
+    `Period: ${briefing.period}  ${TREND[briefing.trend]}`,
     "",
-    "Summary:",
-    `  ${report.summary}`,
+    ...headline,
+    "Worth a look:",
+    anomalies,
     "",
-    "Trail:",
-    ...trail,
-    "",
-    "Friction:",
-    friction,
+    briefing.summary,
   ].join("\n")
 }
 
@@ -50,19 +50,16 @@ const formatReport = (report: UsabilityReport): string => {
 // Config
 // ---------------------------------------------------------------------------
 
-// Default scenario: a full e-commerce shopping flow against NextFaster, an
-// open-source art-supplies demo store. It exercises the verbs a read-only
-// goal never touches (category navigation, adding to cart, search submit) and
-// stops cleanly at the checkout boundary.
+// Default target: Plausible's own public live dashboard - real traffic data,
+// shared by design. Point DASHBOARD_URL at any dashboard you can open in a
+// browser (a Plausible share link, a public Grafana, a vendor usage page).
 const recipeConfig = Config.all({
   model: Config.string("MODEL").pipe(Config.withDefault("gemini-3-flash-preview")),
-  goal: Config.string("GOAL").pipe(
-    Config.withDefault(
-      "Shop for calligraphy brush pens: find them (search, or browse the category tree if search does not respond), add two different brush pens to the cart, then open the ORDER page and report how many items are in the cart and the total price. Stop at the checkout page; do not sign in or pay.",
-    ),
+  url: Config.string("DASHBOARD_URL").pipe(Config.withDefault("https://plausible.io/plausible.io")),
+  settle: Config.string("SETTLE").pipe(
+    Config.withDefault("2 seconds"),
+    Config.map((s) => Duration.fromInputUnsafe(s as Duration.Input)),
   ),
-  startUrl: Config.string("START_URL").pipe(Config.withDefault("https://next-faster.vercel.app")),
-  maxSteps: Config.int("MAX_STEPS").pipe(Config.withDefault(20)),
 })
 
 // ---------------------------------------------------------------------------
@@ -72,20 +69,12 @@ const recipeConfig = Config.all({
 export const main = Effect.gen(function* () {
   const cfg = yield* recipeConfig
 
-  yield* Effect.logInfo(`Driving ${cfg.startUrl} toward: "${cfg.goal}" (max ${cfg.maxSteps} steps)`)
+  yield* Effect.logInfo(`Reading ${cfg.url} (letting it settle for ${Duration.format(cfg.settle)})`)
 
-  const report = yield* runUsabilityTest(cfg)
+  const briefing = yield* briefDashboard(cfg)
 
-  yield* Console.log(`\n${formatReport(report)}`)
-}).pipe(
-  Effect.tapCause((cause) =>
-    Effect.gen(function* () {
-      yield* Effect.logError("[main] failed", { cause })
-      const err = Cause.squash(cause) as { readonly raw?: unknown }
-      if (err?.raw !== undefined) yield* Console.error("RAW ERROR BODY:", err.raw)
-    }),
-  ),
-)
+  yield* Console.log(`\n${formatBriefing(cfg.url, briefing)}`)
+}).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
 
 // ---------------------------------------------------------------------------
 // App-level layer: Chromium over CDP (Browser) + Gemini (LanguageModel).
@@ -112,8 +101,8 @@ const resolveCdpEndpoint = (raw: string) =>
       })
     : Effect.succeed(raw)
 
-// A headless Chromium with its DevTools port open. Start it with:
-//   docker run -d --name chromium -p 127.0.0.1:9222:9222 chromedp/headless-shell
+// A dashboard read wants a real renderer: start a local Chrome/Chromium with
+// its DevTools port open (see run-node.ts for the exact command).
 const chromiumLayer = Layer.unwrap(
   Effect.gen(function* () {
     const raw = yield* Config.string("CDP_URL").pipe(Config.withDefault("http://127.0.0.1:9222"))

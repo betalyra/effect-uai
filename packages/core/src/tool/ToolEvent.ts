@@ -7,6 +7,11 @@
  *
  * Recipes thread `ToolEvent.Output.result` through `continueWithResults` and
  * apply `toToolCallOutput` when appending to history.
+ *
+ * Demux note: `Progress` carries `call_id` / `tool` at the top level, while
+ * `Output` nests them inside `result` (the `ToolResult` already carries both).
+ * A consumer grouping events by call reads `e.call_id` for `Progress` and
+ * `e.result.call_id` for `Output`.
  */
 import { Data } from "effect"
 import type { ToolResult } from "./ToolResult.js"

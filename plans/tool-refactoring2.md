@@ -29,7 +29,7 @@ as core defaults (rather than recipe-only) is right, for these reasons:
   the capability-tag architecture exists for. A recipe cannot promise
   it; recipe code gets copy-pasted and drifts.
 - **The five-minute path matters.** `Toolkit.make(webSearchTool(),
-  webReadTool())` plus one provider Layer is a complete agent tool
+webReadTool())` plus one provider Layer is a complete agent tool
   setup. Withholding that to preserve purity would cost adoption for no
   design win.
 - **The escape hatch is genuinely cheap.** Tools are plain records;
@@ -80,18 +80,44 @@ helper makes opt-in one line) is right:
   them, and that must be opt-in. (2) It is the Effect idiom: typed
   failures are the caller's decision, not silently stringified.
   (3) The opt-in is one line (`Toolkit.wrap(kit,
-  describeFailures(AiError.describe))`), so safety costs almost
+describeFailures(AiError.describe))`), so safety costs almost
   nothing.
 - **`describeFailures` is the right name** (better than
   `mapFailureMessage`): it says what happens to failures and pairs
   naturally with the existing `AiError.describe` /
   `BrowserError.describe`.
 
+### Scoping recoverability per tool / per group
+
+Selective recovery (e.g. web search auto-recoverable by the model,
+browser failures kept typed) needs no new API; it falls out of wrap
+being toolkit-scoped and toolkits being composable. The recommended
+pattern is "group tools by recovery policy, wrap each group, compose":
+
+```ts
+const searchKit = Toolkit.wrap(
+  Toolkit.make(webSearchTool(), webReadTool()),
+  Toolkit.describeFailures(AiError.describe), // E: AiError -> string
+)
+const kit = yield * Toolkit.compose(searchKit, browserToolkit(session))
+// ToolkitE<kit> = string | BrowserError
+// Toolkit.run(kit, calls): Stream<ToolEvent, BrowserError, ...>
+```
+
+Search failures are absorbed as model-visible results; browser failures
+propagate typed. Finer granularities are also expressible: per-tool via
+the middleware's `name` argument (types the toolkit's `E` uniformly,
+see the middleware-threading open question in tool-result.md), and
+per-error-class via selective `mapError` inside one middleware
+(tool-result.md's browser example). Docs show the group-then-compose
+form as the primary pattern; F8 pins it with a type-level test
+(`ToolkitE` of a mixed composed kit).
+
 ### Amendment: absorb a tagged sentinel alongside bare `string`
 
 tool-result.md's rule is "a `run` that fails with a `string` is
 speaking to the model". Keep it (it is the decided ergonomic and the
-cheapest possible opt-in), but make the *canonical* sentinel a tagged
+cheapest possible opt-in), but make the _canonical_ sentinel a tagged
 error, with `string` as sugar:
 
 ```ts
@@ -119,7 +145,7 @@ Why the sentinel earns its place:
   greppable.
 - It carries structure: the optional `kind` answers tool-result.md's
   open question. Absorbed failures get `Failure { kind: e.kind ??
-  "tool_failed", reason: e.message }`, so string failures and
+"tool_failed", reason: e.message }`, so string failures and
   `Tool.fail(msg)` land identically, and a tool that wants a
   distinguishable kind (`"not_found"`, `"rate_limited"`) has a channel
   for it without new ToolResult variants.
@@ -172,7 +198,7 @@ The `Fiber.join` handling becomes exit-based routing:
   "Tool execution failed" Output. That was a latent wart; with
   propagate-by-default it becomes load-bearing, because a failing call
   in a concurrent batch now interrupts its siblings, and those siblings
-  must produce *no* result rather than a fake `execution_error`. The
+  must produce _no_ result rather than a fake `execution_error`. The
   loop reconciles unanswered calls via `HistoryCheck.cancelAllPending`
   (already documented in tool-result.md).
 
@@ -193,11 +219,38 @@ site.
 
 Fix: one internal `safeStringify` in `ToolResult.ts`:
 `JSON.stringify(v) ?? "null"`, wrapped in try/catch. On throw,
-`toToolCallOutput` degrades to
-`{"kind":"serialization_error","reason":<String(err)>}` as the output
-payload; `Tool.execute` (which has a typed error channel) fails with
-`ToolError` instead. Applied in both `toToolCallOutput` and
-`Tool.execute`.
+`toToolCallOutput` degrades to a `serialization_error` failure body;
+`Tool.execute` (which has a typed error channel) fails with `ToolError`
+instead. Applied in both `toToolCallOutput` and `Tool.execute`.
+
+### F3b. Wire format: bare success, one distinctive failure object
+
+Decision on what the model sees in `function_call_output`, settled here
+because F3 rewrites the same function:
+
+- **Success stays bare; no `{tag: "Success"}` envelope.** The canonical
+  tools render plain text _because_ models read it best; an envelope
+  would JSON-escape every rendered page and list (newlines become
+  `\n`), degrading exactly what the render functions optimize, and
+  taxes every successful call to disambiguate the rare failing one.
+  Ecosystem convention agrees: Anthropic `is_error` and MCP `isError`
+  are flags on plain content; no protocol tags the success arm.
+- **String outputs pass through raw.** Today `JSON.stringify` quotes
+  and escapes success strings (`"1. Effect docs\n..."`). Change:
+  `typeof value === "string" ? value : safeStringify(value)`.
+- **Failure is a single, distinctive shape:**
+  `{"error": {"kind": "<kind>", "message": "<reason>"}}`. Nesting under
+  `"error"` makes it structurally unmistakable (a raw-text success can
+  never collide; a structured success would need a top-level `error`
+  object with exactly these fields). With the `ToolFailed` sentinel the
+  model-facing kind is authored at the tool:
+  `Tool.fail("page /product/123 not found", { kind: "not_found" })`
+  arrives as
+  `{"error":{"kind":"not_found","message":"page /product/123 not found"}}`.
+- Optional, later: thread `isFailure` on `ToolCallOutput` so the
+  Anthropic adapter can additionally set native `is_error: true`. Not
+  in this pass; body-level encoding works everywhere including OpenAI,
+  which has no native flag.
 
 ### F4. `Approval.fromQueue` router lifecycle
 
@@ -220,7 +273,7 @@ Fix, minimum viable:
   a PubSub-accepting sibling: decide during implementation; do not
   build it speculatively.)
 - Add an optional timeout: `fromQueue(predicate, verdicts,
-  { timeout? })`. On expiry, resolve every outstanding deferred as
+{ timeout? })`. On expiry, resolve every outstanding deferred as
   `cancelled(call, "approval timed out")`. Without it the only recovery
   from a lost verdict is external interruption; `HistoryCheck` covers
   crash recovery but not a live hang.

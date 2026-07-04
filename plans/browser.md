@@ -498,8 +498,8 @@ questions and records where the code currently stands.
 - **Transport: hand-rolled raw CDP over Effect's `Socket`, typed with
   `devtools-protocol`.** Section 10 leaned `playwright-core`; that reversed after
   researching the CDP-client landscape. Findings:
-  - There is no official, lean, standalone CDP *client*. ChromeDevTools ships only
-    the protocol *types* (`devtools-protocol`, zero runtime, published daily).
+  - There is no official, lean, standalone CDP _client_. ChromeDevTools ships only
+    the protocol _types_ (`devtools-protocol`, zero runtime, published daily).
   - `playwright-core` (0 deps but 12.7 MB) routes `connectOverCDP` through an
     in-process Node relay (double RPC, added latency) and, decisively, assumes a
     full Chrome CDP surface: it drives `Target.setAutoAttach` / target management
@@ -557,7 +557,7 @@ Pending (not yet written / accepted):
   question below.
 - `Connect.ts`: the generic `connect({ endpoint })` layer. `create` opens a scoped
   CDP connection, `Target.createTarget` then `Target.attachToTarget({ flatten:
-  true })`, enables `Page` / `Runtime` / `Network`, registers a `Target.closeTarget`
+true })`, enables `Page` / `Runtime` / `Network`, registers a `Target.closeTarget`
   finalizer, and registers both the provider tag and the core `Browser` tag via
   `Layer.mergeAll`. Plus `attach` / `list` / `destroy`.
 - `index.ts`, then `pnpm install` + `oxfmt` + `typecheck`, then an end-to-end run
@@ -582,13 +582,13 @@ The reasoning, and the honest split:
   against the first target.
 - **But the argument is only strong for some snippets:**
 
-  | Snippet | Native CDP alternative | Verdict |
-  | --- | --- | --- |
+  | Snippet                                                     | Native CDP alternative                                                       | Verdict                                                                                                                                                                                                                                            |
+  | ----------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
   | click / hover / press / type (`dispatchEvent`, `el.value=`) | `Input.dispatchMouseEvent` / `Input.dispatchKeyEvent` at element coordinates | Weakest part. Synthetic events are `isTrusted: false` and some sites ignore them; `el.value=` bypasses real keystrokes. The Input domain sends real trusted input, at the cost of an extra box lookup and needing the target to implement `Input`. |
-  | content (html) | `DOM.getDocument` + `DOM.getOuterHTML` | Native is marginally cleaner, only if `DOM` is implemented. |
-  | content (markdown) | none exists | CDP has no markdown primitive. A serializer must live somewhere: injected JS, or fetch outerHTML and convert host-side in TS. |
-  | query (querySelectorAll to JSON) | `DOM.querySelectorAll` + `getAttributes` + `getBoxModel` | Injected JS is one round-trip; the DOM domain is several per element. Playwright itself injects JS to query, so this is legitimate. |
-  | waitFor / readyState (polling) | `Page.loadEventFired` / lifecycle events | Events are cleaner than polling but need the event demux we deferred in `cdp.ts`. |
+  | content (html)                                              | `DOM.getDocument` + `DOM.getOuterHTML`                                       | Native is marginally cleaner, only if `DOM` is implemented.                                                                                                                                                                                        |
+  | content (markdown)                                          | none exists                                                                  | CDP has no markdown primitive. A serializer must live somewhere: injected JS, or fetch outerHTML and convert host-side in TS.                                                                                                                      |
+  | query (querySelectorAll to JSON)                            | `DOM.querySelectorAll` + `getAttributes` + `getBoxModel`                     | Injected JS is one round-trip; the DOM domain is several per element. Playwright itself injects JS to query, so this is legitimate.                                                                                                                |
+  | waitFor / readyState (polling)                              | `Page.loadEventFired` / lifecycle events                                     | Events are cleaner than polling but need the event demux we deferred in `cdp.ts`.                                                                                                                                                                  |
 
 - **The tension:** native domains are more faithful (trusted input, real DOM) but
   assume a fuller CDP surface, which is the exact risk against obscura. Injected JS

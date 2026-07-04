@@ -93,9 +93,9 @@ go stale across navigation and don't cross a provider boundary cleanly). Each
 carries a `ref` string usable as a selector for the next action:
 
 ```ts
-const buttons = yield* session.query("button")
+const buttons = yield * session.query("button")
 const submit = buttons.find((b) => b.text?.includes("Add to cart"))
-if (submit) yield* session.click(submit.ref)
+if (submit) yield * session.click(submit.ref)
 ```
 
 A `ref` (and any `AxNode.ref` from `snapshot`) is valid until the next

@@ -1,5 +1,5 @@
-import { Effect, Result, Schema } from "effect"
-import * as AiError from "../domain/AiError.js"
+import { Effect, Schema } from "effect"
+import type * as AiError from "../domain/AiError.js"
 import * as Tool from "../tool/Tool.js"
 import { read, type ReadFormat, type ReadResponse, WebRead } from "./WebRead.js"
 
@@ -16,10 +16,6 @@ const WebReadToolArgs = Schema.Struct({
 })
 
 export type WebReadToolArgs = typeof WebReadToolArgs.Type
-
-/** Operator problems stay on the error channel; the model cannot fix a key. */
-const isModelActionable = (e: AiError.AiError): e is Exclude<AiError.AiError, AiError.AuthFailed> =>
-  e._tag !== "AuthFailed"
 
 /** `title / url` header plus the extracted content - what a model reads best. */
 const defaultRender = (response: ReadResponse, maxChars: number): string => {
@@ -59,10 +55,9 @@ export type WebReadToolOptions = {
  * does not change. Drops straight into a `Toolkit` next to `webSearchTool`
  * (search finds the URLs, read fetches the ones worth reading in full).
  *
- * `Output` is `Result<string, string>`: the rendered page on success, and a
- * model-readable failure message when the page could not be read - for an
- * agent, an unreadable page is signal to try another source. Auth failures
- * stay on the error channel; they are the operator's problem.
+ * `Output` is the rendered page; failures stay typed on the `AiError`
+ * channel. To let the model recover from a failed read, wrap the toolkit in
+ * `Toolkit.describeFailures(AiError.describe)`.
  *
  * This is a simple default implementation for quick use. For more elaborate
  * cases (a different output contract, more model-facing knobs), build your
@@ -70,7 +65,7 @@ export type WebReadToolOptions = {
  */
 export const webReadTool = (
   options?: WebReadToolOptions,
-): Tool.Tool<string, WebReadToolArgs, never, Result.Result<string, string>, WebRead> => {
+): Tool.Tool<string, WebReadToolArgs, never, string, AiError.AiError, WebRead> => {
   const name = options?.name ?? "web_read"
   const format = options?.format ?? "markdown"
   const maxChars = options?.maxChars ?? 20_000
@@ -87,8 +82,7 @@ export const webReadTool = (
     run: (args) =>
       read({ url: args.url, format }).pipe(
         Effect.tap((r) => Effect.annotateCurrentSpan("web_read.content_chars", r.content.length)),
-        Effect.map((r) => Result.succeed(render(r))),
-        Effect.catchIf(isModelActionable, (e) => Effect.succeed(Result.fail(AiError.describe(e)))),
+        Effect.map(render),
         Effect.withSpan(name, {
           kind: "client",
           attributes: {

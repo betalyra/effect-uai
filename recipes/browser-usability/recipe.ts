@@ -4,9 +4,10 @@
  * report: did it get there, what path it took, and where the UI tripped it
  * up.
  *
- * The agent steers itself. The model gets the canonical `browserTools`
- * (navigate, click, fill, press, scroll, read page) plus a `finish` signal
- * tool carrying the report schema, and decides each step what to do next.
+ * The agent steers itself. The model gets the canonical `browserToolkit`
+ * (navigate, click, fill, press, scroll), a recipe-local read-page tool, and
+ * a `finish` signal tool carrying the report schema, and decides each step
+ * what to do next.
  * The recipe is just the standard tool-calling loop: `Loop.loop` +
  * `onTurnComplete` + `Toolkit.run`, the same machinery as every other agent
  * recipe. Swap obscura for any CDP endpoint by changing only the Layer in
@@ -17,11 +18,11 @@
  * usable as a selector). That works against a partial CDP engine like
  * obscura, which has no accessibility domain and needs no screenshots.
  */
-import { Data, Effect, Option, pipe, Result, Schema, Stream } from "effect"
+import { Data, Effect, Option, pipe, Schema, Stream } from "effect"
 import type * as AiError from "@effect-uai/core/AiError"
 import * as CoreBrowser from "@effect-uai/core/Browser"
-import type * as BrowserError from "@effect-uai/core/BrowserError"
-import { browserTools } from "@effect-uai/core/BrowserTool"
+import * as BrowserError from "@effect-uai/core/BrowserError"
+import { browserToolkit } from "@effect-uai/core/BrowserTool"
 import * as Items from "@effect-uai/core/Items"
 import * as LanguageModel from "@effect-uai/core/LanguageModel"
 import * as Loop from "@effect-uai/core/Loop"
@@ -58,6 +59,93 @@ const finishTool = Tool.signal({
     "End the usability test and file the report. Call it as soon as the goal is met, or when you are stuck with no way forward.",
   inputSchema: Tool.fromEffectSchema(FinishArgs),
 })
+
+// ---------------------------------------------------------------------------
+// Read-page tool. Rendering a page for a model (markdown budget, interactive
+// element listing, the @ref protocol) is app policy, so it lives in the
+// recipe rather than in core's action verbs. Grounding is vision-free: the
+// page comes back as markdown plus interactive elements, each carrying an
+// @ref usable as a selector in browser_click / browser_fill.
+// ---------------------------------------------------------------------------
+
+const MARKDOWN_BUDGET = 6000
+const ELEMENT_BUDGET = 50
+const INTERACTIVE =
+  "a, button, input, textarea, select, [role=button], [role=link], [role=tab], [role=menuitem]"
+const SHOWN_ATTRS = ["href", "name", "id", "type", "placeholder", "value", "aria-label", "role"]
+
+const attrPairs = (el: CoreBrowser.ElementInfo): string =>
+  SHOWN_ATTRS.flatMap((key) => {
+    const value = el.attributes[key]
+    return value === undefined || value === ""
+      ? []
+      : [`${key}=${JSON.stringify(value.slice(0, 60))}`]
+  }).join(" ")
+
+const describeElement = (el: CoreBrowser.ElementInfo): string => {
+  const text = el.text === undefined || el.text === "" ? "" : ` "${el.text.slice(0, 60)}"`
+  const attrs = attrPairs(el)
+  return `${el.ref} <${el.tag}>${text}${attrs === "" ? "" : ` ${attrs}`}`
+}
+
+const currentUrl = (session: CoreBrowser.BrowserSession): Effect.Effect<string> =>
+  session.evaluate("location.href").pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(Schema.String)),
+    Effect.orElseSucceed(() => "(unknown)"),
+  )
+
+const readPageTool = (session: CoreBrowser.BrowserSession) =>
+  Tool.make({
+    name: "browser_read_page",
+    description:
+      "Read the current page: its full main content as markdown plus the interactive elements, each with an @ref usable in browser_click / browser_fill. Call it after navigating or acting to see the result.",
+    inputSchema: Tool.fromEffectSchema(Schema.Struct({})),
+    run: () =>
+      Effect.gen(function* () {
+        const { elements, markdown, url } = yield* Effect.all(
+          {
+            url: currentUrl(session),
+            markdown: session.content("markdown"),
+            elements: session.query(INTERACTIVE),
+          },
+          { concurrency: 3 },
+        )
+        const shown = elements.slice(0, ELEMENT_BUDGET).map(describeElement).join("\n")
+        const page =
+          markdown.length > MARKDOWN_BUDGET
+            ? `${markdown.slice(0, MARKDOWN_BUDGET)}\n[content continues beyond ${MARKDOWN_BUDGET} chars; scrolling will NOT reveal more of this text]`
+            : markdown
+        return [
+          `CURRENT URL: ${url}`,
+          "",
+          "PAGE (markdown, full page content regardless of scroll position):",
+          page,
+          "",
+          `INTERACTIVE ELEMENTS (${elements.length} found, showing ${Math.min(elements.length, ELEMENT_BUDGET)}):`,
+          shown === "" ? "(none)" : shown,
+        ].join("\n")
+      }).pipe(Effect.withSpan("browser_read_page", { kind: "client" })),
+  })
+
+// A failed action (stale ref, dead control, timeout) is signal the model can
+// adapt to, so describe it to a model-visible string. Session/infra errors
+// stay typed on the error channel and end the run - the model cannot revive a
+// dead session. This selective mapping is the middleware pattern from the
+// tool-failure design.
+const MODEL_ACTIONABLE: ReadonlyArray<string> = [
+  "BrowserTimeout",
+  "BrowserActionFailed",
+  "BrowserInvalidRequest",
+  "BrowserUnsupported",
+]
+
+const recoverActionable: Toolkit.Middleware<never, string> = (run) => (input, emit) =>
+  run(input, emit).pipe(
+    Effect.mapError((e) => {
+      const err = e as BrowserError.BrowserError
+      return MODEL_ACTIONABLE.includes(err._tag) ? BrowserError.describe(err) : e
+    }),
+  )
 
 // ---------------------------------------------------------------------------
 // Report types.
@@ -97,6 +185,7 @@ export type UsabilityError =
   | AiError.AiError
   | Tool.ToolError
   | Tool.ToolValidationError
+  | Toolkit.DuplicateToolName
 
 // ---------------------------------------------------------------------------
 // Prompt.
@@ -110,7 +199,7 @@ const SYSTEM_PROMPT = [
   "elements, each with an @ref for browser_click / browser_fill. To submit a",
   "search box, browser_fill it, then browser_press Enter; filling alone does",
   "not submit. Refs go stale after navigation; read the page again instead",
-  "of reusing them. A tool result with _tag Failure explains why an action",
+  "of reusing them. A tool result carrying an error explains why an action",
   "did not work: adapt rather than repeating it. As soon as the page content",
   "answers the goal, or you are stuck with no way forward, call finish with",
   "your report, listing any UX friction you hit along the way.",
@@ -121,29 +210,18 @@ const SYSTEM_PROMPT = [
 // compact `StepRecord` so the final report can show the path taken.
 // ---------------------------------------------------------------------------
 
-const clip = (s: string, max = 120): string =>
-  s.length > max ? `${s.slice(0, max)}...` : s
+const clip = (s: string, max = 120): string => (s.length > max ? `${s.slice(0, max)}...` : s)
 
-const summarizeCall = (call: Items.ToolCall): string =>
-  `${call.name} ${clip(call.arguments, 80)}`
+const summarizeCall = (call: Items.ToolCall): string => `${call.name} ${clip(call.arguments, 80)}`
 
 const outcomeOf = (results: ReadonlyArray<ToolResult.ToolResult>, call: Items.ToolCall): string =>
-  Option.match(
-    Option.fromNullishOr(results.find((r) => r.call_id === call.call_id)),
-    {
-      onNone: () => "(no result)",
-      onSome: ToolResult.ToolResult.$match({
-        Ok: ({ value }) =>
-          Result.isResult(value)
-            ? Result.match(value, {
-                onSuccess: (s) => clip(String(s)),
-                onFailure: (f) => `failed: ${clip(String(f))}`,
-              })
-            : clip(JSON.stringify(value)),
-        Failure: (f) => `failed (${f.kind})${f.reason === undefined ? "" : `: ${f.reason}`}`,
-      }),
-    },
-  )
+  Option.match(Option.fromNullishOr(results.find((r) => r.call_id === call.call_id)), {
+    onNone: () => "(no result)",
+    onSome: ToolResult.ToolResult.$match({
+      Ok: ({ value }) => clip(String(value)),
+      Failure: (f) => `failed (${f.kind})${f.reason === undefined ? "" : `: ${f.reason}`}`,
+    }),
+  })
 
 const appendTrail = (
   trail: ReadonlyArray<StepRecord>,
@@ -190,8 +268,10 @@ const exhaustedReport = (cfg: UsabilityConfig, trail: ReadonlyArray<StepRecord>)
  */
 type BodyEvent = UsabilityReport | ToolEvent.ToolEvent
 type BodyStep = Loop.Step<BodyEvent, State>
+/** Error union every `onTurnComplete` branch unifies to. */
+type BodyError = BrowserError.BrowserError | Tool.ToolError | Tool.ToolValidationError
 
-const emitAndStop = (report: UsabilityReport): Stream.Stream<BodyStep> =>
+const emitAndStop = (report: UsabilityReport): Stream.Stream<BodyStep, BodyError> =>
   Stream.concat(Stream.make(Loop.value(report)), Loop.stop())
 
 /**
@@ -212,7 +292,16 @@ export const runUsabilityTest = (
       const session = yield* CoreBrowser.create({ timeout: "5 minutes" })
       yield* session.goto(cfg.startUrl)
 
-      const actions = Toolkit.make(...browserTools(session), finishTool)
+      // Browser action verbs + the recipe-local read-page tool + the finish
+      // signal, with actionable failures described to the model and session
+      // errors left typed to end the run.
+      const actions = Toolkit.wrap(
+        yield* Toolkit.compose(
+          browserToolkit(session),
+          Toolkit.make(readPageTool(session), finishTool),
+        ),
+        recoverActionable,
+      )
       // On the last allowed round the model only sees `finish`, forcing a
       // report - so the agent always terminates with one.
       const finishOnly = Toolkit.make(finishTool)
@@ -265,7 +354,9 @@ export const runUsabilityTest = (
               if (calls.length === 0) {
                 const nudge: Stream.Stream<BodyStep> = Loop.next(
                   Turn.appendToHistory({ ...state, round: state.round + 1 }, turn, [
-                    Items.userText("Use the browser_* tools to act, or call finish with your report."),
+                    Items.userText(
+                      "Use the browser_* tools to act, or call finish with your report.",
+                    ),
                   ]),
                 )
                 return nudge
@@ -278,9 +369,11 @@ export const runUsabilityTest = (
               // Execute the calls in order (browser actions are order-
               // dependent: fill, then press Enter) and continue with the
               // results appended to history and trail.
-              const act: Stream.Stream<BodyStep> = Toolkit.run(actions, calls, {
-                concurrency: 1,
-              }).pipe(
+              const act: Stream.Stream<BodyStep, BrowserError.BrowserError> = Toolkit.run(
+                actions,
+                calls,
+                { concurrency: 1 },
+              ).pipe(
                 Toolkit.continueWithResults((results) =>
                   Toolkit.appendToolResults(
                     {

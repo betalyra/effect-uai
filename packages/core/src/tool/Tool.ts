@@ -1,7 +1,8 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
-import { Effect, Schema } from "effect"
+import { Effect, Match, Schema } from "effect"
 import type { ToolCall, ToolCallOutput } from "../domain/Items.js"
 import { toolCallOutput } from "../domain/Items.js"
+import { serializeValue } from "./ToolResult.js"
 
 export class ToolError extends Schema.TaggedErrorClass<ToolError>("@betalyra/effect-uai/ToolError")(
   "ToolError",
@@ -36,6 +37,35 @@ export class ToolValidationError extends Schema.TaggedErrorClass<ToolValidationE
   tool: Schema.String,
   issues: Schema.Array(ToolValidationIssue),
 }) {}
+
+/**
+ * The deliberate "speak to the model" failure sentinel. A tool's `run` that
+ * fails with a `ToolFailed` (or a bare `string`, its sugar) is absorbed by
+ * `Toolkit.run` into a `ToolResult.Failure` the model reads and adapts to,
+ * instead of ending the run. Every other error type propagates typed on the
+ * executor's stream. `kind` overrides the synthesized `Failure.kind`
+ * (default `"tool_failed"`) so a tool can hand the model a distinguishable
+ * category (`"not_found"`, `"rate_limited"`) without a new result variant.
+ */
+export class ToolFailed extends Schema.TaggedErrorClass<ToolFailed>(
+  "@betalyra/effect-uai/ToolFailed",
+)("ToolFailed", {
+  message: Schema.String,
+  kind: Schema.optional(Schema.String),
+}) {}
+
+/**
+ * Fail a tool's `run` with a model-visible message (optionally a `kind`).
+ * `yield* Tool.fail("page not found", { kind: "not_found" })` inside a
+ * `run`'s `Effect.gen`; the executor absorbs it as `ToolResult.Failure`.
+ */
+export const fail = (
+  message: string,
+  options?: { readonly kind?: string },
+): Effect.Effect<never, ToolFailed> =>
+  Effect.fail(
+    new ToolFailed({ message, ...(options?.kind !== undefined ? { kind: options.kind } : {}) }),
+  )
 
 /**
  * Schemas accepted on `Tool.inputSchema`. Must implement both Standard
@@ -98,12 +128,12 @@ export type Emit<Event> = (event: Event) => Effect.Effect<void>
  * no local executor — see their constructors below. `Tool` keeps its name (and
  * the `Tool.make` constructor) because the local kind is by far the common one.
  */
-export type Tool<Name extends string, Input, Event, Output, R = never> = {
+export type Tool<Name extends string, Input, Event, Output, E = unknown, R = never> = {
   readonly _tag: "LocalTool"
   readonly name: Name
   readonly description: string
   readonly inputSchema: ToolInputSchema<Input>
-  readonly run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output, unknown, R>
+  readonly run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output, E, R>
   /**
    * Bound on this tool's emit queue. Unbounded when omitted. Per-tool because
    * backpressure depends on how a given tool emits, unlike `concurrency`
@@ -162,11 +192,11 @@ export type InteractionTool<Name extends string, Input> = {
 }
 
 /** A local (executable) tool of any shape. Readability alias. */
-export type AnyLocalTool<R = any> = Tool<string, any, any, any, R>
+export type AnyLocalTool<E = any, R = any> = Tool<string, any, any, any, E, R>
 
 /** Any of the four model-visible tool kinds. */
-export type AnyTool<R = any> =
-  | Tool<string, any, any, any, R>
+export type AnyTool<E = any, R = any> =
+  | Tool<string, any, any, any, E, R>
   | ProviderTool<string, any, string, any>
   | SignalTool<string, any>
   | InteractionTool<string, any>
@@ -178,7 +208,10 @@ export type DecodableTool<Input> = {
 }
 
 /** Extract the `R` of a local tool; non-local kinds contribute `never`. */
-export type ToolR<T> = T extends Tool<string, any, any, any, infer R> ? R : never
+export type ToolR<T> = T extends Tool<string, any, any, any, any, infer R> ? R : never
+
+/** Extract the `E` of a local tool; non-local kinds contribute `never`. */
+export type ToolE<T> = T extends Tool<string, any, any, any, infer E, any> ? E : never
 
 /**
  * Provider-agnostic tool descriptor. Each provider maps `inputSchema`
@@ -193,9 +226,9 @@ export type ToolDescriptor = {
 }
 
 /** A model-visible tool with a local `Effect` executor. */
-export const make = <Name extends string, Input, Event, Output, R = never>(
-  spec: Omit<Tool<Name, Input, Event, Output, R>, "_tag">,
-): Tool<Name, Input, Event, Output, R> => ({ _tag: "LocalTool", ...spec })
+export const make = <Name extends string, Input, Event, Output, E = never, R = never>(
+  spec: Omit<Tool<Name, Input, Event, Output, E, R>, "_tag">,
+): Tool<Name, Input, Event, Output, E, R> => ({ _tag: "LocalTool", ...spec })
 
 /**
  * A provider-hosted tool (native web search, code execution, RAG grounding).
@@ -245,10 +278,20 @@ export const withName = <N extends string, T extends AnyTool>(
  * Descriptors stay identical to production, so a mocked toolkit can't drift
  * from the contract the model sees.
  */
-export const withRun = <Name extends string, Input, Event, Output, R, Output2, R2 = never>(
-  tool: Tool<Name, Input, Event, Output, R>,
-  run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output2, unknown, R2>,
-): Tool<Name, Input, Event, Output2, R2> => ({ ...tool, run })
+export const withRun = <
+  Name extends string,
+  Input,
+  Event,
+  Output,
+  E,
+  R,
+  Output2,
+  E2 = never,
+  R2 = never,
+>(
+  tool: Tool<Name, Input, Event, Output, E, R>,
+  run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output2, E2, R2>,
+): Tool<Name, Input, Event, Output2, E2, R2> => ({ ...tool, run })
 
 /** Render tools to provider-agnostic descriptors. Every kind is model-visible. */
 export const toDescriptors = (tools: ReadonlyArray<AnyTool>): ReadonlyArray<ToolDescriptor> =>
@@ -275,8 +318,51 @@ export const descriptorsOf = (
 ): ReadonlyArray<ToolDescriptor> =>
   toolkit === undefined ? [] : toDescriptors(Object.values(toolkit))
 
-const toToolError = (call: ToolCall, toolName: string, message: string) => (cause: unknown) =>
-  new ToolError({ call_id: call.call_id, tool: toolName, message, cause })
+/**
+ * Outcome of decoding a call's `arguments` against a tool's `inputSchema`,
+ * as data so both the typed (`decodeArgs`) and result-synthesizing
+ * (`Toolkit.run`) callers can translate it their own way.
+ */
+export type DecodeResult<Input> =
+  | { readonly _tag: "ok"; readonly input: Input }
+  | { readonly _tag: "parseError" }
+  | { readonly _tag: "invalid"; readonly issues: ReadonlyArray<StandardSchemaV1.Issue> }
+
+const VALIDATION_THREW: ReadonlyArray<StandardSchemaV1.Issue> = [
+  { message: "input schema validation threw" },
+]
+
+/**
+ * Parse and validate a call's `arguments`. Empty arguments normalize to
+ * `{}` (some models emit `""` for zero-arg tools); a throwing validator is
+ * captured, not propagated. Never fails.
+ */
+export const decodeCallInput = <Input>(
+  tool: DecodableTool<Input>,
+  call: ToolCall,
+): Effect.Effect<DecodeResult<Input>> => {
+  const raw = call.arguments.trim() === "" ? "{}" : call.arguments
+  return Effect.try({
+    // @effect-diagnostics-next-line effect/preferSchemaOverJson:off
+    try: () => JSON.parse(raw) as unknown,
+    catch: (): DecodeResult<Input> => ({ _tag: "parseError" }),
+  }).pipe(
+    Effect.flatMap((parsed) =>
+      Effect.tryPromise({
+        try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
+        catch: (): DecodeResult<Input> => ({ _tag: "invalid", issues: VALIDATION_THREW }),
+      }).pipe(
+        Effect.map(
+          (result): DecodeResult<Input> =>
+            result.issues !== undefined
+              ? { _tag: "invalid", issues: result.issues }
+              : { _tag: "ok", input: result.value },
+        ),
+      ),
+    ),
+    Effect.catch((captured: DecodeResult<Input>) => Effect.succeed(captured)),
+  )
+}
 
 /**
  * Decode and validate a function_call's JSON `arguments` against the tool's
@@ -291,28 +377,26 @@ export const decodeArgs = <Input>(
   tool: DecodableTool<Input>,
   call: ToolCall,
 ): Effect.Effect<Input, ToolError | ToolValidationError> =>
-  Effect.gen(function* () {
-    const parsed = yield* Effect.try({
-      // inputSchema validates through Standard Schema, not Effect Schema, so its
-      // JSON codecs don't apply; the parse is separate to keep ToolError (bad
-      // JSON) distinct from ToolValidationError (bad shape).
-      // @effect-diagnostics-next-line effect/preferSchemaOverJson:off
-      try: () => JSON.parse(call.arguments) as unknown,
-      catch: toToolError(call, tool.name, "Failed to parse JSON arguments"),
-    })
-
-    const result = yield* Effect.promise(() =>
-      Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
-    )
-    if (result.issues !== undefined) {
-      return yield* new ToolValidationError({
-        call_id: call.call_id,
-        tool: tool.name,
-        issues: result.issues,
-      })
-    }
-    return result.value
-  })
+  decodeCallInput(tool, call).pipe(
+    Effect.flatMap(
+      Match.type<DecodeResult<Input>>().pipe(
+        Match.tag("ok", ({ input }) => Effect.succeed(input)),
+        Match.tag("parseError", () =>
+          Effect.fail(
+            new ToolError({
+              call_id: call.call_id,
+              tool: tool.name,
+              message: "Failed to parse JSON arguments",
+            }),
+          ),
+        ),
+        Match.tag("invalid", ({ issues }) =>
+          Effect.fail(new ToolValidationError({ call_id: call.call_id, tool: tool.name, issues })),
+        ),
+        Match.exhaustive,
+      ),
+    ),
+  )
 
 /**
  * Decode and validate the JSON arguments of a function_call against the
@@ -320,15 +404,11 @@ export const decodeArgs = <Input>(
  * function_call_output item. Single-shot: intermediate events emitted by
  * `run` are discarded (use `Toolkit.run` to stream them).
  */
-export const execute = <Name extends string, Input, Event, Output, R>(
-  tool: Tool<Name, Input, Event, Output, R>,
+export const execute = <Name extends string, Input, Event, Output, E, R>(
+  tool: Tool<Name, Input, Event, Output, E, R>,
   call: ToolCall,
-): Effect.Effect<ToolCallOutput, ToolError | ToolValidationError, R> =>
+): Effect.Effect<ToolCallOutput, E | ToolError | ToolValidationError, R> =>
   decodeArgs(tool, call).pipe(
-    Effect.flatMap((input) =>
-      tool
-        .run(input, () => Effect.void)
-        .pipe(Effect.mapError(toToolError(call, tool.name, "Tool execution failed"))),
-    ),
-    Effect.map((output) => toolCallOutput(call.call_id, JSON.stringify(output))),
+    Effect.flatMap((input) => tool.run(input, () => Effect.void)),
+    Effect.map((output) => toolCallOutput(call.call_id, serializeValue(output))),
   )

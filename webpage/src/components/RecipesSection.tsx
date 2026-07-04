@@ -7,6 +7,7 @@ import {
   PiRadio,
   PiChatCircleDots,
   PiClockCounterClockwise,
+  PiCursorClick,
   PiDetective,
   PiFlowArrow,
   PiGavel,
@@ -172,6 +173,13 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Extract typed data from any page.** Read a batch of vendor pages and pull a structured pricing record from each, no selectors, concurrently.",
     href: "/recipes/market-intel/",
     Icon: PiTable,
+  },
+  {
+    title: "Agent usability testing",
+    description:
+      "**Test your UX with an agent.** Give it a goal and a URL; it drives a real browser and reports whether it got there and where it hit friction.",
+    href: "/recipes/browser-usability/",
+    Icon: PiCursorClick,
   },
 ]
 

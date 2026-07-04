@@ -89,7 +89,7 @@ If you relied on arbitrary tool failures reaching the model, either fail with a
 - **`Browser`**: `@effect-uai/core/Browser` tag + `@effect-uai/core/BrowserTool`
   (`gotoTool` / `clickTool` / `fillTool` / `pressTool` / `scrollTool`,
   `browserToolkit(session)`). Provider `@effect-uai/browser/Connect` `layer({
-  endpoint })` connects to any CDP WebSocket (Chromium container, local
+endpoint })` connects to any CDP WebSocket (Chromium container, local
   Chrome/Edge, obscura, hosted browser cloud).
 
 ### After-migration checklist

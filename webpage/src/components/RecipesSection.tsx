@@ -313,7 +313,10 @@ export default function RecipesSection() {
       id="recipes"
       className="not-content border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12"
     >
-      <div style={{ marginBottom: "1.75rem" }} className="flex items-baseline justify-between gap-4">
+      <div
+        style={{ marginBottom: "1.75rem" }}
+        className="flex items-baseline justify-between gap-4"
+      >
         <div className="flex flex-col gap-1.5">
           <div className="flex items-baseline gap-3">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
@@ -360,41 +363,47 @@ export default function RecipesSection() {
           // Recipe capabilities as subtle metadata; LLM is implicit on every recipe.
           const tags = capabilities.filter((c) => c !== "llm")
           return (
-          <a
-            key={href}
-            href={href}
-            className="group block rounded-[14px] no-underline outline-none focus-visible:ring-1 focus-visible:ring-(--color-border) focus-visible:ring-offset-2 focus-visible:ring-offset-(--sl-color-bg) hover:focus-visible:ring-(--color-mark)"
-          >
-            <Card className="h-full gap-5 rounded-[14px] border-border bg-card py-7 shadow-none transition-colors hover:border-(--color-mark)">
-              <CardHeader className="gap-3 px-7">
-                <div className="flex items-center gap-3">
-                  <div className="flex aspect-square h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-border text-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
-                    <Icon className="h-4 w-4" />
+            <a
+              key={href}
+              href={href}
+              className="group block rounded-[14px] no-underline outline-none focus-visible:ring-1 focus-visible:ring-(--color-border) focus-visible:ring-offset-2 focus-visible:ring-offset-(--sl-color-bg) hover:focus-visible:ring-(--color-mark)"
+            >
+              <Card className="h-full gap-5 rounded-[14px] border-border bg-card py-7 shadow-none transition-colors hover:border-(--color-mark)">
+                <CardHeader className="gap-3 px-7">
+                  <div className="flex items-center gap-3">
+                    <div className="flex aspect-square h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-border text-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
+                      {title}
+                    </CardTitle>
                   </div>
-                  <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
-                    {title}
-                  </CardTitle>
-                </div>
-                <CardDescription className="text-sm leading-relaxed">
-                  <ReactMarkdown components={markdownComponents}>{description}</ReactMarkdown>
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="mt-auto flex items-center justify-between px-7 pt-1">
-                <span className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors group-hover:text-(--color-mark)">
-                  <span>Read recipe</span>
-                  <PiArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                </span>
-                {tags.length > 0 && (
-                  <span className="flex items-center gap-2 text-muted-foreground/55">
-                    {tags.map((c) => {
-                      const CapIcon = CAPABILITY_ICON[c]
-                      return <CapIcon key={c} className="h-3.5 w-3.5" aria-label={CAPABILITY_LABEL[c]} />
-                    })}
+                  <CardDescription className="text-sm leading-relaxed">
+                    <ReactMarkdown components={markdownComponents}>{description}</ReactMarkdown>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="mt-auto flex items-center justify-between px-7 pt-1">
+                  <span className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors group-hover:text-(--color-mark)">
+                    <span>Read recipe</span>
+                    <PiArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                   </span>
-                )}
-              </CardContent>
-            </Card>
-          </a>
+                  {tags.length > 0 && (
+                    <span className="flex items-center gap-2 text-muted-foreground/55">
+                      {tags.map((c) => {
+                        const CapIcon = CAPABILITY_ICON[c]
+                        return (
+                          <CapIcon
+                            key={c}
+                            className="h-3.5 w-3.5"
+                            aria-label={CAPABILITY_LABEL[c]}
+                          />
+                        )
+                      })}
+                    </span>
+                  )}
+                </CardContent>
+              </Card>
+            </a>
           )
         })}
       </div>

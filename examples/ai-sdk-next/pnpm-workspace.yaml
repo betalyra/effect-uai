@@ -1,0 +1,10 @@
+# Own workspace root so this example is fully isolated: pnpm stops here instead
+# of joining the monorepo's workspace, so a repo-wide `pnpm install` never pulls
+# this example's Next.js dependency tree. Install from inside this folder.
+packages: []
+
+# Next's optional native deps; we don't use image optimization, so skip their
+# build scripts (silences ERR_PNPM_IGNORED_BUILDS).
+allowBuilds:
+  msgpackr-extract: false
+  sharp: false

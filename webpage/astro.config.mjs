@@ -99,6 +99,10 @@ export default defineConfig({
             { label: "Skills", slug: "skills" },
           ],
         },
+        {
+          label: "Coming from",
+          items: [{ label: "AI SDK (Vercel)", slug: "coming-from/ai-sdk" }],
+        },
         { label: "Providers", slug: "providers" },
         {
           label: "Concepts",

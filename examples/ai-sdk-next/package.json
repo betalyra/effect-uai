@@ -1,0 +1,31 @@
+{
+  "name": "effect-uai-ai-sdk-next-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^4.0",
+    "@effect-uai/ai-sdk": "link:../../packages/compat/ai-sdk",
+    "@effect-uai/core": "link:../../packages/core",
+    "@effect-uai/responses": "link:../../packages/providers/responses",
+    "@tailwindcss/postcss": "^4",
+    "ai": "^7.0",
+    "effect": "link:../../node_modules/.pnpm/effect@4.0.0-beta.57/node_modules/effect",
+    "next": "^16.2",
+    "react": "^19.2",
+    "react-dom": "^19.2",
+    "tailwindcss": "^4"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^6.0.3"
+  }
+}

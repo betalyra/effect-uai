@@ -1,5 +1,5 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
-import { Effect } from "effect"
+import { Context, Effect, Schema } from "effect"
 import { describe, expect, expectTypeOf, it } from "vitest"
 import type * as Items from "../domain/Items.js"
 import * as Tool from "./Tool.js"
@@ -154,5 +154,106 @@ describe("Tool.decodeArgs", () => {
   it("fails with ToolError when the arguments don't satisfy the schema", async () => {
     const exit = await Effect.runPromiseExit(Tool.decodeArgs(sendEmail, callWith('{"to":42}')))
     expect(exit._tag).toBe("Failure")
+  })
+})
+
+describe("Effect Schema inputSchema", () => {
+  const Recipient = Schema.Struct({ to: Schema.String })
+
+  const sendEmail = Tool.make({
+    name: "send_email",
+    description: "Send an email to a single recipient.",
+    inputSchema: Recipient,
+    run: ({ to }) => Effect.succeed(`queued: ${to}`),
+  })
+
+  const callWith = (args: string): Items.ToolCall => ({
+    type: "function_call",
+    call_id: "call_1",
+    name: "send_email",
+    arguments: args,
+  })
+
+  it("runs with the input inferred from the schema's Type", async () => {
+    const result = await Effect.runPromise(sendEmail.run({ to: "x@y.z" }, () => Effect.void))
+    expect(result).toBe("queued: x@y.z")
+  })
+
+  it("type: Input is the schema's Type", () => {
+    type InputOf<T> = T extends Tool.Tool<string, infer I, any, any, any> ? I : never
+    expectTypeOf<InputOf<typeof sendEmail>>().toEqualTypeOf<{ readonly to: string }>()
+  })
+
+  it("type: E and R are inferred from run through the Effect Schema overload", () => {
+    class Mailer extends Context.Service<
+      Mailer,
+      { readonly send: (to: string) => Effect.Effect<string> }
+    >()("test/Mailer") {}
+
+    const tool = Tool.make({
+      name: "send_email",
+      description: "send",
+      inputSchema: Recipient,
+      run: ({ to }) =>
+        Effect.gen(function* () {
+          const mailer = yield* Mailer
+          if (to === "") return yield* Effect.fail("empty" as const)
+          return yield* mailer.send(to)
+        }),
+    })
+
+    expectTypeOf<Tool.ToolE<typeof tool>>().toEqualTypeOf<"empty">()
+    expectTypeOf<Tool.ToolR<typeof tool>>().toEqualTypeOf<Mailer>()
+  })
+
+  it("decodes valid JSON arguments to the typed input", async () => {
+    const input = await Effect.runPromise(Tool.decodeArgs(sendEmail, callWith('{"to":"x@y.z"}')))
+    expect(input).toEqual({ to: "x@y.z" })
+    expectTypeOf(input).toEqualTypeOf<{ readonly to: string }>()
+  })
+
+  it("fails with ToolValidationError when the arguments don't satisfy the schema", async () => {
+    const exit = await Effect.runPromiseExit(Tool.decodeArgs(sendEmail, callWith('{"to":42}')))
+    expect(exit._tag).toBe("Failure")
+  })
+
+  it("renders a JSON Schema descriptor from the wrapped schema", () => {
+    const [descriptor] = Tool.toDescriptors([sendEmail])
+    expect(descriptor?.name).toBe("send_email")
+    expect(descriptor?.inputSchema).toMatchObject({
+      type: "object",
+      properties: { to: { type: "string" } },
+      required: ["to"],
+    })
+  })
+
+  it("accepts an already-wrapped fromEffectSchema value unchanged", async () => {
+    const wrapped = Tool.make({
+      name: "send_email",
+      description: "Send an email to a single recipient.",
+      inputSchema: Tool.fromEffectSchema(Recipient),
+      run: ({ to }) => Effect.succeed(`queued: ${to}`),
+    })
+    expect(Tool.toDescriptors([wrapped])).toEqual(Tool.toDescriptors([sendEmail]))
+    const input = await Effect.runPromise(Tool.decodeArgs(wrapped, callWith('{"to":"x@y.z"}')))
+    expectTypeOf(input).toEqualTypeOf<{ readonly to: string }>()
+  })
+
+  it("signal: decode-only kinds accept an Effect Schema directly", async () => {
+    const escalate = Tool.signal({
+      name: "escalate",
+      description: "Escalate to a human.",
+      inputSchema: Schema.Struct({ reason: Schema.String }),
+    })
+    const input = await Effect.runPromise(
+      Tool.decodeArgs(escalate, {
+        type: "function_call",
+        call_id: "call_2",
+        name: "escalate",
+        arguments: '{"reason":"stuck"}',
+      }),
+    )
+    expect(input).toEqual({ reason: "stuck" })
+    expectTypeOf(input).toEqualTypeOf<{ readonly reason: string }>()
   })
 })

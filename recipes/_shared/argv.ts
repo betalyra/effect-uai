@@ -3,7 +3,14 @@
  * loops, no mutation. Each helper is a pure function over the argv
  * array.
  */
-import { Array as Arr, Option } from "effect"
+import { Array as Arr, Data, Effect, Option } from "effect"
+
+/** A `--flag` was given a value that isn't one of the accepted ones. */
+export class UnknownFlag extends Data.TaggedError("UnknownFlag")<{
+  readonly flag: string
+  readonly value: string
+  readonly expected: string
+}> {}
 
 /**
  * Look up a long flag's value in `argv`. Supports both `--name=value`
@@ -41,3 +48,40 @@ export const providerFlag = <P extends string>(
   decode: (raw: string) => P,
   argv: ReadonlyArray<string> = process.argv.slice(2),
 ): Option.Option<P> => Option.map(flagValue("provider", argv), decode)
+
+/**
+ * Read a `--<flag>` as one of `choices`, defaulting to the first. Absent →
+ * `choices[0]`; present but not a choice → a typed `UnknownFlag` listing the
+ * accepted values. The `const` type parameter makes the result the literal
+ * union of `choices`, so no annotation is needed:
+ *
+ *   const llm = yield* choiceFlag("llm", ["openai", "gemini"])
+ *   //    ^? "openai" | "gemini"
+ */
+export const choiceFlag = <const A extends string>(
+  flag: string,
+  choices: readonly [A, ...Array<A>],
+  argv: ReadonlyArray<string> = process.argv.slice(2),
+): Effect.Effect<A, UnknownFlag> =>
+  Option.match(flagValue(flag, argv), {
+    onNone: () => Effect.succeed(choices[0]),
+    onSome: (raw) =>
+      Option.match(
+        Arr.findFirst(choices, (c) => c.toLowerCase() === raw.toLowerCase()),
+        {
+          onNone: () =>
+            Effect.fail(new UnknownFlag({ flag, value: raw, expected: choices.join(" | ") })),
+          onSome: (c) => Effect.succeed(c),
+        },
+      ),
+  })
+
+/**
+ * `choiceFlag` specialized to the common `--provider` flag:
+ *
+ *   const provider = yield* providerChoice("google", "anthropic", "openai")
+ *   //    ^? "google" | "anthropic" | "openai"   (default "google")
+ */
+export const providerChoice = <const A extends string>(
+  ...choices: readonly [A, ...Array<A>]
+): Effect.Effect<A, UnknownFlag> => choiceFlag("provider", choices)

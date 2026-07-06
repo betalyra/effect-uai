@@ -257,3 +257,52 @@ describe("Effect Schema inputSchema", () => {
     expectTypeOf(input).toEqualTypeOf<{ readonly reason: string }>()
   })
 })
+
+describe("provider-hosted tools", () => {
+  const localTool = Tool.make({
+    name: "send_email",
+    description: "Send an email.",
+    inputSchema: Tool.fromEffectSchema(Schema.Struct({ to: Schema.String })),
+    run: ({ to }) => Effect.succeed(`sent: ${to}`),
+  })
+  const signalTool = Tool.signal({
+    name: "escalate",
+    description: "Escalate to a human.",
+    inputSchema: Schema.Struct({ reason: Schema.String }),
+  })
+  const hostedTool = Tool.provider({
+    name: "web_search",
+    description: "Search the web.",
+    inputSchema: Tool.noInput,
+    provider: "gemini",
+    config: { kind: "google_search" },
+  })
+  const toolkit = { send_email: localTool, escalate: signalTool, web_search: hostedTool }
+
+  it("descriptorsOf excludes provider-hosted tools", () => {
+    const descriptors = Tool.descriptorsOf(toolkit)
+    expect(descriptors.map((d) => d.name)).toEqual(["send_email", "escalate"])
+  })
+
+  it("toDescriptors drops a ProviderTool from a mixed array", () => {
+    expect(Tool.toDescriptors([localTool, hostedTool]).map((d) => d.name)).toEqual(["send_email"])
+  })
+
+  it("providerToolsOf returns only the provider-hosted tools", () => {
+    const provider = Tool.providerToolsOf(toolkit)
+    expect(provider).toHaveLength(1)
+    expect(provider[0]?.name).toBe("web_search")
+    expect(provider[0]?.provider).toBe("gemini")
+    expect(provider[0]?.config).toEqual({ kind: "google_search" })
+  })
+
+  it("providerToolsOf on an absent toolkit is empty", () => {
+    expect(Tool.providerToolsOf(undefined)).toEqual([])
+  })
+
+  it("isProviderTool narrows the tool kind", () => {
+    expect(Tool.isProviderTool(hostedTool)).toBe(true)
+    expect(Tool.isProviderTool(localTool)).toBe(false)
+    expect(Tool.isProviderTool(signalTool)).toBe(false)
+  })
+})

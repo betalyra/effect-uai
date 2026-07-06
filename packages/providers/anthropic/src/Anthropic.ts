@@ -19,8 +19,9 @@ import {
   turnFromStream,
 } from "@effect-uai/core/LanguageModel"
 import * as SSE from "@effect-uai/core/SSE"
-import { descriptorsOf } from "@effect-uai/core/Tool"
+import { descriptorsOf, providerToolsOf } from "@effect-uai/core/Tool"
 import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
+import { renderProviderTools } from "./AnthropicTools.js"
 import {
   type Accumulator,
   type ThinkingConfig,
@@ -30,6 +31,13 @@ import {
 } from "./codec.js"
 import type { AnthropicModel } from "./models.js"
 import { KnownProviderEvent, ProviderEvent, applyEvent } from "./streamEvents.js"
+
+export {
+  codeExecutionTool,
+  webSearchTool,
+  type WebSearchOptions,
+  type UserLocation,
+} from "./AnthropicTools.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -131,19 +139,26 @@ const outputConfig = (request: AnthropicRequest): Option.Option<Record<string, u
 const resolvedMaxTokens = (cfg: Config, request: AnthropicRequest): number =>
   request.maxOutputTokens ?? cfg.defaultMaxTokens ?? FALLBACK_MAX_TOKENS
 
-const toolDescriptors = (
+const functionToolDescriptors = (
   request: AnthropicRequest,
+): ReadonlyArray<Record<string, unknown>> =>
+  descriptorsOf(request.tools).map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.inputSchema,
+  }))
+
+/**
+ * Merge the custom function-tool declarations with the native hosted-tool
+ * entries into the single `tools` array Anthropic expects. `providerWire` is
+ * pre-rendered (and validated) by the caller.
+ */
+const toolsWire = (
+  request: AnthropicRequest,
+  providerWire: ReadonlyArray<Record<string, unknown>>,
 ): Option.Option<ReadonlyArray<Record<string, unknown>>> => {
-  const descriptors = descriptorsOf(request.tools)
-  return descriptors.length > 0
-    ? Option.some(
-        descriptors.map((t) => ({
-          name: t.name,
-          description: t.description,
-          input_schema: t.inputSchema,
-        })),
-      )
-    : Option.none()
+  const tools = [...functionToolDescriptors(request), ...providerWire]
+  return tools.length > 0 ? Option.some(tools) : Option.none()
 }
 
 const toolChoiceWire = (request: AnthropicRequest): Option.Option<Record<string, unknown>> =>
@@ -260,6 +275,20 @@ const buildNativeStream = (cfg: Config) => {
     Stream.unwrap(
       Effect.gen(function* () {
         const structured = outputConfig(request)
+        const providerWire = yield* Result.match(
+          renderProviderTools(providerToolsOf(request.tools)),
+          {
+            onFailure: (e) =>
+              Effect.fail(
+                new AiError.Unsupported({
+                  provider: "anthropic",
+                  capability: e.capability,
+                  reason: e.reason,
+                }),
+              ),
+            onSuccess: (wire) => Effect.succeed(wire),
+          },
+        )
         const bodyResult = buildRequestBody({
           model: request.model,
           history: request.history,
@@ -269,7 +298,7 @@ const buildNativeStream = (cfg: Config) => {
           topK: Option.fromUndefinedOr(request.topK),
           stopSequences: Option.fromUndefinedOr(request.stopSequences),
           thinking: Option.fromUndefinedOr(request.thinking),
-          tools: toolDescriptors(request),
+          tools: toolsWire(request, providerWire),
           toolChoice: toolChoiceWire(request),
           userId: Option.fromUndefinedOr(request.user),
           outputConfig: structured,

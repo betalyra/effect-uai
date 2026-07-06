@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Redacted, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Option, Redacted, Result, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import {
@@ -9,8 +9,11 @@ import {
 } from "@effect-uai/core/LanguageModel"
 import { JsonParseError } from "@effect-uai/core/JSONL"
 import * as SSE from "@effect-uai/core/SSE"
-import { descriptorsOf } from "@effect-uai/core/Tool"
+import { descriptorsOf, providerToolsOf } from "@effect-uai/core/Tool"
 import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
+import { renderProviderTools } from "./GeminiTools.js"
+
+export { codeExecutionTool, googleSearchTool, urlContextTool } from "./GeminiTools.js"
 import {
   type ChunkPart,
   type GenerationConfig,
@@ -174,10 +177,25 @@ const buildNativeStream = (cfg: Config) => {
         }
         const url = `${baseUrl}/models/${request.model}:streamGenerateContent?alt=sse`
         const generationConfig = buildGenerationConfig(request)
+        const providerToolEntries = yield* Result.match(
+          renderProviderTools(providerToolsOf(request.tools)),
+          {
+            onFailure: (e) =>
+              Effect.fail(
+                new AiError.Unsupported({
+                  provider: "gemini",
+                  capability: e.capability,
+                  reason: e.reason,
+                }),
+              ),
+            onSuccess: (entries) => Effect.succeed(entries),
+          },
+        )
         const body = buildRequestBody(
           request.history,
           generationConfig,
           descriptorsOf(request.tools),
+          providerToolEntries,
           request.toolChoice,
         )
         const httpRequest = HttpClientRequest.post(url).pipe(

@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as SSE from "./SSE.js"
 
@@ -7,6 +7,22 @@ const bytesOf = (...chunks: ReadonlyArray<string>) =>
   Stream.fromIterable(chunks.map((c) => enc.encode(c)))
 
 const collect = <A, E>(s: Stream.Stream<A, E>) => Effect.runPromise(Stream.runCollect(s))
+
+const runUntilEnd = <A>(s: Stream.Stream<A, unknown>) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const seen: Array<A> = []
+      const exit = yield* Stream.runForEach(s, (a) =>
+        Effect.sync(() => {
+          seen.push(a)
+        }),
+      ).pipe(Effect.exit)
+      return { seen, exit }
+    }),
+  )
+
+const failuresOf = (exit: Exit.Exit<unknown, unknown>): ReadonlyArray<unknown> =>
+  Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((r) => r.error) : []
 
 describe("SSE.fromBytes", () => {
   it("parses a single complete event", async () => {
@@ -39,9 +55,77 @@ describe("SSE.fromBytes", () => {
     expect(out).toEqual([{ id: "42", data: "x" }])
   })
 
-  it("flushes a trailing event without a closing blank line", async () => {
+  it("parses a data field with no space after the colon", async () => {
+    const out = await collect(SSE.fromBytes(bytesOf("data:x\n\n")))
+    expect(out).toEqual([{ data: "x" }])
+  })
+
+  it("ignores an id containing a NUL character", async () => {
+    const out = await collect(SSE.fromBytes(bytesOf("id: a\u0000b\ndata: x\n\n")))
+    expect(out).toEqual([{ data: "x" }])
+  })
+
+  it("discards a trailing event without a closing blank line", async () => {
     const out = await collect(SSE.fromBytes(bytesOf("data: tail")))
-    expect(out).toEqual([{ data: "tail" }])
+    expect(out).toEqual([])
+  })
+
+  it("discards buffered partial data when the upstream fails mid-stream", async () => {
+    const failing = Stream.concat(
+      bytesOf("data: good\n\ndata: partial-tr"),
+      Stream.fail("boom" as const),
+    )
+    const { seen, exit } = await runUntilEnd(SSE.fromBytes(failing))
+    expect(seen).toEqual([{ data: "good" }])
+    expect(failuresOf(exit)).toEqual(["boom"])
+  })
+
+  it("discards a partial multi-byte char in the text decoder when the upstream fails", async () => {
+    const partialSquid = enc.encode("data: 🦑\n\n").slice(0, 8)
+    const failing = Stream.concat(
+      Stream.fromIterable([enc.encode("data: ok\n\n"), partialSquid]),
+      Stream.fail("boom" as const),
+    )
+    const { seen, exit } = await runUntilEnd(SSE.fromBytes(failing))
+    expect(seen).toEqual([{ data: "ok" }])
+    expect(failuresOf(exit)).toEqual(["boom"])
+  })
+
+  it("discards buffered partial data when the stream is interrupted", async () => {
+    const { seen, exit } = await Effect.runPromise(
+      Effect.gen(function* () {
+        const seen: Array<SSE.Event> = []
+        const latch = yield* Deferred.make<void>()
+        const hanging = Stream.concat(bytesOf("data: good\n\ndata: partial"), Stream.never)
+        const fiber = yield* Stream.runForEach(SSE.fromBytes(hanging), (e) =>
+          Effect.sync(() => {
+            seen.push(e)
+          }).pipe(Effect.andThen(Deferred.succeed(latch, void 0))),
+        ).pipe(Effect.forkChild)
+        yield* Deferred.await(latch)
+        yield* Fiber.interrupt(fiber)
+        const exit = yield* Fiber.await(fiber)
+        return { seen, exit }
+      }),
+    )
+    expect(seen).toEqual([{ data: "good" }])
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(failuresOf(exit)).toEqual([])
+  })
+
+  it("ignores retry directives", async () => {
+    const out = await collect(SSE.fromBytes(bytesOf("retry: 3000\n\ndata: a\n\n")))
+    expect(out).toEqual([{ data: "a" }])
+  })
+
+  it("treats an explicit 'event: message' as the default event", async () => {
+    const out = await collect(SSE.fromBytes(bytesOf("event: message\ndata: x\n\n")))
+    expect(out).toEqual([{ data: "x" }])
+  })
+
+  it("does not dispatch events with no data", async () => {
+    const out = await collect(SSE.fromBytes(bytesOf("event: ping\n\ndata: x\n\n")))
+    expect(out).toEqual([{ data: "x" }])
   })
 
   it("ignores empty blocks between events", async () => {

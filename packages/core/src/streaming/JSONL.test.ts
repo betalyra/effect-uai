@@ -1,4 +1,4 @@
-import { Effect, Result, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Result, Schema, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as JSONL from "./JSONL.js"
 
@@ -7,6 +7,19 @@ const bytesOf = (...chunks: ReadonlyArray<string>) =>
   Stream.fromIterable(chunks.map((c) => enc.encode(c)))
 
 const collect = <A, E>(s: Stream.Stream<A, E>) => Effect.runPromise(Stream.runCollect(s))
+
+const runUntilEnd = <A>(s: Stream.Stream<A, unknown>) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const seen: Array<A> = []
+      const exit = yield* Stream.runForEach(s, (a) =>
+        Effect.sync(() => {
+          seen.push(a)
+        }),
+      ).pipe(Effect.exit)
+      return { seen, exit }
+    }),
+  )
 
 const collectResult = <A, E>(s: Stream.Stream<A, E>) =>
   Effect.runPromise(Effect.result(Stream.runCollect(s)))
@@ -32,6 +45,16 @@ describe("JSONL.fromBytes", () => {
   it("ignores blank lines", async () => {
     const out = await collect(JSONL.fromBytes(bytesOf("a\n\n\nb\n")))
     expect(out).toEqual(["a", "b"])
+  })
+
+  it("discards a buffered partial line when the upstream fails mid-stream", async () => {
+    const failing = Stream.concat(bytesOf('{"n":1}\n{"n":2'), Stream.fail("boom" as const))
+    const { seen, exit } = await runUntilEnd(JSONL.fromBytes(failing))
+    expect(seen).toEqual(['{"n":1}'])
+    const failures = Exit.isFailure(exit)
+      ? exit.cause.reasons.filter(Cause.isFailReason).map((r) => r.error)
+      : []
+    expect(failures).toEqual(["boom"])
   })
 })
 

@@ -145,7 +145,12 @@ const buildStream = (cfg: Config) => {
             Option.isSome(chunk) ? Result.succeed(chunk.value) : Result.failVoid,
           ),
           Stream.mapAccum((): Accumulator => emptyAccumulator, applyChunk, {
-            onHalt: (acc) => [TurnEvent.TurnComplete({ turn: accumulatorToTurn(acc) })],
+            // `onHalt` also fires on upstream failure and truncated streams,
+            // so only emit `TurnComplete` once a `finish_reason` was observed
+            onHalt: (acc) =>
+              Option.isSome(acc.finishReason)
+                ? [TurnEvent.TurnComplete({ turn: accumulatorToTurn(acc) })]
+                : [],
           }),
         )
       }),

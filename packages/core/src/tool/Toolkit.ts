@@ -186,8 +186,8 @@ export class DuplicateToolName extends Data.TaggedError("DuplicateToolName")<{
 type PrefixName<Prefix extends string, Name extends string> = `${Prefix}__${Name}`
 
 type PrefixTool<Prefix extends string, T extends AnyTool> =
-  T extends Tool<infer N, infer I, infer Ev, infer O, infer R>
-    ? Tool<PrefixName<Prefix, N>, I, Ev, O, R>
+  T extends Tool<infer N, infer I, infer Ev, infer O, infer E, infer R>
+    ? Tool<PrefixName<Prefix, N>, I, Ev, O, E, R>
     : T extends ProviderTool<infer N, infer I, infer P, infer C>
       ? ProviderTool<PrefixName<Prefix, N>, I, P, C>
       : T extends SignalTool<infer N, infer I>

@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Match, Option, Redacted, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Match, Option, Redacted, Result, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
@@ -9,9 +9,19 @@ import {
   turnFromStream,
 } from "@effect-uai/core/LanguageModel"
 import * as SSE from "@effect-uai/core/SSE"
-import { descriptorsOf } from "@effect-uai/core/Tool"
+import { descriptorsOf, providerToolsOf } from "@effect-uai/core/Tool"
 import type { Turn, TurnEvent } from "@effect-uai/core/Turn"
 import { itemsToInput } from "./codec.js"
+import { renderProviderTools } from "./ResponsesTools.js"
+
+export {
+  codeInterpreterTool,
+  fileSearchTool,
+  webSearchTool,
+  type WebSearchOptions,
+  type WebSearchFilters,
+  type UserLocation,
+} from "./ResponsesTools.js"
 import type { OpenAIModel } from "./models.js"
 import { type OpenAiRegion, resolveHost } from "./region.js"
 import {
@@ -123,22 +133,24 @@ const buildText = (request: ResponsesRequest): Record<string, unknown> | undefin
   return Object.keys(text).length === 0 ? undefined : text
 }
 
-const buildBody = (request: ResponsesRequest): Record<string, unknown> => {
+const buildBody = (
+  request: ResponsesRequest,
+  providerToolWire: ReadonlyArray<Record<string, unknown>>,
+): Record<string, unknown> => {
   const text = buildText(request)
-  const tools = descriptorsOf(request.tools)
+  const functionTools = descriptorsOf(request.tools).map((t) => ({
+    type: "function",
+    name: t.name,
+    description: t.description,
+    parameters: t.inputSchema,
+    ...(t.strict !== undefined && { strict: t.strict }),
+  }))
+  const tools = [...functionTools, ...providerToolWire]
   return {
     model: request.model,
     input: itemsToInput(request.history),
     stream: true,
-    ...(tools.length > 0 && {
-      tools: tools.map((t) => ({
-        type: "function",
-        name: t.name,
-        description: t.description,
-        parameters: t.inputSchema,
-        ...(t.strict !== undefined && { strict: t.strict }),
-      })),
-    }),
+    ...(tools.length > 0 && { tools }),
     ...(request.toolChoice !== undefined && { tool_choice: request.toolChoice }),
     ...(request.temperature !== undefined && { temperature: request.temperature }),
     ...(request.maxOutputTokens !== undefined && {
@@ -232,9 +244,23 @@ const buildNativeStream = (cfg: Config) => {
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
+        const providerToolWire = yield* Result.match(
+          renderProviderTools(providerToolsOf(request.tools)),
+          {
+            onFailure: (e) =>
+              Effect.fail(
+                new AiError.Unsupported({
+                  provider: "responses",
+                  capability: e.capability,
+                  reason: e.reason,
+                }),
+              ),
+            onSuccess: (wire) => Effect.succeed(wire),
+          },
+        )
         const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.bearerToken(cfg.apiKey),
-          HttpClientRequest.bodyJsonUnsafe(buildBody(request)),
+          HttpClientRequest.bodyJsonUnsafe(buildBody(request, providerToolWire)),
           HttpClientRequest.accept("text/event-stream"),
         )
         const response = yield* client

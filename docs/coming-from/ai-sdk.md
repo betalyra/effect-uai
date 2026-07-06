@@ -130,16 +130,16 @@ The options you passed to `streamText` do not disappear. They become ordinary
 code in and around the loop, which is the point: when a request goes sideways,
 you debug a loop you wrote, not a lifecycle you patched from the outside.
 
-| In `streamText(...)` | In your loop |
-|---|---|
-| `model: openai("gpt-4o")` | the `model` on `streamTurn`, plus the provider `Layer` you provide |
-| `system: "…"` | an `Items.systemText(…)` at the front of the initial history |
-| `tools: { … }` | `Tool.make` + `Toolkit.make`, run in `onTurnComplete` |
-| `stopWhen` / `maxSteps` | your own check: return `stop()` (e.g. count turns in state) |
-| `maxRetries` | a retry `Schedule`, or a fallback tier list guarded by `Stream.catchTag` |
-| `onError` | `Stream.catchTag` on typed failures (`RateLimited`, `Unavailable`, …) |
-| `messageMetadata` on the response | `UIMessageStream.messageMetadata(…)` emissions |
-| the request `AbortSignal` | `Stream.interruptWhen(…)` on `request.signal` |
+| In `streamText(...)`              | In your loop                                                             |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| `model: openai("gpt-4o")`         | the `model` on `streamTurn`, plus the provider `Layer` you provide       |
+| `system: "…"`                     | an `Items.systemText(…)` at the front of the initial history             |
+| `tools: { … }`                    | `Tool.make` + `Toolkit.make`, run in `onTurnComplete`                    |
+| `stopWhen` / `maxSteps`           | your own check: return `stop()` (e.g. count turns in state)              |
+| `maxRetries`                      | a retry `Schedule`, or a fallback tier list guarded by `Stream.catchTag` |
+| `onError`                         | `Stream.catchTag` on typed failures (`RateLimited`, `Unavailable`, …)    |
+| `messageMetadata` on the response | `UIMessageStream.messageMetadata(…)` emissions                           |
+| the request `AbortSignal`         | `Stream.interruptWhen(…)` on `request.signal`                            |
 
 Retry and fallback are worth calling out. In the AI SDK they are flags on the
 call; in effect-uai they are data and control flow you can see. A fallback is a
@@ -164,16 +164,16 @@ top-level functions each correspond to an effect-uai primitive you call
 directly, and you drop the AI SDK on the server entirely. Find the function you
 use and follow the link for the full version.
 
-| AI SDK | effect-uai equivalent | |
-|---|---|---|
-| `generateText` / `streamText` (server-side) | write the loop over `streamTurn` | [Read more](/language-models/) |
-| `generateObject` / `streamObject` | a turn decoded against an Effect `Schema` | [Read more](/recipes/structured-output/) |
-| `tool(...)` | `Tool.make` + `Toolkit.make` | [Read more](/language-models/tools/) |
-| `embed` / `embedMany` | the `Embedding` model | [Read more](/embeddings/) |
-| `transcribe` | the `Transcriber` model | [Read more](/speech/transcription/) |
-| `generateSpeech` | the `SpeechSynthesizer` model | [Read more](/speech/synthesis/) |
-| `generateImage` | an `ImageGenerator` tag | [Coming soon](/image-generation/) |
-| `rerank` | a `Reranker` tag | [Coming soon](/reranking/) |
+| AI SDK                                      | effect-uai equivalent                     |                                          |
+| ------------------------------------------- | ----------------------------------------- | ---------------------------------------- |
+| `generateText` / `streamText` (server-side) | write the loop over `streamTurn`          | [Read more](/language-models/)           |
+| `generateObject` / `streamObject`           | a turn decoded against an Effect `Schema` | [Read more](/recipes/structured-output/) |
+| `tool(...)`                                 | `Tool.make` + `Toolkit.make`              | [Read more](/language-models/tools/)     |
+| `embed` / `embedMany`                       | the `Embedding` model                     | [Read more](/embeddings/)                |
+| `transcribe`                                | the `Transcriber` model                   | [Read more](/speech/transcription/)      |
+| `generateSpeech`                            | the `SpeechSynthesizer` model             | [Read more](/speech/synthesis/)          |
+| `generateImage`                             | an `ImageGenerator` tag                   | [Coming soon](/image-generation/)        |
+| `rerank`                                    | a `Reranker` tag                          | [Coming soon](/reranking/)               |
 
 The pattern is the same across the table: where the AI SDK gives you one
 function with options, effect-uai gives you a service you resolve from a

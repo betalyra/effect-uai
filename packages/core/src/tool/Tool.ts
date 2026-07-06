@@ -389,18 +389,39 @@ export const withRun = <
   run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output2, E2, R2>,
 ): Tool<Name, Input, Event, Output2, E2, R2> => ({ ...tool, run })
 
-/** Render tools to provider-agnostic descriptors. Every kind is model-visible. */
+/** True for provider-hosted tools — the kind a provider renders natively. */
+export const isProviderTool = (tool: AnyTool): tool is ProviderTool<string, any, string, any> =>
+  tool._tag === "ProviderTool"
+
+/**
+ * The `ProviderTool`s in a toolkit, for a provider adapter to render as its
+ * native hosted-tool entries (web search, code execution, grounding). The other
+ * kinds render as function declarations via `descriptorsOf`.
+ */
+export const providerToolsOf = (
+  toolkit?: Readonly<Record<string, AnyTool>>,
+): ReadonlyArray<ProviderTool<string, any, string, any>> =>
+  toolkit === undefined ? [] : Object.values(toolkit).filter(isProviderTool)
+
+/**
+ * Render tools to provider-agnostic descriptors. `ProviderTool`s are excluded:
+ * they are provider-hosted and must never leak into the function-declaration
+ * list — each adapter renders them natively via `providerToolsOf`. Every other
+ * kind is model-visible as a declaration.
+ */
 export const toDescriptors = (tools: ReadonlyArray<AnyTool>): ReadonlyArray<ToolDescriptor> =>
-  tools.map((tool) => {
-    const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
-      target: "draft-2020-12",
+  tools
+    .filter((tool) => !isProviderTool(tool))
+    .map((tool) => {
+      const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
+        target: "draft-2020-12",
+      })
+      // `strict` only exists on local/provider kinds; signals/interactions omit it.
+      const strict = "strict" in tool ? tool.strict : undefined
+      return strict !== undefined
+        ? { name: tool.name, description: tool.description, inputSchema, strict }
+        : { name: tool.name, description: tool.description, inputSchema }
     })
-    // `strict` only exists on local/provider kinds; signals/interactions omit it.
-    const strict = "strict" in tool ? tool.strict : undefined
-    return strict !== undefined
-      ? { name: tool.name, description: tool.description, inputSchema, strict }
-      : { name: tool.name, description: tool.description, inputSchema }
-  })
 
 /**
  * Render a `Toolkit` (a name-indexed record of tools) to descriptors, treating

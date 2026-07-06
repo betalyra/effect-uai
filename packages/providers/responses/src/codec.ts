@@ -82,7 +82,33 @@ const WireReasoning = Schema.Struct({
   encrypted_content: Schema.optional(Schema.String),
 })
 
-export const WireOutputItem = Schema.Union([WireMessage, WireFunctionCall, WireReasoning])
+// Provider-hosted tool call items (web search, code interpreter, file search).
+// The provider executes them, not us — we model them only so a grounded
+// `response.completed` still decodes and assembles a Turn; they are dropped
+// from the turn's items in Phase 1. Surfacing them is a follow-up.
+const WireWebSearchCall = Schema.Struct({
+  type: Schema.Literal("web_search_call"),
+  id: Schema.optional(Schema.String),
+})
+
+const WireCodeInterpreterCall = Schema.Struct({
+  type: Schema.Literal("code_interpreter_call"),
+  id: Schema.optional(Schema.String),
+})
+
+const WireFileSearchCall = Schema.Struct({
+  type: Schema.Literal("file_search_call"),
+  id: Schema.optional(Schema.String),
+})
+
+export const WireOutputItem = Schema.Union([
+  WireMessage,
+  WireFunctionCall,
+  WireReasoning,
+  WireWebSearchCall,
+  WireCodeInterpreterCall,
+  WireFileSearchCall,
+])
 export type WireOutputItem = typeof WireOutputItem.Type
 
 const WireInputTokensDetails = Schema.Struct({
@@ -219,31 +245,41 @@ const wireMessageContentToBlock = Match.type<typeof WireMessageContent.Type>().p
   }),
 )
 
-export const wireItemToItem = (wire: WireOutputItem): HistoryItem =>
+export const wireItemToItem = (wire: WireOutputItem): ReadonlyArray<HistoryItem> =>
   Match.value(wire).pipe(
     Match.discriminatorsExhaustive("type")({
-      message: (m) => ({
-        type: "message" as const,
-        role: m.role,
-        content: m.content.map(wireMessageContentToBlock),
-        providerData: m,
-      }),
-      function_call: (f) => ({
-        type: "function_call" as const,
-        call_id: f.call_id,
-        name: f.name,
-        arguments: f.arguments,
-        providerData: f,
-      }),
-      reasoning: (r) => ({
-        type: "reasoning" as const,
-        ...(r.id !== undefined && { id: r.id }),
-        ...(r.summary !== undefined && {
-          summary: r.summary.map((s) => s.text).join("\n"),
-        }),
-        ...(r.encrypted_content !== undefined && { signature: r.encrypted_content }),
-        providerData: r,
-      }),
+      message: (m): ReadonlyArray<HistoryItem> => [
+        {
+          type: "message" as const,
+          role: m.role,
+          content: m.content.map(wireMessageContentToBlock),
+          providerData: m,
+        },
+      ],
+      function_call: (f): ReadonlyArray<HistoryItem> => [
+        {
+          type: "function_call" as const,
+          call_id: f.call_id,
+          name: f.name,
+          arguments: f.arguments,
+          providerData: f,
+        },
+      ],
+      reasoning: (r): ReadonlyArray<HistoryItem> => [
+        {
+          type: "reasoning" as const,
+          ...(r.id !== undefined && { id: r.id }),
+          ...(r.summary !== undefined && {
+            summary: r.summary.map((s) => s.text).join("\n"),
+          }),
+          ...(r.encrypted_content !== undefined && { signature: r.encrypted_content }),
+          providerData: r,
+        },
+      ],
+      // Hosted-tool calls are provider-executed; drop from the turn (Phase 1).
+      web_search_call: (): ReadonlyArray<HistoryItem> => [],
+      code_interpreter_call: (): ReadonlyArray<HistoryItem> => [],
+      file_search_call: (): ReadonlyArray<HistoryItem> => [],
     }),
   )
 
@@ -285,7 +321,7 @@ export const turnFromCompleted = (payload: WireResponseCompleted): Turn => {
   const cached = cachedTokens(payload)
   const reasoning = reasoningTokens(payload)
   return {
-    items: (payload.output ?? []).map(wireItemToItem),
+    items: (payload.output ?? []).flatMap(wireItemToItem),
     usage: {
       ...(payload.usage?.input_tokens !== undefined && {
         input_tokens: payload.usage.input_tokens,

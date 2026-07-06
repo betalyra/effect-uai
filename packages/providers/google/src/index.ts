@@ -1,4 +1,5 @@
 export * as Gemini from "./Gemini.js"
+export * as GeminiTools from "./GeminiTools.js"
 export * as GeminiEmbedding from "./GeminiEmbedding.js"
 export * as GeminiSynthesizer from "./GeminiSynthesizer.js"
 export * as LyriaGenerator from "./LyriaGenerator.js"

@@ -101,14 +101,24 @@ type RequestSystemInstruction = {
   readonly parts: ReadonlyArray<{ readonly text: string }>
 }
 
-/** Gemini's tool declaration. We translate one `ToolDescriptor` per entry. */
-type RequestTool = {
-  readonly functionDeclarations: ReadonlyArray<{
-    readonly name: string
-    readonly description: string
-    readonly parameters: Record<string, unknown>
-  }>
-}
+/**
+ * Gemini's tool declaration. A `tools[]` entry is either a function-declaration
+ * block (translated from `ToolDescriptor`s) or one of the native hosted-tool
+ * entries. The native entries are empty objects keyed camelCase per the REST
+ * v1beta `Tool` object, and sit as siblings of the declarations in the same
+ * `tools` array.
+ */
+export type RequestTool =
+  | {
+      readonly functionDeclarations: ReadonlyArray<{
+        readonly name: string
+        readonly description: string
+        readonly parameters: Record<string, unknown>
+      }>
+    }
+  | { readonly googleSearch: {} }
+  | { readonly urlContext: {} }
+  | { readonly codeExecution: {} }
 
 type RequestToolConfig = {
   readonly functionCallingConfig: {
@@ -402,11 +412,13 @@ export const buildRequestBody = (
   history: ReadonlyArray<HistoryItem>,
   generationConfig: Option.Option<GenerationConfig>,
   tools: ReadonlyArray<ToolDescriptor> = [],
+  providerToolEntries: ReadonlyArray<RequestTool> = [],
   toolChoice: CommonRequest["toolChoice"] = undefined,
 ): RequestBody => {
   const systemTexts = pipe(allMessages(history), Arr.filterMap(systemMessageText))
   const contents = pipe(history, Arr.filterMap(itemToContent(history)))
-  const requestTools = toolDescriptorsToTools(tools)
+  const functionTools = toolDescriptorsToTools(tools)
+  const requestTools = [...functionTools, ...providerToolEntries]
   return {
     contents,
     ...(systemTexts.length > 0 && {
@@ -416,8 +428,10 @@ export const buildRequestBody = (
       onNone: () => ({}),
       onSome: (cfg) => ({ generationConfig: cfg }),
     }),
-    ...(requestTools.length > 0 && {
-      tools: requestTools,
+    ...(requestTools.length > 0 && { tools: requestTools }),
+    // Only force a function-calling mode when there are function declarations;
+    // a grounding-only request must keep the API default.
+    ...(functionTools.length > 0 && {
       toolConfig: { functionCallingConfig: toolChoiceToFunctionCallingConfig(toolChoice) },
     }),
   }

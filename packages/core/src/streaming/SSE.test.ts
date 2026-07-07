@@ -1,4 +1,4 @@
-import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Result, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as SSE from "./SSE.js"
 
@@ -8,17 +8,17 @@ const bytesOf = (...chunks: ReadonlyArray<string>) =>
 
 const collect = <A, E>(s: Stream.Stream<A, E>) => Effect.runPromise(Stream.runCollect(s))
 
-const runUntilEnd = <A>(s: Stream.Stream<A, unknown>) =>
+const runUntilEnd = <A, E>(s: Stream.Stream<A, E>) =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      const seen: Array<A> = []
-      const exit = yield* Stream.runForEach(s, (a) =>
-        Effect.sync(() => {
-          seen.push(a)
-        }),
-      ).pipe(Effect.exit)
-      return { seen, exit }
-    }),
+    s.pipe(
+      Stream.map((a): Result.Result<A, E> => Result.succeed(a)),
+      Stream.catch((e) => Stream.succeed<Result.Result<A, E>>(Result.fail(e))),
+      Stream.runCollect,
+      Effect.map((results) => ({
+        seen: results.filter(Result.isSuccess).map((r) => r.success),
+        failures: results.filter(Result.isFailure).map((r) => r.failure),
+      })),
+    ),
   )
 
 const failuresOf = (exit: Exit.Exit<unknown, unknown>): ReadonlyArray<unknown> =>
@@ -75,9 +75,9 @@ describe("SSE.fromBytes", () => {
       bytesOf("data: good\n\ndata: partial-tr"),
       Stream.fail("boom" as const),
     )
-    const { seen, exit } = await runUntilEnd(SSE.fromBytes(failing))
+    const { seen, failures } = await runUntilEnd(SSE.fromBytes(failing))
     expect(seen).toEqual([{ data: "good" }])
-    expect(failuresOf(exit)).toEqual(["boom"])
+    expect(failures).toEqual(["boom"])
   })
 
   it("discards a partial multi-byte char in the text decoder when the upstream fails", async () => {
@@ -86,9 +86,9 @@ describe("SSE.fromBytes", () => {
       Stream.fromIterable([enc.encode("data: ok\n\n"), partialSquid]),
       Stream.fail("boom" as const),
     )
-    const { seen, exit } = await runUntilEnd(SSE.fromBytes(failing))
+    const { seen, failures } = await runUntilEnd(SSE.fromBytes(failing))
     expect(seen).toEqual([{ data: "ok" }])
-    expect(failuresOf(exit)).toEqual(["boom"])
+    expect(failures).toEqual(["boom"])
   })
 
   it("discards buffered partial data when the stream is interrupted", async () => {

@@ -11,8 +11,7 @@ const collect = <A, E>(s: Stream.Stream<A, E>) => Effect.runPromise(Stream.runCo
 const runUntilEnd = <A, E>(s: Stream.Stream<A, E>) =>
   Effect.runPromise(
     s.pipe(
-      Stream.map((a): Result.Result<A, E> => Result.succeed(a)),
-      Stream.catch((e) => Stream.succeed<Result.Result<A, E>>(Result.fail(e))),
+      Stream.result,
       Stream.runCollect,
       Effect.map((results) => ({
         seen: results.filter(Result.isSuccess).map((r) => r.success),

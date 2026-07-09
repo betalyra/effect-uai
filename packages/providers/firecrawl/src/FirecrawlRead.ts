@@ -33,8 +33,45 @@ export type FirecrawlReadRequest = CommonReadRequest & {
   readonly proxy?: FirecrawlProxy
 }
 
+/**
+ * Firecrawl-typed map (sitemap / URL discovery) request. Given a base `url`,
+ * Firecrawl returns the site's URLs without scraping each one - handy for
+ * locating specific pages (pricing, docs) before a targeted read. All fields
+ * but `url` are optional.
+ */
+export type FirecrawlMapRequest = {
+  readonly url: string
+  /** Order results by relevance to this query. */
+  readonly search?: string
+  /** Cap the number of links returned. */
+  readonly limit?: number
+  /** How to use the site's sitemap: `only` (sitemap alone), `include`, or `skip`. */
+  readonly sitemap?: "only" | "include" | "skip"
+  /** Include links on subdomains of the base URL. */
+  readonly includeSubdomains?: boolean
+  /** Abort the map if it runs past this duration. */
+  readonly timeout?: Duration.Duration
+}
+
+/** One discovered URL, with page metadata where Firecrawl has it. */
+export type MapLink = {
+  readonly url: string
+  readonly title?: string
+  readonly description?: string
+}
+
+export type MapResponse = {
+  readonly links: ReadonlyArray<MapLink>
+  readonly raw: unknown
+}
+
 export type FirecrawlReadService = {
   readonly read: (request: FirecrawlReadRequest) => Effect.Effect<ReadResponse, AiError.AiError>
+  /**
+   * Discover a site's URLs (sitemap-style) without scraping. Firecrawl-specific;
+   * not on the generic `WebRead` tag, whose contract is a single-URL read.
+   */
+  readonly map: (request: FirecrawlMapRequest) => Effect.Effect<MapResponse, AiError.AiError>
 }
 
 /**
@@ -85,6 +122,24 @@ const buildBody = (request: FirecrawlReadRequest): WireBody => {
   }
 }
 
+type WireMapBody = {
+  readonly url: string
+  readonly search?: string
+  readonly limit?: number
+  readonly sitemap?: string
+  readonly includeSubdomains?: boolean
+  readonly timeout?: number
+}
+
+const buildMapBody = (request: FirecrawlMapRequest): WireMapBody => ({
+  url: request.url,
+  ...(request.search !== undefined && { search: request.search }),
+  ...(request.limit !== undefined && { limit: request.limit }),
+  ...(request.sitemap !== undefined && { sitemap: request.sitemap }),
+  ...(request.includeSubdomains !== undefined && { includeSubdomains: request.includeSubdomains }),
+  ...(request.timeout !== undefined && { timeout: Duration.toMillis(request.timeout) }),
+})
+
 // ---------------------------------------------------------------------------
 // Codec - response
 // ---------------------------------------------------------------------------
@@ -128,6 +183,34 @@ const toResponse = (wire: WireResponse, request: FirecrawlReadRequest): ReadResp
     raw: wire,
   }
 }
+
+// v2 returns link objects; older responses returned bare URL strings. Accept
+// both and normalize a string to `{ url }` in `toMapResponse`.
+const WireMapLink = Schema.Struct({
+  url: Schema.String,
+  title: Schema.optional(Schema.NullOr(Schema.String)),
+  description: Schema.optional(Schema.NullOr(Schema.String)),
+})
+
+const WireMapResponse = Schema.Struct({
+  success: Schema.optional(Schema.Boolean),
+  links: Schema.Array(Schema.Union([WireMapLink, Schema.String])),
+})
+type WireMapResponse = typeof WireMapResponse.Type
+
+const toMapLink = (link: typeof WireMapLink.Type | string): MapLink =>
+  typeof link === "string"
+    ? { url: link }
+    : {
+        url: link.url,
+        ...(link.title != null && { title: link.title }),
+        ...(link.description != null && { description: link.description }),
+      }
+
+const toMapResponse = (wire: WireMapResponse): MapResponse => ({
+  links: wire.links.map(toMapLink),
+  raw: wire,
+})
 
 // ---------------------------------------------------------------------------
 // HTTP
@@ -178,6 +261,34 @@ const readImpl =
   ): Effect.Effect<ReadResponse, AiError.AiError, HttpClient.HttpClient> =>
     Effect.map(postScrape(cfg, buildBody(request)), (wire) => toResponse(wire, request))
 
+const postMap = (
+  cfg: Config,
+  body: WireMapBody,
+): Effect.Effect<WireMapResponse, AiError.AiError, HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+    const httpRequest = HttpClientRequest.post(`${baseUrl(cfg)}/v2/map`).pipe(
+      HttpClientRequest.setHeader("Authorization", `Bearer ${Redacted.value(cfg.apiKey)}`),
+      HttpClientRequest.bodyJsonUnsafe(body),
+    )
+    const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
+    if (response.status >= 400) {
+      const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
+      return yield* httpStatusError(response.status, text)
+    }
+    const json = yield* response.json.pipe(Effect.mapError(transportFailure))
+    return yield* Schema.decodeUnknownEffect(WireMapResponse)(json).pipe(
+      Effect.mapError(transportFailure),
+    )
+  })
+
+const mapImpl =
+  (cfg: Config) =>
+  (
+    request: FirecrawlMapRequest,
+  ): Effect.Effect<MapResponse, AiError.AiError, HttpClient.HttpClient> =>
+    Effect.map(postMap(cfg, buildMapBody(request)), toMapResponse)
+
 // ---------------------------------------------------------------------------
 // Constructors
 // ---------------------------------------------------------------------------
@@ -192,6 +303,8 @@ export const make = (
   Effect.map(HttpClient.HttpClient, (client) => ({
     read: (request) =>
       readImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
+    map: (request) =>
+      mapImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
   }))
 
 /**

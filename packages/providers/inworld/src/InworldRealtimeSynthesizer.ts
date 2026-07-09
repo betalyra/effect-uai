@@ -38,7 +38,7 @@ export { InworldSynthesizer } from "./InworldSynthesizer.js"
 
 export const make = (cfg: Config) =>
   Effect.map(
-    HttpClient.HttpClient.asEffect(),
+    HttpClient.HttpClient,
     (client) =>
       ({
         synthesize: (r) =>

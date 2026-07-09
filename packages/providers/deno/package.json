@@ -51,12 +51,12 @@
   "devDependencies": {
     "@deno/sandbox": "^0.13.2",
     "@effect-uai/core": "workspace:*",
-    "effect": "4.0.0-beta.57",
+    "effect": "4.0.0-beta.94",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@deno/sandbox": "^0.13.0",
     "@effect-uai/core": "workspace:>=0.5.0 <1",
-    "effect": "4.0.0-beta.57"
+    "effect": ">=4.0.0-beta.94 <5.0.0"
   }
 }

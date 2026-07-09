@@ -226,7 +226,7 @@ const streamSynthesizeDialogueUnsupported: SpeechSynthesizerService["streamSynth
 export const make = (
   cfg: Config,
 ): Effect.Effect<OpenAISynthesizerService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     synthesize: (request) =>
       synthesizeImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
     streamSynthesis: (request) =>

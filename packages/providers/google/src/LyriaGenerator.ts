@@ -371,7 +371,7 @@ const streamGenerationFromUnsupported = <E, R>(
 export const make = (
   cfg: Config,
 ): Effect.Effect<LyriaGeneratorService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     generate: (request) =>
       generateImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
     streamGeneration: (request) =>

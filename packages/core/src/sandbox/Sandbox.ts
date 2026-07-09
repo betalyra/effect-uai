@@ -520,7 +520,7 @@ export class SandboxPortExposure extends Context.Service<SandboxPortExposure, vo
 export const create = (
   request: CommonCreateRequest,
 ): Effect.Effect<SandboxInstance, SandboxError.SandboxError, Sandbox | Scope.Scope> =>
-  Effect.flatMap(Sandbox.asEffect(), (s) => s.create(request))
+  Effect.flatMap(Sandbox, (s) => s.create(request))
 
 /**
  * Re-acquire an existing sandbox by id. Same scope semantics as
@@ -529,14 +529,14 @@ export const create = (
 export const attach = (
   id: SandboxId,
 ): Effect.Effect<SandboxInstance, SandboxError.SandboxError, Sandbox | Scope.Scope> =>
-  Effect.flatMap(Sandbox.asEffect(), (s) => s.attach(id))
+  Effect.flatMap(Sandbox, (s) => s.attach(id))
 
 /** Enumerate sandboxes for the configured account / project. */
 export const list: Effect.Effect<
   ReadonlyArray<SandboxRef>,
   SandboxError.SandboxError,
   Sandbox
-> = Effect.flatMap(Sandbox.asEffect(), (s) => s.list)
+> = Effect.flatMap(Sandbox, (s) => s.list)
 
 /**
  * Escape hatch for destroying a sandbox from outside its owning
@@ -544,7 +544,7 @@ export const list: Effect.Effect<
  * automatically.
  */
 export const destroy = (id: SandboxId): Effect.Effect<void, SandboxError.SandboxError, Sandbox> =>
-  Effect.flatMap(Sandbox.asEffect(), (s) => s.destroy(id))
+  Effect.flatMap(Sandbox, (s) => s.destroy(id))
 
 /**
  * Create a snapshot of a live sandbox. Requires
@@ -557,8 +557,8 @@ export const snapshot = (
   name?: string,
 ): Effect.Effect<SnapshotId, SandboxError.SandboxError, Sandbox | SandboxSnapshots> =>
   Effect.gen(function* () {
-    const s = yield* Sandbox.asEffect()
-    yield* SandboxSnapshots.asEffect()
+    const s = yield* Sandbox
+    yield* SandboxSnapshots
     return yield* s.snapshots.create(from, name)
   })
 
@@ -570,8 +570,8 @@ export const createVolume = (
   options?: { readonly quotaBytes?: number },
 ): Effect.Effect<VolumeId, SandboxError.SandboxError, Sandbox | SandboxVolumes> =>
   Effect.gen(function* () {
-    const s = yield* Sandbox.asEffect()
-    yield* SandboxVolumes.asEffect()
+    const s = yield* Sandbox
+    yield* SandboxVolumes
     return yield* s.volumes.create(name, options)
   })
 
@@ -580,8 +580,8 @@ export const destroyVolume = (
   id: VolumeId,
 ): Effect.Effect<void, SandboxError.SandboxError, Sandbox | SandboxVolumes> =>
   Effect.gen(function* () {
-    const s = yield* Sandbox.asEffect()
-    yield* SandboxVolumes.asEffect()
+    const s = yield* Sandbox
+    yield* SandboxVolumes
     return yield* s.volumes.destroy(id)
   })
 
@@ -591,8 +591,8 @@ export const listVolumes: Effect.Effect<
   SandboxError.SandboxError,
   Sandbox | SandboxVolumes
 > = Effect.gen(function* () {
-  const s = yield* Sandbox.asEffect()
-  yield* SandboxVolumes.asEffect()
+  const s = yield* Sandbox
+  yield* SandboxVolumes
   return yield* s.volumes.list
 })
 
@@ -601,8 +601,8 @@ export const destroySnapshot = (
   id: SnapshotId,
 ): Effect.Effect<void, SandboxError.SandboxError, Sandbox | SandboxSnapshots> =>
   Effect.gen(function* () {
-    const s = yield* Sandbox.asEffect()
-    yield* SandboxSnapshots.asEffect()
+    const s = yield* Sandbox
+    yield* SandboxSnapshots
     return yield* s.snapshots.destroy(id)
   })
 
@@ -612,8 +612,8 @@ export const listSnapshots: Effect.Effect<
   SandboxError.SandboxError,
   Sandbox | SandboxSnapshots
 > = Effect.gen(function* () {
-  const s = yield* Sandbox.asEffect()
-  yield* SandboxSnapshots.asEffect()
+  const s = yield* Sandbox
+  yield* SandboxSnapshots
   return yield* s.snapshots.list
 })
 
@@ -633,7 +633,7 @@ export const exposePort = (
   Sandbox | SandboxPortExposure
 > =>
   Effect.gen(function* () {
-    const s = yield* Sandbox.asEffect()
-    yield* SandboxPortExposure.asEffect()
+    const s = yield* Sandbox
+    yield* SandboxPortExposure
     return yield* s.ports.expose(instance, port)
   })

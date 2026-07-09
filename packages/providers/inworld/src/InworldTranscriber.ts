@@ -198,7 +198,7 @@ const streamUnsupported = <E, R>(
 export const make = (
   cfg: Config,
 ): Effect.Effect<InworldTranscriberService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     transcribe: (request) =>
       transcribeImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
     streamTranscriptionFrom: streamUnsupported,

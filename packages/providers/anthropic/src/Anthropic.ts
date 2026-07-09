@@ -383,7 +383,7 @@ export const toCanonical = <E, R>(
  * Build an `AnthropicService` value. For Layer-based setup, prefer `layer`.
  */
 export const make = (cfg: Config): Effect.Effect<AnthropicService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
+  Effect.map(HttpClient.HttpClient, (client) => {
     const streamNative: AnthropicService["streamNative"] = (request) =>
       buildNativeStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
     const streamTurn: AnthropicService["streamTurn"] = (request) =>

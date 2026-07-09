@@ -217,7 +217,7 @@ const searchImpl =
  * {@link layer}.
  */
 export const make = (cfg: Config): Effect.Effect<ExaSearchService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     search: (request) =>
       searchImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
   }))

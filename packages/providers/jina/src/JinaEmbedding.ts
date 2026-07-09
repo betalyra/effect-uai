@@ -504,7 +504,7 @@ const mapGenericTask: (t: "query" | "document" | undefined) => JinaTask | undefi
 export const make = (
   cfg: Config,
 ): Effect.Effect<JinaEmbeddingService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     embed: <E extends JinaEncoding | undefined = undefined>(
       request: Omit<JinaEmbedRequest, "encoding"> & { readonly encoding?: E },
     ) =>

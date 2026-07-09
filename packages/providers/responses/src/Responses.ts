@@ -315,7 +315,7 @@ export const toCanonical = <E, R>(
  * Build a `ResponsesService` value. For Layer-based setup, prefer `layer`.
  */
 export const make = (cfg: Config): Effect.Effect<ResponsesService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
+  Effect.map(HttpClient.HttpClient, (client) => {
     const streamNative: ResponsesService["streamNative"] = (request) =>
       buildNativeStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
     const streamTurn: ResponsesService["streamTurn"] = (request) =>

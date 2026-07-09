@@ -88,7 +88,7 @@ export class SttStreaming extends Context.Service<SttStreaming, void>()(
 export const transcribe = (
   request: CommonTranscribeRequest,
 ): Effect.Effect<TranscriptResult, AiError.AiError, Transcriber> =>
-  Effect.flatMap(Transcriber.asEffect(), (t) => t.transcribe(request))
+  Effect.flatMap(Transcriber, (t) => t.transcribe(request))
 
 /**
  * Live transcription. Dual-arity: pipeable (data-last) and direct
@@ -122,8 +122,8 @@ export const streamTranscriptionFrom: {
   <E, R>(audioIn: Stream.Stream<Uint8Array, E, R>, request: CommonStreamTranscribeRequest) =>
     Stream.unwrap(
       Effect.gen(function* () {
-        const t = yield* Transcriber.asEffect()
-        yield* SttStreaming.asEffect()
+        const t = yield* Transcriber
+        yield* SttStreaming
         return t.streamTranscriptionFrom(audioIn, request)
       }),
     ),

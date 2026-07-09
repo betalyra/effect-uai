@@ -67,4 +67,4 @@ export class WebRead extends Context.Service<WebRead, WebReadService>()(
 export const read = (
   request: CommonReadRequest,
 ): Effect.Effect<ReadResponse, AiError.AiError, WebRead> =>
-  Effect.flatMap(WebRead.asEffect(), (s) => s.read(request))
+  Effect.flatMap(WebRead, (s) => s.read(request))

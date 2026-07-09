@@ -240,7 +240,7 @@ export class Browser extends Context.Service<Browser, BrowserService>()(
 export const create = (
   request: CommonSessionRequest,
 ): Effect.Effect<BrowserSession, BrowserError.BrowserError, Browser | Scope.Scope> =>
-  Effect.flatMap(Browser.asEffect(), (s) => s.create(request))
+  Effect.flatMap(Browser, (s) => s.create(request))
 
 /**
  * Re-acquire an existing session by id. Same scope semantics as `create`,
@@ -249,14 +249,14 @@ export const create = (
 export const attach = (
   id: BrowserSessionId,
 ): Effect.Effect<BrowserSession, BrowserError.BrowserError, Browser | Scope.Scope> =>
-  Effect.flatMap(Browser.asEffect(), (s) => s.attach(id))
+  Effect.flatMap(Browser, (s) => s.attach(id))
 
 /** Enumerate sessions for the configured account / project. */
 export const list: Effect.Effect<
   ReadonlyArray<BrowserSessionRef>,
   BrowserError.BrowserError,
   Browser
-> = Effect.flatMap(Browser.asEffect(), (s) => s.list)
+> = Effect.flatMap(Browser, (s) => s.list)
 
 /**
  * Destroy a session from outside its owning scope. Most callers should let
@@ -265,4 +265,4 @@ export const list: Effect.Effect<
 export const destroy = (
   id: BrowserSessionId,
 ): Effect.Effect<void, BrowserError.BrowserError, Browser> =>
-  Effect.flatMap(Browser.asEffect(), (s) => s.destroy(id))
+  Effect.flatMap(Browser, (s) => s.destroy(id))

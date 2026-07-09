@@ -65,7 +65,7 @@ export class LanguageModel extends Context.Service<LanguageModel, LanguageModelS
 export const streamTurn = (
   request: CommonRequest,
 ): Stream.Stream<TurnEvent, AiError.AiError, LanguageModel> =>
-  Stream.unwrap(Effect.map(LanguageModel.asEffect(), (m) => m.streamTurn(request)))
+  Stream.unwrap(Effect.map(LanguageModel, (m) => m.streamTurn(request)))
 
 /**
  * Drain a single turn and return the assembled `Turn`. Delegates to the
@@ -74,7 +74,7 @@ export const streamTurn = (
  * {@link turnFromStream}.
  */
 export const turn = (request: CommonRequest): Effect.Effect<Turn, AiError.AiError, LanguageModel> =>
-  Effect.flatMap(LanguageModel.asEffect(), (m) => m.turn(request))
+  Effect.flatMap(LanguageModel, (m) => m.turn(request))
 
 /**
  * Build a `turn` implementation from a `streamTurn` implementation.

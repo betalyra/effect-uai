@@ -150,7 +150,9 @@ const synthesizeImpl = (cfg: Config) => (request: GeminiSynthesizeRequest) =>
       reason: "Gemini `:generateContent` TTS has no language parameter.",
     })
     const client = yield* HttpClient.HttpClient
-    const [format, wrap] = yield* realizeOutput(request.outputFormat?.container ?? "raw")
+    const [format, wrap] = yield* Effect.fromResult(
+      realizeOutput(request.outputFormat?.container ?? "raw"),
+    )
     const httpRequest = HttpClientRequest.post(
       `${baseUrl(cfg)}/models/${request.model}:generateContent`,
     ).pipe(
@@ -221,7 +223,7 @@ const unsupportedStreamDialogue: SpeechSynthesizerService["streamSynthesizeDialo
 
 export const make = (cfg: Config) =>
   Effect.map(
-    HttpClient.HttpClient.asEffect(),
+    HttpClient.HttpClient,
     (client): GeminiSynthesizerService => ({
       synthesize: (r) =>
         synthesizeImpl(cfg)(r).pipe(Effect.provideService(HttpClient.HttpClient, client)),

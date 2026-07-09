@@ -189,7 +189,7 @@ const readImpl =
 export const make = (
   cfg: Config,
 ): Effect.Effect<FirecrawlReadService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     read: (request) =>
       readImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
   }))

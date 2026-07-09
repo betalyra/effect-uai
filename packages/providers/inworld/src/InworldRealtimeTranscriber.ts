@@ -33,7 +33,7 @@ export { InworldTranscriber } from "./InworldTranscriber.js"
 
 export const make = (cfg: Config) =>
   Effect.map(
-    HttpClient.HttpClient.asEffect(),
+    HttpClient.HttpClient,
     (client) =>
       ({
         transcribe: (r) =>

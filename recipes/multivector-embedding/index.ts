@@ -83,7 +83,7 @@ const program = Effect.gen(function* () {
   // `multivector` is Jina-specific: it lives on `JinaEncoding`, not the
   // cross-provider `EmbedEncoding`, so reach for the Jina-typed tag here.
   // The dense baseline below stays on the portable `EmbeddingModel` path.
-  const jina = yield* JinaEmbedding.asEffect()
+  const jina = yield* JinaEmbedding
   // One HTTP call each. v4 unifies query + document under `retrieval.*`.
   const [queryResult, docsResult] = yield* Effect.all(
     [

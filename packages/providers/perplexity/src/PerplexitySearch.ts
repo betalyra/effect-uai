@@ -209,7 +209,7 @@ const searchImpl =
 export const make = (
   cfg: Config,
 ): Effect.Effect<PerplexitySearchService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     search: (request) =>
       searchImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
   }))

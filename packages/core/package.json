@@ -231,10 +231,10 @@
     "@standard-schema/spec": "^1.1.0"
   },
   "devDependencies": {
-    "effect": "4.0.0-beta.57",
+    "effect": "4.0.0-beta.94",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "effect": "4.0.0-beta.57"
+    "effect": ">=4.0.0-beta.94 <5.0.0"
   }
 }

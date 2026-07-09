@@ -243,7 +243,7 @@ export const streamDialogueUnsupportedImpl: SpeechSynthesizerService["streamSynt
 export const make = (
   cfg: Config,
 ): Effect.Effect<InworldSynthesizerService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     synthesize: (r) =>
       synthesizeImpl(cfg)(r).pipe(Effect.provideService(HttpClient.HttpClient, client)),
     streamSynthesis: (r) =>

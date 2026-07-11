@@ -107,4 +107,40 @@ describe("Responses hosted-tool response tolerance", () => {
       },
     ])
   })
+
+  // The new streamed-citation path: a real `annotation.added` payload (with the
+  // wire's positional fields) must decode and project to a `CitationAdded`
+  // carrying a domain `Annotation`. This is what makes native-grounding
+  // citations stream instead of only landing on the final turn.
+  it("projects a streamed url_citation to CitationAdded", () => {
+    const deltas = eventToDeltas(
+      decodeEvent({
+        type: "response.output_text.annotation.added",
+        item_id: "msg_1",
+        output_index: 0,
+        content_index: 0,
+        annotation_index: 0,
+        annotation: {
+          type: "url_citation",
+          url: "https://example.com/a",
+          title: "A",
+          start_index: 10,
+          end_index: 20,
+        },
+      }),
+      makeCallIdLookup(),
+    )
+    expect(deltas).toEqual([
+      {
+        _tag: "CitationAdded",
+        annotation: {
+          type: "url_citation",
+          url: "https://example.com/a",
+          title: "A",
+          start_index: 10,
+          end_index: 20,
+        },
+      },
+    ])
+  })
 })

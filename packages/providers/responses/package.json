@@ -38,6 +38,10 @@
       "types": "./dist/Responses.d.mts",
       "import": "./dist/Responses.mjs"
     },
+    "./OpenAIDeepResearch": {
+      "types": "./dist/OpenAIDeepResearch.d.mts",
+      "import": "./dist/OpenAIDeepResearch.mjs"
+    },
     "./OpenAIEmbedding": {
       "types": "./dist/OpenAIEmbedding.d.mts",
       "import": "./dist/OpenAIEmbedding.mjs"

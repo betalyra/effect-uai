@@ -1,6 +1,7 @@
 import { Data, Effect, Result, Schema, Stream, pipe } from "effect"
 import * as StructuredFormat from "../structured-format/StructuredFormat.js"
 import {
+  type Annotation,
   HistoryItem,
   Message,
   Reasoning,
@@ -44,6 +45,14 @@ export type Turn = typeof Turn.Type
  * `UsageUpdate`: mid-stream cumulative usage. Anthropic emits this on
  * `message_start` and `message_delta`; other providers may only deliver
  * usage via `TurnComplete.turn.usage`.
+ *
+ * `WebSearchCall`: lifecycle of a provider-executed web search within the
+ * turn. Fires only when the turn grounds against search; absent otherwise.
+ *
+ * `CitationAdded`: a citation attached to the answer, emitted incrementally
+ * where the provider streams citations. Providers that bundle citations emit
+ * none of these; their citations still arrive on `TurnComplete.turn`
+ * (`OutputText.annotations`). Either way the final set is on the assembled turn.
  */
 export type TurnEvent = Data.TaggedEnum<{
   TextDelta: { readonly text: string }
@@ -52,6 +61,12 @@ export type TurnEvent = Data.TaggedEnum<{
   ToolCallStart: { readonly call_id: string; readonly name: string }
   ToolCallArgsDelta: { readonly call_id: string; readonly delta: string }
   UsageUpdate: { readonly usage: Usage }
+  WebSearchCall: {
+    readonly status: "started" | "searching" | "completed"
+    readonly query?: string
+    readonly action?: "search" | "open_page" | "find_in_page"
+  }
+  CitationAdded: { readonly annotation: Annotation }
   TurnComplete: { readonly turn: Turn }
 }>
 
@@ -93,6 +108,17 @@ export const assistantTexts = (turn: Turn): ReadonlyArray<string> =>
  * that want one concatenated string.
  */
 export const assistantText = (turn: Turn): string => assistantTexts(turn).join("")
+
+/**
+ * Every citation annotation attached to the turn's assistant `output_text`
+ * blocks, in order. The flat view of a grounded turn's sources, whether the
+ * turn came from a normal generation with native search or a deep-research job.
+ */
+export const citations = (turn: Turn): ReadonlyArray<Annotation> =>
+  assistantMessages(turn)
+    .flatMap((m) => m.content)
+    .filter(isOutputText)
+    .flatMap((b) => b.annotations ?? [])
 
 /**
  * Append a completed turn and optional follow-up items to a state record's

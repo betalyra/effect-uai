@@ -24,6 +24,20 @@ export type OpenAIModel =
   | (string & {})
 
 /**
+ * OpenAI deep-research model / agent ids, usable via the Responses API with
+ * `background: true`. `o3-deep-research` is the comprehensive tier;
+ * `o4-mini-deep-research` is faster and cheaper. The `(string & {})` tail keeps
+ * autocomplete while accepting newer ids without an SDK update.
+ *
+ * Reference: https://developers.openai.com/api/docs/guides/deep-research
+ */
+export type OpenAIDeepResearchModel =
+  | "o3-deep-research"
+  | "o4-mini-deep-research"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
  * Known OpenAI embedding model identifiers. The `-3-` line is still the
  * current general-purpose lineup; `dimensions` parameter supports
  * Matryoshka truncation up to the model's native dimensionality.

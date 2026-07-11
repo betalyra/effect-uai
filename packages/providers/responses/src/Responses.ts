@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Match, Option, Redacted, Result, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import {
@@ -194,7 +194,26 @@ const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
  */
 const eventToError = Match.type<ProviderEvent>().pipe(
   Match.discriminators("type")({
-    error: (e): AiError.AiError => new AiError.Unavailable({ provider: "responses", raw: e }),
+    error: (e): AiError.AiError => {
+      const detail = e.error
+      const message = detail?.message ?? e.message
+      const code = detail?.code ?? e.code
+      const param = detail?.param
+      // A top-level SSE `error` is usually a request rejection (bad model,
+      // missing access, malformed body): non-retryable, so `InvalidRequest`.
+      return detail?.type === "invalid_request_error"
+        ? new AiError.InvalidRequest({
+            provider: "responses",
+            ...(param != null && { param }),
+            raw: e,
+          })
+        : new AiError.GenerationFailed({
+            provider: "responses",
+            ...(code != null && { code }),
+            ...(message != null && { message }),
+            raw: e,
+          })
+    },
     "response.failed": (e): AiError.AiError => {
       const code = e.response.error?.code
       const message = e.response.error?.message
@@ -223,7 +242,7 @@ const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
 // Service implementation
 // ---------------------------------------------------------------------------
 
-const httpStatusError = (status: number, body: string): AiError.AiError => {
+export const httpStatusError = (status: number, body: string): AiError.AiError => {
   const provider = "responses"
   const raw = body
   if (status === 429) return new AiError.RateLimited({ provider, raw })
@@ -235,6 +254,36 @@ const httpStatusError = (status: number, body: string): AiError.AiError => {
   if (status >= 500) return new AiError.Unavailable({ provider, status, raw })
   return new AiError.InvalidRequest({ provider, raw })
 }
+
+/**
+ * Decode an already-executed `/responses` HTTP response into the native
+ * `ProviderEvent` stream: fail on a >=400 status, else SSE-decode the body and
+ * lift terminal `error` / `response.failed` events to a typed `AiError`. Shared
+ * by the streaming turn path (POST) and the deep-research resume stream (GET
+ * `?stream=true`).
+ */
+export const providerEventsOfResponse = (
+  response: HttpClientResponse.HttpClientResponse,
+): Stream.Stream<ProviderEvent, AiError.AiError> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      if (response.status >= 400) {
+        const body = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
+        return Stream.fail(httpStatusError(response.status, body))
+      }
+      return response.stream.pipe(
+        Stream.mapError((cause) => new AiError.Unavailable({ provider: "responses", raw: cause })),
+        SSE.fromBytes,
+        Stream.mapEffect(sseEventToProviderEvent),
+        Stream.flatMap((event) =>
+          Option.match(eventToError(event), {
+            onNone: () => Stream.succeed(event),
+            onSome: Stream.fail,
+          }),
+        ),
+      )
+    }),
+  )
 
 const buildNativeStream = (cfg: Config) => {
   const url = `${resolveHost(cfg)}/responses`
@@ -270,24 +319,7 @@ const buildNativeStream = (cfg: Config) => {
               (cause) => new AiError.Unavailable({ provider: "responses", raw: cause }),
             ),
           )
-        if (response.status >= 400) {
-          const body = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-          return Stream.fail(httpStatusError(response.status, body))
-        }
-
-        return response.stream.pipe(
-          Stream.mapError(
-            (cause) => new AiError.Unavailable({ provider: "responses", raw: cause }),
-          ),
-          SSE.fromBytes,
-          Stream.mapEffect(sseEventToProviderEvent),
-          Stream.flatMap((event) =>
-            Option.match(eventToError(event), {
-              onNone: () => Stream.succeed(event),
-              onSome: Stream.fail,
-            }),
-          ),
-        )
+        return providerEventsOfResponse(response)
       }),
     )
 }

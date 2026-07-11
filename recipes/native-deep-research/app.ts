@@ -29,17 +29,15 @@ import {
   Option,
   Ref,
   References,
-  Schema,
   Stream,
 } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import * as Turn from "@effect-uai/core/Turn"
-import { ExaDeepResearch, layer as exaLayer } from "@effect-uai/exa/ExaDeepResearch"
+import { layer as exaLayer } from "@effect-uai/exa/ExaDeepResearch"
 import { layer as googleLayer } from "@effect-uai/google/GoogleDeepResearch"
 import { layer as perplexityLayer } from "@effect-uai/perplexity/PerplexityDeepResearch"
 import { layer as openaiLayer } from "@effect-uai/responses/OpenAIDeepResearch"
-import { boolFlag, providerChoice } from "../_shared/argv.js"
+import { providerChoice } from "../_shared/argv.js"
 import { nativeDeepResearch } from "./recipe.js"
 
 export type Provider = "perplexity" | "openai" | "google" | "exa"
@@ -49,28 +47,6 @@ const write = (s: string) =>
   Effect.sync(() => {
     process.stdout.write(s)
   })
-
-// Exa is the one provider with structured output (`STRUCTURED=1`): research into
-// this schema and get typed JSON with field-level citations instead of prose.
-const exaResearchLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("EXA_API_KEY")
-    return exaLayer({ apiKey })
-  }),
-)
-
-const AiDevelopments = Schema.Struct({
-  developments: Schema.Array(
-    Schema.Struct({
-      title: Schema.String,
-      summary: Schema.String,
-      organization: Schema.optional(Schema.String),
-    }),
-  ),
-})
-const aiDevelopmentsFormat = StructuredFormat.fromEffectSchema(AiDevelopments, {
-  name: "ai_developments",
-})
 
 // ---------------------------------------------------------------------------
 // Per-provider wiring: a default deep-research model. The Layer (below)
@@ -109,7 +85,14 @@ const researchLayerFor = Match.type<Provider>().pipe(
       }),
     ),
   ),
-  Match.when("exa", () => exaResearchLayer),
+  Match.when("exa", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("EXA_API_KEY")
+        return exaLayer({ apiKey })
+      }),
+    ),
+  ),
   Match.exhaustive,
 )
 
@@ -126,7 +109,6 @@ const recipeConfig = (provider: Provider) =>
     ),
     model: Config.string("MODEL").pipe(Config.withDefault(defaultModel[provider])),
     output: Config.string("OUTPUT").pipe(Config.withDefault("deep-research-report.md")),
-    structured: Config.boolean("STRUCTURED").pipe(Config.withDefault(false)),
   })
 
 const urlCitations = (turn: Turn.Turn) => Turn.citations(turn).filter(Items.isUrlCitation)
@@ -146,25 +128,6 @@ const toMarkdown = (question: string, turn: Turn.Turn): string => {
   return [...body, ...sourceList, ""].join("\n")
 }
 
-// Structured output (Exa only): research into `aiDevelopmentsFormat`, decode the
-// completed `Turn` OUTSIDE the provider (exactly like `LanguageModel`), then save
-// the typed result as JSON.
-const runStructured = (question: string, output: string) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("structured mode: researching into a typed schema (ai_developments)")
-    const fs = yield* FileSystem.FileSystem
-    const exa = yield* ExaDeepResearch
-    const turn = yield* exa.research({
-      history: [Items.userText(question)],
-      outputSchema: aiDevelopmentsFormat,
-    })
-    const result = yield* Turn.decodeStructured(turn, aiDevelopmentsFormat)
-    const json = JSON.stringify(result, null, 2)
-    yield* Console.log(json)
-    yield* fs.writeFileString(output, json)
-    yield* Console.log(`\nResult saved to ${output}`)
-  }).pipe(Effect.provide(exaResearchLayer))
-
 // ---------------------------------------------------------------------------
 // Bootstrap effect: resolve the flag, stream the recipe under the chosen
 // provider Layer rendering live progress, then print + save the report.
@@ -173,18 +136,6 @@ const runStructured = (question: string, output: string) =>
 export const main = Effect.gen(function* () {
   const provider = yield* providerChoice("perplexity", "openai", "google", "exa")
   const cfg = yield* recipeConfig(provider)
-
-  // Structured output is an Exa-only, provider-typed knob, so it drops out of the
-  // portable streaming path into its own decode-outside branch, saved as JSON.
-  if (boolFlag("structured") || cfg.structured) {
-    if (provider !== "exa") {
-      return yield* Console.error(
-        "Structured output (STRUCTURED=1) is only supported by --provider=exa",
-      )
-    }
-    return yield* runStructured(cfg.question, cfg.output.replace(/\.md$/, ".json"))
-  }
-
   const fs = yield* FileSystem.FileSystem
 
   yield* Effect.logInfo(`native-deep-research (provider: ${provider} ${cfg.model})`)

@@ -51,6 +51,8 @@ export class ExaDeepResearch extends Context.Service<ExaDeepResearch, ExaDeepRes
 export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
+  /** Poll cadence / overall timeout for the derived poll loops. */
+  readonly job?: Job.JobConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +265,7 @@ const jobOps = (cfg: Config, client: HttpClient.HttpClient): ResearchJobOps<ExaR
 export const make = (
   cfg: Config,
 ): Effect.Effect<ExaDeepResearchService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient, (client) => fromJob(jobOps(cfg, client)))
+  Effect.map(HttpClient.HttpClient, (client) => fromJob(jobOps(cfg, client), cfg.job))
 
 /**
  * Layer registering the provider-typed `ExaDeepResearch` tag and the generic
@@ -278,11 +280,14 @@ export const layer = (
     DeepResearch,
     Effect.map(HttpClient.HttpClient, (client): DeepResearchService => {
       const ops = jobOps(cfg, client)
-      return fromJob<ResearchRequest>({
-        submit: (request) => ops.submit(request as ExaResearchRequest),
-        poll: ops.poll,
-        cancel: ops.cancel,
-      })
+      return fromJob<ResearchRequest>(
+        {
+          submit: (request) => ops.submit(request as ExaResearchRequest),
+          poll: ops.poll,
+          cancel: ops.cancel,
+        },
+        cfg.job,
+      )
     }),
   )
   return Layer.merge(typed, generic)

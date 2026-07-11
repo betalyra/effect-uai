@@ -57,10 +57,11 @@ export type ResearchJobOps<Req> = {
 const synthesizedStream = <Req>(
   ops: ResearchJobOps<Req>,
   ref: ResearchJobRef,
+  config?: Job.JobConfig,
 ): Stream.Stream<TurnEvent, AiError.AiError> =>
   Stream.concat(
     Stream.make(TurnEvent.WebSearchCall({ status: "searching" })),
-    Stream.map(Stream.fromEffect(Job.collect(ops.poll, ref)), (turn) =>
+    Stream.map(Stream.fromEffect(Job.collect(ops.poll, ref, config)), (turn) =>
       TurnEvent.TurnComplete({ turn }),
     ),
   )
@@ -70,20 +71,24 @@ const synthesizedStream = <Req>(
  * `submit` then poll-to-settle (best-effort cancel on interrupt, via
  * {@link Job.run}); `collect` / `status` are the detached equivalents;
  * `researchStream` submits then attaches. Generic over the request type so a
- * provider-typed tag keeps its narrowed `submit`.
+ * provider-typed tag keeps its narrowed `submit`. `config` tunes the poll
+ * cadence and overall timeout of every derived poll loop (see
+ * {@link Job.JobConfig} for the defaults).
  */
 export const fromJob = <Req extends ResearchRequest>(
   ops: ResearchJobOps<Req>,
+  config?: Job.JobConfig,
 ): DeepResearchServiceShape<Req> => {
-  const streamFrom = ops.streamFrom ?? ((ref: ResearchJobRef) => synthesizedStream(ops, ref))
+  const streamFrom =
+    ops.streamFrom ?? ((ref: ResearchJobRef) => synthesizedStream(ops, ref, config))
   return {
     submit: ops.submit,
     status: ops.poll,
-    collect: (ref) => Job.collect(ops.poll, ref),
+    collect: (ref) => Job.collect(ops.poll, ref, config),
     cancel: ops.cancel,
     streamFrom,
     research: (request) =>
-      Job.run({ submit: ops.submit(request), poll: ops.poll, cancel: ops.cancel }),
+      Job.run({ submit: ops.submit(request), poll: ops.poll, cancel: ops.cancel }, config),
     researchStream: (request) => Stream.unwrap(Effect.map(ops.submit(request), streamFrom)),
   }
 }

@@ -26,9 +26,10 @@ this section is what physically exists on disk.
   `cancel`); `research` / `researchStream` are derived. Providers build the
   service with the `fromJob` constructor, which supplies a synthesized
   `streamFrom` for poll-only jobs (see Appendix B, which supersedes A.5's
-  two-marker split). `domain/Research.ts` holds `ResearchRequest`
-  (`{ history, model? }`), `ResearchJobRef = Job.JobRef<Turn>`,
-  `ResearchState = Job.JobState<Turn>`.
+  two-marker split) and takes an optional `Job.JobConfig` (poll cadence +
+  timeout, exposed as `job?` on every provider's Layer config).
+  `domain/Research.ts` holds `ResearchRequest` (`{ history, model? }`),
+  `ResearchJobRef = Job.JobRef<Turn>`, `ResearchState = Job.JobState<Turn>`.
 - **Responses codec** — decodes `response.web_search_call.*` → `WebSearchCall`
   and `response.output_text.annotation.added` → `CitationAdded`
   (`packages/providers/responses/src/streamEvents.ts`). Native-grounding
@@ -43,12 +44,31 @@ this section is what physically exists on disk.
 - **OpenAI `DeepResearch`** —
   `packages/providers/responses/src/OpenAIDeepResearch.ts`. `/responses` with
   `background: true` submit + poll → `Turn` via `fromJob`, with a real resumable
-  SSE `streamFrom` (`?stream=true`) and a working `cancel`. Reuses the Responses
-  codec (`turnFromCompleted`, `itemsToInput`) and the canonical `TurnEvent`
-  projection.
+  SSE `streamFrom` (`?stream=true`) and a working `cancel`. `submit` creates the
+  job with `stream: true` (reads one SSE event for the id, then drops the
+  connection): OpenAI only exposes the resumable feed on stream-created
+  responses, so this keeps every submitted ref attachable, and `fromJob`'s
+  default `researchStream` (submit-then-attach) streams real events. Reuses the
+  Responses codec (`turnFromCompleted`, `itemsToInput`) and the canonical
+  `TurnEvent` projection.
+- **Google `DeepResearch`** —
+  `packages/providers/google/src/GoogleDeepResearch.ts`. Gemini Interactions
+  (`POST /v1beta/interactions`, `agent: deep-research-*`) submit + poll via
+  `fromJob`; `researchStream` consumes the real Interactions SSE (`step.delta`
+  text / thought → `TextDelta` / `ReasoningDelta`). Text deltas are accumulated
+  so `TurnComplete.turn` carries the report even when the terminal
+  `interaction.completed` event is bare. Preview surface: wire shapes decoded
+  defensively, to be confirmed against live runs.
+- **Exa `DeepResearch`** —
+  `packages/providers/exa/src/ExaDeepResearch.ts`. Async task API
+  (`/research/v0/tasks`) via `fromJob`, poll-only. `outputSchema?` on the typed
+  request sends `output.schema` (draft-07) for structured research; the
+  completed `Turn`'s text is the JSON, decoded outside via
+  `Turn.decodeStructured`. Field-keyed `citations` flatten to annotations.
 - **`native-deep-research` recipe** — `recipes/native-deep-research/`. Streaming
   background run over the generic tag (`researchStream` → render live progress →
-  print the cited report), portable across Perplexity + OpenAI (see Appendix B.7).
+  print + save the cited report), portable across Perplexity / OpenAI / Google /
+  Exa (see Appendix B.7).
 
 **Design decisions locked** (details in Appendix A)
 
@@ -66,8 +86,7 @@ this section is what physically exists on disk.
 **Not done (deliberately out of scope for this slice)**
 
 - Anthropic + Google grounding decode into `Annotation` / `Citations` (A.9 step 5).
-- The remaining providers: Gemini (Interactions), Jina (sync stream), Exa (now
-  sync `/search?type=deep-reasoning`) — next up: Exa then Google.
+- Jina (sync stream) as a virtual job.
 - Provider-typed steering: Gemini collaborative `plan` / `refine` and the OpenAI
   `previousRef` follow-up handle (Appendix B.3).
 - Perplexity `LanguageModel` + a shared OpenAI-compatible Chat Completions base

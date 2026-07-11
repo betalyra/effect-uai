@@ -48,6 +48,8 @@ export class PerplexityDeepResearch extends Context.Service<
 export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
+  /** Poll cadence / overall timeout for the derived poll loops. */
+  readonly job?: Job.JobConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +262,7 @@ const jobOps = (
 export const make = (
   cfg: Config,
 ): Effect.Effect<PerplexityDeepResearchService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient, (client) => fromJob(jobOps(cfg, client)))
+  Effect.map(HttpClient.HttpClient, (client) => fromJob(jobOps(cfg, client), cfg.job))
 
 /**
  * Layer registering the provider-typed `PerplexityDeepResearch` tag and the
@@ -275,11 +277,14 @@ export const layer = (
     DeepResearch,
     Effect.map(HttpClient.HttpClient, (client): DeepResearchService => {
       const ops = jobOps(cfg, client)
-      return fromJob<ResearchRequest>({
-        submit: (request) => ops.submit(request as PerplexityResearchRequest),
-        poll: ops.poll,
-        cancel: ops.cancel,
-      })
+      return fromJob<ResearchRequest>(
+        {
+          submit: (request) => ops.submit(request as PerplexityResearchRequest),
+          poll: ops.poll,
+          cancel: ops.cancel,
+        },
+        cfg.job,
+      )
     }),
   )
   return Layer.merge(typed, generic)

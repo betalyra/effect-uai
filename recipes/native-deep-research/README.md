@@ -47,8 +47,8 @@ a normal generation returns): project it with `Turn.assistantText` and
 `Turn.citations`. Under the hood the adapter submits a background job
 (`o3-deep-research` on OpenAI, `sonar-deep-research` on Perplexity,
 `deep-research-*` on Gemini, `exa-research` on Exa) and streams or polls it to
-completion. On providers that stream (OpenAI) the events are real; on poll-only
-ones (Perplexity, Gemini, Exa) progress is synthesized, same body. If you only
+completion. On providers that stream (OpenAI, Gemini) the events are real; on
+poll-only ones (Perplexity, Exa) progress is synthesized, same body. If you only
 want the final report, `research(request)` returns the `Turn` directly and drops
 the stream.
 

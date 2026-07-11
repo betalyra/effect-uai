@@ -35,7 +35,7 @@ const WireFilePath = Schema.Struct({
   index: Schema.Number,
 })
 
-const WireAnnotation = Schema.Union([
+export const WireAnnotation = Schema.Union([
   WireUrlCitation,
   WireFileCitation,
   WireContainerFileCitation,

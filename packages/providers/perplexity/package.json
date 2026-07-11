@@ -34,6 +34,10 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
+    "./PerplexityDeepResearch": {
+      "types": "./dist/PerplexityDeepResearch.d.mts",
+      "import": "./dist/PerplexityDeepResearch.mjs"
+    },
     "./PerplexitySearch": {
       "types": "./dist/PerplexitySearch.d.mts",
       "import": "./dist/PerplexitySearch.mjs"

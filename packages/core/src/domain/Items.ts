@@ -27,16 +27,26 @@ export type InputImage = typeof InputImage.Type
 
 // ---------------------------------------------------------------------------
 // Annotations - source / citation pointers attached to `output_text` blocks.
-// Mirrors OpenAI Responses API; other providers can omit or map onto these
-// shapes.
+// Provider-agnostic: each provider populates the fields it has (character
+// span, quote, or positional marker) and omits the rest.
 // ---------------------------------------------------------------------------
 
+/**
+ * A cited source. `url` + `title` are the only near-universal fields; the
+ * link from a source to the answer text varies by provider, so it is optional
+ * and expressed three ways: `start_index`/`end_index` (a character span into
+ * the answer), `cited_text` (an exact quote of the source, when no offsets are
+ * given), or `marker` (a positional `[n]` reference into an ordered list). A
+ * provider populates whichever it has; a bare source list sets none.
+ */
 export const UrlCitation = Schema.Struct({
   type: Schema.Literal("url_citation"),
   url: Schema.String,
-  start_index: Schema.Number,
-  end_index: Schema.Number,
   title: Schema.String,
+  start_index: Schema.optional(Schema.Number),
+  end_index: Schema.optional(Schema.Number),
+  cited_text: Schema.optional(Schema.String),
+  marker: Schema.optional(Schema.Number),
 })
 export type UrlCitation = typeof UrlCitation.Type
 

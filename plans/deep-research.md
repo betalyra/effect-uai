@@ -1,5 +1,78 @@
 # Plan: `DeepResearch` capability
 
+## Implementation status (2026-07)
+
+The core capability and the first provider are **shipped and green** (workspace
+typecheck passes; 433 tests pass). The authoritative design is **Appendix A**;
+this section is what physically exists on disk.
+
+**Shipped**
+
+- **Generic job primitive** — `packages/core/src/job/Job.ts`. `JobRef<A>`
+  (phantom-branded by result type so refs can't cross capabilities),
+  `JobState<A>` tagged enum (`Pending` / `Running` / `Succeeded{result}` /
+  `Failed{reason?,raw?}`), `JobOps<A>` (`submit` / `poll` / `cancel`), and
+  `collect` / `run` driving a jittered poll loop bounded by a timeout. Effect
+  ships no equivalent (`Resource` is an auto-refresh cache), so this is a thin
+  wrapper over `Effect.repeat` + `Schedule` + `timeoutOrElse` + `onInterrupt`.
+- **Citation model** — `packages/core/src/domain/Citation.ts` (`Source` /
+  `CitationSpan` / `Citations`, the canonical form). `Items.UrlCitation` evolved
+  to the flattened view (optional span + `cited_text` + `marker`).
+- **Streaming** — `TurnEvent` gained `WebSearchCall` + `CitationAdded`;
+  `Turn.citations(turn)` collects annotations. `ResearchEvent` was never added
+  (removed from the design): the stream is `TurnEvent`, the result is a `Turn`.
+- **`DeepResearch` capability** — `packages/core/src/research/DeepResearch.ts`.
+  A marker-free job core (`submit` / `status` / `collect` / `streamFrom` /
+  `cancel`); `research` / `researchStream` are derived. Providers build the
+  service with the `fromJob` constructor, which supplies a synthesized
+  `streamFrom` for poll-only jobs (see Appendix B, which supersedes A.5's
+  two-marker split). `domain/Research.ts` holds `ResearchRequest`
+  (`{ history, model? }`), `ResearchJobRef = Job.JobRef<Turn>`,
+  `ResearchState = Job.JobState<Turn>`.
+- **Responses codec** — decodes `response.web_search_call.*` → `WebSearchCall`
+  and `response.output_text.annotation.added` → `CitationAdded`
+  (`packages/providers/responses/src/streamEvents.ts`). Native-grounding
+  citations now stream for plain `LanguageModel`, not just deep research. Covered
+  by a real-decode-path test.
+- **Perplexity `DeepResearch` (async reference)** —
+  `packages/providers/perplexity/src/PerplexityDeepResearch.ts`. `/v1/async/sonar`
+  submit + poll → `Turn` via `fromJob`; `search_results` → marker-anchored
+  `url_citation` annotations. Poll-only, so `streamFrom` / `researchStream` are
+  the synthesized default (leading search event + terminal report) and `cancel`
+  fails `Unsupported` (no endpoint). Shared package `http.ts` for error mapping.
+- **OpenAI `DeepResearch`** —
+  `packages/providers/responses/src/OpenAIDeepResearch.ts`. `/responses` with
+  `background: true` submit + poll → `Turn` via `fromJob`, with a real resumable
+  SSE `streamFrom` (`?stream=true`) and a working `cancel`. Reuses the Responses
+  codec (`turnFromCompleted`, `itemsToInput`) and the canonical `TurnEvent`
+  projection.
+- **`native-deep-research` recipe** — `recipes/native-deep-research/`. Streaming
+  background run over the generic tag (`researchStream` → render live progress →
+  print the cited report), portable across Perplexity + OpenAI (see Appendix B.7).
+
+**Design decisions locked** (details in Appendix A)
+
+- Input is `history: ReadonlyArray<HistoryItem>`, not `question: string`.
+- Result is a `Turn` (projected via `Turn.assistantText` / `Turn.citations` /
+  `Turn.decodeStructured`); there is no `ResearchReport`.
+- Depth / search-cap / structured-output knobs are provider-typed, not on the
+  common request.
+- One capability, **no markers**: every provider is a job, streaming is universal
+  (real or synthesized), and non-uniform knobs live on provider-typed tags
+  (Appendix B supersedes A.5's two-marker split).
+- `WebSearchCall` / `CitationAdded` are flat `TurnEvent` members, not
+  input-type-gated.
+
+**Not done (deliberately out of scope for this slice)**
+
+- Anthropic + Google grounding decode into `Annotation` / `Citations` (A.9 step 5).
+- The remaining providers: Gemini (Interactions), Jina (sync stream), Exa (now
+  sync `/search?type=deep-reasoning`) — next up: Exa then Google.
+- Provider-typed steering: Gemini collaborative `plan` / `refine` and the OpenAI
+  `previousRef` follow-up handle (Appendix B.3).
+- Perplexity `LanguageModel` + a shared OpenAI-compatible Chat Completions base
+  (its own follow-up: `plans/openai-compatible-chat.md`).
+
 ## What this is
 
 A deep research agent takes one question, autonomously runs dozens of web searches
@@ -46,13 +119,15 @@ an existing package, not a new one.
 | **Jina** (in repo) | `POST https://deepsearch.jina.ai/v1/chat/completions` | `jina-deepsearch-v1` | **sync streaming (SSE)**, no poll | precise answer + citations, not long-form |
 | **Valyu** | deep research API | - | async | accuracy-first cited answer |
 
-The common shape across everything except Jina: **submit with a background/async
+The common shape across the async providers: **submit with a background/async
 flag (or create a task), get a job id, poll for a terminal status, read one cited
 result.** OpenAI/Gemini run it as a background turn of their hosted-agent runtime;
-Perplexity/Exa/Parallel/You.com/Valyu are standalone async endpoints. **Exa is the
-cleanest fit** (create-task + `output_schema` + poll maps 1:1 onto the interface),
-so it, not Perplexity, becomes the reference implementation. Jina is the one
-outlier: a long synchronous streaming call, no job id.
+Perplexity/Parallel/You.com/Valyu are standalone async endpoints. **Perplexity is
+the reference implementation** (dedicated `/v1/async/sonar` submit + poll maps 1:1
+onto the interface) and shipped first. Note (verified 2026-07): **Exa deprecated
+its async research task API** and now serves deep research as a *synchronous*
+`/search?type=deep-reasoning` call, so Exa joins Jina as a sync (transport-2)
+outlier, not an async job.
 
 The **structured-output** split matters for the interface. Family A returns prose;
 Exa (and optionally Parallel) returns typed JSON against a caller-supplied schema,
@@ -222,50 +297,62 @@ generic wrapper, not a bespoke poll engine (see open questions).
 
 ## Per-provider mapping
 
-### Exa (reference implementation, do first)
+### Exa (was the async reference; now a sync provider)
 
-Already an effect-uai provider (`packages/providers/exa`, web-search today). Its
-Research API is the exact async-job shape, so it defines the interface.
+> **Superseded (verified 2026-07).** Exa **deprecated its `/research/v1`
+> create-task + poll API on 2026-05-01**. Deep research is now a **synchronous**
+> `POST /search` with `type: "deep-reasoning"` (optionally SSE-streamed with
+> `stream: true`), not an async job. So Exa no longer exercises the
+> `Job` / `submit` / `poll` / `collect` surface at all: it is a **transport-2
+> (sync)** provider like Jina, not the async reference. **Perplexity became the
+> async reference implementation and shipped first** (below). The original Exa
+> async plan is kept here only as historical context.
+
+When Exa is added, it is a sync `DeepResearch` module (`ResearchStreaming`
+marker only, no `ResearchJob`): `research(request)` drains the `/search`
+deep-reasoning result to a `Turn`; `researchStream` forwards the SSE variant.
+The structured-output path (`type: "deep-reasoning"` + a schema) is a
+provider-typed knob, surfaced via `Turn.decodeStructured`.
+
+Historical (pre-deprecation) async shape, for reference:
 
 - **submit:** create a research task with `{ instructions: question, output_schema? }`
-  (`POST` on the research resource; SDK `research.create_task`). Optional
-  `output_schema` drives structured output. Returns a task id.
-- **status / collect:** poll `get_task(id)` (SDK `poll_task`) until the task is
-  `completed` / `failed`; `list_tasks` for enumeration. Result is structured JSON
-  with **field-level citations**, or prose when no schema was given. Citations →
-  `Items.Annotation`; structured payload → `ResearchReport.structured`.
-- **effort:** `effort` → tier (`deep-lite` / `deep` / `deep-reasoning`).
-- **outputSchema:** map `StructuredFormat` → Exa `output_schema` (JSON Schema),
-  same conversion the providers already do for `CommonRequest.structured`. This is
-  the one provider that exercises the structured path.
-- **cancel:** verify against docs; if absent, `cancel` fails `Unsupported`.
-- Package: a `Research` module in `@effect-uai/exa`. API-key auth (`x-api-key`).
-- Cleanest end-to-end test target: create-task + poll + structured decode all route
-  through the real codec.
+  (`POST` on the research resource; SDK `research.create_task`). Returned a task id.
+- **status / collect:** poll `get_task(id)` until `completed` / `failed`. Result
+  was structured JSON with field-level citations, or prose.
+- **effort:** `effort` → tier (`deep-lite` / `deep` / `deep-reasoning`) — these
+  tiers now live on the sync `/search` `type` field.
 
-### Perplexity
+### Perplexity (async reference implementation — SHIPPED)
 
-A plain async REST job, no agent-runtime baggage. Prose report (no `outputSchema`).
+The first `DeepResearch` provider, in
+`packages/providers/perplexity/src/PerplexityDeepResearch.ts`. A plain async
+REST job, no agent-runtime baggage. Wire verified against the live OpenAPI
+2026-07. Ships the `ResearchJob` marker (detachable) but **not**
+`ResearchStreaming` (poll-only).
 
 - **submit:** `POST /v1/async/sonar` `{ request: { model: "sonar-deep-research",
-  messages: [{role:"user", content: question}], reasoning_effort }, idempotency_key? }`
-  → `{ id, status: CREATED }`.
-- **status / collect:** `GET /v1/async/sonar/{id}` → `{ status: CREATED |
-  IN_PROGRESS | COMPLETED | FAILED, response }`; on `COMPLETED`, report from
-  `response.choices[0].message.content`, citations from `response.citations[]`
-  (urls) + `response.search_results[]` (`{title, url, date, snippet}`), both mapped
-  to `Items.UrlCitation`.
-- **effort:** `effort` → `reasoning_effort` (`low`/`medium`/`high`; `minimal` also
-  exists provider-side).
-- **cancel:** none exposed; `cancel` fails `AiError.Unsupported`, `research`
-  interruption drops the client wait (server job runs to completion).
-- **researchStream:** sync `/v1/sonar` with `stream:true` is available for shorter
-  runs; the async job itself is poll-only, so `researchStream` on Perplexity is
-  best-effort (poll-and-emit, or fall back to sync streaming). Provider-typed
-  extras off the interface: `search_mode` (web/academic/sec),
-  `search_domain_filter`, `web_search_options`.
-- Package: a `DeepResearch` module in `@effect-uai/perplexity` (today a web-search
-  provider). API-key auth, `Authorization: Bearer`.
+  messages, reasoning_effort? }, idempotency_key? }` → `{ id, status: "CREATED" }`.
+- **status / collect (`poll`):** `GET /v1/async/sonar/{id}` → `{ status, response? }`;
+  status enum is exactly `CREATED | IN_PROGRESS | COMPLETED | FAILED`, mapped onto
+  `Job.JobState` (`Pending` / `Running` / `Succeeded` / `Failed`). On `COMPLETED`,
+  the `Turn` is built from `response.choices[0].message.content`; citations from
+  `response.search_results[]` (`{title, url, snippet}`) with the legacy
+  `response.citations[]` URL list as fallback, each mapped to a `url_citation`
+  annotation with a 1-based `marker` (Perplexity's `[n]` linking) and `cited_text`
+  from the snippet.
+- **effort:** provider-typed `reasoningEffort` (`minimal`/`low`/`medium`/`high`)
+  on `PerplexityResearchRequest`, not the common request.
+- **cancel:** no endpoint exists; `cancel` fails `AiError.Unsupported`.
+  Interrupting `research` drops the client wait (the server job runs on).
+- **researchStream / streamFrom:** the async job has no event stream, so both
+  fail `AiError.Unsupported` and the `ResearchStreaming` marker is withheld
+  (calling them against this Layer is a compile error). Provider-typed extras
+  still off the interface: `search_mode`, `search_domain_filter`,
+  `web_search_options`.
+- Package: `PerplexityDeepResearch` in `@effect-uai/perplexity` (also a
+  web-search provider). API-key auth, `Authorization: Bearer`. Shares a new
+  `http.ts` (error mapping) with the package.
 
 ### OpenAI
 
@@ -355,6 +442,18 @@ shows life. Default question something current-events flavored, same as
 `native-grounding`.
 
 ## Phasing
+
+> **Superseded by Appendix A.9** (the authoritative phasing after the citation +
+> streaming consolidation) and the status below. This original list predates the
+> `Turn`-result / `JobState` / two-marker design and the Exa deprecation. Kept
+> for history.
+>
+> **Status (2026-07):** Core capability, `Job` primitive, citation model,
+> `TurnEvent` extension, Responses-codec streaming citations, and the
+> **Perplexity `DeepResearch`** provider are all **shipped and green** (433
+> tests). Perplexity, not Exa, is the async reference (Exa deprecated its async
+> API). Remaining: Anthropic/Google grounding decode, OpenAI/Gemini/Jina/Exa
+> providers, and the recipe.
 
 1. **Core capability.** `domain/Research.ts` (`ResearchRequest` with `outputSchema`,
    `ResearchReport` with `structured`, `ResearchJobRef`, `ResearchStatus`,
@@ -577,13 +676,14 @@ Semantics:
   `LanguageModel`. Poll-only research providers (Perplexity, Exa) synthesize
   `WebSearchCall { status }` from job-status transitions.
 - **Terminal.** `TurnComplete` already carries the assembled `Turn` (items +
-  usage + stop_reason). `DeepResearch`'s `ResearchReport` becomes a thin
-  **projection** of that `Turn`: `text = Turn.assistantText`, `citations =` all
-  annotations across its `OutputText` blocks, `usage = turn.usage`,
-  `structured =` decoded from the text via the provider-typed `outputSchema`
-  (the same `Turn.decodeStructured` path structured output already uses). So
-  `ResearchReport` stops being a bespoke shape and is derived, and `ResearchEvent`
-  disappears.
+  usage + stop_reason). The completed research result **is** that `Turn`: one
+  assistant message with the report text and its citations on
+  `OutputText.annotations`. There is no bespoke report type. Callers project it
+  with `Turn.assistantText` (text), `Turn.citations` (all annotations across the
+  `OutputText` blocks, a helper added for this), and `Turn.decodeStructured`
+  (the provider-typed `outputSchema` path structured output already uses). Both
+  `ResearchReport` and `ResearchEvent` disappear: the sync result is a `Turn` and
+  the stream is `TurnEvent`.
 
 This is the crux of the consolidation: **one event stream type (`TurnEvent`),
 one terminal (`TurnComplete.turn`), one citation type**, whether the turn came
@@ -746,12 +846,13 @@ not an in-memory `Ref`.
 
 ```ts
 // 1) Simplest — no ref, no Ref. Interrupting this Effect cancels the job.
-const report = yield* DeepResearch.research({ history })
+const turn = yield* DeepResearch.research({ history })       // returns a Turn
+const text = Turn.assistantText(turn)                        // + Turn.citations(turn)
 
 // 2) "Cancel button" — a DIFFERENT fiber needs the handle -> in-memory Ref
 const ref = yield* DeepResearch.submit({ history })          // needs ResearchJob
 yield* Ref.set(activeJob, Option.some(ref))
-const report = yield* DeepResearch.collect(ref)
+const turn = yield* DeepResearch.collect(ref)
 // ...cancel-handler fiber:
 yield* Ref.get(activeJob).pipe(
   Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: DeepResearch.cancel })),
@@ -761,7 +862,7 @@ yield* Ref.get(activeJob).pipe(
 const ref = yield* DeepResearch.submit({ history })
 yield* saveJob(ref)                                          // to disk / db
 // ...new process later:
-const report = yield* loadJob().pipe(Effect.flatMap(DeepResearch.collect))
+const turn = yield* loadJob().pipe(Effect.flatMap(DeepResearch.collect))
 ```
 
 So a `Ref` is for cancel-from-elsewhere; detach-across-restart is persistence of
@@ -803,53 +904,341 @@ export type ResearchRequest = {
 }
 ```
 
-`ResearchReport` is a projection of the terminal `Turn`, not a bespoke type:
-
-```ts
-export type ResearchReport = {
-  readonly text: string
-  readonly citations: ReadonlyArray<Items.Annotation>  // flattened view (A.3 path 1)
-  readonly structured?: unknown                         // decoded via provider-typed outputSchema
-  readonly usage?: Items.Usage
-}
-```
+The completed result is a `Turn`, not a bespoke report type. Project it with
+`Turn.assistantText` / `Turn.citations` / `Turn.decodeStructured`.
 
 Full service surface (methods gated by the A.5 markers on the top-level helpers):
 
 ```ts
 export type DeepResearchService = {
-  readonly research:       (request: ResearchRequest) => Effect<ResearchReport, AiError>  // universal
+  readonly research:       (request: ResearchRequest) => Effect<Turn, AiError>            // universal
   readonly researchStream: (request: ResearchRequest) => Stream<TurnEvent, AiError>       // ResearchStreaming
   readonly submit:         (request: ResearchRequest) => Effect<ResearchJobRef, AiError>  // ResearchJob
-  readonly status:         (ref: ResearchJobRef)      => Effect<ResearchStatus, AiError>  // ResearchJob
-  readonly collect:        (ref: ResearchJobRef)      => Effect<ResearchReport, AiError>  // ResearchJob
+  readonly status:         (ref: ResearchJobRef)      => Effect<ResearchState, AiError>   // ResearchJob
+  readonly collect:        (ref: ResearchJobRef)      => Effect<Turn, AiError>            // ResearchJob
   readonly streamFrom:     (ref: ResearchJobRef)      => Stream<TurnEvent, AiError>       // ResearchJob + ResearchStreaming
   readonly cancel:         (ref: ResearchJobRef)      => Effect<void, AiError>            // ResearchJob
 }
 ```
 
-`ResearchEvent` is **removed**; both stream methods yield `TurnEvent`.
-`ResearchJobRef` = `Job.JobRef`, `ResearchStatus` = `Job.JobStatus` (the generic
-`job/Job.ts`, already written).
+`ResearchReport` and `ResearchEvent` are **removed**: the sync result is a
+`Turn`, the stream is `TurnEvent`. The job types are generic and branded by
+their result:
+
+```ts
+// job/Job.ts (written)
+export type JobRef<A>   = { readonly _tag: "JobRef"; readonly provider: string; readonly id: string /* + phantom A */ }
+export type JobState<A> = { _tag: "Pending" } | { _tag: "Running" }
+                        | { _tag: "Succeeded"; result: A } | { _tag: "Failed"; reason?: string; raw?: unknown }
+export type JobOps<A>   = { submit: Effect<JobRef<A>, AiError>; poll: (ref: JobRef<A>) => Effect<JobState<A>, AiError>; cancel: (ref: JobRef<A>) => Effect<void, AiError> }
+// domain/Research.ts
+export type ResearchJobRef = Job.JobRef<Turn>
+export type ResearchState  = Job.JobState<Turn>
+```
+
+`JobRef<A>` is phantom-branded by its result type, so a ref cannot be crossed
+between capabilities. `poll` returns the full `JobState` (status + result in one
+fetch, matching the wire), replacing the earlier separate `status` + `report`.
 
 Phasing (each step independently landable; interleaves with the main plan's
 provider phases):
 
-1. **Core citation model.** `domain/Citation.ts` (`Source` / `CitationSpan` /
-   `Citations`); evolve `Items.Annotation` per A.3 path 1 (optional span,
-   `citedText`, `marker`), keeping the flat view as the degenerate case.
-2. **Core streaming.** Add `WebSearchCall` + `CitationAdded` to `TurnEvent`.
-   `job/Job.ts` (done).
-3. **`DeepResearch` capability.** The tag + `ResearchJob` / `ResearchStreaming`
-   markers + domain (`ResearchRequest` / `ResearchReport`). No provider yet.
+1. **Core citation model** (done). `domain/Citation.ts` (`Source` /
+   `CitationSpan` / `Citations`); `Items.Annotation` evolved per A.3 path 1
+   (optional span, `cited_text`, `marker`), the flat view as the degenerate case.
+2. **Core streaming** (done). `WebSearchCall` + `CitationAdded` on `TurnEvent`,
+   `Turn.citations` helper, `job/Job.ts`.
+3. **`DeepResearch` capability** (done). The tag + `ResearchJob` /
+   `ResearchStreaming` markers + domain (`ResearchRequest`; result is `Turn`).
+   No provider yet.
 4. **Responses codec.** Decode `web_search_call.*` and `annotation.added` into
    the new `TurnEvent` members; stop dropping the search item. Lights up
    native-grounding citations for plain `LanguageModel`, not just `DeepResearch`.
 5. **Anthropic + Google codecs.** Decode `citations_delta` / `groundingMetadata`
    into `Annotation` (path 1), then `Citations` (A.3 path 2) when
    many-sources-per-span is worth it.
-6. **Research providers** through the real codec, with tests (per the
-   meaningful-tests rule): Exa (create-task + poll, structured path; `ResearchJob`)
-   and Perplexity (async poll; `ResearchJob`) first, then OpenAI (Responses
+6. **Research providers** through the real codec: **Perplexity** (async poll;
+   `ResearchJob`) shipped first as the async reference. Then OpenAI (Responses
    background + resume SSE; both markers), Gemini (Interactions; both markers),
-   Jina (sync stream; `ResearchStreaming` only).
+   and the sync (transport-2) providers Jina and Exa (`/search?type=deep-reasoning`
+   after its async deprecation), both `ResearchStreaming` only.
+
+---
+
+# Appendix B: Streaming, background jobs, attach/detach, and steering a running agent
+
+> Added 2026-07 after a second design pass, prompted by two observations: a run
+> lasts 5 to 30 minutes, so the primary use case is a **background job you watch
+> live and can walk away from**, not a blocking call; and we never checked
+> whether you can *talk to* a research agent while it runs. This appendix
+> refines A.5's "three transports, two markers" split. Where they conflict, this
+> appendix wins: the sync providers become **jobs** too (wrapped client-side),
+> streaming is the easy default everywhere, and steering is modeled as a
+> conversation at turn boundaries because that is the only thing the wire
+> supports.
+
+## B.1 The use case that should be the easy one
+
+Blocking `research()` is the wrong default for a 30-minute job. What a developer
+reaches for first should be:
+
+1. **start** a job and get a handle back immediately,
+2. **stream** what it is doing live (pages opened, searches issued, reasoning
+   summaries, text as it lands) so a long run visibly makes progress,
+3. optionally **detach** (stop watching, do other work) and **re-attach** later
+   to the same run.
+
+So the base primitives are `submit -> ref` and `streamFrom(ref) -> Stream<TurnEvent>`.
+The blocking `research()` (submit + poll to the terminal `Turn`) is a convenience
+wrapper on top, not the foundation. The docs should lead with the streaming
+background path and mention `research()` second, the reverse of A.9's emphasis.
+
+## B.2 Can you message a running agent? Provider survey (verified 2026-07)
+
+The empirical question, answered against live docs rather than assumed. The
+columns that matter for a long run: can you inject a message **mid-execution**,
+is there a **pre-run planning** exchange, a **post-completion follow-up**, and is
+the progress stream **resumable** (the wire-level attach/detach).
+
+| Provider | mid-run message | pre-run planning | post-run follow-up | resumable stream |
+|---|---|---|---|---|
+| **OpenAI** (`o3`/`o4-mini-deep-research`) | no | no (front-load the prompt) | `previous_response_id` | yes: `background+stream`, resume via `starting_after` + `sequence_number` |
+| **Gemini** (`deep-research-preview-04-2026`) | **no** (explicit) | **yes**: `collaborative_planning:true` + `previous_interaction_id`, refine then commit with `collaborative_planning:false` | `previous_interaction_id` (switches to a normal model) | yes: `stream=true` + `last_event_id` |
+| **Perplexity** (`sonar-deep-research`) | no | no | no (async job is one-shot; the sync Sonar chat is a different surface) | no (poll-only) |
+| **Jina / Exa** (sync) | no | no | no | the one live connection is the stream; nothing to resume |
+| **Anthropic** | n/a (no deep-research job at all) | n/a | n/a | n/a |
+
+**Anthropic re-confirmed 2026-07.** There is still no first-party deep-research
+endpoint: deep research on Claude is client-built (the `web_search` server tool
+inside the Messages loop, multi-agent orchestration, MCP research servers, or the
+Claude Code `/deep-research` skill). "Managed Agents" is a general stateful agent
+runtime, not a report-plus-citations job contract. So Anthropic stays out of the
+`DeepResearch` provider set, now doubly so: it ships a client-side research
+*skill*, which is exactly the "client recipe over `Loop` + search, not a provider"
+shape the main plan predicted.
+
+**The invariant across every provider: no mid-execution injection.** Once a job
+commits, it runs to completion untouched. The steering that exists is bracketed
+to the two boundaries: *before* the run (Gemini collaborative planning) and
+*after* it (`previous_*_id` follow-up). Both are turns in a conversation, not a
+live side-channel.
+
+Sources: OpenAI [background guide](https://developers.openai.com/api/docs/guides/background)
+and [deep research guide](https://developers.openai.com/api/docs/guides/deep-research);
+Gemini [Interactions deep research](https://ai.google.dev/gemini-api/docs/interactions/deep-research);
+Perplexity [async announcement](https://community.perplexity.ai/t/sonar-deep-research-async-mode-and-reasoning-effort-now-live/4736);
+Anthropic [web search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool)
+and [three ways to build deep research with Claude](https://paddo.dev/blog/three-ways-deep-research-claude/).
+
+## B.3 Consequence: steering is a research conversation, not a live channel
+
+Because steering only happens at turn boundaries, it maps onto machinery the
+interface already has: `ResearchRequest.history`. A follow-up is a new research
+request whose history includes the prior report (the completed `Turn`'s items).
+Two provider mechanisms fold in as **optional, marker-gated** methods:
+
+- **Pre-execution planning** (Gemini `collaborative_planning`). A short multi-turn
+  exchange that produces a research *plan* the caller can inspect and refine
+  before the expensive run commits. Model it as `plan(request) -> Turn` (the plan
+  is just a `Turn` you can show or edit) plus a `refine(planRef, note)` loop, then
+  `submit` commits it. Providers without planning skip straight to `submit`.
+- **Post-completion follow-up** (`previous_interaction_id` / `previous_response_id`).
+  Threading a finished job's server-side context into the next request. Providers
+  with a native handle round-trip it (carried on the completed `Turn`'s
+  `providerData` or the ref); providers without one just resend `history`. Either
+  way the caller sees "continue from that report."
+
+**None of these belongs on the generic interface.** Applying "don't unify what
+isn't unified":
+
+- **Planning (`plan` / `refine`)** is Gemini-only (n=1) with Gemini-specific
+  semantics (the `collaborative_planning` flag must be flipped false on the final
+  turn). It lives on the provider-typed `GoogleDeepResearch` tag, not the generic
+  capability. Promote to a shared marker only once a second provider ships it.
+- **Follow-up** needs no method at all: "continue from that report" is generically
+  `submit({ history: [...priorTurn.items, next] })`. The native handle
+  (`previous_response_id` / `previous_interaction_id`) is only an optimization, so
+  it rides as an optional `previousRef` on the provider-typed request, not a
+  generic `followUp`.
+- **Mid-run `steer`** ships nowhere, so it gets no generic slot. If it ever
+  appears it appears on one provider first, which makes it provider-typed anyway;
+  promote later. YAGNI beats a design slot for a non-existent feature.
+
+So the generic `DeepResearch` capability grows no steering surface at all: steering
+stays entirely provider-typed until a second provider forces a shared shape.
+
+## B.4 One job model: wrap the sync providers as virtual jobs
+
+A.5 modeled Jina/Exa as a separate "transport 2" that has no job, which forced
+`submit`/`collect` to be a compile error there and split the interface. Reverse
+it: give the sync providers a **client-side virtual job** so *every* provider is
+a job and the surface is uniform. `submit` forks a daemon fiber that runs the
+sync streaming call, republishes its events to a `PubSub<TurnEvent>`, and resolves
+a `Deferred<Turn>` at the end; the `JobRef` points at an in-process registry entry
+instead of a server id. Then `submit` / `status` / `collect` / `streamFrom` /
+`cancel` are **universal**.
+
+This has one honest cost, but it is **documentation, not a marker or a service
+concern**: a virtual job lives only as long as the process (its fiber holds the
+connection), so its ref cannot be collected from a fresh process. a server-backed
+ref can. This is not something the type system can gate: `collect` / `streamFrom`
+are used *in-process by every provider* on the happy path, so you cannot make them
+require a "durable" marker without breaking the common case, and the types cannot
+tell "same process" from "different process" anyway. And persistence itself is
+trivially the developer's job: the ref is plain `{ _tag, provider, id }`, dropped
+into a file / Redis / Postgres in whatever store they already run. So we ship
+**no** `DurableJob` marker. we document, per provider, whether a persisted ref
+survives a restart (server-backed: OpenAI, Gemini, Perplexity. virtual: Jina, Exa).
+
+Streaming likewise becomes universal. Real event stream where the provider streams
+(OpenAI/Gemini SSE, or the sync provider's own SSE inside the virtual job);
+**synthesized** progress where it does not (Perplexity): a leading
+`WebSearchCall{status:"searching"}` then the terminal `TurnComplete` off the poll
+loop. The virtual-job fiber (and, for a plain poll-only provider, the `fromJob`
+default `streamFrom`) is the natural home for synthesizing.
+
+Trade stated honestly: A.5 deliberately compile-errored `researchStream` on
+poll-only providers so the type could not "lie" about live progress. Making
+streaming universal reverses that call. The justification is B.1: a uniformly easy
+streaming default is worth more than the compile-time gate, and synthesized
+progress is honest low-fidelity progress, not a fabrication, **as long as it is
+labeled** (optionally a `synthesized: true` field on those events). Net marker
+change from A.5: drop `ResearchJob` and `ResearchStreaming` (both universal now)
+and add no replacement. The generic interface ends up marker-free (B.6).
+
+## B.5 Attach / detach with Effect: what is interface, what is recipe
+
+An in-process running job is a fiber writing to a `PubSub<TurnEvent>` with a
+`Deferred<Turn>` for the terminal result. Effect already supplies every piece:
+
+- **attach** = `Stream.fromPubSub` (a bounded replay of buffered events, then the
+  live tail). `PubSub` fans out, so several attachers can watch one run.
+- **detach** = interrupt your consuming fiber. The job fiber is a *daemon* (forked
+  into a job-scoped `Scope`, not the caller's), so it keeps running.
+- **re-attach** = subscribe again: replay plus live tail.
+- **terminal** = `Deferred.await` the `Turn`, or read `TurnComplete` off the stream.
+
+The split that answers "does attach/detach belong in the interface?" (the guess
+was: probably the recipe. That is right, with one clarification):
+
+- **Core interface** carries the *provider-backed, durable-aware* primitives:
+  `submit -> ref`, `streamFrom(ref)`, `collect(ref)`, `status(ref)`, `cancel(ref)`.
+  `streamFrom(ref)` **is** the attach primitive. For a server-backed job it
+  re-attaches over the wire (OpenAI `starting_after`, Gemini `last_event_id`); for
+  a virtual job it re-subscribes to the PubSub. Same signature, two backings.
+  Detach is just "stop consuming the stream."
+- **A recipe / runtime layer** owns the *ephemeral, in-process* conveniences: the
+  virtual-job registry (`Map<id, { pubsub, deferred, fiber }>`), a replay-buffer
+  policy, a user-facing "detach / re-attach" toggle, and persistence of durable
+  refs across restart. These sit on top of the interface. The durable, wire-level
+  attach is already expressed by `streamFrom(ref)`; the toggle and the replay
+  buffer are app policy, so they belong in the recipe exactly as guessed.
+
+```ts
+// recipe-level helper built on the interface (sketch)
+const attachable = (request: ResearchRequest) =>
+  Effect.gen(function* () {
+    const ref = yield* DeepResearch.submit(request)
+    const result = yield* Effect.forkDaemon(DeepResearch.collect(ref)) // runs on if you detach
+    return {
+      ref,
+      events: DeepResearch.streamFrom(ref),   // attach; call again to re-attach
+      result: Fiber.join(result),             // await the terminal Turn
+      cancel: DeepResearch.cancel(ref),
+    }
+  })
+```
+
+## B.6 Revised service surface: a marker-free job core
+
+The service a provider implements shrinks to the job primitives. `research` /
+`researchStream` are **not** methods any provider writes; they are derived once in
+core over the tag (Q1), so there is nothing to override:
+
+```ts
+// what a provider supplies — essentially JobOps<Turn> + streamFrom
+export type DeepResearchService = {
+  readonly submit:     (request: ResearchRequest) => Effect<ResearchJobRef, AiError>
+  readonly poll:       (ref: ResearchJobRef)      => Effect<ResearchState, AiError>   // status + result
+  readonly cancel:     (ref: ResearchJobRef)      => Effect<void, AiError>
+  readonly streamFrom: (ref: ResearchJobRef)      => Stream<TurnEvent, AiError>        // real, or fromJob's synthesized default
+}
+
+// derived in core over the DeepResearch tag, requiring only DeepResearch in R:
+//   status(ref)         = poll(ref)
+//   collect(ref)        = repeat poll until settled              (Job.collect)
+//   research(req)       = submit >>= collect  [onInterrupt cancel] (Job.run)
+//   researchStream(req) = submit >>= streamFrom
+```
+
+Providers build their service with a single `fromJob` constructor that takes the
+primitives and fills the synthesized `streamFrom` default when the provider is
+poll-only:
+
+```ts
+DeepResearch.fromJob({ submit, poll, cancel })              // poll-only (Perplexity): streamFrom synthesized
+DeepResearch.fromJob({ submit, poll, cancel, streamFrom })  // real SSE (OpenAI, Gemini)
+```
+
+**No markers on the generic capability.** `ResearchJob`, `ResearchStreaming`,
+`DurableJob`, and the steering markers are all gone from the generic surface.
+Everything non-uniform lives on the provider-typed tag or request instead:
+
+| non-uniform thing | where it lives |
+|---|---|
+| `reasoningEffort` | `PerplexityResearchRequest` |
+| `maxSearches`, `reasoning`, `previousRef` (follow-up handle) | `OpenAIResearchRequest` |
+| collaborative `plan` / `refine` | `GoogleDeepResearch` tag |
+| durability (does a persisted ref survive a restart) | documented per provider |
+| mid-run `steer` | nowhere yet |
+
+The generic tag is the portable job core; reach for a provider-typed tag exactly
+when you want that provider's extra knob, the same pattern as every other
+capability in the repo.
+
+## B.7 What the recipe demonstrates
+
+The canonical scenario is the **streaming background run**, because it is the case
+the design optimizes for (B.1) and every other usage is a variation of it. The
+recipe body is one consumption of `researchStream(request)`: forward the agent's
+live progress to the terminal, then print the final cited report off the terminal
+`Turn`.
+
+```ts
+export const nativeDeepResearch = (question: string) =>
+  DeepResearch.researchStream({ history: [Items.userText(question)] }).pipe(
+    Stream.tap((event) =>
+      Match.value(event).pipe(
+        Match.tag("WebSearchCall", (e) => Console.log(dim(`  ${e.status}: ${e.query ?? ""}`))),
+        Match.tag("ReasoningDelta", (e) => writeDim(e.text)),
+        Match.tag("TextDelta", (e) => write(e.text)),
+        Match.tag("TurnComplete", (e) => printCitations(Turn.citations(e.turn))),
+        Match.orElse(() => Effect.void),
+      ),
+    ),
+  )
+```
+
+Portable over the generic tag: real events on OpenAI/Gemini, synthesized progress
+on Perplexity, same body. The blocking `research()` (drop the stream, print the
+final report) is offered only as the "I just want the report" footnote. Detach /
+re-attach (persist the ref, `streamFrom(ref)` again later) is mentioned as a
+follow-on, not the core body, since a CLI cannot cleanly demo walking away and
+returning.
+
+## B.8 Open questions
+
+- **Virtual-job lifetime.** A daemon fiber holding a 30-minute connection needs a
+  scope it dies with. Pin it to an app-controlled runtime `Scope`, not a global
+  one. If the app exits, the virtual job dies. Acceptable, since sync providers
+  cannot be collected from a fresh process anyway.
+- **Did we give up too much compile-time honesty?** A.5 made a wrong
+  `researchStream` a type error; B.4 makes it a documented low-fidelity stream.
+  Confirm the "streaming everywhere is easy" goal is worth trading the gate for a
+  `synthesized` label.
+- **`previousRef` typing.** Follow-up rides as an optional provider-typed request
+  field. Does the generic request need a neutral place to carry a prior `Turn`'s
+  items, or is caller-side history threading enough? Leaning caller-threads.
+- **Synthesized-progress fidelity.** Is a leading `WebSearchCall` + terminal
+  `TurnComplete` enough for poll-only providers, or should the `fromJob` default
+  emit heartbeat progress on each poll? Leaning minimal until a recipe needs more.

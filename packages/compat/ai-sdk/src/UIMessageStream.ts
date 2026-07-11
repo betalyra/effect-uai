@@ -173,6 +173,10 @@ const step = (s: State, ev: Emission): Step =>
       ],
       RefusalDelta: (e): Step => [s, [{ type: "error", errorText: e.text }]],
       UsageUpdate: (): Step => [s, []],
+      // Grounding progress and streamed citations have no UI Message Stream
+      // part; the citations still arrive on `TurnComplete.turn`.
+      WebSearchCall: (): Step => [s, []],
+      CitationAdded: (): Step => [s, []],
       TurnComplete: (e): Step => {
         const closing: ReadonlyArray<Part> = [
           ...(s.textId !== null ? [{ type: "text-end", id: s.textId } as const] : []),

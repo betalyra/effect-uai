@@ -66,18 +66,3 @@ QUESTION="compare the leading open-weight LLMs released this quarter" \
 
 The report prints once the job completes, followed by its sources. `run-bun.ts`
 and `run-deno.ts` differ only in the platform HttpClient.
-
-## Structured output (Exa)
-
-Exa can research straight into a schema. Pass `--structured` (Exa only) to
-research the same question into a typed shape and get validated JSON with
-field-level citations, saved to a `.json` file:
-
-```bash
-EXA_API_KEY=... pnpm tsx recipes/native-deep-research/run-node.ts --provider=exa --structured
-```
-
-The recipe passes an Effect `Schema` as the request's `outputSchema` and decodes
-the completed `Turn` with `Turn.decodeStructured` — the same path as
-`LanguageModel` structured output, so the decode lives in the recipe, not the
-provider.

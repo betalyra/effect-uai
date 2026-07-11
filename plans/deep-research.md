@@ -91,8 +91,8 @@ none of the persisted-chat machinery. The one new thing is that the request is a
 > Wire caveat: the OpenAI and Gemini deep-research surfaces are recent preview
 > APIs. Exact model/agent ids, dates, and citation-object schemas below come from
 > doc research and **must be re-verified against live references** before types are
-> locked (per the verify-referenced-paths rule). The *shapes* are solid; the
-> *string literals* and citation-object fields are the risk.
+> locked (per the verify-referenced-paths rule). The _shapes_ are solid; the
+> _string literals_ and citation-object fields are the risk.
 
 ## Provider landscape
 
@@ -103,21 +103,21 @@ an existing package, not a new one.
 
 ### Family A: LLM-provider report writers (long prose + citations)
 
-| Provider | Endpoint | Model / agent | Async model | Report + citations |
-|---|---|---|---|---|
-| **OpenAI** | `POST /v1/responses` | `o3-deep-research`, `o4-mini-deep-research` | `background: true` → poll `GET /v1/responses/{id}` (or webhook) | `message` item; `content` text with `annotations[]` `{url, title, start_index, end_index}` |
-| **Gemini** | `POST /v1beta/interactions` | `deep-research-preview-04-2026`, `-max-` | `background: true` → poll `GET /v1beta/interactions/{id}` | final `step` text; citation-object shape needs live-doc check |
-| **Perplexity** | `POST /v1/async/sonar` (sync `/v1/sonar`) | `sonar-deep-research` | dedicated async endpoint → poll `GET /v1/async/sonar/{id}` | `choices[0].message.content` + `citations[]` + `search_results[]` |
-| **Parallel** | Task API (`platform.parallel.ai`) | processor tiers | async task → poll | evidence-based outputs with per-output provenance |
-| **You.com** | ARI (Advanced Research & Insights) API | ARI | async | cited report |
+| Provider       | Endpoint                                  | Model / agent                               | Async model                                                     | Report + citations                                                                         |
+| -------------- | ----------------------------------------- | ------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **OpenAI**     | `POST /v1/responses`                      | `o3-deep-research`, `o4-mini-deep-research` | `background: true` → poll `GET /v1/responses/{id}` (or webhook) | `message` item; `content` text with `annotations[]` `{url, title, start_index, end_index}` |
+| **Gemini**     | `POST /v1beta/interactions`               | `deep-research-preview-04-2026`, `-max-`    | `background: true` → poll `GET /v1beta/interactions/{id}`       | final `step` text; citation-object shape needs live-doc check                              |
+| **Perplexity** | `POST /v1/async/sonar` (sync `/v1/sonar`) | `sonar-deep-research`                       | dedicated async endpoint → poll `GET /v1/async/sonar/{id}`      | `choices[0].message.content` + `citations[]` + `search_results[]`                          |
+| **Parallel**   | Task API (`platform.parallel.ai`)         | processor tiers                             | async task → poll                                               | evidence-based outputs with per-output provenance                                          |
+| **You.com**    | ARI (Advanced Research & Insights) API    | ARI                                         | async                                                           | cited report                                                                               |
 
 ### Family B: search-infra research (structured / precise, citation-grounded)
 
-| Provider | Endpoint | Model | Async model | Report + citations |
-|---|---|---|---|---|
-| **Exa** (in repo) | `POST` research create-task | `exa-research` tiers (`deep-lite`/`deep`/`deep-reasoning`) | **create task → poll `get_task(id)`** | **structured JSON against an `output_schema`, field-level citations** |
-| **Jina** (in repo) | `POST https://deepsearch.jina.ai/v1/chat/completions` | `jina-deepsearch-v1` | **sync streaming (SSE)**, no poll | precise answer + citations, not long-form |
-| **Valyu** | deep research API | - | async | accuracy-first cited answer |
+| Provider           | Endpoint                                              | Model                                                      | Async model                           | Report + citations                                                    |
+| ------------------ | ----------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------- |
+| **Exa** (in repo)  | `POST` research create-task                           | `exa-research` tiers (`deep-lite`/`deep`/`deep-reasoning`) | **create task → poll `get_task(id)`** | **structured JSON against an `output_schema`, field-level citations** |
+| **Jina** (in repo) | `POST https://deepsearch.jina.ai/v1/chat/completions` | `jina-deepsearch-v1`                                       | **sync streaming (SSE)**, no poll     | precise answer + citations, not long-form                             |
+| **Valyu**          | deep research API                                     | -                                                          | async                                 | accuracy-first cited answer                                           |
 
 The common shape across the async providers: **submit with a background/async
 flag (or create a task), get a job id, poll for a terminal status, read one cited
@@ -125,7 +125,7 @@ result.** OpenAI/Gemini run it as a background turn of their hosted-agent runtim
 Perplexity/Parallel/You.com/Valyu are standalone async endpoints. **Perplexity is
 the reference implementation** (dedicated `/v1/async/sonar` submit + poll maps 1:1
 onto the interface) and shipped first. Note (verified 2026-07): **Exa deprecated
-its async research task API** and now serves deep research as a *synchronous*
+its async research task API** and now serves deep research as a _synchronous_
 `/search?type=deep-reasoning` call, so Exa joins Jina as a sync (transport-2)
 outlier, not an async job.
 
@@ -138,7 +138,7 @@ providers that support it.
 
 ### Not deep research (explicitly out)
 
-- **Anthropic** and **xAI** ship only server-side search *tools* (`web_search`;
+- **Anthropic** and **xAI** ship only server-side search _tools_ (`web_search`;
   xAI adds `x_search`) inside the normal chat loop. Multi-hop within a turn, but no
   background job, no report contract. xAI's "DeepSearch" is exactly this: enabling
   `web_search` + `x_search` on `/v1/responses`. "Deep research" on these is a
@@ -193,7 +193,7 @@ export type ResearchRequest = {
 
 export type ResearchReport = {
   readonly text: string
-  readonly citations: ReadonlyArray<Items.Annotation>   // reuse the existing Annotation union
+  readonly citations: ReadonlyArray<Items.Annotation> // reuse the existing Annotation union
   /** Present when `outputSchema` was requested and supported (Exa). Decode with the schema. */
   readonly structured?: unknown
   readonly usage?: Items.Usage
@@ -210,7 +210,7 @@ export type ResearchStatus = "queued" | "in_progress" | "completed" | "failed"
 
 /** Progress events for the optional live stream; the job still runs server-side. */
 export type ResearchEvent =
-  | { readonly _tag: "ReasoningDelta"; readonly text: string }   // "thought" / thinking summaries
+  | { readonly _tag: "ReasoningDelta"; readonly text: string } // "thought" / thinking summaries
   | { readonly _tag: "SearchStarted"; readonly query: string }
   | { readonly _tag: "TextDelta"; readonly text: string }
   | { readonly _tag: "Report"; readonly report: ResearchReport } // terminal
@@ -332,7 +332,7 @@ REST job, no agent-runtime baggage. Wire verified against the live OpenAPI
 `ResearchStreaming` (poll-only).
 
 - **submit:** `POST /v1/async/sonar` `{ request: { model: "sonar-deep-research",
-  messages, reasoning_effort? }, idempotency_key? }` → `{ id, status: "CREATED" }`.
+messages, reasoning_effort? }, idempotency_key? }` → `{ id, status: "CREATED" }`.
 - **status / collect (`poll`):** `GET /v1/async/sonar/{id}` → `{ status, response? }`;
   status enum is exactly `CREATED | IN_PROGRESS | COMPLETED | FAILED`, mapped onto
   `Job.JobState` (`Pending` / `Running` / `Succeeded` / `Failed`). On `COMPLETED`,
@@ -357,7 +357,7 @@ REST job, no agent-runtime baggage. Wire verified against the live OpenAPI
 ### OpenAI
 
 - **submit:** `POST /v1/responses` `{ model: "o3-deep-research", input: question,
-  background: true, tools: [{type:"web_search_preview"}, ...], max_tool_calls }`.
+background: true, tools: [{type:"web_search_preview"}, ...], max_tool_calls }`.
   **Requires at least one data-source tool** (`web_search_preview`, `file_search`
   with `vector_store_ids`, or `mcp`); `code_interpreter` optional for analysis.
   Returns a response id.
@@ -380,7 +380,7 @@ REST job, no agent-runtime baggage. Wire verified against the live OpenAPI
 ### Gemini
 
 - **submit:** `POST /v1beta/interactions` `{ input: question, agent:
-  "deep-research-preview-04-2026", background: true }`, header
+"deep-research-preview-04-2026", background: true }`, header
   `x-goog-api-key`. Returns an interaction id.
 - **status / collect:** `GET /v1beta/interactions/{id}` while
   `status: in_progress`; on `completed`, report from the final `step` text.
@@ -408,11 +408,11 @@ job/poll model: it is one long synchronous streaming call.
   SSE carries reasoning steps then the final answer; `research` drains the stream to
   the terminal answer, `researchStream` forwards deltas. No `submit`/`collect` job
   ref (or a synthetic one wrapping the in-flight stream).
-- **Different product framing:** optimized for a precise cited *answer*, not a
+- **Different product framing:** optimized for a precise cited _answer_, not a
   long-form report. Document the expectation difference; still fits
   `ResearchReport` (`text` + `citations`).
 - Package: a `Research` module in `@effect-uai/jina`. API-key auth.
-- This is the provider that proves `research` must not *assume* an async job: for
+- This is the provider that proves `research` must not _assume_ an async job: for
   Jina it is a streaming drain. The interface already allows this because `research`
   is defined by its result, not its transport.
 
@@ -557,12 +557,12 @@ Two invariants across every provider that emits sources: **`url` and `title`
 are the only universal fields**; everything else is optional. Answer-to-source
 linking splits into three styles:
 
-| Style | How a claim links to a source | Providers |
-|---|---|---|
-| **char/byte span** | `{start, end}` offsets into the answer text, each mapped to one or more sources | OpenAI `url_citation`, Gemini `groundingSupports.segment` (byte) + `groundingChunkIndices`, Gemini-Interactions (char), Cohere `{start,end}`, xAI annotations, Bedrock `span` |
-| **quote-anchored** (a span sub-style) | no offsets, but an exact `cited_text` / `exactQuote` you can string-match to locate | Anthropic (per-block `cited_text`), Jina DeepSearch |
-| **inline marker** | prose contains `[n]` / `[[n]](url)` indexing 1-based into an ordered source list | Perplexity, Kagi FastGPT, xAI (also) |
-| **bare source list** | sources returned decoupled from prose (or no prose) | Exa, Tavily, Linkup, Brave, You.com, Firecrawl, SerpAPI, Mistral (interleaved chunks) |
+| Style                                 | How a claim links to a source                                                       | Providers                                                                                                                                                                     |
+| ------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **char/byte span**                    | `{start, end}` offsets into the answer text, each mapped to one or more sources     | OpenAI `url_citation`, Gemini `groundingSupports.segment` (byte) + `groundingChunkIndices`, Gemini-Interactions (char), Cohere `{start,end}`, xAI annotations, Bedrock `span` |
+| **quote-anchored** (a span sub-style) | no offsets, but an exact `cited_text` / `exactQuote` you can string-match to locate | Anthropic (per-block `cited_text`), Jina DeepSearch                                                                                                                           |
+| **inline marker**                     | prose contains `[n]` / `[[n]](url)` indexing 1-based into an ordered source list    | Perplexity, Kagi FastGPT, xAI (also)                                                                                                                                          |
+| **bare source list**                  | sources returned decoupled from prose (or no prose)                                 | Exa, Tavily, Linkup, Brave, You.com, Firecrawl, SerpAPI, Mistral (interleaved chunks)                                                                                         |
 
 Two more axes that drive the streaming design:
 
@@ -595,7 +595,7 @@ per-claim without lossy duplication.
 export type Source = {
   readonly url: string
   readonly title?: string
-  readonly snippet?: string            // source-side excerpt / cited_text / content
+  readonly snippet?: string // source-side excerpt / cited_text / content
   readonly publishedDate?: DateTime.DateTime
   readonly sourceType?: "web" | "x" | "news" | "file" | "document" | (string & {})
   readonly raw?: unknown
@@ -604,13 +604,20 @@ export type Source = {
 /** Where in the answer a claim is grounded, and which sources ground it.
  *  `sourceRefs` indexes into the sibling `sources` array (many-to-one). */
 export type CitationSpan =
-  | { readonly kind: "char"; readonly start: number; readonly end: number
-      readonly unit: "char" | "byte"; readonly sourceRefs: ReadonlyArray<number>
-      readonly confidence?: number }        // OpenAI, Gemini, Cohere, xAI, Bedrock
-  | { readonly kind: "quote"; readonly text: string
-      readonly sourceRefs: ReadonlyArray<number> }   // Anthropic, Jina DeepSearch
-  | { readonly kind: "marker"; readonly ordinal: number
-      readonly sourceRefs: ReadonlyArray<number> }   // Perplexity, Kagi
+  | {
+      readonly kind: "char"
+      readonly start: number
+      readonly end: number
+      readonly unit: "char" | "byte"
+      readonly sourceRefs: ReadonlyArray<number>
+      readonly confidence?: number
+    } // OpenAI, Gemini, Cohere, xAI, Bedrock
+  | { readonly kind: "quote"; readonly text: string; readonly sourceRefs: ReadonlyArray<number> } // Anthropic, Jina DeepSearch
+  | {
+      readonly kind: "marker"
+      readonly ordinal: number
+      readonly sourceRefs: ReadonlyArray<number>
+    } // Perplexity, Kagi
   | { readonly kind: "none"; readonly sourceRefs: ReadonlyArray<number> } // bare list
 
 /** The grounding for one piece of generated text. */
@@ -728,15 +735,15 @@ but it re-splits the type we set out to consolidate.)
 ## A.5 Three transports, one capability, two markers
 
 Deep research does not arrive over one transport. There are three, and they
-differ in what the *caller* can do, not just in wire mechanics:
+differ in what the _caller_ can do, not just in wire mechanics:
 
-| # | transport | providers | detachable job | real live event stream |
-|---|---|---|---|---|
-| 1 | background job + separate live-stream endpoint | OpenAI, Gemini (Interactions) | yes | yes (SSE, resumable) |
-| 2 | sync job, hold the connection | Jina DeepSearch | no (no job id exists) | yes (SSE) |
-| 3 | background job + periodic poll | Perplexity, Exa | yes | no (poll-only) |
+| #   | transport                                      | providers                     | detachable job        | real live event stream |
+| --- | ---------------------------------------------- | ----------------------------- | --------------------- | ---------------------- |
+| 1   | background job + separate live-stream endpoint | OpenAI, Gemini (Interactions) | yes                   | yes (SSE, resumable)   |
+| 2   | sync job, hold the connection                  | Jina DeepSearch               | no (no job id exists) | yes (SSE)              |
+| 3   | background job + periodic poll                 | Perplexity, Exa               | yes                   | no (poll-only)         |
 
-Two orthogonal axes fall out, and they split the providers *differently*:
+Two orthogonal axes fall out, and they split the providers _differently_:
 
 - **Detachable job** (`submit` / `status` / `collect` / `cancel` by a durable
   ref): transports 1 and 3. Jina has no server-side job to detach from.
@@ -771,12 +778,12 @@ class ResearchStreaming extends Context.Service<ResearchStreaming, void>()(
 
 Method-to-marker gating captures the matrix exactly:
 
-| method | markers required in `R` | providers |
-|---|---|---|
-| `research(request)` | none (universal) | all five |
-| `researchStream(request)` | `ResearchStreaming` | OpenAI, Gemini, Jina |
-| `submit` / `status` / `collect` / `cancel` `(ref)` | `ResearchJob` | OpenAI, Gemini, Perplexity, Exa |
-| `streamFrom(ref)` | `ResearchJob` + `ResearchStreaming` | OpenAI, Gemini |
+| method                                             | markers required in `R`             | providers                       |
+| -------------------------------------------------- | ----------------------------------- | ------------------------------- |
+| `research(request)`                                | none (universal)                    | all five                        |
+| `researchStream(request)`                          | `ResearchStreaming`                 | OpenAI, Gemini, Jina            |
+| `submit` / `status` / `collect` / `cancel` `(ref)` | `ResearchJob`                       | OpenAI, Gemini, Perplexity, Exa |
+| `streamFrom(ref)`                                  | `ResearchJob` + `ResearchStreaming` | OpenAI, Gemini                  |
 
 `streamFrom(ref)` is the transport-1 move (attach a live stream to an
 already-detached job) and correctly needs both markers. Jina's
@@ -788,10 +795,10 @@ inside `Layer.mergeAll`):
 
 ```ts
 Layer.mergeAll(
-  Layer.effect(OpenAiDeepResearch, make(cfg)),   // provider-typed tag
-  Layer.effect(DeepResearch, generic(cfg)),        // generic tag
-  Layer.succeed(ResearchJob, void 0),              // this provider is detachable
-  Layer.succeed(ResearchStreaming, void 0),        // and streams live
+  Layer.effect(OpenAiDeepResearch, make(cfg)), // provider-typed tag
+  Layer.effect(DeepResearch, generic(cfg)), // generic tag
+  Layer.succeed(ResearchJob, void 0), // this provider is detachable
+  Layer.succeed(ResearchStreaming, void 0), // and streams live
 )
 ```
 
@@ -803,10 +810,10 @@ Top-level helpers thread the markers into `R` the same way
 `SearchResult` and a citation are different concepts, and merging them would be
 "unifying what is not unified":
 
-- A **`SearchResult`** is a *candidate source as data*: a ranked hit you got
+- A **`SearchResult`** is a _candidate source as data_: a ranked hit you got
   back from a search API, independent of any answer.
-- A **citation** is *a source the model actually used to ground a specific
-  span* of generated text.
+- A **citation** is _a source the model actually used to ground a specific
+  span_ of generated text.
 
 Keep `WebSearch.SearchResult` as-is. Add a one-way bridge for callers who want
 to present search hits as sources:
@@ -814,8 +821,12 @@ to present search hits as sources:
 ```ts
 // WebSearch.ts
 export const toSource = (r: SearchResult): Source => ({
-  url: r.url, title: r.title, snippet: r.snippet,
-  publishedDate: r.publishedDate, sourceType: "web", raw: r.raw,
+  url: r.url,
+  title: r.title,
+  snippet: r.snippet,
+  publishedDate: r.publishedDate,
+  sourceType: "web",
+  raw: r.raw,
 })
 ```
 
@@ -839,30 +850,31 @@ researchStream(request)  = submit(request) >>= (ref) => streamFrom(ref)   [scope
 ```
 
 You do **not** need an Effect `Ref` for the happy path: just bind the value. A
-`Ref` (or persistence) earns its place only when a *different* fiber needs the
+`Ref` (or persistence) earns its place only when a _different_ fiber needs the
 handle, or you want to survive a restart. `ResearchJobRef` is deliberately plain
 serializable data (`{ _tag, provider, id }`), so restart-survival is persistence,
 not an in-memory `Ref`.
 
 ```ts
 // 1) Simplest — no ref, no Ref. Interrupting this Effect cancels the job.
-const turn = yield* DeepResearch.research({ history })       // returns a Turn
-const text = Turn.assistantText(turn)                        // + Turn.citations(turn)
+const turn = yield * DeepResearch.research({ history }) // returns a Turn
+const text = Turn.assistantText(turn) // + Turn.citations(turn)
 
 // 2) "Cancel button" — a DIFFERENT fiber needs the handle -> in-memory Ref
-const ref = yield* DeepResearch.submit({ history })          // needs ResearchJob
-yield* Ref.set(activeJob, Option.some(ref))
-const turn = yield* DeepResearch.collect(ref)
+const ref = yield * DeepResearch.submit({ history }) // needs ResearchJob
+yield * Ref.set(activeJob, Option.some(ref))
+const turn = yield * DeepResearch.collect(ref)
 // ...cancel-handler fiber:
-yield* Ref.get(activeJob).pipe(
-  Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: DeepResearch.cancel })),
-)
+yield *
+  Ref.get(activeJob).pipe(
+    Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: DeepResearch.cancel })),
+  )
 
 // 3) Survive a restart — JobRef is just data, persist { provider, id }
-const ref = yield* DeepResearch.submit({ history })
-yield* saveJob(ref)                                          // to disk / db
+const ref = yield * DeepResearch.submit({ history })
+yield * saveJob(ref) // to disk / db
 // ...new process later:
-const turn = yield* loadJob().pipe(Effect.flatMap(DeepResearch.collect))
+const turn = yield * loadJob().pipe(Effect.flatMap(DeepResearch.collect))
 ```
 
 So a `Ref` is for cancel-from-elsewhere; detach-across-restart is persistence of
@@ -899,7 +911,7 @@ switch only when Interactions reaches GA + parity.
 
 ```ts
 export type ResearchRequest = {
-  readonly history: ReadonlyArray<Items.HistoryItem>   // reuse the LanguageModel input primitive
+  readonly history: ReadonlyArray<Items.HistoryItem> // reuse the LanguageModel input primitive
   readonly model?: string
 }
 ```
@@ -911,13 +923,13 @@ Full service surface (methods gated by the A.5 markers on the top-level helpers)
 
 ```ts
 export type DeepResearchService = {
-  readonly research:       (request: ResearchRequest) => Effect<Turn, AiError>            // universal
-  readonly researchStream: (request: ResearchRequest) => Stream<TurnEvent, AiError>       // ResearchStreaming
-  readonly submit:         (request: ResearchRequest) => Effect<ResearchJobRef, AiError>  // ResearchJob
-  readonly status:         (ref: ResearchJobRef)      => Effect<ResearchState, AiError>   // ResearchJob
-  readonly collect:        (ref: ResearchJobRef)      => Effect<Turn, AiError>            // ResearchJob
-  readonly streamFrom:     (ref: ResearchJobRef)      => Stream<TurnEvent, AiError>       // ResearchJob + ResearchStreaming
-  readonly cancel:         (ref: ResearchJobRef)      => Effect<void, AiError>            // ResearchJob
+  readonly research: (request: ResearchRequest) => Effect<Turn, AiError> // universal
+  readonly researchStream: (request: ResearchRequest) => Stream<TurnEvent, AiError> // ResearchStreaming
+  readonly submit: (request: ResearchRequest) => Effect<ResearchJobRef, AiError> // ResearchJob
+  readonly status: (ref: ResearchJobRef) => Effect<ResearchState, AiError> // ResearchJob
+  readonly collect: (ref: ResearchJobRef) => Effect<Turn, AiError> // ResearchJob
+  readonly streamFrom: (ref: ResearchJobRef) => Stream<TurnEvent, AiError> // ResearchJob + ResearchStreaming
+  readonly cancel: (ref: ResearchJobRef) => Effect<void, AiError> // ResearchJob
 }
 ```
 
@@ -927,13 +939,24 @@ their result:
 
 ```ts
 // job/Job.ts (written)
-export type JobRef<A>   = { readonly _tag: "JobRef"; readonly provider: string; readonly id: string /* + phantom A */ }
-export type JobState<A> = { _tag: "Pending" } | { _tag: "Running" }
-                        | { _tag: "Succeeded"; result: A } | { _tag: "Failed"; reason?: string; raw?: unknown }
-export type JobOps<A>   = { submit: Effect<JobRef<A>, AiError>; poll: (ref: JobRef<A>) => Effect<JobState<A>, AiError>; cancel: (ref: JobRef<A>) => Effect<void, AiError> }
+export type JobRef<A> = {
+  readonly _tag: "JobRef"
+  readonly provider: string
+  readonly id: string /* + phantom A */
+}
+export type JobState<A> =
+  | { _tag: "Pending" }
+  | { _tag: "Running" }
+  | { _tag: "Succeeded"; result: A }
+  | { _tag: "Failed"; reason?: string; raw?: unknown }
+export type JobOps<A> = {
+  submit: Effect<JobRef<A>, AiError>
+  poll: (ref: JobRef<A>) => Effect<JobState<A>, AiError>
+  cancel: (ref: JobRef<A>) => Effect<void, AiError>
+}
 // domain/Research.ts
 export type ResearchJobRef = Job.JobRef<Turn>
-export type ResearchState  = Job.JobState<Turn>
+export type ResearchState = Job.JobState<Turn>
 ```
 
 `JobRef<A>` is phantom-branded by its result type, so a ref cannot be crossed
@@ -970,7 +993,7 @@ provider phases):
 > Added 2026-07 after a second design pass, prompted by two observations: a run
 > lasts 5 to 30 minutes, so the primary use case is a **background job you watch
 > live and can walk away from**, not a blocking call; and we never checked
-> whether you can *talk to* a research agent while it runs. This appendix
+> whether you can _talk to_ a research agent while it runs. This appendix
 > refines A.5's "three transports, two markers" split. Where they conflict, this
 > appendix wins: the sync providers become **jobs** too (wrapped client-side),
 > streaming is the easy default everywhere, and steering is modeled as a
@@ -1000,13 +1023,13 @@ columns that matter for a long run: can you inject a message **mid-execution**,
 is there a **pre-run planning** exchange, a **post-completion follow-up**, and is
 the progress stream **resumable** (the wire-level attach/detach).
 
-| Provider | mid-run message | pre-run planning | post-run follow-up | resumable stream |
-|---|---|---|---|---|
-| **OpenAI** (`o3`/`o4-mini-deep-research`) | no | no (front-load the prompt) | `previous_response_id` | yes: `background+stream`, resume via `starting_after` + `sequence_number` |
-| **Gemini** (`deep-research-preview-04-2026`) | **no** (explicit) | **yes**: `collaborative_planning:true` + `previous_interaction_id`, refine then commit with `collaborative_planning:false` | `previous_interaction_id` (switches to a normal model) | yes: `stream=true` + `last_event_id` |
-| **Perplexity** (`sonar-deep-research`) | no | no | no (async job is one-shot; the sync Sonar chat is a different surface) | no (poll-only) |
-| **Jina / Exa** (sync) | no | no | no | the one live connection is the stream; nothing to resume |
-| **Anthropic** | n/a (no deep-research job at all) | n/a | n/a | n/a |
+| Provider                                     | mid-run message                   | pre-run planning                                                                                                           | post-run follow-up                                                     | resumable stream                                                          |
+| -------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **OpenAI** (`o3`/`o4-mini-deep-research`)    | no                                | no (front-load the prompt)                                                                                                 | `previous_response_id`                                                 | yes: `background+stream`, resume via `starting_after` + `sequence_number` |
+| **Gemini** (`deep-research-preview-04-2026`) | **no** (explicit)                 | **yes**: `collaborative_planning:true` + `previous_interaction_id`, refine then commit with `collaborative_planning:false` | `previous_interaction_id` (switches to a normal model)                 | yes: `stream=true` + `last_event_id`                                      |
+| **Perplexity** (`sonar-deep-research`)       | no                                | no                                                                                                                         | no (async job is one-shot; the sync Sonar chat is a different surface) | no (poll-only)                                                            |
+| **Jina / Exa** (sync)                        | no                                | no                                                                                                                         | no                                                                     | the one live connection is the stream; nothing to resume                  |
+| **Anthropic**                                | n/a (no deep-research job at all) | n/a                                                                                                                        | n/a                                                                    | n/a                                                                       |
 
 **Anthropic re-confirmed 2026-07.** There is still no first-party deep-research
 endpoint: deep research on Claude is client-built (the `web_search` server tool
@@ -1014,13 +1037,13 @@ inside the Messages loop, multi-agent orchestration, MCP research servers, or th
 Claude Code `/deep-research` skill). "Managed Agents" is a general stateful agent
 runtime, not a report-plus-citations job contract. So Anthropic stays out of the
 `DeepResearch` provider set, now doubly so: it ships a client-side research
-*skill*, which is exactly the "client recipe over `Loop` + search, not a provider"
+_skill_, which is exactly the "client recipe over `Loop` + search, not a provider"
 shape the main plan predicted.
 
 **The invariant across every provider: no mid-execution injection.** Once a job
 commits, it runs to completion untouched. The steering that exists is bracketed
-to the two boundaries: *before* the run (Gemini collaborative planning) and
-*after* it (`previous_*_id` follow-up). Both are turns in a conversation, not a
+to the two boundaries: _before_ the run (Gemini collaborative planning) and
+_after_ it (`previous_*_id` follow-up). Both are turns in a conversation, not a
 live side-channel.
 
 Sources: OpenAI [background guide](https://developers.openai.com/api/docs/guides/background)
@@ -1038,7 +1061,7 @@ request whose history includes the prior report (the completed `Turn`'s items).
 Two provider mechanisms fold in as **optional, marker-gated** methods:
 
 - **Pre-execution planning** (Gemini `collaborative_planning`). A short multi-turn
-  exchange that produces a research *plan* the caller can inspect and refine
+  exchange that produces a research _plan_ the caller can inspect and refine
   before the expensive run commits. Model it as `plan(request) -> Turn` (the plan
   is just a `Turn` you can show or edit) plus a `refine(planRef, note)` loop, then
   `submit` commits it. Providers without planning skip straight to `submit`.
@@ -1071,7 +1094,7 @@ stays entirely provider-typed until a second provider forces a shared shape.
 
 A.5 modeled Jina/Exa as a separate "transport 2" that has no job, which forced
 `submit`/`collect` to be a compile error there and split the interface. Reverse
-it: give the sync providers a **client-side virtual job** so *every* provider is
+it: give the sync providers a **client-side virtual job** so _every_ provider is
 a job and the surface is uniform. `submit` forks a daemon fiber that runs the
 sync streaming call, republishes its events to a `PubSub<TurnEvent>`, and resolves
 a `Deferred<Turn>` at the end; the `JobRef` points at an in-process registry entry
@@ -1082,7 +1105,7 @@ This has one honest cost, but it is **documentation, not a marker or a service
 concern**: a virtual job lives only as long as the process (its fiber holds the
 connection), so its ref cannot be collected from a fresh process. a server-backed
 ref can. This is not something the type system can gate: `collect` / `streamFrom`
-are used *in-process by every provider* on the happy path, so you cannot make them
+are used _in-process by every provider_ on the happy path, so you cannot make them
 require a "durable" marker without breaking the common case, and the types cannot
 tell "same process" from "different process" anyway. And persistence itself is
 trivially the developer's job: the ref is plain `{ _tag, provider, id }`, dropped
@@ -1113,7 +1136,7 @@ An in-process running job is a fiber writing to a `PubSub<TurnEvent>` with a
 
 - **attach** = `Stream.fromPubSub` (a bounded replay of buffered events, then the
   live tail). `PubSub` fans out, so several attachers can watch one run.
-- **detach** = interrupt your consuming fiber. The job fiber is a *daemon* (forked
+- **detach** = interrupt your consuming fiber. The job fiber is a _daemon_ (forked
   into a job-scoped `Scope`, not the caller's), so it keeps running.
 - **re-attach** = subscribe again: replay plus live tail.
 - **terminal** = `Deferred.await` the `Turn`, or read `TurnComplete` off the stream.
@@ -1121,13 +1144,13 @@ An in-process running job is a fiber writing to a `PubSub<TurnEvent>` with a
 The split that answers "does attach/detach belong in the interface?" (the guess
 was: probably the recipe. That is right, with one clarification):
 
-- **Core interface** carries the *provider-backed, durable-aware* primitives:
+- **Core interface** carries the _provider-backed, durable-aware_ primitives:
   `submit -> ref`, `streamFrom(ref)`, `collect(ref)`, `status(ref)`, `cancel(ref)`.
   `streamFrom(ref)` **is** the attach primitive. For a server-backed job it
   re-attaches over the wire (OpenAI `starting_after`, Gemini `last_event_id`); for
   a virtual job it re-subscribes to the PubSub. Same signature, two backings.
   Detach is just "stop consuming the stream."
-- **A recipe / runtime layer** owns the *ephemeral, in-process* conveniences: the
+- **A recipe / runtime layer** owns the _ephemeral, in-process_ conveniences: the
   virtual-job registry (`Map<id, { pubsub, deferred, fiber }>`), a replay-buffer
   policy, a user-facing "detach / re-attach" toggle, and persistence of durable
   refs across restart. These sit on top of the interface. The durable, wire-level
@@ -1142,8 +1165,8 @@ const attachable = (request: ResearchRequest) =>
     const result = yield* Effect.forkDaemon(DeepResearch.collect(ref)) // runs on if you detach
     return {
       ref,
-      events: DeepResearch.streamFrom(ref),   // attach; call again to re-attach
-      result: Fiber.join(result),             // await the terminal Turn
+      events: DeepResearch.streamFrom(ref), // attach; call again to re-attach
+      result: Fiber.join(result), // await the terminal Turn
       cancel: DeepResearch.cancel(ref),
     }
   })
@@ -1158,10 +1181,10 @@ core over the tag (Q1), so there is nothing to override:
 ```ts
 // what a provider supplies — essentially JobOps<Turn> + streamFrom
 export type DeepResearchService = {
-  readonly submit:     (request: ResearchRequest) => Effect<ResearchJobRef, AiError>
-  readonly poll:       (ref: ResearchJobRef)      => Effect<ResearchState, AiError>   // status + result
-  readonly cancel:     (ref: ResearchJobRef)      => Effect<void, AiError>
-  readonly streamFrom: (ref: ResearchJobRef)      => Stream<TurnEvent, AiError>        // real, or fromJob's synthesized default
+  readonly submit: (request: ResearchRequest) => Effect<ResearchJobRef, AiError>
+  readonly poll: (ref: ResearchJobRef) => Effect<ResearchState, AiError> // status + result
+  readonly cancel: (ref: ResearchJobRef) => Effect<void, AiError>
+  readonly streamFrom: (ref: ResearchJobRef) => Stream<TurnEvent, AiError> // real, or fromJob's synthesized default
 }
 
 // derived in core over the DeepResearch tag, requiring only DeepResearch in R:
@@ -1176,21 +1199,21 @@ primitives and fills the synthesized `streamFrom` default when the provider is
 poll-only:
 
 ```ts
-DeepResearch.fromJob({ submit, poll, cancel })              // poll-only (Perplexity): streamFrom synthesized
-DeepResearch.fromJob({ submit, poll, cancel, streamFrom })  // real SSE (OpenAI, Gemini)
+DeepResearch.fromJob({ submit, poll, cancel }) // poll-only (Perplexity): streamFrom synthesized
+DeepResearch.fromJob({ submit, poll, cancel, streamFrom }) // real SSE (OpenAI, Gemini)
 ```
 
 **No markers on the generic capability.** `ResearchJob`, `ResearchStreaming`,
 `DurableJob`, and the steering markers are all gone from the generic surface.
 Everything non-uniform lives on the provider-typed tag or request instead:
 
-| non-uniform thing | where it lives |
-|---|---|
-| `reasoningEffort` | `PerplexityResearchRequest` |
-| `maxSearches`, `reasoning`, `previousRef` (follow-up handle) | `OpenAIResearchRequest` |
-| collaborative `plan` / `refine` | `GoogleDeepResearch` tag |
-| durability (does a persisted ref survive a restart) | documented per provider |
-| mid-run `steer` | nowhere yet |
+| non-uniform thing                                            | where it lives              |
+| ------------------------------------------------------------ | --------------------------- |
+| `reasoningEffort`                                            | `PerplexityResearchRequest` |
+| `maxSearches`, `reasoning`, `previousRef` (follow-up handle) | `OpenAIResearchRequest`     |
+| collaborative `plan` / `refine`                              | `GoogleDeepResearch` tag    |
+| durability (does a persisted ref survive a restart)          | documented per provider     |
+| mid-run `steer`                                              | nowhere yet                 |
 
 The generic tag is the portable job core; reach for a provider-typed tag exactly
 when you want that provider's extra knob, the same pattern as every other

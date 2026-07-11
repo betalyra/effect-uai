@@ -173,7 +173,10 @@ const streamFromRef = (
       const client = yield* HttpClient.HttpClient
       const httpRequest = HttpClientRequest.get(
         `${resolveHost(cfg)}/responses/${ref.id}?stream=true`,
-      ).pipe(HttpClientRequest.bearerToken(cfg.apiKey), HttpClientRequest.accept("text/event-stream"))
+      ).pipe(
+        HttpClientRequest.bearerToken(cfg.apiKey),
+        HttpClientRequest.accept("text/event-stream"),
+      )
       const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
       return toCanonical(providerEventsOfResponse(response))
     }),

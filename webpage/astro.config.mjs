@@ -287,6 +287,7 @@ export default defineConfig({
               items: [
                 { label: "Grounded answer", slug: "recipes/grounded-answer" },
                 { label: "Deep research", slug: "recipes/deep-research" },
+                { label: "Native deep research", slug: "recipes/native-deep-research" },
               ],
             },
           ],

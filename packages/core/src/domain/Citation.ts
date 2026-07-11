@@ -40,7 +40,11 @@ export type CitationSpan =
       readonly confidence?: number
     }
   | { readonly kind: "quote"; readonly text: string; readonly sourceRefs: ReadonlyArray<number> }
-  | { readonly kind: "marker"; readonly ordinal: number; readonly sourceRefs: ReadonlyArray<number> }
+  | {
+      readonly kind: "marker"
+      readonly ordinal: number
+      readonly sourceRefs: ReadonlyArray<number>
+    }
   | { readonly kind: "none"; readonly sourceRefs: ReadonlyArray<number> }
 
 // ---------------------------------------------------------------------------

@@ -18,21 +18,59 @@
  * platform `FileSystem`; each runner supplies both. A real run takes minutes: the
  * job runs server-side and the stream reports progress until it completes.
  */
-import { Config, Console, Effect, FileSystem, Layer, Logger, Match, Option, Ref, References, Stream } from "effect"
+import {
+  Config,
+  Console,
+  Effect,
+  FileSystem,
+  Layer,
+  Logger,
+  Match,
+  Option,
+  Ref,
+  References,
+  Schema,
+  Stream,
+} from "effect"
 import * as Items from "@effect-uai/core/Items"
+import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import * as Turn from "@effect-uai/core/Turn"
+import { ExaDeepResearch, layer as exaLayer } from "@effect-uai/exa/ExaDeepResearch"
+import { layer as googleLayer } from "@effect-uai/google/GoogleDeepResearch"
 import { layer as perplexityLayer } from "@effect-uai/perplexity/PerplexityDeepResearch"
 import { layer as openaiLayer } from "@effect-uai/responses/OpenAIDeepResearch"
-import { providerChoice } from "../_shared/argv.js"
+import { boolFlag, providerChoice } from "../_shared/argv.js"
 import { nativeDeepResearch } from "./recipe.js"
 
-export type Provider = "perplexity" | "openai"
+export type Provider = "perplexity" | "openai" | "google" | "exa"
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`
 const write = (s: string) =>
   Effect.sync(() => {
     process.stdout.write(s)
   })
+
+// Exa is the one provider with structured output (`STRUCTURED=1`): research into
+// this schema and get typed JSON with field-level citations instead of prose.
+const exaResearchLayer = Layer.unwrap(
+  Effect.gen(function* () {
+    const apiKey = yield* Config.redacted("EXA_API_KEY")
+    return exaLayer({ apiKey })
+  }),
+)
+
+const AiDevelopments = Schema.Struct({
+  developments: Schema.Array(
+    Schema.Struct({
+      title: Schema.String,
+      summary: Schema.String,
+      organization: Schema.optional(Schema.String),
+    }),
+  ),
+})
+const aiDevelopmentsFormat = StructuredFormat.fromEffectSchema(AiDevelopments, {
+  name: "ai_developments",
+})
 
 // ---------------------------------------------------------------------------
 // Per-provider wiring: a default deep-research model. The Layer (below)
@@ -42,6 +80,8 @@ const write = (s: string) =>
 const defaultModel: Record<Provider, string> = {
   perplexity: "sonar-deep-research",
   openai: "o3-deep-research",
+  google: "deep-research-preview-04-2026",
+  exa: "exa-research",
 }
 
 const researchLayerFor = Match.type<Provider>().pipe(
@@ -61,6 +101,15 @@ const researchLayerFor = Match.type<Provider>().pipe(
       }),
     ),
   ),
+  Match.when("google", () =>
+    Layer.unwrap(
+      Effect.gen(function* () {
+        const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
+        return googleLayer({ apiKey })
+      }),
+    ),
+  ),
+  Match.when("exa", () => exaResearchLayer),
   Match.exhaustive,
 )
 
@@ -71,10 +120,13 @@ const researchLayerFor = Match.type<Provider>().pipe(
 const recipeConfig = (provider: Provider) =>
   Config.all({
     question: Config.string("QUESTION").pipe(
-      Config.withDefault("What are the most significant AI research developments of the past month?"),
+      Config.withDefault(
+        "What are the most significant AI research developments of the past month?",
+      ),
     ),
     model: Config.string("MODEL").pipe(Config.withDefault(defaultModel[provider])),
     output: Config.string("OUTPUT").pipe(Config.withDefault("deep-research-report.md")),
+    structured: Config.boolean("STRUCTURED").pipe(Config.withDefault(false)),
   })
 
 const urlCitations = (turn: Turn.Turn) => Turn.citations(turn).filter(Items.isUrlCitation)
@@ -85,9 +137,33 @@ const toMarkdown = (question: string, turn: Turn.Turn): string => {
   const sourceList =
     sources.length === 0
       ? []
-      : ["", "## Sources", "", ...sources.map((c, i) => `${i + 1}. [${c.title ?? c.url}](${c.url})`)]
+      : [
+          "",
+          "## Sources",
+          "",
+          ...sources.map((c, i) => `${i + 1}. [${c.title ?? c.url}](${c.url})`),
+        ]
   return [...body, ...sourceList, ""].join("\n")
 }
+
+// Structured output (Exa only): research into `aiDevelopmentsFormat`, decode the
+// completed `Turn` OUTSIDE the provider (exactly like `LanguageModel`), then save
+// the typed result as JSON.
+const runStructured = (question: string, output: string) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("structured mode: researching into a typed schema (ai_developments)")
+    const fs = yield* FileSystem.FileSystem
+    const exa = yield* ExaDeepResearch
+    const turn = yield* exa.research({
+      history: [Items.userText(question)],
+      outputSchema: aiDevelopmentsFormat,
+    })
+    const result = yield* Turn.decodeStructured(turn, aiDevelopmentsFormat)
+    const json = JSON.stringify(result, null, 2)
+    yield* Console.log(json)
+    yield* fs.writeFileString(output, json)
+    yield* Console.log(`\nResult saved to ${output}`)
+  }).pipe(Effect.provide(exaResearchLayer))
 
 // ---------------------------------------------------------------------------
 // Bootstrap effect: resolve the flag, stream the recipe under the chosen
@@ -95,13 +171,27 @@ const toMarkdown = (question: string, turn: Turn.Turn): string => {
 // ---------------------------------------------------------------------------
 
 export const main = Effect.gen(function* () {
-  const provider = yield* providerChoice("perplexity", "openai")
+  const provider = yield* providerChoice("perplexity", "openai", "google", "exa")
   const cfg = yield* recipeConfig(provider)
+
+  // Structured output is an Exa-only, provider-typed knob, so it drops out of the
+  // portable streaming path into its own decode-outside branch, saved as JSON.
+  if (boolFlag("structured") || cfg.structured) {
+    if (provider !== "exa") {
+      return yield* Console.error(
+        "Structured output (STRUCTURED=1) is only supported by --provider=exa",
+      )
+    }
+    return yield* runStructured(cfg.question, cfg.output.replace(/\.md$/, ".json"))
+  }
+
   const fs = yield* FileSystem.FileSystem
 
   yield* Effect.logInfo(`native-deep-research (provider: ${provider} ${cfg.model})`)
   yield* Effect.logInfo(`question: ${cfg.question}`)
-  yield* Effect.logInfo("the job runs server-side for minutes; streaming progress until it completes...")
+  yield* Effect.logInfo(
+    "the job runs server-side for minutes; streaming progress until it completes...",
+  )
   yield* Console.log("")
 
   // Search-lifecycle + reasoning render dimmed as they arrive; `TextDelta`

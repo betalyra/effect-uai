@@ -85,3 +85,13 @@ export const choiceFlag = <const A extends string>(
 export const providerChoice = <const A extends string>(
   ...choices: readonly [A, ...Array<A>]
 ): Effect.Effect<A, UnknownFlag> => choiceFlag("provider", choices)
+
+/**
+ * A presence-only boolean flag: `--<name>` anywhere in argv is `true`, absent is
+ * `false`. Reads `process.argv` like the other flag helpers here (every runner
+ * provides it).
+ */
+export const boolFlag = (
+  name: string,
+  argv: ReadonlyArray<string> = process.argv.slice(2),
+): boolean => argv.includes(`--${name}`)

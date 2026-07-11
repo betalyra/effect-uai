@@ -46,6 +46,10 @@
       "types": "./dist/GeminiSynthesizer.d.mts",
       "import": "./dist/GeminiSynthesizer.mjs"
     },
+    "./GoogleDeepResearch": {
+      "types": "./dist/GoogleDeepResearch.d.mts",
+      "import": "./dist/GoogleDeepResearch.mjs"
+    },
     "./LyriaGenerator": {
       "types": "./dist/LyriaGenerator.d.mts",
       "import": "./dist/LyriaGenerator.mjs"

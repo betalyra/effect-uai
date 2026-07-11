@@ -15,20 +15,22 @@ citation-shaped output; the two systems are decoupled by design.
 
 `SearchResult`, `packages/core/src/web-search/WebSearch.ts:85-108` (flat record,
 not a tagged union; providers differ by which fields are present):
+
 ```ts
 export type SearchResult = {
-  readonly url: string            // canonical URL, always present
+  readonly url: string // canonical URL, always present
   readonly title?: string
-  readonly snippet?: string       // primary short excerpt
+  readonly snippet?: string // primary short excerpt
   readonly publishedDate?: DateTime.DateTime
-  readonly score?: number         // only ranking providers (Exa, Tavily)
-  readonly raw: unknown           // provider-native result, never lossy
+  readonly score?: number // only ranking providers (Exa, Tavily)
+  readonly raw: unknown // provider-native result, never lossy
 }
 ```
 
 `SearchResponse`, `WebSearch.ts:110-121`: `{ results: ReadonlyArray<SearchResult>, raw: unknown }`. Cost / usage deliberately not modeled (deferred to `plans/usage-tracking.md`). Service tag `WebSearch` (`:142-144`) exposes one op `search`; helper `search()` `:147-151`. Request `CommonSearchRequest` `:43-72`; `SearchRecency` `:23`.
 
 How `WebSearchTool` feeds a model, `packages/core/src/web-search/WebSearchTool.ts`:
+
 - Model-facing args are narrow (`:14-17`): only `query` + optional `recency`. `maxResults`, `includeDomains`, `excludeDomains` are app policy pinned on the constructor (`:32-52`, `:73-80`), not exposed to the model.
 - The model consumes rendered **text**, not structured results. `defaultRender` (`:22-30`) turns `SearchResult[]` into a numbered `title / url / snippet` string. Tool `Output` type is `string` (`:75`). `run` (`:90-110`) calls `search(...)`, maps to `render(r.results)`, wrapped in a `withSpan` trace.
 
@@ -47,6 +49,7 @@ Decision C: streaming citations. No streaming citation event exists or is planne
 ## 3. Every reference to Annotation / UrlCitation / citation / annotations
 
 Type definitions `packages/core/src/domain/Items.ts`:
+
 - `:29-31` doc comment (source / citation pointers on `output_text`, mirrors OpenAI Responses).
 - `:34-41` `UrlCitation` `{type:"url_citation", url, start_index, end_index, title}`.
 - `:43-48` `FileCitation` (`file_id`, `index`). `:50-57` `ContainerFileCitation` (`container_id`, `file_id`, `start_index`, `end_index`). `:59-64` `FilePath` (`file_id`, `index`).
@@ -54,6 +57,7 @@ Type definitions `packages/core/src/domain/Items.ts`:
 - `:69-72` guards `isUrlCitation` etc. `:74-79` `OutputText.annotations` (the only attach point).
 
 Responses provider wire codec `packages/providers/responses/src/codec.ts`:
+
 - `:10-16` `WireUrlCitation`, `:18-22` `WireFileCitation`, `:24-30` `WireContainerFileCitation`, `:32-36` `WireFilePath`, `:38-43` `WireAnnotation` union, `:45-49` `WireOutputTextContent.annotations`.
 - `:242` decode site (copies wire `annotations` onto domain `output_text` block). The one place provider citations flow into `Items.Annotation`.
 

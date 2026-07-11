@@ -1,6 +1,11 @@
 import { Match, Schema } from "effect"
 import { TurnEvent } from "@effect-uai/core/Turn"
-import { WireAnnotation, WireOutputItem, WireResponseCompleted, turnFromCompleted } from "./codec.js"
+import {
+  WireAnnotation,
+  WireOutputItem,
+  WireResponseCompleted,
+  turnFromCompleted,
+} from "./codec.js"
 
 // ---------------------------------------------------------------------------
 // Schemas for the SSE event payloads we care about. The Responses API ships

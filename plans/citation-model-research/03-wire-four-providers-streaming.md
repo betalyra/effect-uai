@@ -35,12 +35,14 @@ Docs: platform.claude.com/docs/en/docs/build-with-claude/tool-use/web-search-too
 ## 3. Google Gemini grounding: two distinct surfaces
 
 3a. Classic `generateContent` grounding (docs: cloud.google.com Vertex GroundingMetadata):
+
 - (a) No search-progress events. Grounding data in `candidate.groundingMetadata`.
 - (b) `groundingMetadata`: `webSearchQueries` (string[]); `searchEntryPoint` `{renderedContent, sdkBlob}`; `groundingChunks[]` `{web:{uri,title}, retrievedContext}`; `groundingSupports[]` `{segment:{partIndex,startIndex,endIndex,text}, groundingChunkIndices:int[], confidenceScores:number[]}`.
 - (c) Incremental? NO: grounding metadata only in the final response (streaming: last chunk).
 - (d) Span linking: `segment.startIndex`/`endIndex` are **byte offsets** into Part text (inclusive start, exclusive end); `groundingChunkIndices` maps a segment to entries in `groundingChunks`. Spans link via indices plus a chunk-index join.
 
 3b. Newer Gemini Interactions API (`google-search` tool, docs: ai.google.dev/gemini-api/docs/google-search):
+
 - Converged on an OpenAI-Responses-style shape: step items `google_search_call` `{queries}` and `google_search_result` `{search_suggestions, call_id}`, text `annotations` with `url_citation` `{url,title,start_index,end_index}` (character indices).
 - FLAG: recent/changing. Field vocabulary is entirely different from 3a; decide which surface you target.
 
@@ -56,13 +58,13 @@ Docs: docs.perplexity.ai/api-reference/chat-completions-post ; /guides/streaming
 
 ## Comparison table
 
-| Provider | Search-progress events? | Citations streamed incrementally? | Citation object | Span linking |
-|---|---|---|---|---|
-| OpenAI Responses (web_search, o3-deep-research) | YES (`web_search_call.in_progress/searching/completed`, `action`) | YES (`output_text.annotation.added`) | `url_citation {url,title,start_index,end_index}` | char start/end index into answer |
-| Anthropic Messages (web_search) | Partial (`server_tool_use` + `web_search_tool_result` bundled whole) | YES (`citations_delta`) | `web_search_result_location {url,title,encrypted_index,cited_text}` | inline block segmentation; no answer offset |
-| Gemini classic (groundingMetadata) | NO | NO (final chunk only) | `groundingChunks[].web{uri,title}` + `groundingSupports[]{segment, groundingChunkIndices, confidenceScores}` | `segment.startIndex/endIndex` byte offsets + chunk-index join |
-| Gemini Interactions (google_search), new | Responses-style items | Responses-style annotations | `url_citation {url,title,start_index,end_index}` | char start/end index |
-| Perplexity (sonar, sonar-deep-research), preview | NO | NO (final snapshot) | `search_results[]{title,url,date,last_updated,snippet,source}` (+ legacy `citations[]`) | positional `[n]` markers |
+| Provider                                         | Search-progress events?                                              | Citations streamed incrementally?    | Citation object                                                                                              | Span linking                                                  |
+| ------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| OpenAI Responses (web_search, o3-deep-research)  | YES (`web_search_call.in_progress/searching/completed`, `action`)    | YES (`output_text.annotation.added`) | `url_citation {url,title,start_index,end_index}`                                                             | char start/end index into answer                              |
+| Anthropic Messages (web_search)                  | Partial (`server_tool_use` + `web_search_tool_result` bundled whole) | YES (`citations_delta`)              | `web_search_result_location {url,title,encrypted_index,cited_text}`                                          | inline block segmentation; no answer offset                   |
+| Gemini classic (groundingMetadata)               | NO                                                                   | NO (final chunk only)                | `groundingChunks[].web{uri,title}` + `groundingSupports[]{segment, groundingChunkIndices, confidenceScores}` | `segment.startIndex/endIndex` byte offsets + chunk-index join |
+| Gemini Interactions (google_search), new         | Responses-style items                                                | Responses-style annotations          | `url_citation {url,title,start_index,end_index}`                                                             | char start/end index                                          |
+| Perplexity (sonar, sonar-deep-research), preview | NO                                                                   | NO (final snapshot)                  | `search_results[]{title,url,date,last_updated,snippet,source}` (+ legacy `citations[]`)                      | positional `[n]` markers                                      |
 
 ## Design implications
 

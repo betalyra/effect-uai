@@ -18,6 +18,21 @@ export type GoogleModel =
   | (string & {})
 
 /**
+ * Deep-research agent identifiers for the Interactions API (`POST
+ * /v1beta/interactions`). `-preview` is the fast tier, `-max-` the
+ * comprehensive one. Preview surface: verify against live docs before relying on
+ * exact ids. The `(string & {})` tail accepts any string so a renamed agent
+ * works without an SDK update.
+ *
+ * Reference: https://ai.google.dev/gemini-api/docs/interactions/deep-research
+ */
+export type GoogleDeepResearchModel =
+  | "deep-research-preview-04-2026"
+  | "deep-research-max-preview-04-2026"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
  * Known Gemini embedding model identifiers.
  *
  * - `gemini-embedding-2` — natively multimodal (text, image, audio, video,

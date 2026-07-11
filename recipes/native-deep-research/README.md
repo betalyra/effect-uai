@@ -45,17 +45,20 @@ researchStream({ history: [Items.userText(question)] }).pipe(
 The stream terminates in `TurnComplete`, whose `turn` is a `Turn` (the same value
 a normal generation returns): project it with `Turn.assistantText` and
 `Turn.citations`. Under the hood the adapter submits a background job
-(`o3-deep-research` on OpenAI, `sonar-deep-research` on Perplexity) and streams or
-polls it to completion. On providers that stream (OpenAI) the events are real; on
-poll-only ones (Perplexity) progress is synthesized, same body. If you only want
-the final report, `research(request)` returns the `Turn` directly and drops the
-stream.
+(`o3-deep-research` on OpenAI, `sonar-deep-research` on Perplexity,
+`deep-research-*` on Gemini, `exa-research` on Exa) and streams or polls it to
+completion. On providers that stream (OpenAI) the events are real; on poll-only
+ones (Perplexity, Gemini, Exa) progress is synthesized, same body. If you only
+want the final report, `research(request)` returns the `Turn` directly and drops
+the stream.
 
 ## Run it
 
 ```bash
 PERPLEXITY_API_KEY=... pnpm tsx recipes/native-deep-research/run-node.ts
 OPENAI_API_KEY=...     pnpm tsx recipes/native-deep-research/run-node.ts --provider=openai
+GOOGLE_API_KEY=...     pnpm tsx recipes/native-deep-research/run-node.ts --provider=google
+EXA_API_KEY=...        pnpm tsx recipes/native-deep-research/run-node.ts --provider=exa
 
 QUESTION="compare the leading open-weight LLMs released this quarter" \
   PERPLEXITY_API_KEY=... pnpm tsx recipes/native-deep-research/run-node.ts
@@ -63,3 +66,18 @@ QUESTION="compare the leading open-weight LLMs released this quarter" \
 
 The report prints once the job completes, followed by its sources. `run-bun.ts`
 and `run-deno.ts` differ only in the platform HttpClient.
+
+## Structured output (Exa)
+
+Exa can research straight into a schema. Pass `--structured` (Exa only) to
+research the same question into a typed shape and get validated JSON with
+field-level citations, saved to a `.json` file:
+
+```bash
+EXA_API_KEY=... pnpm tsx recipes/native-deep-research/run-node.ts --provider=exa --structured
+```
+
+The recipe passes an Effect `Schema` as the request's `outputSchema` and decodes
+the completed `Turn` with `Turn.decodeStructured` — the same path as
+`LanguageModel` structured output, so the decode lives in the recipe, not the
+provider.

@@ -60,7 +60,9 @@ const synthesizedStream = <Req>(
 ): Stream.Stream<TurnEvent, AiError.AiError> =>
   Stream.concat(
     Stream.make(TurnEvent.WebSearchCall({ status: "searching" })),
-    Stream.map(Stream.fromEffect(Job.collect(ops.poll, ref)), (turn) => TurnEvent.TurnComplete({ turn })),
+    Stream.map(Stream.fromEffect(Job.collect(ops.poll, ref)), (turn) =>
+      TurnEvent.TurnComplete({ turn }),
+    ),
   )
 
 /**
@@ -82,8 +84,7 @@ export const fromJob = <Req extends ResearchRequest>(
     streamFrom,
     research: (request) =>
       Job.run({ submit: ops.submit(request), poll: ops.poll, cancel: ops.cancel }),
-    researchStream: (request) =>
-      Stream.unwrap(Effect.map(ops.submit(request), streamFrom)),
+    researchStream: (request) => Stream.unwrap(Effect.map(ops.submit(request), streamFrom)),
   }
 }
 
@@ -93,7 +94,9 @@ export const fromJob = <Req extends ResearchRequest>(
 // ---------------------------------------------------------------------------
 
 /** Submit and poll to the terminal `Turn`. Cancels the job on interrupt. */
-export const research = (request: ResearchRequest): Effect.Effect<Turn, AiError.AiError, DeepResearch> =>
+export const research = (
+  request: ResearchRequest,
+): Effect.Effect<Turn, AiError.AiError, DeepResearch> =>
   Effect.flatMap(DeepResearch, (s) => s.research(request))
 
 /** Submit and forward live progress, terminating in `TurnComplete`. */
@@ -115,9 +118,7 @@ export const status = (
   Effect.flatMap(DeepResearch, (s) => s.status(ref))
 
 /** Poll a detached job to completion. */
-export const collect = (
-  ref: ResearchJobRef,
-): Effect.Effect<Turn, AiError.AiError, DeepResearch> =>
+export const collect = (ref: ResearchJobRef): Effect.Effect<Turn, AiError.AiError, DeepResearch> =>
   Effect.flatMap(DeepResearch, (s) => s.collect(ref))
 
 /** Attach a live progress stream to a job (call again to re-attach). */
@@ -127,7 +128,5 @@ export const streamFrom = (
   Stream.unwrap(Effect.map(DeepResearch, (s) => s.streamFrom(ref)))
 
 /** Cancel a running job. */
-export const cancel = (
-  ref: ResearchJobRef,
-): Effect.Effect<void, AiError.AiError, DeepResearch> =>
+export const cancel = (ref: ResearchJobRef): Effect.Effect<void, AiError.AiError, DeepResearch> =>
   Effect.flatMap(DeepResearch, (s) => s.cancel(ref))

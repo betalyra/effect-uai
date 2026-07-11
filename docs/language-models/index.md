@@ -191,6 +191,16 @@ distinct backends - not to abstract over them. Use `LanguageModel` for
 "any provider"; use the typed tags when "which provider" is the
 decision.
 
+## Deep research
+
+A niche relative worth knowing about: deep research (one broad question, many
+searches over minutes, a long cited report). Build one over `LanguageModel` +
+`WebSearch` with the [deep research recipe](/recipes/deep-research/) - you own
+the plan, fan-out, and synthesis - or hand the whole job to a provider's hosted
+agent via the sibling [`DeepResearch`](/recipes/native-deep-research/) capability
+(submit a question, stream progress, collect a cited `Turn`; OpenAI, Perplexity,
+Gemini, and Exa today).
+
 ## What `LanguageModel` is not
 
 - **Not an abstraction over response shape.** Every provider already

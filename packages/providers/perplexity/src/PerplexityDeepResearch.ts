@@ -61,7 +61,9 @@ const WireSearchResult = Schema.Struct({
 })
 
 const WireChoice = Schema.Struct({
-  message: Schema.optional(Schema.Struct({ content: Schema.optional(Schema.NullOr(Schema.String)) })),
+  message: Schema.optional(
+    Schema.Struct({ content: Schema.optional(Schema.NullOr(Schema.String)) }),
+  ),
 })
 
 const WireUsage = Schema.Struct({

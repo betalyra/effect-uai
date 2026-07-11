@@ -5,7 +5,7 @@
 A shared, reusable `LanguageModel` implementation for the **OpenAI Chat
 Completions** wire dialect (`POST /chat/completions`, `messages[]` in,
 `choices[].message` / `choices[].delta` out, `data: [DONE]` SSE terminator).
-This is the *old* OpenAI API, distinct from the Responses API (`/v1/responses`,
+This is the _old_ OpenAI API, distinct from the Responses API (`/v1/responses`,
 the `@effect-uai/responses` package). A large set of providers are drop-in
 compatible with it and differ only in base URL, auth header, model ids, and a
 handful of extra request/response fields:

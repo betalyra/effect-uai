@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Match, Redacted, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Match, Redacted, Ref, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import {
@@ -48,6 +48,8 @@ export class GoogleDeepResearch extends Context.Service<
 export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
+  /** Poll cadence / overall timeout for the derived poll loops. */
+  readonly job?: Job.JobConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -240,13 +242,22 @@ const unsupported = (capability: string): AiError.Unsupported =>
 // Streaming (Interactions SSE)
 // ---------------------------------------------------------------------------
 
-// The Interactions stream emits `step.delta` events carrying `text` (the report
-// as written) or `thought` (thinking summaries), and terminates in
-// `interaction.completed` / `interaction.error`. Preview surface; decode
-// permissively and map onto the canonical `TurnEvent`s.
+// The Interactions stream emits `step.delta` events in two shapes: the report
+// body arrives as `delta: { type: "text", text }`, while a thinking summary
+// arrives as `delta: { type: "thought_summary", content: { text } }` (and a
+// content-free `thought_signature` we skip). Terminates in `interaction.completed`
+// / `interaction.error`, then an OpenAI-style `[DONE]` sentinel we drop upstream.
 const WireDelta = Schema.Struct({
   type: Schema.optional(Schema.NullOr(Schema.String)),
   text: Schema.optional(Schema.NullOr(Schema.String)),
+  content: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        type: Schema.optional(Schema.NullOr(Schema.String)),
+        text: Schema.optional(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  ),
 })
 const WireStreamEvent = Schema.Struct({
   event_type: Schema.optional(Schema.NullOr(Schema.String)),
@@ -261,31 +272,70 @@ type WireStreamEvent = typeof WireStreamEvent.Type
 const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
 const decodeStreamEvent = Schema.decodeUnknownEffect(WireStreamEvent)
 
-const streamEventToTurnEvents = (ev: WireStreamEvent): ReadonlyArray<TurnEvent> => {
+// Prefer the completed interaction's decoded text; when the terminal event is
+// bare (or its text decodes empty) fall back to the accumulated stream deltas,
+// so `TurnComplete.turn` always carries the report that streamed.
+const completedTurn = (wire: WireInteraction | null | undefined, streamed: string): Turn =>
+  wire != null && reportText(wire).length > 0
+    ? turnFromInteraction(wire)
+    : {
+        items: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: streamed }],
+            ...(wire != null && { providerData: wire }),
+          },
+        ],
+        usage: {},
+        stop_reason: "stop",
+      }
+
+// Map one wire event onto `TurnEvent`s, appending text deltas to `acc` (the
+// `completedTurn` fallback) and lifting `interaction.error` to a typed failure.
+const streamEventToTurnEvents = (
+  acc: Ref.Ref<string>,
+  ev: WireStreamEvent,
+): Effect.Effect<ReadonlyArray<TurnEvent>, AiError.AiError> => {
+  if (ev.event_type === "interaction.error") {
+    return Effect.fail(
+      new AiError.GenerationFailed({
+        provider: "google",
+        ...(ev.error?.message != null && { message: ev.error.message }),
+        raw: ev,
+      }),
+    )
+  }
   if (ev.event_type === "step.delta") {
     const delta = ev.delta
-    if (delta?.text == null) return []
-    return delta.type === "thought"
-      ? [TurnEvent.ReasoningDelta({ text: delta.text, kind: "summary" })]
-      : [TurnEvent.TextDelta({ text: delta.text })]
+    // Report body: `delta.text`. Accumulate it so the terminal `TurnComplete`
+    // carries the report even when `interaction.completed` arrives text-free.
+    if (delta?.text != null) {
+      const text = delta.text
+      return Effect.as(
+        Ref.update(acc, (streamed) => streamed + text),
+        [TurnEvent.TextDelta({ text })],
+      )
+    }
+    // Thinking summary: nested under `delta.content.text`. Surfaced as reasoning,
+    // not accumulated into the report.
+    if (delta?.content?.text != null) {
+      return Effect.succeed([
+        TurnEvent.ReasoningDelta({ text: delta.content.text, kind: "summary" }),
+      ])
+    }
+    return Effect.succeed([])
   }
   if (ev.event_type === "interaction.completed") {
-    // The completed event carries the final interaction when present; otherwise
-    // the live text deltas already delivered the report.
-    return [
-      TurnEvent.TurnComplete({
-        turn: ev.interaction != null ? turnFromInteraction(ev.interaction) : emptyTurn,
-      }),
-    ]
+    return Effect.map(Ref.get(acc), (streamed) => [
+      TurnEvent.TurnComplete({ turn: completedTurn(ev.interaction, streamed) }),
+    ])
   }
-  return []
+  return Effect.succeed([])
 }
 
-const emptyTurn: Turn = { items: [], usage: {}, stop_reason: "stop" }
-
 // A streaming interaction create (`?stream=true`): consume the SSE directly,
-// mapping each event onto a `TurnEvent` and lifting `interaction.error` to a
-// typed failure.
+// mapping each event onto `TurnEvent`s via {@link streamEventToTurnEvents}.
 const streamCreate = (
   cfg: Config,
   request: GoogleResearchRequest,
@@ -293,12 +343,20 @@ const streamCreate = (
   Stream.unwrap(
     Effect.gen(function* () {
       const client = yield* HttpClient.HttpClient
+      const acc = yield* Ref.make("")
       const httpRequest = HttpClientRequest.post(`${baseUrl(cfg)}/interactions?stream=true`).pipe(
         authHeader(cfg),
         HttpClientRequest.bodyJsonUnsafe({ ...submitBody(request), stream: true }),
         HttpClientRequest.accept("text/event-stream"),
       )
       const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
+      // Preview surface: log the response status + content-type so an
+      // unexpected `application/json` (i.e. `?stream=true` not triggering SSE)
+      // is visible at LOG_LEVEL=Debug rather than presenting as a silent hang.
+      yield* Effect.logDebug("google interactions stream response", {
+        status: response.status,
+        contentType: response.headers["content-type"],
+      })
       if (response.status >= 400) {
         const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
         return Stream.fail(httpStatusError(response.status, text))
@@ -306,23 +364,22 @@ const streamCreate = (
       return response.stream.pipe(
         Stream.mapError(transportFailure),
         SSE.fromBytes,
+        // Log each raw frame before decode: the ground truth for the (unverified)
+        // event_type / delta shapes this codec keys on.
+        Stream.tap((ev) =>
+          Effect.logDebug("google interactions sse frame", { event: ev.event, data: ev.data }),
+        ),
+        // The stream ends with an OpenAI-style `[DONE]` sentinel that is not JSON;
+        // drop it (and any blank frame) before the JSON decode.
+        Stream.filter((ev) => ev.event !== "done" && ev.data.trim() !== "[DONE]"),
         Stream.mapEffect((ev) =>
           parseJsonUnknown(ev.data).pipe(
             Effect.flatMap(decodeStreamEvent),
             Effect.mapError(transportFailure),
+            Effect.flatMap((wire) => streamEventToTurnEvents(acc, wire)),
           ),
         ),
-        Stream.flatMap((ev) =>
-          ev.event_type === "interaction.error"
-            ? Stream.fail(
-                new AiError.GenerationFailed({
-                  provider: "google",
-                  ...(ev.error?.message != null && { message: ev.error.message }),
-                  raw: ev,
-                }),
-              )
-            : Stream.fromIterable(streamEventToTurnEvents(ev)),
-        ),
+        Stream.flatMap(Stream.fromIterable),
       )
     }),
   )
@@ -352,7 +409,7 @@ const buildService = <Req extends ResearchRequest>(
   ops: ResearchJobOps<Req>,
   toGoogle: (request: Req) => GoogleResearchRequest,
 ): DeepResearchServiceShape<Req> => ({
-  ...fromJob(ops),
+  ...fromJob(ops, cfg.job),
   researchStream: (request) =>
     Stream.provideService(streamCreate(cfg, toGoogle(request)), HttpClient.HttpClient, client),
 })

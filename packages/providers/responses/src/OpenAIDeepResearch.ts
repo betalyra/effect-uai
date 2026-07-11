@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Match, Redacted, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Match, Option, Redacted, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import {
@@ -15,6 +15,7 @@ import { WireResponseCompleted, turnFromCompleted, itemsToInput } from "./codec.
 import type { OpenAIDeepResearchModel } from "./models.js"
 import { type OpenAiRegion, resolveHost } from "./region.js"
 import { httpStatusError, providerEventsOfResponse, toCanonical } from "./Responses.js"
+import type { ProviderEvent } from "./streamEvents.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -54,15 +55,29 @@ export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
   readonly region?: OpenAiRegion
+  /** Poll cadence / overall timeout for the derived poll loops. */
+  readonly job?: Job.JobConfig
 }
 
 // ---------------------------------------------------------------------------
 // Wire codec
 // ---------------------------------------------------------------------------
 
-const WireSubmit = Schema.Struct({ id: Schema.String })
-const decodeSubmit = Schema.decodeUnknownEffect(WireSubmit)
 const decodeResponse = Schema.decodeUnknownEffect(WireResponseCompleted)
+
+// Any early lifecycle event (`response.created` / `response.queued` / ...)
+// carries the response object; only its id matters here. These events are not
+// in the modeled `ProviderEvent` union, so they arrive as `_unknown`.
+const WireCreated = Schema.Struct({ response: Schema.Struct({ id: Schema.String }) })
+const decodeCreated = Schema.decodeUnknownEffect(WireCreated)
+
+const responseIdOf = (event: ProviderEvent): Effect.Effect<Option.Option<string>> =>
+  event.type === "_unknown"
+    ? decodeCreated(event.raw).pipe(
+        Effect.map((wire) => Option.some(wire.response.id)),
+        Effect.orElseSucceed(() => Option.none<string>()),
+      )
+    : Effect.succeedNone
 
 // Map a Responses object's `status` onto the generic `JobState`. `completed`
 // and `incomplete` both carry a usable turn (incomplete = stopped early with a
@@ -107,6 +122,11 @@ const submitBody = (request: OpenAIResearchRequest): Record<string, unknown> => 
   ...(request.reasoning !== undefined && { reasoning: request.reasoning }),
 })
 
+// The job is created with `stream: true` on top of `background: true`: OpenAI
+// only exposes a resumable event feed on responses *created* streaming, so this
+// keeps every submitted ref attachable via `streamFrom`. Only the first SSE
+// event is read (for the response id); the connection is then dropped and the
+// background job keeps running server-side.
 const submitJob = (
   cfg: Config,
   request: OpenAIResearchRequest,
@@ -115,16 +135,27 @@ const submitJob = (
     const client = yield* HttpClient.HttpClient
     const httpRequest = HttpClientRequest.post(`${resolveHost(cfg)}/responses`).pipe(
       HttpClientRequest.bearerToken(cfg.apiKey),
-      HttpClientRequest.bodyJsonUnsafe(submitBody(request)),
+      HttpClientRequest.accept("text/event-stream"),
+      HttpClientRequest.bodyJsonUnsafe({ ...submitBody(request), stream: true }),
     )
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
-    if (response.status >= 400) {
-      const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-      return yield* httpStatusError(response.status, text)
-    }
-    const json = yield* response.json.pipe(Effect.mapError(transportFailure))
-    const wire = yield* decodeSubmit(json).pipe(Effect.mapError(transportFailure))
-    return Job.jobRef<Turn>("responses", wire.id)
+    const id = yield* providerEventsOfResponse(response).pipe(
+      Stream.mapEffect(responseIdOf),
+      Stream.filter(Option.isSome),
+      Stream.map((some) => some.value),
+      Stream.runHead,
+    )
+    return yield* Option.match(id, {
+      onNone: () =>
+        Effect.fail(
+          new AiError.GenerationFailed({
+            provider: "responses",
+            message: "streaming create ended without a response id",
+            raw: submitBody(request),
+          }),
+        ),
+      onSome: (value) => Effect.succeed(Job.jobRef<Turn>("responses", value)),
+    })
   })
 
 const pollJob = (
@@ -187,7 +218,9 @@ const streamFromRef = (
 // ---------------------------------------------------------------------------
 
 // The job ops. OpenAI streams live over the resumable Responses SSE, so it
-// supplies a real `streamFrom` (not the synthesized fallback).
+// supplies a real `streamFrom` (not the synthesized fallback). Since `submit`
+// creates the job streaming, `fromJob`'s default `researchStream`
+// (submit-then-attach) streams real events too.
 const jobOps = (
   cfg: Config,
   client: HttpClient.HttpClient,
@@ -204,49 +237,11 @@ const jobOps = (
   }
 }
 
-// A streaming create (background + stream + store) whose SSE we consume live. A
-// deep-research background job only exposes an event feed when it is *created*
-// with `stream: true`; attaching `?stream=true` to a plain background job (what
-// `fromJob`'s default `researchStream` does via submit-then-`streamFrom`) yields
-// no events. So `researchStream` creates the job streaming instead. `submit` /
-// `collect` stay background-only for the detached path.
-const streamCreate = (
-  cfg: Config,
-  request: OpenAIResearchRequest,
-): Stream.Stream<TurnEvent, AiError.AiError, HttpClient.HttpClient> =>
-  Stream.unwrap(
-    Effect.gen(function* () {
-      const client = yield* HttpClient.HttpClient
-      const httpRequest = HttpClientRequest.post(`${resolveHost(cfg)}/responses`).pipe(
-        HttpClientRequest.bearerToken(cfg.apiKey),
-        HttpClientRequest.accept("text/event-stream"),
-        HttpClientRequest.bodyJsonUnsafe({ ...submitBody(request), stream: true }),
-      )
-      const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
-      return toCanonical(providerEventsOfResponse(response))
-    }),
-  )
-
-// fromJob's default surface, with `researchStream` overridden to the direct
-// streaming create (its submit-then-attach default does not stream for OpenAI).
-const buildService = <Req extends ResearchRequest>(
-  cfg: Config,
-  client: HttpClient.HttpClient,
-  ops: ResearchJobOps<Req>,
-  toOpenAI: (request: Req) => OpenAIResearchRequest,
-): DeepResearchServiceShape<Req> => ({
-  ...fromJob(ops),
-  researchStream: (request) =>
-    Stream.provideService(streamCreate(cfg, toOpenAI(request)), HttpClient.HttpClient, client),
-})
-
 /** Build an `OpenAIDeepResearchService`. For Layer setup, prefer {@link layer}. */
 export const make = (
   cfg: Config,
 ): Effect.Effect<OpenAIDeepResearchService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient, (client) =>
-    buildService(cfg, client, jobOps(cfg, client), (request) => request),
-  )
+  Effect.map(HttpClient.HttpClient, (client) => fromJob(jobOps(cfg, client), cfg.job))
 
 /**
  * Layer registering the provider-typed `OpenAIDeepResearch` tag and the generic
@@ -261,11 +256,10 @@ export const layer = (
     DeepResearch,
     Effect.map(HttpClient.HttpClient, (client): DeepResearchService => {
       const ops = jobOps(cfg, client)
-      const genericOps: ResearchJobOps<ResearchRequest> = {
-        ...ops,
-        submit: (request) => ops.submit(request as OpenAIResearchRequest),
-      }
-      return buildService(cfg, client, genericOps, (request) => request as OpenAIResearchRequest)
+      return fromJob<ResearchRequest>(
+        { ...ops, submit: (request) => ops.submit(request as OpenAIResearchRequest) },
+        cfg.job,
+      )
     }),
   )
   return Layer.merge(typed, generic)

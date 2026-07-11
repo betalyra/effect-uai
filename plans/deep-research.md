@@ -418,4 +418,438 @@ shows life. Default question something current-events flavored, same as
 - **Report shape.** Flat `{ text, citations }` now. Deep-research reports have
   structure (sections, tables, generated charts as images). Keep flat and let the
   caller parse, or model sections? Leaning flat for v1.
+
+---
+
+# Appendix A: Unified citation and streaming model
+
+> Added after a July 2026 wire survey (raw notes in
+> `plans/citation-model-research/`). This appendix supersedes the Phase-1
+> `ResearchEvent` / `ResearchReport` sketch above where they conflict: it makes
+> citations a first-class, streamable, provider-agnostic type shared by
+> `LanguageModel` (with native web search), `DeepResearch`, and `WebSearch`,
+> instead of a deep-research-only afterthought that only OpenAI populates.
+
+## A.1 The problem this solves
+
+Three surfaces in the repo touch "sources", and today they do not agree:
+
+- **`LanguageModel` + a native web-search `ProviderTool`.** Only OpenAI
+  Responses citations survive, and only as `OutputText.annotations` on the
+  terminal `Turn`. Anthropic and Gemini grounding are decoded to nothing. The
+  `web_search_call` item is dropped. `TurnEvent` has no citation event and no
+  search-lifecycle event, so citations never stream: they appear all at once
+  inside `TurnComplete.turn`.
+- **`WebSearch`.** `SearchResult` is a flat `{ url, title?, snippet?, ... }`
+  ranked list. It never produces an `Items.Annotation`; `WebSearchTool`
+  flattens results to a numbered string for the model to read.
+- **`DeepResearch` (this plan).** Wanted to reuse `Items.Annotation` and carry
+  citations only in the terminal `Report`.
+
+So a caller gets citations in three incompatible ways, and only one provider
+actually delivers them. The consolidation goal: **one citation type, one
+streaming surface, populated by every provider that can, streamed where the
+provider streams and bundled where it does not.**
+
+## A.2 What the wire actually looks like (survey summary)
+
+Full matrix in `plans/citation-model-research/04-wire-all-providers-matrix.md`.
+Two invariants across every provider that emits sources: **`url` and `title`
+are the only universal fields**; everything else is optional. Answer-to-source
+linking splits into three styles:
+
+| Style | How a claim links to a source | Providers |
+|---|---|---|
+| **char/byte span** | `{start, end}` offsets into the answer text, each mapped to one or more sources | OpenAI `url_citation`, Gemini `groundingSupports.segment` (byte) + `groundingChunkIndices`, Gemini-Interactions (char), Cohere `{start,end}`, xAI annotations, Bedrock `span` |
+| **quote-anchored** (a span sub-style) | no offsets, but an exact `cited_text` / `exactQuote` you can string-match to locate | Anthropic (per-block `cited_text`), Jina DeepSearch |
+| **inline marker** | prose contains `[n]` / `[[n]](url)` indexing 1-based into an ordered source list | Perplexity, Kagi FastGPT, xAI (also) |
+| **bare source list** | sources returned decoupled from prose (or no prose) | Exa, Tavily, Linkup, Brave, You.com, Firecrawl, SerpAPI, Mistral (interleaved chunks) |
+
+Two more axes that drive the streaming design:
+
+- **Incremental vs bundled citations.** Only **OpenAI** and **Anthropic** emit
+  citations incrementally (`response.output_text.annotation.added`,
+  `citations_delta`). **Gemini** and **Perplexity** deliver them only in the
+  final chunk.
+- **Search-progress events.** Only **OpenAI** (and Gemini-Interactions) emit a
+  real search lifecycle (`web_search_call.in_progress/searching/completed`,
+  with `action: search | open_page | find_in_page`). Anthropic surfaces search
+  as content blocks; Gemini-classic and Perplexity surface nothing.
+- **One span, many sources.** Gemini `groundingChunkIndices[]`, Cohere
+  `sources[]`, and Anthropic per-block citations all attach **multiple** sources
+  to a single answer span. Today's one-`url`-per-`UrlCitation` shape cannot
+  represent that without duplicating the span.
+
+## A.3 The citation data model
+
+Separate the **source** (a document that exists) from the **span** (a region of
+the answer that a set of sources supports). This is the one shape that
+normalizes all four styles, and it is the only way to represent many-sources-
+per-claim without lossy duplication.
+
+```ts
+// domain/Citation.ts
+
+/** A document the model consulted. `url` + `title` are the only near-universal
+ *  fields; everything else is best-effort. `raw` round-trips provider-opaque
+ *  tokens (Anthropic `encrypted_index`, Gemini chunk handle, Cohere doc id). */
+export type Source = {
+  readonly url: string
+  readonly title?: string
+  readonly snippet?: string            // source-side excerpt / cited_text / content
+  readonly publishedDate?: DateTime.DateTime
+  readonly sourceType?: "web" | "x" | "news" | "file" | "document" | (string & {})
+  readonly raw?: unknown
+}
+
+/** Where in the answer a claim is grounded, and which sources ground it.
+ *  `sourceRefs` indexes into the sibling `sources` array (many-to-one). */
+export type CitationSpan =
+  | { readonly kind: "char"; readonly start: number; readonly end: number
+      readonly unit: "char" | "byte"; readonly sourceRefs: ReadonlyArray<number>
+      readonly confidence?: number }        // OpenAI, Gemini, Cohere, xAI, Bedrock
+  | { readonly kind: "quote"; readonly text: string
+      readonly sourceRefs: ReadonlyArray<number> }   // Anthropic, Jina DeepSearch
+  | { readonly kind: "marker"; readonly ordinal: number
+      readonly sourceRefs: ReadonlyArray<number> }   // Perplexity, Kagi
+  | { readonly kind: "none"; readonly sourceRefs: ReadonlyArray<number> } // bare list
+
+/** The grounding for one piece of generated text. */
+export type Citations = {
+  readonly sources: ReadonlyArray<Source>
+  readonly spans: ReadonlyArray<CitationSpan>
+}
 ```
+
+**How the legacy `Items.Annotation` fits.** Today's `UrlCitation`
+(`{type, url, title, start_index, end_index}`) is exactly the degenerate case
+of this model: one `char` span with one source and its url/title inlined. Two
+adoption paths:
+
+1. **Evolve `Items.Annotation` minimally now, full model later.** Keep the flat
+   `Annotation` array on `OutputText`, but make `start_index`/`end_index`
+   optional and add optional `cited_text` + `marker`. This is a small,
+   backward-compatible change that lets Anthropic and Perplexity populate
+   annotations at all. It loses many-sources-per-span (you emit N annotations
+   for one multi-source claim). Good enough for v1 of everything.
+2. **Introduce `Citations` as the canonical structured form.** `OutputText`
+   grows an optional `citations?: Citations` alongside the legacy flat
+   `annotations`, and the assembled `Turn` is the place the structured form
+   lives. Adapters that can (Gemini, Cohere, Anthropic) fill `citations`;
+   simple ones fill `annotations`; a helper derives one from the other.
+
+**Recommendation:** ship path 1 for the first providers (it unblocks
+`DeepResearch` and native-grounding immediately with the least churn), and land
+path 2 as the enrichment step when the first many-sources-per-span provider
+(Gemini grounding, Cohere) gets a real decoder. Do not fork a parallel citation
+type; `Citations` is the superset and `Annotation` is its flattened view.
+
+## A.4 The streaming model: extend `TurnEvent`, do not fork it
+
+Deep research on OpenAI **is** a Responses turn with `background: true`; it
+emits the same SSE family the normal turn does. So the streaming answer to
+"should the output be `TurnEvent`?" is **yes**: `ResearchEvent` collapses into
+`TurnEvent`, and the two members that are missing today are added to
+`TurnEvent` itself, which is exactly what plain `LanguageModel` + native search
+also needs.
+
+```ts
+// added to the existing TurnEvent enum in domain/Turn.ts
+WebSearchCall: {
+  readonly status: "started" | "searching" | "completed"
+  readonly query?: string
+  readonly action?: "search" | "open_page" | "find_in_page"
+}
+CitationAdded: { readonly citation: Items.Annotation }  // or Citation, per A.3 path
+```
+
+Semantics:
+
+- **`CitationAdded`** is emitted incrementally by providers that stream
+  citations (OpenAI `annotation.added`, Anthropic `citations_delta`). Providers
+  that bundle (Gemini, Perplexity) emit **no** `CitationAdded`; their citations
+  still arrive on the terminal `TurnComplete.turn` (attached to the assembled
+  `OutputText`). Consumers therefore read citations two ways uniformly: live via
+  `CitationAdded`, or from the final `Turn`. A consumer that only cares about
+  the final set just reads `TurnComplete`.
+- **`WebSearchCall`** gives the "searching: ..." progress the plan wanted
+  (`SearchStarted`), generalized to the full lifecycle and reused by
+  `LanguageModel`. Poll-only research providers (Perplexity, Exa) synthesize
+  `WebSearchCall { status }` from job-status transitions.
+- **Terminal.** `TurnComplete` already carries the assembled `Turn` (items +
+  usage + stop_reason). `DeepResearch`'s `ResearchReport` becomes a thin
+  **projection** of that `Turn`: `text = Turn.assistantText`, `citations =` all
+  annotations across its `OutputText` blocks, `usage = turn.usage`,
+  `structured =` decoded from the text via the provider-typed `outputSchema`
+  (the same `Turn.decodeStructured` path structured output already uses). So
+  `ResearchReport` stops being a bespoke shape and is derived, and `ResearchEvent`
+  disappears.
+
+This is the crux of the consolidation: **one event stream type (`TurnEvent`),
+one terminal (`TurnComplete.turn`), one citation type**, whether the turn came
+from `LanguageModel.streamTurn`, a native-grounding turn, or
+`DeepResearch.researchStream`.
+
+Blast radius, stated honestly: adding to `TurnEvent` and evolving
+`Items.Annotation` are **core changes shared with `LanguageModel`**, and they
+imply new decode paths in the Responses / Anthropic / Google codecs (which today
+decode none of this). That is a separate workstream from "add the `DeepResearch`
+tag", and it is the right place for the native-grounding citation payoff to
+actually land. `DeepResearch` is the forcing function, not the sole beneficiary.
+
+### A.4.1 Why not type-gate these events to "a web-search tool is present"
+
+A tempting refinement: make `WebSearchCall` / `CitationAdded` appear in the event
+type only when the request carries a web-search `ProviderTool`, and be absent
+otherwise. It is technically possible. `Toolkit<Tools>` preserves each tool as a
+named entry, and the repo already inspects that at the type level (`ToolkitR` /
+`ToolkitE` in `tool/Toolkit.ts`). A conditional `HasProviderWebSearch<T>` plus a
+generic `CommonRequest` threaded into `streamTurn` would do it.
+
+We deliberately do **not**, for three reasons:
+
+- **Viral.** `CommonRequest.tools` is the wide `Toolkit` today and `streamTurn`
+  does not thread toolkit types at all. Gating makes every request generic and
+  forces inference through every call site.
+- **Inconsistent with `TurnEvent`'s existing conditional members.**
+  `RefusalDelta`, `ToolCallStart`, `UsageUpdate` all fire only sometimes and none
+  are type-gated by input; they are members of one flat union that consumers
+  match with a default. `WebSearchCall` / `CitationAdded` are the same kind.
+- **Wrong predicate.** Citations also come from `file_search`, and deep-research
+  models always search with no tool in the request, so "web-search tool present"
+  both over- and under-approximates when the events can fire.
+
+So they are always-present members of the flat `TurnEvent` union; they simply do
+not fire without grounding. (If scoping is ever wanted without input-conditional
+inference, a wider alias `GroundedTurnEvent = TurnEvent | WebSearchCall |
+CitationAdded` used only where grounding is guaranteed is the pragmatic fallback,
+but it re-splits the type we set out to consolidate.)
+
+## A.5 Three transports, one capability, two markers
+
+Deep research does not arrive over one transport. There are three, and they
+differ in what the *caller* can do, not just in wire mechanics:
+
+| # | transport | providers | detachable job | real live event stream |
+|---|---|---|---|---|
+| 1 | background job + separate live-stream endpoint | OpenAI, Gemini (Interactions) | yes | yes (SSE, resumable) |
+| 2 | sync job, hold the connection | Jina DeepSearch | no (no job id exists) | yes (SSE) |
+| 3 | background job + periodic poll | Perplexity, Exa | yes | no (poll-only) |
+
+Two orthogonal axes fall out, and they split the providers *differently*:
+
+- **Detachable job** (`submit` / `status` / `collect` / `cancel` by a durable
+  ref): transports 1 and 3. Jina has no server-side job to detach from.
+- **Real live stream** (incremental text / citation / search events): transports
+  1 and 2. Perplexity / Exa can only synthesize progress from polling.
+
+Because one axis cannot tell Jina (stream, no job) from Perplexity (job, no
+stream) apart, both must be represented. Neither extreme works: "three separate
+capabilities" fragments the universal `research` core and the shared report /
+citation model, killing provider-portable code; "one fat interface" lies, since
+`collect` on Jina or a real `researchStream` on Perplexity would compile and then
+fail at runtime.
+
+Use the repo's existing capability-marker pattern (`SttStreaming`,
+`MusicInteractiveSession`): one capability, a universal core, and phantom `void`
+markers gating the transport-dependent methods.
+
+```ts
+// Universal core — every deep-research provider ships this.
+research: (request: ResearchRequest) => Effect<ResearchReport, AiError>
+
+// Detachable background job. Providers 1 & 3.
+class ResearchJob extends Context.Service<ResearchJob, void>()(
+  "@betalyra/effect-uai/capability/ResearchJob",
+) {}
+
+// Real live progress stream. Providers 1 & 2.
+class ResearchStreaming extends Context.Service<ResearchStreaming, void>()(
+  "@betalyra/effect-uai/capability/ResearchStreaming",
+) {}
+```
+
+Method-to-marker gating captures the matrix exactly:
+
+| method | markers required in `R` | providers |
+|---|---|---|
+| `research(request)` | none (universal) | all five |
+| `researchStream(request)` | `ResearchStreaming` | OpenAI, Gemini, Jina |
+| `submit` / `status` / `collect` / `cancel` `(ref)` | `ResearchJob` | OpenAI, Gemini, Perplexity, Exa |
+| `streamFrom(ref)` | `ResearchJob` + `ResearchStreaming` | OpenAI, Gemini |
+
+`streamFrom(ref)` is the transport-1 move (attach a live stream to an
+already-detached job) and correctly needs both markers. Jina's
+`researchStream(request)` opens its sync socket directly (no ref, no `submit`).
+Calling `researchStream` on Perplexity / Exa is a **compile error**, not a
+degraded synthesized stream. Each provider registers its markers alongside its
+layer, exactly like the STT realtime layer (`Layer.succeed(SttStreaming, void 0)`
+inside `Layer.mergeAll`):
+
+```ts
+Layer.mergeAll(
+  Layer.effect(OpenAiDeepResearch, make(cfg)),   // provider-typed tag
+  Layer.effect(DeepResearch, generic(cfg)),        // generic tag
+  Layer.succeed(ResearchJob, void 0),              // this provider is detachable
+  Layer.succeed(ResearchStreaming, void 0),        // and streams live
+)
+```
+
+Top-level helpers thread the markers into `R` the same way
+`Transcriber.streamTranscriptionFrom` requires `SttStreaming`.
+
+## A.6 `WebSearch` stays distinct, with a bridge
+
+`SearchResult` and a citation are different concepts, and merging them would be
+"unifying what is not unified":
+
+- A **`SearchResult`** is a *candidate source as data*: a ranked hit you got
+  back from a search API, independent of any answer.
+- A **citation** is *a source the model actually used to ground a specific
+  span* of generated text.
+
+Keep `WebSearch.SearchResult` as-is. Add a one-way bridge for callers who want
+to present search hits as sources:
+
+```ts
+// WebSearch.ts
+export const toSource = (r: SearchResult): Source => ({
+  url: r.url, title: r.title, snippet: r.snippet,
+  publishedDate: r.publishedDate, sourceType: "web", raw: r.raw,
+})
+```
+
+No `Citations` (no spans) comes out of a bare search: search results are
+`sources` with no answer to anchor to. That is the honest shape.
+
+Related gap, noted so it is not lost: the Jina provider today ships `JinaReader`
+(`WebRead`) and `JinaEmbedding` (`EmbeddingModel`) but not its search index. A
+**`JinaSearch`** module wrapping `s.jina.ai` onto the existing `WebSearch`
+capability is a small, self-contained, orthogonal follow-up. Add on demand.
+
+## A.7 The job `Ref` at the call site
+
+`TurnEvent` stays pure (no job ref inside it, since `LanguageModel` shares the
+type and has no job). The ref comes from `submit` (gated by `ResearchJob`), and
+the convenience methods are symmetric wrappers over it:
+
+```
+research(request)        = submit(request) >>= (ref) => collect(ref)      [onInterrupt: cancel]
+researchStream(request)  = submit(request) >>= (ref) => streamFrom(ref)   [scoped: cancel]
+```
+
+You do **not** need an Effect `Ref` for the happy path: just bind the value. A
+`Ref` (or persistence) earns its place only when a *different* fiber needs the
+handle, or you want to survive a restart. `ResearchJobRef` is deliberately plain
+serializable data (`{ _tag, provider, id }`), so restart-survival is persistence,
+not an in-memory `Ref`.
+
+```ts
+// 1) Simplest — no ref, no Ref. Interrupting this Effect cancels the job.
+const report = yield* DeepResearch.research({ history })
+
+// 2) "Cancel button" — a DIFFERENT fiber needs the handle -> in-memory Ref
+const ref = yield* DeepResearch.submit({ history })          // needs ResearchJob
+yield* Ref.set(activeJob, Option.some(ref))
+const report = yield* DeepResearch.collect(ref)
+// ...cancel-handler fiber:
+yield* Ref.get(activeJob).pipe(
+  Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: DeepResearch.cancel })),
+)
+
+// 3) Survive a restart — JobRef is just data, persist { provider, id }
+const ref = yield* DeepResearch.submit({ history })
+yield* saveJob(ref)                                          // to disk / db
+// ...new process later:
+const report = yield* loadJob().pipe(Effect.flatMap(DeepResearch.collect))
+```
+
+So a `Ref` is for cancel-from-elsewhere; detach-across-restart is persistence of
+the plain id; the happy path needs neither. `submit` is the single source of the
+ref for both the sync and streaming paths.
+
+## A.8 Gemini's two citation surfaces (and why the LM provider does not switch)
+
+Gemini exposes two shapes, and they must be handled separately:
+
+- **`generateContent` grounding** (`groundingMetadata`: byte offsets +
+  `groundingChunkIndices`, many-sources-per-span). The stable, full surface the
+  current `LanguageModel` provider already uses.
+- **Interactions API** (`google_search_call` items + Responses-style
+  `url_citation` char annotations). Clean, maps onto the unified model with the
+  same decoder as OpenAI, but flagged preview / converging.
+
+Switching the whole `LanguageModel` provider to Interactions is **not**
+transparent: it is a different endpoint with a different feature surface, and
+betting the stable LM path on a preview API is the wrong trade. So:
+
+- **Gemini deep-research module -> Interactions API** (as the main plan already
+  routes it). Clean `url_citation`.
+- **Gemini `LanguageModel` + native grounding -> stays `generateContent`**, and
+  we decode its harder `groundingMetadata` into the same unified citation model.
+
+Two Gemini surfaces, both normalized to one citation type. Revisit a full LM
+switch only when Interactions reaches GA + parity.
+
+## A.9 Revised shape and phasing
+
+`ResearchRequest` stays minimal (only what every provider shares; `effort` /
+`maxSearches` / `outputSchema` are provider-typed):
+
+```ts
+export type ResearchRequest = {
+  readonly history: ReadonlyArray<Items.HistoryItem>   // reuse the LanguageModel input primitive
+  readonly model?: string
+}
+```
+
+`ResearchReport` is a projection of the terminal `Turn`, not a bespoke type:
+
+```ts
+export type ResearchReport = {
+  readonly text: string
+  readonly citations: ReadonlyArray<Items.Annotation>  // flattened view (A.3 path 1)
+  readonly structured?: unknown                         // decoded via provider-typed outputSchema
+  readonly usage?: Items.Usage
+}
+```
+
+Full service surface (methods gated by the A.5 markers on the top-level helpers):
+
+```ts
+export type DeepResearchService = {
+  readonly research:       (request: ResearchRequest) => Effect<ResearchReport, AiError>  // universal
+  readonly researchStream: (request: ResearchRequest) => Stream<TurnEvent, AiError>       // ResearchStreaming
+  readonly submit:         (request: ResearchRequest) => Effect<ResearchJobRef, AiError>  // ResearchJob
+  readonly status:         (ref: ResearchJobRef)      => Effect<ResearchStatus, AiError>  // ResearchJob
+  readonly collect:        (ref: ResearchJobRef)      => Effect<ResearchReport, AiError>  // ResearchJob
+  readonly streamFrom:     (ref: ResearchJobRef)      => Stream<TurnEvent, AiError>       // ResearchJob + ResearchStreaming
+  readonly cancel:         (ref: ResearchJobRef)      => Effect<void, AiError>            // ResearchJob
+}
+```
+
+`ResearchEvent` is **removed**; both stream methods yield `TurnEvent`.
+`ResearchJobRef` = `Job.JobRef`, `ResearchStatus` = `Job.JobStatus` (the generic
+`job/Job.ts`, already written).
+
+Phasing (each step independently landable; interleaves with the main plan's
+provider phases):
+
+1. **Core citation model.** `domain/Citation.ts` (`Source` / `CitationSpan` /
+   `Citations`); evolve `Items.Annotation` per A.3 path 1 (optional span,
+   `citedText`, `marker`), keeping the flat view as the degenerate case.
+2. **Core streaming.** Add `WebSearchCall` + `CitationAdded` to `TurnEvent`.
+   `job/Job.ts` (done).
+3. **`DeepResearch` capability.** The tag + `ResearchJob` / `ResearchStreaming`
+   markers + domain (`ResearchRequest` / `ResearchReport`). No provider yet.
+4. **Responses codec.** Decode `web_search_call.*` and `annotation.added` into
+   the new `TurnEvent` members; stop dropping the search item. Lights up
+   native-grounding citations for plain `LanguageModel`, not just `DeepResearch`.
+5. **Anthropic + Google codecs.** Decode `citations_delta` / `groundingMetadata`
+   into `Annotation` (path 1), then `Citations` (A.3 path 2) when
+   many-sources-per-span is worth it.
+6. **Research providers** through the real codec, with tests (per the
+   meaningful-tests rule): Exa (create-task + poll, structured path; `ResearchJob`)
+   and Perplexity (async poll; `ResearchJob`) first, then OpenAI (Responses
+   background + resume SSE; both markers), Gemini (Interactions; both markers),
+   Jina (sync stream; `ResearchStreaming` only).

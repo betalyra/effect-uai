@@ -32,6 +32,65 @@ The full migration prose (with rationale and edge cases) lives in
 
 ---
 
+## 0.10 → 0.11
+
+Additive, with one required action: bump the `effect` peer dependency. The rest
+of the release is new capabilities, no renames.
+
+### Required: bump Effect
+
+The `effect` peer dependency moves from the pin `4.0.0-beta.57` to the range
+`>=4.0.0-beta.94 <5.0.0`. Update the user's app to `effect@4.0.0-beta.94` or
+newer, then run typecheck and fix any Effect-beta changes in their own code (the
+betas move fast between .57 and .94). effect-uai's own API renamed nothing.
+
+```sh
+pnpm add effect@">=4.0.0-beta.94 <5.0.0"
+```
+
+### Additive (no migration needed)
+
+- **`DeepResearch`**: `import { research, researchStream } from "@effect-uai/core/DeepResearch"`
+  (request `{ history, model? }`). A completed job is a plain `Turn`
+  (`Turn.assistantText` / `Turn.citations` / `Turn.decodeStructured`);
+  `researchStream` terminates in `TurnComplete`. Detached path:
+  `submit` / `status` / `collect` / `streamFrom` / `cancel` over a serializable
+  `ResearchJobRef`. Providers register the generic `DeepResearch` tag plus a
+  provider-typed tag: `@effect-uai/responses/OpenAIDeepResearch`,
+  `@effect-uai/google/GoogleDeepResearch`,
+  `@effect-uai/perplexity/PerplexityDeepResearch`,
+  `@effect-uai/exa/ExaDeepResearch`. `@effect-uai/core/Job` and
+  `@effect-uai/core/Citation` ship alongside.
+- **Native grounding (provider tools)**: put a provider-hosted tool in a
+  `Toolkit` next to function tools and the adapter renders it to the native
+  `tools` entry. `@effect-uai/responses/ResponsesTools` (`webSearchTool`,
+  `codeInterpreterTool`, `fileSearchTool`), `@effect-uai/google/GeminiTools`
+  (`googleSearchTool`, `urlContextTool`, `codeExecutionTool`),
+  `@effect-uai/anthropic/AnthropicTools` (`webSearchTool`, `codeExecutionTool`).
+  New core helpers `Tool.isProviderTool` / `Tool.providerToolsOf`. An unrenderable
+  provider tool fails `AiError.Unsupported`.
+- **`@effect-uai/ai-sdk`**: Vercel AI SDK compatibility.
+  `Messages.decodeMessages` (`UIMessage[]` to `HistoryItem[]`) and
+  `UIMessageStream.toUIMessageStream` (loop `InteractionEvent`s to AI SDK UI
+  Message Stream `SSE.Event`s). From 0.11 it is fixed to the shared version.
+
+### Behavior changes (no rewrite)
+
+- `Items.UrlCitation` widened: `start_index` / `end_index` are now optional and
+  `cited_text` / `marker` were added. Reads become `number | undefined`.
+- `Tool.make` / `Tool.provider` accept an Effect `Schema` directly as
+  `inputSchema` (no `fromEffectSchema` wrap needed; still supported).
+- `Toolkit.namespace` preserves a tool's `E` and `R` through the prefix rewrite.
+- `SSE` / `JSONL` decoders are backed by Effect `unstable/encoding`.
+- Mistral no longer synthesizes `TurnComplete` for a truncated / failed stream.
+
+### After-migration checklist
+
+- [ ] App on `effect@>=4.0.0-beta.94`
+- [ ] `pnpm typecheck` clean
+
+---
+
 ## 0.9 → 0.10
 
 Mostly additive. One breaking change to the tool layer: a `Tool` now carries a
@@ -903,6 +962,7 @@ ToolResult.$match({ Value: ..., Failure: ... })(result) // matcher
 
 ## See also
 
+- [Migration guide for 0.11](https://effect-uai.betalyra.com/migrations/v0-11/)
 - [Migration guide for 0.10](https://effect-uai.betalyra.com/migrations/v0-10/)
 - [Migration guide for 0.9](https://effect-uai.betalyra.com/migrations/v0-9/)
 - [Migration guide for 0.8](https://effect-uai.betalyra.com/migrations/v0-8/)

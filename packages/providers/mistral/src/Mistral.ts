@@ -145,7 +145,12 @@ const buildStream = (cfg: Config) => {
             Option.isSome(chunk) ? Result.succeed(chunk.value) : Result.failVoid,
           ),
           Stream.mapAccum((): Accumulator => emptyAccumulator, applyChunk, {
-            onHalt: (acc) => [TurnEvent.TurnComplete({ turn: accumulatorToTurn(acc) })],
+            // `onHalt` also fires on upstream failure and truncated streams,
+            // so only emit `TurnComplete` once a `finish_reason` was observed
+            onHalt: (acc) =>
+              Option.isSome(acc.finishReason)
+                ? [TurnEvent.TurnComplete({ turn: accumulatorToTurn(acc) })]
+                : [],
           }),
         )
       }),
@@ -158,7 +163,7 @@ const buildStream = (cfg: Config) => {
 
 /** Build a `MistralService` value. For Layer-based setup, prefer `layer`. */
 export const make = (cfg: Config): Effect.Effect<MistralService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
+  Effect.map(HttpClient.HttpClient, (client) => {
     const streamTurn: MistralService["streamTurn"] = (request) =>
       buildStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
     return {

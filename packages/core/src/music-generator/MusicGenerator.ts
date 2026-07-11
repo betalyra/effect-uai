@@ -94,13 +94,13 @@ export class MusicInteractiveSession extends Context.Service<MusicInteractiveSes
 export const generate = (
   request: CommonGenerateMusicRequest,
 ): Effect.Effect<GenerateResult, AiError.AiError, MusicGenerator> =>
-  Effect.flatMap(MusicGenerator.asEffect(), (s) => s.generate(request))
+  Effect.flatMap(MusicGenerator, (s) => s.generate(request))
 
 /** Prompt in, audio chunks out. */
 export const streamGeneration = (
   request: CommonStreamGenerateMusicRequest,
 ): Stream.Stream<AudioChunk, AiError.AiError, MusicGenerator> =>
-  Stream.unwrap(Effect.map(MusicGenerator.asEffect(), (s) => s.streamGeneration(request)))
+  Stream.unwrap(Effect.map(MusicGenerator, (s) => s.streamGeneration(request)))
 
 /**
  * Bidirectional generation. Dual-arity: pipeable (data-last) and
@@ -156,8 +156,8 @@ export const streamGenerationFrom: {
   > =>
     Stream.unwrap(
       Effect.gen(function* () {
-        const s = yield* MusicGenerator.asEffect()
-        yield* MusicInteractiveSession.asEffect()
+        const s = yield* MusicGenerator
+        yield* MusicInteractiveSession
         return s.streamGenerationFrom(input, request)
       }),
     ),

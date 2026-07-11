@@ -287,6 +287,7 @@ export default defineConfig({
               items: [
                 { label: "Grounded answer", slug: "recipes/grounded-answer" },
                 { label: "Deep research", slug: "recipes/deep-research" },
+                { label: "Native deep research", slug: "recipes/native-deep-research" },
               ],
             },
           ],
@@ -358,6 +359,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.11", slug: "migrations/v0-11" },
             { label: "Migrating to 0.10", slug: "migrations/v0-10" },
             { label: "Migrating to 0.9", slug: "migrations/v0-9" },
             { label: "Migrating to 0.8", slug: "migrations/v0-8" },

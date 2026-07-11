@@ -1,5 +1,5 @@
-import { Context, Effect, Layer, Match, Option, Redacted, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Context, Effect, Layer, Match, Option, Redacted, Result, Schema, Stream } from "effect"
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import {
@@ -9,9 +9,19 @@ import {
   turnFromStream,
 } from "@effect-uai/core/LanguageModel"
 import * as SSE from "@effect-uai/core/SSE"
-import { descriptorsOf } from "@effect-uai/core/Tool"
+import { descriptorsOf, providerToolsOf } from "@effect-uai/core/Tool"
 import type { Turn, TurnEvent } from "@effect-uai/core/Turn"
 import { itemsToInput } from "./codec.js"
+import { renderProviderTools } from "./ResponsesTools.js"
+
+export {
+  codeInterpreterTool,
+  fileSearchTool,
+  webSearchTool,
+  type WebSearchOptions,
+  type WebSearchFilters,
+  type UserLocation,
+} from "./ResponsesTools.js"
 import type { OpenAIModel } from "./models.js"
 import { type OpenAiRegion, resolveHost } from "./region.js"
 import {
@@ -123,22 +133,24 @@ const buildText = (request: ResponsesRequest): Record<string, unknown> | undefin
   return Object.keys(text).length === 0 ? undefined : text
 }
 
-const buildBody = (request: ResponsesRequest): Record<string, unknown> => {
+const buildBody = (
+  request: ResponsesRequest,
+  providerToolWire: ReadonlyArray<Record<string, unknown>>,
+): Record<string, unknown> => {
   const text = buildText(request)
-  const tools = descriptorsOf(request.tools)
+  const functionTools = descriptorsOf(request.tools).map((t) => ({
+    type: "function",
+    name: t.name,
+    description: t.description,
+    parameters: t.inputSchema,
+    ...(t.strict !== undefined && { strict: t.strict }),
+  }))
+  const tools = [...functionTools, ...providerToolWire]
   return {
     model: request.model,
     input: itemsToInput(request.history),
     stream: true,
-    ...(tools.length > 0 && {
-      tools: tools.map((t) => ({
-        type: "function",
-        name: t.name,
-        description: t.description,
-        parameters: t.inputSchema,
-        ...(t.strict !== undefined && { strict: t.strict }),
-      })),
-    }),
+    ...(tools.length > 0 && { tools }),
     ...(request.toolChoice !== undefined && { tool_choice: request.toolChoice }),
     ...(request.temperature !== undefined && { temperature: request.temperature }),
     ...(request.maxOutputTokens !== undefined && {
@@ -182,7 +194,26 @@ const makeUnknown = (raw: unknown): ProviderEvent => ({ type: "_unknown", raw })
  */
 const eventToError = Match.type<ProviderEvent>().pipe(
   Match.discriminators("type")({
-    error: (e): AiError.AiError => new AiError.Unavailable({ provider: "responses", raw: e }),
+    error: (e): AiError.AiError => {
+      const detail = e.error
+      const message = detail?.message ?? e.message
+      const code = detail?.code ?? e.code
+      const param = detail?.param
+      // A top-level SSE `error` is usually a request rejection (bad model,
+      // missing access, malformed body): non-retryable, so `InvalidRequest`.
+      return detail?.type === "invalid_request_error"
+        ? new AiError.InvalidRequest({
+            provider: "responses",
+            ...(param != null && { param }),
+            raw: e,
+          })
+        : new AiError.GenerationFailed({
+            provider: "responses",
+            ...(code != null && { code }),
+            ...(message != null && { message }),
+            raw: e,
+          })
+    },
     "response.failed": (e): AiError.AiError => {
       const code = e.response.error?.code
       const message = e.response.error?.message
@@ -211,7 +242,7 @@ const sseEventToProviderEvent = (ev: SSE.Event): Effect.Effect<ProviderEvent> =>
 // Service implementation
 // ---------------------------------------------------------------------------
 
-const httpStatusError = (status: number, body: string): AiError.AiError => {
+export const httpStatusError = (status: number, body: string): AiError.AiError => {
   const provider = "responses"
   const raw = body
   if (status === 429) return new AiError.RateLimited({ provider, raw })
@@ -224,6 +255,36 @@ const httpStatusError = (status: number, body: string): AiError.AiError => {
   return new AiError.InvalidRequest({ provider, raw })
 }
 
+/**
+ * Decode an already-executed `/responses` HTTP response into the native
+ * `ProviderEvent` stream: fail on a >=400 status, else SSE-decode the body and
+ * lift terminal `error` / `response.failed` events to a typed `AiError`. Shared
+ * by the streaming turn path (POST) and the deep-research resume stream (GET
+ * `?stream=true`).
+ */
+export const providerEventsOfResponse = (
+  response: HttpClientResponse.HttpClientResponse,
+): Stream.Stream<ProviderEvent, AiError.AiError> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      if (response.status >= 400) {
+        const body = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
+        return Stream.fail(httpStatusError(response.status, body))
+      }
+      return response.stream.pipe(
+        Stream.mapError((cause) => new AiError.Unavailable({ provider: "responses", raw: cause })),
+        SSE.fromBytes,
+        Stream.mapEffect(sseEventToProviderEvent),
+        Stream.flatMap((event) =>
+          Option.match(eventToError(event), {
+            onNone: () => Stream.succeed(event),
+            onSome: Stream.fail,
+          }),
+        ),
+      )
+    }),
+  )
+
 const buildNativeStream = (cfg: Config) => {
   const url = `${resolveHost(cfg)}/responses`
   return (
@@ -232,9 +293,23 @@ const buildNativeStream = (cfg: Config) => {
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
+        const providerToolWire = yield* Result.match(
+          renderProviderTools(providerToolsOf(request.tools)),
+          {
+            onFailure: (e) =>
+              Effect.fail(
+                new AiError.Unsupported({
+                  provider: "responses",
+                  capability: e.capability,
+                  reason: e.reason,
+                }),
+              ),
+            onSuccess: (wire) => Effect.succeed(wire),
+          },
+        )
         const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.bearerToken(cfg.apiKey),
-          HttpClientRequest.bodyJsonUnsafe(buildBody(request)),
+          HttpClientRequest.bodyJsonUnsafe(buildBody(request, providerToolWire)),
           HttpClientRequest.accept("text/event-stream"),
         )
         const response = yield* client
@@ -244,24 +319,7 @@ const buildNativeStream = (cfg: Config) => {
               (cause) => new AiError.Unavailable({ provider: "responses", raw: cause }),
             ),
           )
-        if (response.status >= 400) {
-          const body = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-          return Stream.fail(httpStatusError(response.status, body))
-        }
-
-        return response.stream.pipe(
-          Stream.mapError(
-            (cause) => new AiError.Unavailable({ provider: "responses", raw: cause }),
-          ),
-          SSE.fromBytes,
-          Stream.mapEffect(sseEventToProviderEvent),
-          Stream.flatMap((event) =>
-            Option.match(eventToError(event), {
-              onNone: () => Stream.succeed(event),
-              onSome: Stream.fail,
-            }),
-          ),
-        )
+        return providerEventsOfResponse(response)
       }),
     )
 }
@@ -289,7 +347,7 @@ export const toCanonical = <E, R>(
  * Build a `ResponsesService` value. For Layer-based setup, prefer `layer`.
  */
 export const make = (cfg: Config): Effect.Effect<ResponsesService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => {
+  Effect.map(HttpClient.HttpClient, (client) => {
     const streamNative: ResponsesService["streamNative"] = (request) =>
       buildNativeStream(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client))
     const streamTurn: ResponsesService["streamTurn"] = (request) =>

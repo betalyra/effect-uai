@@ -15,6 +15,18 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.11](/migrations/v0-11/): additive with one required action,
+  bump the `effect` peer dependency from the pin `4.0.0-beta.57` to the range
+  `>=4.0.0-beta.94 <5.0.0` (most of the release's internal diff is the
+  mechanical ripple of that bump; effect-uai's own API renamed nothing). New:
+  a `DeepResearch` capability (submit a question, a provider runs a background
+  research job, collect one cited report) with four providers
+  (`@effect-uai/responses`, `@effect-uai/google`, `@effect-uai/perplexity`,
+  `@effect-uai/exa`) over the generic `Job` / `Citation` primitives; native
+  grounding via provider-hosted tools that render end to end on OpenAI
+  (`ResponsesTools`), Gemini (`GeminiTools`), and Anthropic (`AnthropicTools`);
+  and `@effect-uai/ai-sdk`, a Vercel AI SDK compatibility package
+  (`decodeMessages` + `toUIMessageStream`).
 - [Migrating to 0.10](/migrations/v0-10/): mostly additive. One small
   breaking change to the tool layer: a `Tool` now carries a typed error `E`
   (added before `R`, so only hand-written full `Tool<...>` annotations need

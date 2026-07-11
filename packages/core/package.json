@@ -42,6 +42,22 @@
       "types": "./dist/domain/Audio.d.mts",
       "import": "./dist/domain/Audio.mjs"
     },
+    "./Citation": {
+      "types": "./dist/domain/Citation.d.mts",
+      "import": "./dist/domain/Citation.mjs"
+    },
+    "./Research": {
+      "types": "./dist/domain/Research.d.mts",
+      "import": "./dist/domain/Research.mjs"
+    },
+    "./Job": {
+      "types": "./dist/job/Job.d.mts",
+      "import": "./dist/job/Job.mjs"
+    },
+    "./DeepResearch": {
+      "types": "./dist/research/DeepResearch.d.mts",
+      "import": "./dist/research/DeepResearch.mjs"
+    },
     "./Browser": {
       "types": "./dist/browser/Browser.d.mts",
       "import": "./dist/browser/Browser.mjs"
@@ -231,10 +247,10 @@
     "@standard-schema/spec": "^1.1.0"
   },
   "devDependencies": {
-    "effect": "4.0.0-beta.57",
+    "effect": "4.0.0-beta.94",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "effect": "4.0.0-beta.57"
+    "effect": ">=4.0.0-beta.94 <5.0.0"
   }
 }

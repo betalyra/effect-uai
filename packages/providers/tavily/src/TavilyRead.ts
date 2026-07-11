@@ -166,7 +166,7 @@ const readImpl =
  * {@link layer}.
  */
 export const make = (cfg: Config): Effect.Effect<TavilyReadService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     read: (request) =>
       readImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
   }))

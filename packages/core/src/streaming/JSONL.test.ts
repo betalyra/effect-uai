@@ -8,6 +8,18 @@ const bytesOf = (...chunks: ReadonlyArray<string>) =>
 
 const collect = <A, E>(s: Stream.Stream<A, E>) => Effect.runPromise(Stream.runCollect(s))
 
+const runUntilEnd = <A, E>(s: Stream.Stream<A, E>) =>
+  Effect.runPromise(
+    s.pipe(
+      Stream.result,
+      Stream.runCollect,
+      Effect.map((results) => ({
+        seen: results.filter(Result.isSuccess).map((r) => r.success),
+        failures: results.filter(Result.isFailure).map((r) => r.failure),
+      })),
+    ),
+  )
+
 const collectResult = <A, E>(s: Stream.Stream<A, E>) =>
   Effect.runPromise(Effect.result(Stream.runCollect(s)))
 
@@ -32,6 +44,13 @@ describe("JSONL.fromBytes", () => {
   it("ignores blank lines", async () => {
     const out = await collect(JSONL.fromBytes(bytesOf("a\n\n\nb\n")))
     expect(out).toEqual(["a", "b"])
+  })
+
+  it("discards a buffered partial line when the upstream fails mid-stream", async () => {
+    const failing = Stream.concat(bytesOf('{"n":1}\n{"n":2'), Stream.fail("boom" as const))
+    const { seen, failures } = await runUntilEnd(JSONL.fromBytes(failing))
+    expect(seen).toEqual(['{"n":1}'])
+    expect(failures).toEqual(["boom"])
   })
 })
 

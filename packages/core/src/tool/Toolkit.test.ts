@@ -252,6 +252,66 @@ describe("Toolkit.make / compose / namespace - uniqueness", () => {
   })
 })
 
+describe("Toolkit.namespace - typed toolkits", () => {
+  const Query = Schema.Struct({ q: Schema.String })
+  type GeoShape = { readonly lookup: (q: string) => Effect.Effect<string> }
+  class Geo extends Context.Service<Geo, GeoShape>()("test/Geo") {}
+
+  const search = Tool.make({
+    name: "search",
+    description: "",
+    inputSchema: Tool.fromEffectSchema(Query),
+    run: ({ q }) =>
+      Effect.gen(function* () {
+        const geo = yield* Geo
+        if (q === "") return yield* Effect.fail("empty_query" as const)
+        return yield* geo.lookup(q)
+      }),
+  })
+
+  const kit = Toolkit.namespace("geo", Toolkit.make(search))
+
+  it("type: prefixes the name literal of a service-requiring tool", () => {
+    expectTypeOf(kit.geo__search.name).toEqualTypeOf<"geo__search">()
+  })
+
+  it("type: preserves E and R through namespace", () => {
+    expectTypeOf<Toolkit.ToolkitE<typeof kit>>().toEqualTypeOf<"empty_query">()
+    expectTypeOf<Toolkit.ToolkitR<typeof kit>>().toEqualTypeOf<Geo>()
+  })
+
+  it("type: preserves E and R through makeNamespaced", () => {
+    const namespaced = Toolkit.makeNamespaced("geo", search)
+    expectTypeOf(namespaced.geo__search.name).toEqualTypeOf<"geo__search">()
+    expectTypeOf<Toolkit.ToolkitE<typeof namespaced>>().toEqualTypeOf<"empty_query">()
+    expectTypeOf<Toolkit.ToolkitR<typeof namespaced>>().toEqualTypeOf<Geo>()
+  })
+
+  it("type: Toolkit.run surfaces the namespaced tool's R (string E is absorbed)", () => {
+    const stream = Toolkit.run(kit, [])
+    expectTypeOf(stream).toEqualTypeOf<
+      Stream.Stream<import("./ToolEvent.js").ToolEvent, never, Geo>
+    >()
+  })
+
+  it("runtime: renames the tool and executes it under the prefixed name", async () => {
+    const call: ToolCall = {
+      type: "function_call",
+      call_id: "call_1",
+      name: "geo__search",
+      arguments: '{"q":"lisbon"}',
+    }
+    const events = await Effect.runPromise(
+      Stream.runCollect(Toolkit.run(kit, [call])).pipe(
+        Effect.provide(Layer.succeed(Geo, { lookup: (q) => Effect.succeed(`geo:${q}`) })),
+      ),
+    )
+    const outputs = events.filter(isOutput).map((e) => e.result)
+    expect(outputs).toHaveLength(1)
+    expect(outputs[0]).toMatchObject({ _tag: "Ok", tool: "geo__search", value: "geo:lisbon" })
+  })
+})
+
 describe("Toolkit.wrap - middleware", () => {
   const Empty = Schema.Struct({})
   type AuditShape = { readonly record: (name: string) => Effect.Effect<void> }

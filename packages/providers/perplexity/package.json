@@ -34,6 +34,10 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
+    "./PerplexityDeepResearch": {
+      "types": "./dist/PerplexityDeepResearch.d.mts",
+      "import": "./dist/PerplexityDeepResearch.mjs"
+    },
     "./PerplexitySearch": {
       "types": "./dist/PerplexitySearch.d.mts",
       "import": "./dist/PerplexitySearch.mjs"
@@ -49,11 +53,11 @@
   },
   "devDependencies": {
     "@effect-uai/core": "workspace:*",
-    "effect": "4.0.0-beta.57",
+    "effect": "4.0.0-beta.94",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@effect-uai/core": "workspace:>=0.2.0 <1",
-    "effect": "4.0.0-beta.57"
+    "effect": ">=4.0.0-beta.94 <5.0.0"
   }
 }

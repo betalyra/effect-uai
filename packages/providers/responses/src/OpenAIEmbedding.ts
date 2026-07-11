@@ -260,7 +260,7 @@ const embedManyImpl =
 export const make = (
   cfg: Config,
 ): Effect.Effect<OpenAIEmbeddingService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     embed: (request) =>
       embedImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
     embedMany: (request) =>

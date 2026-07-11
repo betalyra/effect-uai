@@ -108,13 +108,13 @@ export class EmbeddingModel extends Context.Service<EmbeddingModel, EmbeddingMod
 export const embed = <E extends EmbedEncoding | undefined = undefined>(
   request: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
 ): Effect.Effect<EmbedResponse<E>, AiError.AiError, EmbeddingModel> =>
-  Effect.flatMap(EmbeddingModel.asEffect(), (m) => m.embed(request))
+  Effect.flatMap(EmbeddingModel, (m) => m.embed(request))
 
 /** Embed a batch in one provider call. Same `task` for every input. */
 export const embedMany = <E extends EmbedEncoding | undefined = undefined>(
   request: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
 ): Effect.Effect<EmbedManyResponse<E>, AiError.AiError, EmbeddingModel> =>
-  Effect.flatMap(EmbeddingModel.asEffect(), (m) => m.embedMany(request))
+  Effect.flatMap(EmbeddingModel, (m) => m.embedMany(request))
 
 /**
  * Guard a requested `encoding` against a provider's supported set. Returns

@@ -147,4 +147,4 @@ export class WebSearch extends Context.Service<WebSearch, WebSearchService>()(
 export const search = (
   request: CommonSearchRequest,
 ): Effect.Effect<SearchResponse, AiError.AiError, WebSearch> =>
-  Effect.flatMap(WebSearch.asEffect(), (s) => s.search(request))
+  Effect.flatMap(WebSearch, (s) => s.search(request))

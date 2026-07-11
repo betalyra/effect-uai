@@ -169,13 +169,13 @@ export class MultiSpeakerTts extends Context.Service<MultiSpeakerTts, void>()(
 export const synthesize = (
   request: CommonSynthesizeRequest,
 ): Effect.Effect<AudioBlob, AiError.AiError, SpeechSynthesizer> =>
-  Effect.flatMap(SpeechSynthesizer.asEffect(), (s) => s.synthesize(request))
+  Effect.flatMap(SpeechSynthesizer, (s) => s.synthesize(request))
 
 /** Full text in, audio chunks out. */
 export const streamSynthesis = (
   request: CommonSynthesizeRequest,
 ): Stream.Stream<AudioChunk, AiError.AiError, SpeechSynthesizer> =>
-  Stream.unwrap(Effect.map(SpeechSynthesizer.asEffect(), (s) => s.streamSynthesis(request)))
+  Stream.unwrap(Effect.map(SpeechSynthesizer, (s) => s.streamSynthesis(request)))
 
 /**
  * Incremental synthesis. Dual-arity: pipeable (data-last) and direct
@@ -205,8 +205,8 @@ export const streamSynthesisFrom: {
   <E, R>(textIn: Stream.Stream<string, E, R>, request: CommonStreamSynthesizeRequest) =>
     Stream.unwrap(
       Effect.gen(function* () {
-        const s = yield* SpeechSynthesizer.asEffect()
-        yield* TtsIncrementalText.asEffect()
+        const s = yield* SpeechSynthesizer
+        yield* TtsIncrementalText
         return s.streamSynthesisFrom(textIn, request)
       }),
     ),
@@ -220,8 +220,8 @@ export const synthesizeDialogue = (
   request: CommonSynthesizeDialogueRequest,
 ): Effect.Effect<AudioBlob, AiError.AiError, SpeechSynthesizer | MultiSpeakerTts> =>
   Effect.gen(function* () {
-    const s = yield* SpeechSynthesizer.asEffect()
-    yield* MultiSpeakerTts.asEffect()
+    const s = yield* SpeechSynthesizer
+    yield* MultiSpeakerTts
     return yield* s.synthesizeDialogue(request)
   })
 
@@ -233,8 +233,8 @@ export const streamSynthesizeDialogue = (
 ): Stream.Stream<AudioChunk, AiError.AiError, SpeechSynthesizer | MultiSpeakerTts> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const s = yield* SpeechSynthesizer.asEffect()
-      yield* MultiSpeakerTts.asEffect()
+      const s = yield* SpeechSynthesizer
+      yield* MultiSpeakerTts
       return s.streamSynthesizeDialogue(request)
     }),
   )

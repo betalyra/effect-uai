@@ -90,6 +90,38 @@ rather than crashing, distinct from `unknown_tool` (no such tool at all).
 `Tool.provider` additionally carries `provider` and `config` for the provider
 adapter to render its hosted tool natively.
 
+### Provider-hosted tools
+
+Web search, code execution, and file grounding run on the provider's side. Each
+provider gives you typed constructors for the tools it hosts; drop them into a
+toolkit next to your own `Tool.make` tools and the model uses them to produce
+grounded answers. You never write a `run` for them, and the loop won't try to
+execute them locally.
+
+```ts
+import { Gemini } from "@effect-uai/google"
+import { Anthropic } from "@effect-uai/anthropic"
+import { Responses } from "@effect-uai/responses"
+
+// Gemini: Google Search grounding, URL context, code execution.
+const geminiToolkit = { search: Gemini.googleSearchTool, get_weather: weatherTool }
+
+// Anthropic: hosted web search (with options) and code execution.
+const anthropicToolkit = {
+  search: Anthropic.webSearchTool({ maxUses: 5, allowedDomains: ["docs.anthropic.com"] }),
+  run: Anthropic.codeExecutionTool,
+}
+
+// OpenAI Responses: web search, code interpreter, file search.
+const openaiToolkit = {
+  search: Responses.webSearchTool({ searchContextSize: "high" }),
+  files: Responses.fileSearchTool({ vectorStoreIds: ["vs_123"] }),
+}
+```
+
+A hosted tool only works with the provider that hosts it: hand a Gemini tool to
+the Anthropic model and the request fails fast with `AiError.Unsupported`.
+
 ## Streaming with `emit`
 
 To stream progress, call `emit(event)` inside `run`. Each event reaches the

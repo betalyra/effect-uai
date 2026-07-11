@@ -244,37 +244,114 @@ export type ToolDescriptor = {
   readonly strict?: boolean
 }
 
+const resolveInputSchema = (
+  schema: ToolInputSchema<any> | Schema.Codec<any, any, never, any>,
+): ToolInputSchema<any> =>
+  Schema.isSchema(schema)
+    ? fromEffectSchema(schema as Schema.Codec<any, any, never, any>)
+    : (schema as ToolInputSchema<any>)
+
 /** A model-visible tool with a local `Effect` executor. */
-export const make = <Name extends string, Input, Event, Output, E = never, R = never>(
-  spec: Omit<Tool<Name, Input, Event, Output, E, R>, "_tag">,
-): Tool<Name, Input, Event, Output, E, R> => ({ _tag: "LocalTool", ...spec })
+export const make: {
+  <
+    Name extends string,
+    S extends Schema.Codec<any, any, never, any>,
+    Event,
+    Output,
+    E = never,
+    R = never,
+  >(
+    spec: Omit<Tool<Name, S["Type"], Event, Output, E, R>, "_tag" | "inputSchema"> & {
+      readonly inputSchema: S
+    },
+  ): Tool<Name, S["Type"], Event, Output, E, R>
+  <Name extends string, Input, Event, Output, E = never, R = never>(
+    spec: Omit<Tool<Name, Input, Event, Output, E, R>, "_tag">,
+  ): Tool<Name, Input, Event, Output, E, R>
+} = (
+  spec: Omit<AnyLocalTool, "_tag" | "inputSchema"> & {
+    readonly inputSchema: ToolInputSchema<any> | Schema.Codec<any, any, never, any>
+  },
+): AnyLocalTool => ({
+  _tag: "LocalTool",
+  ...spec,
+  inputSchema: resolveInputSchema(spec.inputSchema),
+})
 
 /**
  * A provider-hosted tool (native web search, code execution, RAG grounding).
  * No local executor — `provider`/`config` drive the provider adapter's
  * rendering. The model sees it; `Toolkit.run` reports it as `non_local_tool`.
  */
-export const provider = <Name extends string, Input, Provider extends string, Config>(
-  spec: Omit<ProviderTool<Name, Input, Provider, Config>, "_tag">,
-): ProviderTool<Name, Input, Provider, Config> => ({ _tag: "ProviderTool", ...spec })
+export const provider: {
+  <
+    Name extends string,
+    S extends Schema.Codec<any, any, never, any>,
+    Provider extends string,
+    Config,
+  >(
+    spec: Omit<ProviderTool<Name, S["Type"], Provider, Config>, "_tag" | "inputSchema"> & {
+      readonly inputSchema: S
+    },
+  ): ProviderTool<Name, S["Type"], Provider, Config>
+  <Name extends string, Input, Provider extends string, Config>(
+    spec: Omit<ProviderTool<Name, Input, Provider, Config>, "_tag">,
+  ): ProviderTool<Name, Input, Provider, Config>
+} = (
+  spec: Omit<ProviderTool<string, any, string, any>, "_tag" | "inputSchema"> & {
+    readonly inputSchema: ToolInputSchema<any> | Schema.Codec<any, any, never, any>
+  },
+): ProviderTool<string, any, string, any> => ({
+  _tag: "ProviderTool",
+  ...spec,
+  inputSchema: resolveInputSchema(spec.inputSchema),
+})
 
 /**
  * A typed control-flow signal to the agent loop (escalate, pause, schedule,
  * hand off). Decode-only: the loop interprets the call rather than executing a
  * handler, so there is no `run`.
  */
-export const signal = <Name extends string, Input>(
-  spec: Omit<SignalTool<Name, Input>, "_tag">,
-): SignalTool<Name, Input> => ({ _tag: "SignalTool", ...spec })
+export const signal: {
+  <Name extends string, S extends Schema.Codec<any, any, never, any>>(
+    spec: Omit<SignalTool<Name, S["Type"]>, "_tag" | "inputSchema"> & {
+      readonly inputSchema: S
+    },
+  ): SignalTool<Name, S["Type"]>
+  <Name extends string, Input>(spec: Omit<SignalTool<Name, Input>, "_tag">): SignalTool<Name, Input>
+} = (
+  spec: Omit<SignalTool<string, any>, "_tag" | "inputSchema"> & {
+    readonly inputSchema: ToolInputSchema<any> | Schema.Codec<any, any, never, any>
+  },
+): SignalTool<string, any> => ({
+  _tag: "SignalTool",
+  ...spec,
+  inputSchema: resolveInputSchema(spec.inputSchema),
+})
 
 /**
  * A typed request for an external actor to respond before the loop resumes
  * (frontend, Telegram, CLI prompt). Decode-only; the loop stops/pauses and
  * resumes by appending the actor's `function_call_output`.
  */
-export const interaction = <Name extends string, Input>(
-  spec: Omit<InteractionTool<Name, Input>, "_tag">,
-): InteractionTool<Name, Input> => ({ _tag: "InteractionTool", ...spec })
+export const interaction: {
+  <Name extends string, S extends Schema.Codec<any, any, never, any>>(
+    spec: Omit<InteractionTool<Name, S["Type"]>, "_tag" | "inputSchema"> & {
+      readonly inputSchema: S
+    },
+  ): InteractionTool<Name, S["Type"]>
+  <Name extends string, Input>(
+    spec: Omit<InteractionTool<Name, Input>, "_tag">,
+  ): InteractionTool<Name, Input>
+} = (
+  spec: Omit<InteractionTool<string, any>, "_tag" | "inputSchema"> & {
+    readonly inputSchema: ToolInputSchema<any> | Schema.Codec<any, any, never, any>
+  },
+): InteractionTool<string, any> => ({
+  _tag: "InteractionTool",
+  ...spec,
+  inputSchema: resolveInputSchema(spec.inputSchema),
+})
 
 /**
  * Return a copy of a tool under a new `name`. Useful for resolving a name
@@ -312,18 +389,39 @@ export const withRun = <
   run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output2, E2, R2>,
 ): Tool<Name, Input, Event, Output2, E2, R2> => ({ ...tool, run })
 
-/** Render tools to provider-agnostic descriptors. Every kind is model-visible. */
+/** True for provider-hosted tools — the kind a provider renders natively. */
+export const isProviderTool = (tool: AnyTool): tool is ProviderTool<string, any, string, any> =>
+  tool._tag === "ProviderTool"
+
+/**
+ * The `ProviderTool`s in a toolkit, for a provider adapter to render as its
+ * native hosted-tool entries (web search, code execution, grounding). The other
+ * kinds render as function declarations via `descriptorsOf`.
+ */
+export const providerToolsOf = (
+  toolkit?: Readonly<Record<string, AnyTool>>,
+): ReadonlyArray<ProviderTool<string, any, string, any>> =>
+  toolkit === undefined ? [] : Object.values(toolkit).filter(isProviderTool)
+
+/**
+ * Render tools to provider-agnostic descriptors. `ProviderTool`s are excluded:
+ * they are provider-hosted and must never leak into the function-declaration
+ * list — each adapter renders them natively via `providerToolsOf`. Every other
+ * kind is model-visible as a declaration.
+ */
 export const toDescriptors = (tools: ReadonlyArray<AnyTool>): ReadonlyArray<ToolDescriptor> =>
-  tools.map((tool) => {
-    const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
-      target: "draft-2020-12",
+  tools
+    .filter((tool) => !isProviderTool(tool))
+    .map((tool) => {
+      const inputSchema = tool.inputSchema["~standard"].jsonSchema.input({
+        target: "draft-2020-12",
+      })
+      // `strict` only exists on local/provider kinds; signals/interactions omit it.
+      const strict = "strict" in tool ? tool.strict : undefined
+      return strict !== undefined
+        ? { name: tool.name, description: tool.description, inputSchema, strict }
+        : { name: tool.name, description: tool.description, inputSchema }
     })
-    // `strict` only exists on local/provider kinds; signals/interactions omit it.
-    const strict = "strict" in tool ? tool.strict : undefined
-    return strict !== undefined
-      ? { name: tool.name, description: tool.description, inputSchema, strict }
-      : { name: tool.name, description: tool.description, inputSchema }
-  })
 
 /**
  * Render a `Toolkit` (a name-indexed record of tools) to descriptors, treating

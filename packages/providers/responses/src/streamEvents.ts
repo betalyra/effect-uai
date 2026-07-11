@@ -1,6 +1,11 @@
 import { Match, Schema } from "effect"
 import { TurnEvent } from "@effect-uai/core/Turn"
-import { WireOutputItem, WireResponseCompleted, turnFromCompleted } from "./codec.js"
+import {
+  WireAnnotation,
+  WireOutputItem,
+  WireResponseCompleted,
+  turnFromCompleted,
+} from "./codec.js"
 
 // ---------------------------------------------------------------------------
 // Schemas for the SSE event payloads we care about. The Responses API ships
@@ -44,6 +49,28 @@ const RefusalDone = Schema.Struct({
   refusal: Schema.optional(Schema.String),
 })
 
+// Web-search lifecycle. The three phases carry `item_id` / `output_index` /
+// `sequence_number`; we map each to a `WebSearchCall` status. `query` / `action`
+// ride on the `web_search_call` output item, not these lifecycle events.
+const WebSearchInProgress = Schema.Struct({
+  type: Schema.Literal("response.web_search_call.in_progress"),
+})
+
+const WebSearchSearching = Schema.Struct({
+  type: Schema.Literal("response.web_search_call.searching"),
+})
+
+const WebSearchCompleted = Schema.Struct({
+  type: Schema.Literal("response.web_search_call.completed"),
+})
+
+// A citation attached to the answer as it is written. `annotation` is the
+// same shape as the ones bundled on the final `output_text` block.
+const AnnotationAdded = Schema.Struct({
+  type: Schema.Literal("response.output_text.annotation.added"),
+  annotation: WireAnnotation,
+})
+
 const Completed = Schema.Struct({
   type: Schema.Literal("response.completed"),
   response: WireResponseCompleted,
@@ -61,8 +88,18 @@ const Failed = Schema.Struct({
 
 const ErrorEvent = Schema.Struct({
   type: Schema.Literal("error"),
+  // Flat form (top-level `message`/`code`) and the nested form the Responses API
+  // uses for request rejections: `error: { message, code, type, param }`.
   message: Schema.optional(Schema.String),
   code: Schema.optional(Schema.String),
+  error: Schema.optional(
+    Schema.Struct({
+      message: Schema.optional(Schema.NullOr(Schema.String)),
+      code: Schema.optional(Schema.NullOr(Schema.String)),
+      type: Schema.optional(Schema.NullOr(Schema.String)),
+      param: Schema.optional(Schema.NullOr(Schema.String)),
+    }),
+  ),
 })
 
 /**
@@ -88,6 +125,10 @@ export const KnownProviderEvent = Schema.Union([
   ReasoningSummaryDelta,
   RefusalDelta,
   RefusalDone,
+  WebSearchInProgress,
+  WebSearchSearching,
+  WebSearchCompleted,
+  AnnotationAdded,
   Completed,
   Incomplete,
   Failed,
@@ -107,6 +148,10 @@ export const ProviderEvent = Schema.Union([
   ReasoningSummaryDelta,
   RefusalDelta,
   RefusalDone,
+  WebSearchInProgress,
+  WebSearchSearching,
+  WebSearchCompleted,
+  AnnotationAdded,
   Completed,
   Incomplete,
   Failed,
@@ -165,6 +210,18 @@ export const eventToDeltas = (
       // Terminal marker for the refusal stream; the deltas already covered
       // the text, so no canonical event is emitted here.
       "response.refusal.done": () => [],
+      "response.web_search_call.in_progress": () => [
+        TurnEvent.WebSearchCall({ status: "started" }),
+      ],
+      "response.web_search_call.searching": () => [
+        TurnEvent.WebSearchCall({ status: "searching" }),
+      ],
+      "response.web_search_call.completed": () => [
+        TurnEvent.WebSearchCall({ status: "completed" }),
+      ],
+      "response.output_text.annotation.added": ({ annotation }) => [
+        TurnEvent.CitationAdded({ annotation }),
+      ],
       "response.completed": ({ response }) => [
         TurnEvent.TurnComplete({ turn: turnFromCompleted(response) }),
       ],

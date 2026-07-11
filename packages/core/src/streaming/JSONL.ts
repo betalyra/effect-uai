@@ -1,4 +1,4 @@
-import { Data, Effect, Schema, Stream } from "effect"
+import { Channel, Data, Effect, Schema, Stream } from "effect"
 
 export class JsonParseError extends Data.TaggedError("JsonParseError")<{
   readonly line: string
@@ -6,53 +6,21 @@ export class JsonParseError extends Data.TaggedError("JsonParseError")<{
 }> {}
 
 // ---------------------------------------------------------------------------
-// Generic stream helpers (kept module-local; see SSE.ts for the same shape).
-// ---------------------------------------------------------------------------
-
-const decodeText = <E, R>(self: Stream.Stream<Uint8Array, E, R>): Stream.Stream<string, E, R> =>
-  self.pipe(
-    Stream.mapAccum(
-      (): TextDecoder => new TextDecoder("utf-8"),
-      (decoder, chunk: Uint8Array) => [decoder, [decoder.decode(chunk, { stream: true })]] as const,
-      {
-        onHalt: (decoder: TextDecoder) => {
-          const tail = decoder.decode()
-          return tail.length > 0 ? [tail] : []
-        },
-      },
-    ),
-  )
-
-const splitOn =
-  (separator: string) =>
-  <E, R>(self: Stream.Stream<string, E, R>): Stream.Stream<string, E, R> =>
-    self.pipe(
-      Stream.mapAccum(
-        (): string => "",
-        (buffer, chunk: string) => {
-          const parts = (buffer + chunk).split(separator)
-          const tail = parts[parts.length - 1] ?? ""
-          return [tail, parts.slice(0, -1)] as const
-        },
-        { onHalt: (tail: string) => (tail.length > 0 ? [tail] : []) },
-      ),
-    )
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
  * Decode a `Stream<Uint8Array>` into a `Stream<string>` of newline-delimited
- * lines. Empty lines are skipped. Buffers across chunk boundaries.
+ * lines. Empty lines are skipped. Buffers across chunk boundaries; a final
+ * line without a trailing newline is emitted at clean stream end, while a
+ * buffered partial line is discarded if the stream fails.
  */
 export const fromBytes = <E, R>(
   self: Stream.Stream<Uint8Array, E, R>,
 ): Stream.Stream<string, E, R> =>
   self.pipe(
-    decodeText,
-    Stream.map((s) => s.replace(/\r/g, "")),
-    splitOn("\n"),
+    Stream.decodeText,
+    Stream.pipeThroughChannel(Channel.splitLines()),
     Stream.filter((line) => line.length > 0),
   )
 

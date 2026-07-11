@@ -35,7 +35,7 @@ export { OpenAITranscriber } from "./OpenAITranscriber.js"
 export const make = (
   cfg: Config,
 ): Effect.Effect<OpenAITranscriberService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient.asEffect(), (client) => ({
+  Effect.map(HttpClient.HttpClient, (client) => ({
     transcribe: (request) =>
       transcribeImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
     streamTranscriptionFrom: streamTranscription(cfg),

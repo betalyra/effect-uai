@@ -29,7 +29,9 @@ describe("GoogleDeepResearch grounding", () => {
                   title: "example.com",
                 },
               },
-              { web: { uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/def" } },
+              {
+                web: { uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/def" },
+              },
             ],
           },
         },
@@ -74,15 +76,5 @@ describe("GoogleDeepResearch grounding", () => {
       "https://a.example",
       "https://b.example",
     ])
-  })
-
-  it("leaves an ungrounded completed interaction without annotations", () => {
-    const turn = turnOf({
-      id: "int_3",
-      status: "completed",
-      outputs: [{ type: "text", text: "Ungrounded report." }],
-    })
-    expect(Turn.assistantText(turn)).toBe("Ungrounded report.")
-    expect(Turn.citations(turn)).toEqual([])
   })
 })

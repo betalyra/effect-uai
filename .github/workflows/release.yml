@@ -3,6 +3,10 @@ name: Release
 on:
   push:
     branches: [main]
+  # Manual re-run (e.g. to finish a partial publish). With no changesets on
+  # main it runs the publish path; `changeset publish` skips already-published
+  # versions and pushes only the missing ones.
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}

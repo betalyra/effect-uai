@@ -240,8 +240,7 @@
   },
   "scripts": {
     "build": "tsdown",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "pnpm typecheck && pnpm build"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@standard-schema/spec": "^1.1.0"

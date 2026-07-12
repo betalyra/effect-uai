@@ -45,8 +45,7 @@
   },
   "scripts": {
     "build": "tsdown",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "pnpm typecheck && pnpm build"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@deno/sandbox": "^0.13.2",

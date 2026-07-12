@@ -44,8 +44,7 @@
   },
   "scripts": {
     "build": "tsdown",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "pnpm typecheck && pnpm build"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@effect-uai/core": "workspace:*",

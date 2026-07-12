@@ -11,6 +11,11 @@ concurrency:
 
 jobs:
   test:
+    # Skip the changesets release PRs (branch changeset-release/*): they only
+    # bump versions and CHANGELOGs, no source change, and their merge to main
+    # is rebuilt, typechecked, and tested by release.yml before publishing.
+    # Feature PRs and pushes to main/dev still run.
+    if: ${{ !startsWith(github.head_ref, 'changeset-release/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

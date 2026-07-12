@@ -1,14 +1,15 @@
 /**
- * Perplexity's Search API takes no model identifier - unlike chat
- * completions, `/search` ranks the web directly. The one mode knob is the
- * search-context size, which trades latency / cost for depth.
+ * Depth / cost knob for Perplexity's Search API (`/search`), controlling how
+ * much content is extracted per result page. It trades latency / cost for
+ * depth:
  *
- * - `low` — fastest, fewest pages fetched.
- * - `medium` — balanced.
- * - `high` — most thorough (Perplexity's default).
+ * - `low`: short passages most relevant to the query.
+ * - `medium`: a balanced amount of content per document.
+ * - `high`: detailed content (Perplexity's default).
  *
- * It is a provider-specific knob, so it lives on `PerplexitySearchRequest`
- * rather than the cross-provider `CommonSearchRequest`.
+ * Provider-specific, so it lives on `PerplexitySearchRequest` rather than the
+ * cross-provider `CommonSearchRequest`. Mutually exclusive with the token caps
+ * (`max_tokens` / `max_tokens_per_page`): `/search` 500s if both are sent.
  */
 export type PerplexitySearchContextSize = "low" | "medium" | "high"
 

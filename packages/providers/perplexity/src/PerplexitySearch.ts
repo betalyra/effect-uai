@@ -21,7 +21,11 @@ import type { PerplexitySearchContextSize } from "./models.js"
  * web directly.
  */
 export type PerplexitySearchRequest = CommonSearchRequest & {
-  /** Depth / cost trade-off - see {@link PerplexitySearchContextSize}. */
+  /**
+   * Depth / cost trade-off for per-page extraction - see
+   * {@link PerplexitySearchContextSize}. Mutually exclusive with
+   * `maxTokensPerPage`; when both are set the token cap wins (see the codec).
+   */
   readonly searchContextSize?: PerplexitySearchContextSize
   /** Cap on tokens extracted per result page (1..1_000_000). */
   readonly maxTokensPerPage?: number
@@ -100,12 +104,14 @@ const buildBody = (request: PerplexitySearchRequest): WireBody => {
     ...(request.endDate !== undefined && {
       search_before_date_filter: formatMmDdYyyy(request.endDate),
     }),
-    ...(request.searchContextSize !== undefined && {
-      search_context_size: request.searchContextSize,
-    }),
-    ...(request.maxTokensPerPage !== undefined && {
-      max_tokens_per_page: request.maxTokensPerPage,
-    }),
+    // `/search` rejects `search_context_size` alongside a token cap (both govern
+    // per-page extraction) with a 500, so the two are mutually exclusive. The
+    // token cap is the finer control, so it wins when both are set.
+    ...(request.maxTokensPerPage !== undefined
+      ? { max_tokens_per_page: request.maxTokensPerPage }
+      : request.searchContextSize !== undefined && {
+          search_context_size: request.searchContextSize,
+        }),
   }
 }
 

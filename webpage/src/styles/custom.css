@@ -133,6 +133,12 @@ code ::selection,
   filter: invert(1) hue-rotate(180deg);
 }
 
+/* Sponsor wordmark is indigo (#312e81), invisible on the near-black dark card.
+   Lighten it to white so it reads; light mode keeps the brand indigo. */
+:root[data-theme="dark"] .betalyra-logo {
+  filter: brightness(0) invert(1);
+}
+
 /* Nav logo: scale so the wordmark is legible. Default Starlight logo height
    is set via --sl-nav-logo-height (1.5rem). Override to fit the wordmark
    without the phonetic feeling cramped. */

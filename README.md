@@ -183,6 +183,14 @@ The repo also ships an `.envrc`, so with [direnv](https://direnv.net/)
 installed the shell loads automatically when you `cd` in - just run
 `direnv allow` once. Without direnv the file is inert and ignored.
 
+## Contributors
+
+Thanks to everyone who has contributed to effect-uai.
+
+<a href="https://github.com/betalyra/effect-uai/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=betalyra/effect-uai" alt="Contributors" />
+</a>
+
 ## License
 
 MIT - see [LICENSE](./LICENSE).

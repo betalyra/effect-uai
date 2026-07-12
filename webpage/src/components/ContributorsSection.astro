@@ -1,0 +1,80 @@
+---
+interface Contributor {
+  readonly login: string
+  readonly avatar_url: string
+  readonly html_url: string
+  readonly type: string
+}
+
+const token = import.meta.env.GITHUB_TOKEN
+const headers: Record<string, string> = {
+  Accept: "application/vnd.github+json",
+  "User-Agent": "effect-uai-webpage",
+}
+if (token) headers.Authorization = `Bearer ${token}`
+
+// Build-time fetch. On failure (offline, rate limit) fall back to an empty
+// list so the build stays green and the section renders a plain link instead.
+const contributors: ReadonlyArray<Contributor> = await fetch(
+  "https://api.github.com/repos/betalyra/effect-uai/contributors?per_page=100",
+  { headers },
+)
+  .then((res) => (res.ok ? (res.json() as Promise<ReadonlyArray<Contributor>>) : []))
+  .then((list) => list.filter((c) => c.type !== "Bot" && !c.login.endsWith("[bot]")))
+  .catch(() => [])
+---
+
+<section class="not-content border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12">
+  <div class="mb-8 flex items-baseline justify-between gap-4">
+    <div class="flex flex-col gap-1.5">
+      <h2 class="text-3xl font-bold tracking-tight text-foreground">Contributors</h2>
+      <p class="max-w-2xl text-sm text-muted-foreground lg:text-base">
+        Built in the open by the people below.
+      </p>
+    </div>
+    <a
+      href="https://github.com/betalyra/effect-uai/graphs/contributors"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="group inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors outline-none hover:text-(--color-mark) focus-visible:text-(--color-mark)"
+    >
+      On GitHub
+    </a>
+  </div>
+
+  {
+    contributors.length > 0 ? (
+      <ul class="flex list-none flex-wrap gap-3 p-0">
+        {contributors.map((c) => (
+          <li>
+            <a
+              href={c.html_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={c.login}
+              class="block rounded-full outline-none transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-(--color-mark)"
+            >
+              <img
+                src={`${c.avatar_url}${c.avatar_url.includes("?") ? "&" : "?"}s=96`}
+                alt={c.login}
+                width={48}
+                height={48}
+                loading="lazy"
+                class="h-12 w-12 rounded-full border border-border bg-card"
+              />
+            </a>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <a
+        href="https://github.com/betalyra/effect-uai/graphs/contributors"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-sm text-muted-foreground underline decoration-dotted hover:text-(--color-mark)"
+      >
+        See contributors on GitHub
+      </a>
+    )
+  }
+</section>

@@ -13,6 +13,7 @@ import * as Job from "@effect-uai/core/Job"
 import type { ResearchJobRef, ResearchRequest, ResearchState } from "@effect-uai/core/Research"
 import * as SSE from "@effect-uai/core/SSE"
 import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
+import { GroundingMetadata, groundingToAnnotations } from "./codec.js"
 import type { GoogleDeepResearchModel } from "./models.js"
 
 // ---------------------------------------------------------------------------
@@ -61,23 +62,28 @@ const decodeSubmit = Schema.decodeUnknownEffect(WireSubmit)
 
 // A completed interaction's text lives at `outputs[].text` (SDK `outputs`) or,
 // in some doc examples, `steps[].content[].text`. Decode both defensively and
-// extract from whichever is populated. Citations are undocumented on this
-// preview surface, so none are mapped yet (the report text carries inline
-// `[n]` markers); enrich once a live response confirms the shape.
+// extract from whichever is populated. Grounding sources ride Google's
+// `groundingMetadata.groundingChunks[]`; this preview surface is undocumented,
+// so decode it at every plausible level (interaction / output / step) and map
+// whichever is populated onto `url_citation` annotations. The report text also
+// carries the sources as an inline `[n]` / `**Sources:**` list.
 const WireTextPart = Schema.Struct({
   type: Schema.optional(Schema.NullOr(Schema.String)),
   text: Schema.optional(Schema.NullOr(Schema.String)),
+  groundingMetadata: Schema.optional(Schema.NullOr(GroundingMetadata)),
 })
 const WireStep = Schema.Struct({
   type: Schema.optional(Schema.NullOr(Schema.String)),
   text: Schema.optional(Schema.NullOr(Schema.String)),
   content: Schema.optional(Schema.NullOr(Schema.Array(WireTextPart))),
+  groundingMetadata: Schema.optional(Schema.NullOr(GroundingMetadata)),
 })
 export const WireInteraction = Schema.Struct({
   id: Schema.optional(Schema.NullOr(Schema.String)),
   status: Schema.optional(Schema.NullOr(Schema.String)),
   outputs: Schema.optional(Schema.NullOr(Schema.Array(WireTextPart))),
   steps: Schema.optional(Schema.NullOr(Schema.Array(WireStep))),
+  groundingMetadata: Schema.optional(Schema.NullOr(GroundingMetadata)),
   error: Schema.optional(
     Schema.NullOr(
       Schema.Struct({
@@ -104,18 +110,37 @@ const reportText = (wire: WireInteraction): string => {
   return fromStep.length > 0 ? fromStep : (lastStep?.text ?? "")
 }
 
-const turnFromInteraction = (wire: WireInteraction): Turn => ({
-  items: [
-    {
-      type: "message",
-      role: "assistant",
-      content: [{ type: "output_text", text: reportText(wire) }],
-      providerData: wire,
-    },
-  ],
-  usage: {},
-  stop_reason: "stop",
-})
+// Grounding can live at any level of the interaction envelope; gather it from
+// all three (interaction / output part / step) and let `groundingToAnnotations`
+// de-dupe by url.
+const interactionAnnotations = (wire: WireInteraction): ReadonlyArray<Items.Annotation> =>
+  groundingToAnnotations(
+    wire.groundingMetadata,
+    ...(wire.outputs ?? []).map((o) => o.groundingMetadata),
+    ...(wire.steps ?? []).map((s) => s.groundingMetadata),
+  )
+
+const turnFromInteraction = (wire: WireInteraction): Turn => {
+  const annotations = interactionAnnotations(wire)
+  return {
+    items: [
+      {
+        type: "message",
+        role: "assistant",
+        content: [
+          {
+            type: "output_text",
+            text: reportText(wire),
+            ...(annotations.length > 0 && { annotations }),
+          },
+        ],
+        providerData: wire,
+      },
+    ],
+    usage: {},
+    stop_reason: "stop",
+  }
+}
 
 // Map the interaction status onto the generic `JobState`.
 export const jobStateOf = (wire: WireInteraction): ResearchState =>
@@ -226,6 +251,9 @@ const pollJob = (
       return yield* httpStatusError(response.status, text)
     }
     const json = yield* response.json.pipe(Effect.mapError(transportFailure))
+    // Preview surface: log the raw interaction so the (undocumented) grounding
+    // path can be confirmed against a live completed job at LOG_LEVEL=Debug.
+    yield* Effect.logDebug("google interactions poll response", { interaction: json })
     const wire = yield* decodeInteraction(json).pipe(Effect.mapError(transportFailure))
     return jobStateOf(wire)
   })

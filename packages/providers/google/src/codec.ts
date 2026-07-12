@@ -71,25 +71,31 @@ export const GroundingMetadata = Schema.Struct({
 })
 export type GroundingMetadata = typeof GroundingMetadata.Type
 
+// Two citations are the same source when they point at the same url.
+const sameUrlCitation = (a: Annotation, b: Annotation): boolean =>
+  a.type === "url_citation" && b.type === "url_citation" && a.url === b.url
+
 // Grounding chunks → `url_citation` annotations, de-duped by url across every
 // metadata block passed. `web.uri` is a `grounding-api-redirect` URL and
 // `web.title` the bare domain; both are kept as-is (the redirect resolves to
 // the real page).
 export const groundingToAnnotations = (
   ...metas: ReadonlyArray<GroundingMetadata | null | undefined>
-): ReadonlyArray<Annotation> => {
-  const seen = new Set<string>()
-  const out: Array<Annotation> = []
-  for (const meta of metas) {
-    for (const chunk of meta?.groundingChunks ?? []) {
-      const uri = chunk.web?.uri
-      if (uri == null || seen.has(uri)) continue
-      seen.add(uri)
-      out.push({ type: "url_citation", url: uri, title: chunk.web?.title ?? uri })
-    }
-  }
-  return out
-}
+): ReadonlyArray<Annotation> =>
+  pipe(
+    metas,
+    Arr.flatMap((meta) => meta?.groundingChunks ?? []),
+    Arr.filterMap((chunk) =>
+      chunk.web?.uri == null
+        ? Result.failVoid
+        : Result.succeed<Annotation>({
+            type: "url_citation",
+            url: chunk.web.uri,
+            title: chunk.web.title ?? chunk.web.uri,
+          }),
+    ),
+    Arr.dedupeWith(sameUrlCitation),
+  )
 
 const Candidate = Schema.Struct({
   content: Schema.optional(Content),
@@ -648,11 +654,8 @@ const appendFunctionCalls = (
 const mergeAnnotations = (
   prev: ReadonlyArray<Annotation>,
   next: ReadonlyArray<Annotation>,
-): ReadonlyArray<Annotation> => {
-  if (next.length === 0) return prev
-  const seen = new Set(prev.flatMap((a) => (a.type === "url_citation" ? [a.url] : [])))
-  return [...prev, ...next.filter((a) => a.type === "url_citation" && !seen.has(a.url))]
-}
+): ReadonlyArray<Annotation> =>
+  next.length === 0 ? prev : Arr.dedupeWith(Arr.appendAll(prev, next), sameUrlCitation)
 
 export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => {
   const parts = chunkParts(chunk)

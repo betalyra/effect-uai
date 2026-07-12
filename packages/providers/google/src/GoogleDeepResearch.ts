@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Match, Redacted, Ref, Schema, Stream } from "effect"
+import { Array as Arr, Context, Effect, Layer, Match, Redacted, Ref, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import {
@@ -116,8 +116,8 @@ const reportText = (wire: WireInteraction): string => {
 const interactionAnnotations = (wire: WireInteraction): ReadonlyArray<Items.Annotation> =>
   groundingToAnnotations(
     wire.groundingMetadata,
-    ...(wire.outputs ?? []).map((o) => o.groundingMetadata),
-    ...(wire.steps ?? []).map((s) => s.groundingMetadata),
+    ...Arr.map(wire.outputs ?? [], (o) => o.groundingMetadata),
+    ...Arr.map(wire.steps ?? [], (s) => s.groundingMetadata),
   )
 
 const turnFromInteraction = (wire: WireInteraction): Turn => {

@@ -25,6 +25,9 @@ const turnComplete = (usage: Usage): TurnEvent =>
 
 const text = (s: string): TurnEvent => TurnEvent.TextDelta({ text: s })
 
+const toolArgs = (s: string): TurnEvent =>
+  TurnEvent.ToolCallArgsDelta({ call_id: "call_1", delta: s })
+
 const samples = (events: ReadonlyArray<unknown>): ReadonlyArray<MetricEvent> =>
   events.filter(isMetricEvent)
 
@@ -236,6 +239,61 @@ describe("throughput (metronome)", () => {
       // exact rate math is pinned by the computeThroughputTick tests; here we
       // only assert the metronome wired a positive char rate onto the tick.
       expect(head(rates).ratePerSecond).toBeGreaterThan(0)
+    }),
+  )
+
+  it.effect("counts tool-call arguments: a turn with no prose still reports a rate", () =>
+    Effect.gen(function* () {
+      // The shape of an agent turn that only calls tools. Before output deltas
+      // were counted beyond TextDelta this measured 0 for the whole run.
+      const source = Stream.make(toolArgs('{"city":'), toolArgs('"Lisbon"}')).pipe(
+        Stream.concat(timed<TurnEvent>([["10 seconds", turnComplete({})]])),
+      )
+      const stream = source.pipe(
+        throughput({ every: "1 second", unit: "char" }),
+        metricEvents,
+        Stream.take(1),
+      )
+      const out = yield* runTimed(stream, ["1 second"])
+      const rates = out.filter((e): e is Throughput => e._tag === "Throughput")
+      expect(rates).toHaveLength(1)
+      expect(head(rates).ratePerSecond).toBeGreaterThan(0)
+    }),
+  )
+
+  it.effect("counts reasoning and refusal deltas as output", () =>
+    Effect.gen(function* () {
+      const source = Stream.make(
+        TurnEvent.ReasoningDelta({ text: "hmm", kind: "trace" }),
+        TurnEvent.RefusalDelta({ text: "no" }),
+      ).pipe(Stream.concat(timed<TurnEvent>([["10 seconds", turnComplete({})]])))
+      const stream = source.pipe(
+        throughput({ every: "1 second", unit: "char" }),
+        metricEvents,
+        Stream.take(1),
+      )
+      const out = yield* runTimed(stream, ["1 second"])
+      const rates = out.filter((e): e is Throughput => e._tag === "Throughput")
+      expect(head(rates).ratePerSecond).toBeGreaterThan(0)
+    }),
+  )
+
+  // Runs on the real clock: this asserts an absence, so there is no sample to
+  // wait for and the stream has to end by the source closing. Under TestClock
+  // that path does not settle, because the metronome re-arms a sleep that no
+  // remaining `adjust` resolves.
+  it.live("ignores events that carry no generated output", () =>
+    Effect.gen(function* () {
+      // ToolCallStart and UsageUpdate are turn bookkeeping, not output.
+      const source = Stream.make(
+        TurnEvent.ToolCallStart({ call_id: "call_1", name: "get_weather" }),
+        TurnEvent.UsageUpdate({ usage: { output_tokens: 5 } }),
+      ).pipe(Stream.concat(timed<TurnEvent>([["30 millis", turnComplete({})]])))
+      const stream = source.pipe(throughput({ every: "10 millis", unit: "char" }), metricEvents)
+      const out = yield* Stream.runCollect(stream)
+      // No output delta ever landed, so the accumulator never started and the
+      // metronome ticks produce nothing.
+      expect(out.filter((e): e is Throughput => e._tag === "Throughput")).toHaveLength(0)
     }),
   )
 })

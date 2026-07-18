@@ -57,9 +57,17 @@ every provider); for tokens, hand it a tokenizer, or estimate:
 Metrics.throughput({
   every: "1 second",
   unit: "token",
-  tokenizer: (event) => Effect.succeed(event._tag === "TextDelta" ? event.text.length / 4 : 0),
+  tokenizer: (event) =>
+    Effect.succeed(
+      (event._tag === "ToolCallArgsDelta" ? event.delta.length : event.text.length) / 4,
+    ),
 })
 ```
+
+Every delta that carries generated output is measured: prose, reasoning,
+refusals, and tool-call arguments. That last one matters for agents, whose
+output is often mostly tool calls rather than text. The tokenizer is only
+called for those deltas, so it never has to filter out turn bookkeeping.
 
 It's `windowed` by default (the current rate); pass `mode: "cumulative"` for a
 running average, or `smooth: "default"` to damp the jitter.

@@ -12,7 +12,7 @@ import {
   Stream,
 } from "effect"
 import type { Usage } from "../domain/Items.js"
-import type { Turn, TurnEvent } from "../domain/Turn.js"
+import { type Turn, TurnEvent } from "../domain/Turn.js"
 
 // ---------------------------------------------------------------------------
 // Self-describing measurements (the exporter-facing payload)
@@ -140,6 +140,34 @@ const contentDeltaKind = (ev: unknown): Option.Option<"text" | "reasoning"> => {
       ? Option.some("reasoning")
       : Option.none()
 }
+
+const isTextDelta = TurnEvent.$is("TextDelta")
+const isReasoningDelta = TurnEvent.$is("ReasoningDelta")
+const isRefusalDelta = TurnEvent.$is("RefusalDelta")
+const isToolCallArgsDelta = TurnEvent.$is("ToolCallArgsDelta")
+
+/** A delta carrying generated output, whatever the model was producing. */
+export type OutputDelta = Extract<
+  TurnEvent,
+  { readonly _tag: "TextDelta" | "ReasoningDelta" | "RefusalDelta" | "ToolCallArgsDelta" }
+>
+
+/**
+ * Narrow to a delta that contributes to the model's output stream. Tool-call
+ * arguments count: an agent turn can be almost entirely `ToolCallArgsDelta`,
+ * and measuring only prose reports a near-zero rate for it.
+ *
+ * The single place the output-delta tag list lives — the throughput
+ * accumulator and `unitCount` both read it. Distinct from `contentDeltaKind`,
+ * which answers a narrower question for first-token latency.
+ */
+const outputDelta = (ev: unknown): Option.Option<OutputDelta> =>
+  isTextDelta(ev) || isReasoningDelta(ev) || isRefusalDelta(ev) || isToolCallArgsDelta(ev)
+    ? Option.some(ev)
+    : Option.none()
+
+const outputTextOf = (delta: OutputDelta): string =>
+  isToolCallArgsDelta(delta) ? delta.delta : delta.text
 
 const isTurnCompleteEvent = (ev: unknown): boolean => tagOf(ev) === "TurnComplete"
 
@@ -349,8 +377,11 @@ export type ThroughputOptions = {
   readonly every?: Duration.Input
   /** What a "unit" is. Default `"char"` (exact and chunking-independent). */
   readonly unit?: "char" | "token" | "event"
-  /** Token counter for `unit: "token"`. Absent => approximate 1 per content delta. */
-  readonly tokenizer?: (event: TurnEvent) => Effect.Effect<number>
+  /**
+   * Token counter for `unit: "token"`. Called only for deltas that carry
+   * generated output. Absent => approximate 1 per such delta.
+   */
+  readonly tokenizer?: (event: OutputDelta) => Effect.Effect<number>
   /** Rate definition. Default `"windowed"` (current speed, no cold-start bias). */
   readonly mode?: "windowed" | "cumulative"
   /** EWMA smoothing. Omitted => off; `"default"` => a sensible factor. */
@@ -434,14 +465,13 @@ const unitCount = (
   unit: "char" | "token" | "event",
   tokenizer: ThroughputOptions["tokenizer"],
 ): Effect.Effect<number> => {
-  if (tagOf(ev) !== "TextDelta") return Effect.succeed(0)
-  const text = (ev as { readonly text: string }).text
+  const output = outputDelta(ev)
+  if (Option.isNone(output)) return Effect.succeed(0)
+  const delta = output.value
   return Match.value(unit).pipe(
-    Match.when("char", () => Effect.succeed([...text].length)),
+    Match.when("char", () => Effect.succeed([...outputTextOf(delta)].length)),
     Match.when("event", () => Effect.succeed(1)),
-    Match.when("token", () =>
-      tokenizer === undefined ? Effect.succeed(1) : tokenizer(ev as TurnEvent),
-    ),
+    Match.when("token", () => (tokenizer === undefined ? Effect.succeed(1) : tokenizer(delta))),
     Match.exhaustive,
   )
 }
@@ -465,7 +495,7 @@ export const throughput =
           Stream.tap((ev) =>
             isTurnCompleteEvent(ev)
               ? Ref.update(ref, resetTurn)
-              : tagOf(ev) === "TextDelta"
+              : Option.isSome(outputDelta(ev))
                 ? Effect.flatMap(Clock.currentTimeMillis, (now) =>
                     Effect.flatMap(unitCount(ev, unit, tokenizer), (n) =>
                       Ref.update(ref, (state) => addUnits(state, n, now)),

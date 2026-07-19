@@ -324,6 +324,20 @@ export type ThinkingConfig = {
   readonly budget_tokens: number
 }
 
+/** Cache lifetime. `1h` writes cost 2x base input; `5m` costs 1.25x. */
+export type CacheTtl = "5m" | "1h"
+
+/**
+ * Request-level cache breakpoint. Anthropic applies it to the last cacheable
+ * block and moves it forward as the conversation grows, so the cached prefix
+ * (`tools` → `system` → `messages`) follows the conversation without the
+ * caller re-placing anything.
+ */
+export type CacheControl = {
+  readonly type: "ephemeral"
+  readonly ttl?: CacheTtl
+}
+
 export type RequestBody = {
   readonly model: string
   readonly messages: ReadonlyArray<RequestMessage>
@@ -338,6 +352,7 @@ export type RequestBody = {
   readonly tool_choice?: Record<string, unknown>
   readonly metadata?: { readonly user_id: string }
   readonly output_config?: Record<string, unknown>
+  readonly cache_control?: CacheControl
   readonly stream: true
 }
 
@@ -354,6 +369,7 @@ export const buildRequestBody = (params: {
   readonly toolChoice: Option.Option<Record<string, unknown>>
   readonly userId: Option.Option<string>
   readonly outputConfig: Option.Option<Record<string, unknown>>
+  readonly cacheControl: Option.Option<CacheControl>
 }): Result.Result<RequestBody, JsonParseError> =>
   pipe(
     groupedMessages(params.history),
@@ -401,6 +417,10 @@ export const buildRequestBody = (params: {
         ...Option.match(params.outputConfig, {
           onNone: () => ({}),
           onSome: (output_config) => ({ output_config }),
+        }),
+        ...Option.match(params.cacheControl, {
+          onNone: () => ({}),
+          onSome: (cache_control) => ({ cache_control }),
         }),
         stream: true,
       }),

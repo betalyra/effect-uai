@@ -24,6 +24,8 @@ import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
 import { renderProviderTools } from "./AnthropicTools.js"
 import {
   type Accumulator,
+  type CacheControl,
+  type CacheTtl,
   type ThinkingConfig,
   accumulatorToTurn,
   buildRequestBody,
@@ -119,6 +121,21 @@ export type Config = {
    * 4096 if neither is set.
    */
   readonly defaultMaxTokens?: number
+  /**
+   * Prompt caching. Off by default, so the library stays unopinionated about
+   * a setting that changes billing. `true` is `{}`: cache with the 5-minute
+   * default TTL.
+   *
+   * Anthropic caches the `tools` → `system` → `messages` prefix and moves the
+   * breakpoint forward as the conversation grows, so a long system prompt and
+   * tool definitions are paid for once rather than on every turn. Read
+   * `usage.input_tokens_details.cached_tokens` to see it working.
+   *
+   * Mutating earlier history (rewriting an old message, compaction) breaks
+   * the prefix from that point on. Anthropic falls back to the longest
+   * unchanged prefix, so this costs savings but never correctness.
+   */
+  readonly promptCaching?: boolean | { readonly ttl?: CacheTtl }
 }
 
 const ANTHROPIC_VERSION = "2023-06-01"
@@ -138,6 +155,24 @@ const outputConfig = (request: AnthropicRequest): Option.Option<Record<string, u
 
 const resolvedMaxTokens = (cfg: Config, request: AnthropicRequest): number =>
   request.maxOutputTokens ?? cfg.defaultMaxTokens ?? FALLBACK_MAX_TOKENS
+
+/**
+ * One request-level breakpoint when caching is on. Anthropic places it on the
+ * last cacheable block itself, so nothing has to be marked per-block and the
+ * breakpoint stays correct as history grows.
+ */
+const cacheControlOf = (cfg: Config): Option.Option<CacheControl> =>
+  pipe(
+    Option.fromUndefinedOr(cfg.promptCaching),
+    Option.flatMap((opt) =>
+      opt === false
+        ? Option.none<CacheControl>()
+        : Option.some<CacheControl>({
+            type: "ephemeral",
+            ...(opt !== true && opt.ttl !== undefined && { ttl: opt.ttl }),
+          }),
+    ),
+  )
 
 const functionToolDescriptors = (
   request: AnthropicRequest,
@@ -302,6 +337,7 @@ const buildNativeStream = (cfg: Config) => {
           toolChoice: toolChoiceWire(request),
           userId: Option.fromUndefinedOr(request.user),
           outputConfig: structured,
+          cacheControl: cacheControlOf(cfg),
         })
 
         const body = yield* Result.match(bodyResult, {

@@ -42,6 +42,7 @@ const buildWith = (
       toolChoice,
       userId: Option.none(),
       outputConfig: Option.none(),
+      cacheControl: Option.none(),
     }),
   )
 }

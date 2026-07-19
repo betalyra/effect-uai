@@ -1,4 +1,4 @@
-import { Encoding, Match, Option, Schema } from "effect"
+import { Encoding, Match, Option, Result, Schema, pipe } from "effect"
 import type { ContentBlock, InputImage, HistoryItem } from "@effect-uai/core/Items"
 import type { Turn } from "@effect-uai/core/Turn"
 
@@ -159,16 +159,36 @@ export type WireResponseCompleted = typeof WireResponseCompleted.Type
 // ---------------------------------------------------------------------------
 
 /**
- * If an item carries `providerData` from a prior OpenAI turn, re-emit it
- * verbatim - preserves `encrypted_content`, item ids, and any field this
- * codec doesn't model.
+ * The item shapes we stash for round-tripping. Narrower than
+ * `WireOutputItem`: the provider-hosted call variants are dropped from the
+ * turn, so they are never stored. Composed from the internal `Wire*` structs,
+ * which keeps the wire model out of the package's public surface.
  */
-const passthrough = (item: HistoryItem): Record<string, unknown> | undefined =>
-  item.providerData !== undefined &&
-  typeof item.providerData === "object" &&
-  item.providerData !== null
-    ? (item.providerData as Record<string, unknown>)
-    : undefined
+const StoredItem = Schema.Union([WireMessage, WireFunctionCall, WireReasoning])
+type StoredItem = typeof StoredItem.Type
+
+const ProviderDataResponses = Schema.Struct({ responses: StoredItem })
+const decodeResponsesData = Schema.decodeUnknownResult(ProviderDataResponses)
+
+/**
+ * If an item carries `providerData.responses` from a prior turn on this API,
+ * re-emit it verbatim - preserves `encrypted_content` and item ids, which a
+ * fresh encode from our `HistoryItem` shape cannot reconstruct.
+ *
+ * Namespaced because `providerData` is a shared slot: an item routed through
+ * another provider first (dynamic fallback) carries that provider's key, and
+ * re-emitting the whole object would send that provider's data as the wire
+ * item and drop the real content. Anything that fails to decode is not ours,
+ * so we fall back to encoding the item normally.
+ */
+const passthrough = (item: HistoryItem): StoredItem | undefined =>
+  pipe(
+    decodeResponsesData(item.providerData),
+    Result.match({
+      onSuccess: (data) => data.responses,
+      onFailure: (): StoredItem | undefined => undefined,
+    }),
+  )
 
 /**
  * OpenAI's `input_image` content block carries a single `image_url` field;
@@ -253,7 +273,7 @@ export const wireItemToItem = (wire: WireOutputItem): ReadonlyArray<HistoryItem>
           type: "message" as const,
           role: m.role,
           content: m.content.map(wireMessageContentToBlock),
-          providerData: m,
+          providerData: { responses: m },
         },
       ],
       function_call: (f): ReadonlyArray<HistoryItem> => [
@@ -262,7 +282,7 @@ export const wireItemToItem = (wire: WireOutputItem): ReadonlyArray<HistoryItem>
           call_id: f.call_id,
           name: f.name,
           arguments: f.arguments,
-          providerData: f,
+          providerData: { responses: f },
         },
       ],
       reasoning: (r): ReadonlyArray<HistoryItem> => [
@@ -273,7 +293,7 @@ export const wireItemToItem = (wire: WireOutputItem): ReadonlyArray<HistoryItem>
             summary: r.summary.map((s) => s.text).join("\n"),
           }),
           ...(r.encrypted_content !== undefined && { signature: r.encrypted_content }),
-          providerData: r,
+          providerData: { responses: r },
         },
       ],
       // Hosted-tool calls are provider-executed; drop from the turn (Phase 1).

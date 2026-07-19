@@ -48,6 +48,7 @@ interface Config {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string // defaults to https://api.anthropic.com
   readonly defaultMaxTokens?: number // falls back to 4096
+  readonly promptCaching?: boolean | { readonly ttl?: "5m" | "1h" } // off by default
 }
 ```
 
@@ -62,6 +63,24 @@ every request; we default to 4096 if neither the layer nor the per-call
 
 `baseUrl` exists for proxies, AWS Bedrock, and Vertex gateways that
 speak the Messages protocol. Most apps leave it unset.
+
+## Prompt caching
+
+A long system prompt and a big toolkit get re-sent on every turn. Set
+`promptCaching` to pay for them once instead:
+
+```ts
+anthropicLayer({ apiKey, promptCaching: true })
+anthropicLayer({ apiKey, promptCaching: { ttl: "1h" } }) // default is 5m
+```
+
+There is nothing to mark up per message; the cache point follows the
+conversation as it grows. It is off by default because it changes how you are billed.
+
+See Anthropic's [prompt caching guide][caching] for pricing, TTLs and
+per-model minimums.
+
+[caching]: https://platform.claude.com/docs/en/build-with-claude/prompt-caching
 
 ## Request shape
 

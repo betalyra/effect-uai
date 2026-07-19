@@ -111,6 +111,12 @@ export type Role = typeof Role.Type
 // The framework never reads or interprets it; provider modules decode
 // their own data via their own typed readers (see e.g.
 // the `@effect-uai/responses` package).
+//
+// The slot is shared, so a provider keys its data under its own name
+// (`{ responses: ... }`, `{ gemini: ... }`) and reads only that key. One item
+// can pass through several providers - falling back from one to another
+// leaves both keys on it - and a provider that finds no key of its own must
+// encode the item normally rather than assume the slot is its own.
 // ---------------------------------------------------------------------------
 
 const ProviderData = Schema.optional(Schema.Unknown)

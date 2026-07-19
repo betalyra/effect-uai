@@ -96,7 +96,8 @@ const reportText = (wire: WireResearch): string => {
 }
 
 // Flatten the field-keyed citations into the flat `Annotation` list. The
-// per-field grouping is lost in this view; the raw wire stays on `providerData`.
+// per-field grouping is lost in this view; the raw wire stays on
+// `providerData.exa`.
 const citationsToAnnotations = (wire: WireResearch): ReadonlyArray<Items.Annotation> =>
   Object.values(wire.citations ?? {})
     .flat()
@@ -128,7 +129,7 @@ const turnFromResearch = (wire: WireResearch): Turn => {
             ...(annotations.length > 0 && { annotations }),
           },
         ],
-        providerData: wire,
+        providerData: { exa: wire },
       },
     ],
     usage: {},

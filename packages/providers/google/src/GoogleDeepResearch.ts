@@ -1,6 +1,20 @@
-import { Array as Arr, Context, Effect, Layer, Match, Redacted, Ref, Schema, Stream } from "effect"
+import {
+  Array as Arr,
+  Context,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Redacted,
+  Ref,
+  Result,
+  Schema,
+  Stream,
+  pipe,
+} from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
+import type { Source } from "@effect-uai/core/Citation"
 import {
   DeepResearch,
   type DeepResearchService,
@@ -110,6 +124,65 @@ const reportText = (wire: WireInteraction): string => {
   return fromStep.length > 0 ? fromStep : (lastStep?.text ?? "")
 }
 
+/**
+ * The subset of the domain `Citation.Source` this provider can populate.
+ * Declared here rather than derived from the wire schema, so the exported
+ * shape is ours and a wire change cannot silently alter it.
+ */
+const SourceSchema = Schema.Struct({
+  url: Schema.String,
+  title: Schema.optional(Schema.String),
+})
+
+/**
+ * The research trace: what the model did at each step and which sources it
+ * consulted there. The `Turn` keeps only the final report and the deduped
+ * union of all sources, so the per-step breakdown lives here or nowhere.
+ *
+ * Lands on `providerData.gemini`; read it with {@link researchDataOf}.
+ */
+export const GeminiResearchData = Schema.Struct({
+  steps: Schema.Array(
+    Schema.Struct({
+      text: Schema.String,
+      sources: Schema.Array(SourceSchema),
+    }),
+  ),
+})
+export type GeminiResearchData = typeof GeminiResearchData.Type
+
+const decodeResearchData = Schema.decodeUnknownResult(
+  Schema.Struct({ gemini: GeminiResearchData }),
+)
+
+/** Read this provider's data off an item, if it is there and ours. */
+export const researchDataOf = (item: Items.HistoryItem): Option.Option<GeminiResearchData> =>
+  pipe(
+    decodeResearchData(item.providerData),
+    Result.match({
+      onSuccess: (d) => Option.some(d.gemini),
+      onFailure: () => Option.none<GeminiResearchData>(),
+    }),
+  )
+
+const sourcesOf = (meta: GroundingMetadata | null | undefined): ReadonlyArray<Source> =>
+  (meta?.groundingChunks ?? []).flatMap((chunk) =>
+    chunk.web?.uri == null
+      ? []
+      : [{ url: chunk.web.uri, ...(chunk.web.title != null && { title: chunk.web.title }) }],
+  )
+
+// A step contributes to the trace if it said something or consulted something.
+const researchSteps = (wire: WireInteraction): GeminiResearchData["steps"] =>
+  (wire.steps ?? []).flatMap((step) => {
+    const text = textOfParts(step.content) || (step.text ?? "")
+    const sources = [
+      ...sourcesOf(step.groundingMetadata),
+      ...(step.content ?? []).flatMap((p) => sourcesOf(p.groundingMetadata)),
+    ]
+    return text.length === 0 && sources.length === 0 ? [] : [{ text, sources }]
+  })
+
 // Grounding can live at any level of the interaction envelope; gather it from
 // all three (interaction / output part / step) and let `groundingToAnnotations`
 // de-dupe by url.
@@ -134,7 +207,7 @@ const turnFromInteraction = (wire: WireInteraction): Turn => {
             ...(annotations.length > 0 && { annotations }),
           },
         ],
-        providerData: { gemini: wire },
+        providerData: { gemini: { steps: researchSteps(wire) } },
       },
     ],
     usage: {},
@@ -312,7 +385,7 @@ const completedTurn = (wire: WireInteraction | null | undefined, streamed: strin
             type: "message",
             role: "assistant",
             content: [{ type: "output_text", text: streamed }],
-            ...(wire != null && { providerData: { gemini: wire } }),
+            ...(wire != null && { providerData: { gemini: { steps: researchSteps(wire) } } }),
           },
         ],
         usage: {},

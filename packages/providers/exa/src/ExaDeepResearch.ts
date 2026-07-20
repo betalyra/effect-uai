@@ -1,6 +1,7 @@
-import { Context, Effect, Layer, Match, Redacted, Schema } from "effect"
+import { Context, Effect, Layer, Match, Option, Redacted, Result, Schema, pipe } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
+import type { Source } from "@effect-uai/core/Citation"
 import {
   DeepResearch,
   type DeepResearchService,
@@ -95,9 +96,67 @@ const reportText = (wire: WireResearch): string => {
   return typeof answer === "string" ? answer : ""
 }
 
+/**
+ * The subset of the domain `Citation.Source` this provider can populate.
+ * Declared here rather than derived from the wire schema, so the exported
+ * shape is ours and a wire change cannot silently alter it.
+ */
+const SourceSchema = Schema.Struct({
+  url: Schema.String,
+  title: Schema.optional(Schema.String),
+  snippet: Schema.optional(Schema.String),
+  raw: Schema.optional(Schema.Unknown),
+})
+
+/**
+ * Which sources back which field of the result, the one thing the flat
+ * `Annotation` view cannot express. Keyed by the data-field path Exa
+ * researched, so a structured task can show its provenance per field.
+ *
+ * Lands on `providerData.exa`; read it with {@link researchDataOf}.
+ */
+export const ExaResearchData = Schema.Struct({
+  sourcesByField: Schema.Record(Schema.String, Schema.Array(SourceSchema)),
+})
+export type ExaResearchData = typeof ExaResearchData.Type
+
+const decodeResearchData = Schema.decodeUnknownResult(
+  Schema.Struct({ exa: ExaResearchData }),
+)
+
+/** Read this provider's data off an item, if it is there and ours. */
+export const researchDataOf = (item: Items.HistoryItem): Option.Option<ExaResearchData> =>
+  pipe(
+    decodeResearchData(item.providerData),
+    Result.match({
+      onSuccess: (d) => Option.some(d.exa),
+      onFailure: () => Option.none<ExaResearchData>(),
+    }),
+  )
+
+const sourcesByField = (wire: WireResearch): Record<string, ReadonlyArray<Source>> =>
+  Object.fromEntries(
+    Object.entries(wire.citations ?? {}).map(([field, sources]) => [
+      field,
+      sources.flatMap((s) =>
+        s.url == null
+          ? []
+          : [
+              {
+                url: s.url,
+                ...(s.title != null && { title: s.title }),
+                ...(s.snippet != null && { snippet: s.snippet }),
+                // Exa's dedup key. `raw` is the domain model's slot for
+                // provider-opaque tokens.
+                ...(s.id != null && { raw: s.id }),
+              },
+            ],
+      ),
+    ]),
+  )
+
 // Flatten the field-keyed citations into the flat `Annotation` list. The
-// per-field grouping is lost in this view; the raw wire stays on
-// `providerData.exa`.
+// per-field grouping is lost in this view; it stays on `providerData.exa`.
 const citationsToAnnotations = (wire: WireResearch): ReadonlyArray<Items.Annotation> =>
   Object.values(wire.citations ?? {})
     .flat()
@@ -129,7 +188,7 @@ const turnFromResearch = (wire: WireResearch): Turn => {
             ...(annotations.length > 0 && { annotations }),
           },
         ],
-        providerData: { exa: wire },
+        providerData: { exa: { sourcesByField: sourcesByField(wire) } },
       },
     ],
     usage: {},

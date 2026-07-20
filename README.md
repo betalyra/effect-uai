@@ -7,6 +7,7 @@
 [![License](https://img.shields.io/npm/l/@effect-uai/core)](./LICENSE)
 [![types](https://img.shields.io/npm/types/@effect-uai/core)](https://www.npmjs.com/package/@effect-uai/core)
 [![status](https://img.shields.io/badge/status-experimental-orange)](#status)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/ebtwHGcyXR)
 
 > **_Uai_** \\ wai \\. Mineiro Portuguese, all-purpose interjection.
 

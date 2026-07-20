@@ -86,6 +86,11 @@ export default defineConfig({
           label: "X (Twitter)",
           href: "https://x.com/effectuai_sdk",
         },
+        {
+          icon: "discord",
+          label: "Discord",
+          href: "https://discord.gg/ebtwHGcyXR",
+        },
       ],
       sidebar: [
         {

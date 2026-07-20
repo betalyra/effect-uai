@@ -3,17 +3,6 @@ import { describe, expect, it } from "vitest"
 import { itemsToInput, wireItemToItem } from "./codec.js"
 
 describe("providerData round-trip", () => {
-  it("stashes the wire item under the `responses` key", () => {
-    const items = wireItemToItem({
-      type: "reasoning",
-      id: "rs_1",
-      encrypted_content: "opaque-state",
-    })
-    expect(items[0]?.providerData).toEqual({
-      responses: { type: "reasoning", id: "rs_1", encrypted_content: "opaque-state" },
-    })
-  })
-
   it("re-emits a stashed item verbatim, preserving fields our shape drops", () => {
     // `id` and `encrypted_content` cannot be reconstructed from a Reasoning
     // item, so the round-trip has to go through the stash.

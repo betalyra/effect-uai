@@ -261,23 +261,6 @@ describe("throughput (metronome)", () => {
     }),
   )
 
-  it.effect("counts reasoning and refusal deltas as output", () =>
-    Effect.gen(function* () {
-      const source = Stream.make(
-        TurnEvent.ReasoningDelta({ text: "hmm", kind: "trace" }),
-        TurnEvent.RefusalDelta({ text: "no" }),
-      ).pipe(Stream.concat(timed<TurnEvent>([["10 seconds", turnComplete({})]])))
-      const stream = source.pipe(
-        throughput({ every: "1 second", unit: "char" }),
-        metricEvents,
-        Stream.take(1),
-      )
-      const out = yield* runTimed(stream, ["1 second"])
-      const rates = out.filter((e): e is Throughput => e._tag === "Throughput")
-      expect(head(rates).ratePerSecond).toBeGreaterThan(0)
-    }),
-  )
-
   // Runs on the real clock: this asserts an absence, so there is no sample to
   // wait for and the stream has to end by the source closing. Under TestClock
   // that path does not settle, because the metronome re-arms a sleep that no

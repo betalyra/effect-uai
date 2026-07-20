@@ -151,9 +151,7 @@ export const GeminiResearchData = Schema.Struct({
 })
 export type GeminiResearchData = typeof GeminiResearchData.Type
 
-const decodeResearchData = Schema.decodeUnknownResult(
-  Schema.Struct({ gemini: GeminiResearchData }),
-)
+const decodeResearchData = Schema.decodeUnknownResult(Schema.Struct({ gemini: GeminiResearchData }))
 
 /** Read this provider's data off an item, if it is there and ours. */
 export const researchDataOf = (item: Items.HistoryItem): Option.Option<GeminiResearchData> =>

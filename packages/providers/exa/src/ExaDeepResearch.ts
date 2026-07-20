@@ -120,9 +120,7 @@ export const ExaResearchData = Schema.Struct({
 })
 export type ExaResearchData = typeof ExaResearchData.Type
 
-const decodeResearchData = Schema.decodeUnknownResult(
-  Schema.Struct({ exa: ExaResearchData }),
-)
+const decodeResearchData = Schema.decodeUnknownResult(Schema.Struct({ exa: ExaResearchData }))
 
 /** Read this provider's data off an item, if it is there and ours. */
 export const researchDataOf = (item: Items.HistoryItem): Option.Option<ExaResearchData> =>

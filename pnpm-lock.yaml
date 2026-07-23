@@ -93,6 +93,18 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/providers/chat-completions:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/providers/deno:
     devDependencies:
       '@deno/sandbox':
@@ -281,6 +293,9 @@ importers:
       '@effect-uai/browser':
         specifier: workspace:*
         version: link:../packages/providers/browser
+      '@effect-uai/chat-completions':
+        specifier: workspace:*
+        version: link:../packages/providers/chat-completions
       '@effect-uai/core':
         specifier: workspace:*
         version: link:../packages/core

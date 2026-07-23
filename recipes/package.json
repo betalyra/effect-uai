@@ -9,6 +9,7 @@
   "dependencies": {
     "@effect-uai/anthropic": "workspace:*",
     "@effect-uai/browser": "workspace:*",
+    "@effect-uai/chat-completions": "workspace:*",
     "@effect-uai/core": "workspace:*",
     "@effect-uai/elevenlabs": "workspace:*",
     "@effect-uai/exa": "workspace:*",

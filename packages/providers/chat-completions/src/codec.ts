@@ -12,11 +12,11 @@ import type { Turn } from "@effect-uai/core/Turn"
 import { TurnEvent } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
-// History → Mistral chat `messages`
+// History → chat `messages`
 //
-// Mistral speaks the OpenAI chat-completions dialect: a flat list of
-// `{ role, content, ... }` objects where an assistant turn's tool calls live
-// on the assistant message (`tool_calls`) and each tool result is its own
+// The OpenAI Chat Completions dialect: a flat list of `{ role, content, ... }`
+// objects where an assistant turn's tool calls live on the assistant message
+// (`tool_calls`) and each tool result is its own
 // `{ role: "tool", tool_call_id, content }` message. Our history is a flatter
 // item list (assistant message, then separate `function_call` items), so we
 // fold consecutive `function_call`s onto the preceding assistant message.
@@ -42,7 +42,7 @@ const blockToPart = Match.type<ContentBlock>().pipe(
     input_text: (b) => ({ type: "text", text: b.text }),
     output_text: (b) => ({ type: "text", text: b.text }),
     refusal: (b) => ({ type: "text", text: b.text }),
-    input_image: (b) => ({ type: "image_url", image_url: imageSourceToUrl(b.source) }),
+    input_image: (b) => ({ type: "image_url", image_url: { url: imageSourceToUrl(b.source) } }),
   }),
 )
 
@@ -52,9 +52,8 @@ const isTextBlock = (b: ContentBlock): boolean =>
 const textOfBlock = (b: ContentBlock): string => (b.type === "input_image" ? "" : b.text)
 
 /**
- * Collapse a message's content to a plain string when it is text-only
- * (the common case Mistral prefers), otherwise emit the multimodal parts
- * array.
+ * Collapse a message's content to a plain string when it is text-only (the
+ * common case), otherwise emit the multimodal parts array.
  */
 const encodeContent = (
   content: ReadonlyArray<ContentBlock>,
@@ -76,7 +75,7 @@ const appendToolCall = (
   const last = acc[acc.length - 1]
   const wire = toolCallWire(call_id, name, args)
   // Attach to the immediately-preceding assistant message (not a tool result),
-  // matching the OpenAI/Mistral shape where tool calls ride the assistant turn.
+  // matching the shape where tool calls ride the assistant turn.
   if (last !== undefined && last.role === "assistant" && last.tool_call_id === undefined) {
     return [...acc.slice(0, -1), { ...last, tool_calls: [...(last.tool_calls ?? []), wire] }]
   }
@@ -97,7 +96,7 @@ const foldItem = (acc: ReadonlyArray<WireMessage>, item: HistoryItem): ReadonlyA
     }),
   )
 
-/** Convert our `HistoryItem[]` history into Mistral chat `messages`. */
+/** Convert our `HistoryItem[]` history into chat `messages`. */
 export const itemsToMessages = (items: ReadonlyArray<HistoryItem>): ReadonlyArray<WireMessage> =>
   Arr.reduce(items, [] as ReadonlyArray<WireMessage>, foldItem)
 
@@ -128,11 +127,10 @@ type ToolChoice =
   | "none"
   | { readonly type: "function"; readonly name: string }
 
-// Mistral uses "any" for forced tool use (OpenAI's "required").
 export const toolChoiceWire = (choice: ToolChoice): string | Record<string, unknown> =>
   Match.value(choice).pipe(
     Match.when("auto", () => "auto" as const),
-    Match.when("required", () => "any" as const),
+    Match.when("required", () => "required" as const),
     Match.when("none", () => "none" as const),
     Match.orElse((c) => ({ type: "function", function: { name: c.name } })),
   )
@@ -228,7 +226,6 @@ const usageFrom = (wire: typeof WireUsage.Type): Usage => ({
 const reasonToStop = Match.type<string>().pipe(
   Match.when("stop", () => "stop" as const),
   Match.when("length", () => "max_tokens" as const),
-  Match.when("model_length", () => "max_tokens" as const),
   Match.when("tool_calls", () => "tool_calls" as const),
   Match.when("content_filter", () => "content_filter" as const),
   Match.orElse(() => "stop" as const),
@@ -258,9 +255,10 @@ const applyToolCall = (acc: Accumulator, tc: typeof WireToolCall.Type, position:
   const argsDelta = tc.function?.arguments ?? ""
   const existing = acc.tools.get(index)
   if (existing === undefined) {
-    // Mistral validates tool call ids against `^[a-zA-Z0-9]{9}$` and 422s
-    // otherwise, so a synthesised fallback (used when a chunk omits the id) must
-    // satisfy it too: this id is replayed on the next turn.
+    // Only `index` is guaranteed on a streaming tool-call chunk, so the id may
+    // be absent. The synthesised fallback is 9-char alphanumeric: valid on every
+    // chat-completions wire (Mistral additionally requires `^[a-zA-Z0-9]{9}$`),
+    // and it is replayed on the next turn.
     const call_id = tc.id ?? String(index).padStart(9, "0")
     const name = tc.function?.name ?? ""
     return [
@@ -299,9 +297,8 @@ const applyChoice = (step: Step, choice: typeof WireChoice.Type): Step => {
 }
 
 /**
- * Fold one decoded chunk into the accumulator, returning the next state and
- * the `TurnEvent`s the chunk produced. Mirrors Anthropic's `deltasFromEvent`,
- * but over chat-completions deltas.
+ * Fold one decoded chunk into the accumulator, returning the next state and the
+ * `TurnEvent`s the chunk produced.
  */
 export const applyChunk = (acc: Accumulator, chunk: WireChunk): Step => {
   const afterChoices = Arr.reduce(chunk.choices ?? [], [acc, []] as Step, applyChoice)

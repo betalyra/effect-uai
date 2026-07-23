@@ -13,13 +13,13 @@ Do providers guarantee a tool call id on the wire, and is our domain's required
 **Schema. VERIFIED** ([FunctionCall reference](https://ai.google.dev/api/caching#FunctionCall),
 v1beta REST; Vertex `v1beta1` carries identical wording):
 
-- `functionCall.id` — **Optional**: *"Unique identifier of the function call. If
+- `functionCall.id` — **Optional**: _"Unique identifier of the function call. If
   populated, the client to execute the `functionCall` and return the response with
-  the matching `id`."* The conditional *"If populated"* is the contract explicitly
+  the matching `id`."_ The conditional _"If populated"_ is the contract explicitly
   anticipating absence.
-- `functionResponse.id` — **Optional**: *"The identifier of the function call this
+- `functionResponse.id` — **Optional**: _"The identifier of the function call this
   response is for. Populated by the client to match the corresponding function call
-  `id`."* Note "populated by the **client**".
+  `id`."_ Note "populated by the **client**".
 
 **Pre-Gemini-3 `generateContent` returns no id. VERIFIED:**
 
@@ -43,8 +43,8 @@ v1beta REST; Vertex `v1beta1` carries identical wording):
 > its corresponding call using the `id` from the model's output."
 
 **Live API always uses ids. VERIFIED** ([Live API](https://ai.google.dev/api/live)):
-*"Individual `FunctionResponse` objects are matched to the respective
-`FunctionCall` objects by the `id` field."*
+_"Individual `FunctionResponse` objects are matched to the respective
+`FunctionCall` objects by the `id` field."_
 
 **`thoughtSignature` is orthogonal. VERIFIED**
 ([thought signatures](https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures)):
@@ -112,14 +112,14 @@ the items-listing endpoints use the `Resource` variant.
 Semantics: `id` = the **item** id (`fc_…`); `call_id` = the **function call** id
 (`call_…`), and `call_id` is what you echo in `function_call_output`
 (`FunctionToolCallOutput`, line 39956, `required: [type, call_id, output]`). The
-Realtime spec states the contract most clearly (line 50152): *"If passed on a
+Realtime spec states the contract most clearly (line 50152): _"If passed on a
 `function_call_output` item, the server will check that a `function_call` item with
-the same ID exists in the conversation history."*
+the same ID exists in the conversation history."_
 
 **The streaming asymmetry trap.** `response.output_item.added` carries both `id`
 and `call_id` complete in one shot. But subsequent
 `response.function_call_arguments.delta` events carry **`item_id`** (the `fc_…`
-item id), *not* `call_id`. So arg deltas correlate by item id, and you must have
+item id), _not_ `call_id`. So arg deltas correlate by item id, and you must have
 stashed `call_id` from `output_item.added` to build the eventual output. Unlike
 Chat Completions, where the delta carries the same id you echo back.
 
@@ -132,13 +132,13 @@ Chat Completions, where the delta carries the same id you echo back.
 
 The Messages API reference (docs.claude.com now 301s to platform.claude.com) lists
 `ToolUseBlock { id, caller, input, … }` with `id: string` and no optional
-qualifier. The tool-use guide states: *"`id`: A unique identifier for this
-particular tool use block. This will be used to match up the tool results later."*
+qualifier. The tool-use guide states: _"`id`: A unique identifier for this
+particular tool use block. This will be used to match up the tool results later."_
 
 **Streaming: the full `id` arrives complete in `content_block_start`**, and every
-subsequent delta carries only `partial_json`. By design: *"The deltas for
+subsequent delta carries only `partial_json`. By design: _"The deltas for
 `tool_use` content blocks correspond to updates for the `input` field of the
-block."* Nothing else in the block is ever delta'd. Same for `server_tool_use`
+block."_ Nothing else in the block is ever delta'd. Same for `server_tool_use`
 (`srvtoolu_…`) and MCP (`mcptoolu_…`).
 
 **No format guarantee.** The schema says only `id: string`. No documented prefix,
@@ -147,8 +147,8 @@ Treat prefixes as convention, not contract.
 
 `tool_result.tool_use_id` must match, and the structural rules are strict: tool
 results must immediately follow the tool_use message and come first in the content
-array, else a 400 with *"tool_use ids were found without tool_result blocks
-immediately after"*.
+array, else a 400 with _"tool_use ids were found without tool_result blocks
+immediately after"_.
 
 > Implication: our `Option.getOrElse(block.id, () => "")` fallback
 > ([anthropic/src/codec.ts:586](../../packages/providers/anthropic/src/codec.ts#L586))
@@ -163,7 +163,7 @@ From [docs.mistral.ai/openapi.yaml](https://docs.mistral.ai/openapi.yaml), the
 ```yaml
 ToolCall:
   properties:
-    id: { type: string, default: 'null' }
+    id: { type: string, default: "null" }
     type: { $ref: ToolTypes, default: function }
     function: { $ref: FunctionCall }
     index: { type: integer, default: 0 }
@@ -191,7 +191,7 @@ to emit 9-char ids.
 
 ## OpenRouter. VERIFIED: does NOT normalize ids
 
-It standardizes the *shape* (OpenAI `tool_calls[]` envelope) but passes the
+It standardizes the _shape_ (OpenAI `tool_calls[]` envelope) but passes the
 upstream provider's id value through **verbatim**. Evidence: Claude via OpenRouter
 returns `toolu_…`, not `call_…`
 ([gptel#747](https://github.com/karthink/gptel/issues/747)); and Mistral via
@@ -202,7 +202,7 @@ OpenRouter rejects ids originating from other providers
 "normalize tool call IDs for cross-provider compatibility via OpenRouter").
 
 > Implication for our OpenRouter package: it inherits the whole cross-provider id
-> problem. Switching models mid-conversation *within* OpenRouter reproduces exactly
+> problem. Switching models mid-conversation _within_ OpenRouter reproduces exactly
 > the Mistral failure, without ever leaving one "provider" from our layer's point
 > of view. Gemini is the known risk: its native `functionCall` has no id, so any id
 > seen through OpenRouter was synthesized somewhere in the chain. Treat presence as
@@ -219,12 +219,12 @@ not be read. INFERRED from absence across three sources rather than an explicit
 
 ## What our code actually does. VERIFIED locally
 
-| Provider | Wire source | Fallback when absent | Sent back to wire? |
-|---|---|---|---|
-| Responses | `f.call_id` | none (schema requires) | yes, verbatim |
-| Anthropic | `content_block.id` | `""` ([codec.ts:586](../../packages/providers/anthropic/src/codec.ts#L586)) | yes, verbatim |
-| Google | `functionCall.id`, Gemini 3 only | `` `${name}_${priorCalls.length}` `` ([codec.ts:621-628](../../packages/providers/google/src/codec.ts#L621-L628)) | **no, see bug below** |
-| Mistral | `tc.id` | `` `call_${index}` `` ([codec.ts:261](../../packages/providers/mistral/src/codec.ts#L261)) | yes, verbatim |
+| Provider  | Wire source                      | Fallback when absent                                                                                              | Sent back to wire?    |
+| --------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------- |
+| Responses | `f.call_id`                      | none (schema requires)                                                                                            | yes, verbatim         |
+| Anthropic | `content_block.id`               | `""` ([codec.ts:586](../../packages/providers/anthropic/src/codec.ts#L586))                                       | yes, verbatim         |
+| Google    | `functionCall.id`, Gemini 3 only | `` `${name}_${priorCalls.length}` `` ([codec.ts:621-628](../../packages/providers/google/src/codec.ts#L621-L628)) | **no, see bug below** |
+| Mistral   | `tc.id`                          | `` `call_${index}` `` ([codec.ts:261](../../packages/providers/mistral/src/codec.ts#L261))                        | yes, verbatim         |
 
 Two distinct roles emerge, and they have different requirements:
 
@@ -243,7 +243,7 @@ The `RequestPart` type
 ([codec.ts:377-380](../../packages/providers/google/src/codec.ts#L377-L380)) emits
 only `{ name, response }`. But the doc comment at
 [codec.ts:29-34](../../packages/providers/google/src/codec.ts#L29-L34) claims the
-Gemini 3 id *"we echo back on the corresponding `functionResponse`"*. It does not.
+Gemini 3 id _"we echo back on the corresponding `functionResponse`"_. It does not.
 
 We do echo the id on the outbound **functionCall**
 ([codec.ts:362-368](../../packages/providers/google/src/codec.ts#L362-L368)) via
@@ -264,19 +264,19 @@ from `thoughtSignature`, which has its own first-part-only-for-parallel rule.
 Every major SDK **synthesizes a client-side id**. They diverge only on whether it
 goes on the wire:
 
-| SDK | Ingest | Sends `id` on wire? |
-|---|---|---|
-| Vercel AI SDK | `part.functionCall.id ?? config.generateId()` | always, ungated |
-| LangChain Python | `raw_id or uuid.uuid4()` | never — name + position |
-| LangChain JS | always uuid4, server id **discarded** | never — name + position |
-| LiteLLM | server id or `call_<uuid>` | only for AI Studio Gemini 3+ |
-| google-genai (official) | ignores id entirely | never — name + position |
+| SDK                     | Ingest                                        | Sends `id` on wire?          |
+| ----------------------- | --------------------------------------------- | ---------------------------- |
+| Vercel AI SDK           | `part.functionCall.id ?? config.generateId()` | always, ungated              |
+| LangChain Python        | `raw_id or uuid.uuid4()`                      | never — name + position      |
+| LangChain JS            | always uuid4, server id **discarded**         | never — name + position      |
+| LiteLLM                 | server id or `call_<uuid>`                    | only for AI Studio Gemini 3+ |
+| google-genai (official) | ignores id entirely                           | never — name + position      |
 
 LiteLLM is the only one that encodes a gate, and its comment is the sharpest claim
 found anywhere:
 
-> *"Gemini 3+ on Google AI Studio accepts (and returns) `id` for strict tool-call
-> matching. **Vertex AI rejects the field with HTTP 400.**"*
+> _"Gemini 3+ on Google AI Studio accepts (and returns) `id` for strict tool-call
+> matching. **Vertex AI rejects the field with HTTP 400.**"_
 
 Corroborated independently with the actual error text,
 `Unknown name "id" at contents[].parts[].function_call`, in
@@ -288,12 +288,12 @@ the Vertex rejection is real.
 Vercel sends synthesized ids ungated, which by the above is the risky pattern; it
 likely survives only because AI Studio tolerates arbitrary ids. Its own PR
 ([#15317](https://github.com/vercel/ai/commit/41da50cb), 2026-05-15) is instructive:
-before it, Vercel discarded Gemini's id entirely and matched by name, noting *"This
-does not cause any known bugs in production"*. Direct evidence that name-matching
+before it, Vercel discarded Gemini's id entirely and matched by name, noting _"This
+does not cause any known bugs in production"_. Direct evidence that name-matching
 works on the older path.
 
 Worth noting LangChain JS's positional fallback is visibly broken under parallel
-calls — it takes `prevMessage.tool_calls[0].name`, the *first* call, with the
+calls — it takes `prevMessage.tool_calls[0].name`, the _first_ call, with the
 comment `// Hacky :(`. A good illustration of what name/position correlation costs.
 
 The official google-genai SDK dispatches through a `name → callable` map and emits

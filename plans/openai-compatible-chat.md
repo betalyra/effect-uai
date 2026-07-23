@@ -25,7 +25,7 @@ Worth stating plainly, because it sets how much to invest. Chat Completions is
 **neither legacy nor safely permanent**. It is a stable lingua franca being
 hollowed out from the top:
 
-- OpenAI pledged to support it *"indefinitely"*, and it remains the universal
+- OpenAI pledged to support it _"indefinitely"_, and it remains the universal
   provider dialect and the default in LangChain and LiteLLM.
 - But **GPT-5.4 Pro and GPT-5.5 Pro shipped Responses-only**, OpenAI removed Chat
   Completions from its own Codex client, and every hosted tool since March 2025 is
@@ -77,14 +77,14 @@ The deciding principle, settled during review: **a package is the front door for
 brand that has more than one capability, and the base disappears behind it.** Not
 "how much code does the wrapper contain."
 
-| | Decision |
-|---|---|
+|                                | Decision                                                                                                                                                                                                                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@effect-uai/chat-completions` | **User-facing package.** The honest answer for gateways generally: a gateway is defined by its URL, not its brand. Serves the long tail directly. Named for the dialect, not for "OpenAI-compatible", which would read as an endorsement exactly as the ecosystem moves to Responses. |
-| `@effect-uai/mistral` | Keeps its front door. Composes primitives (five real deviations). Also has Transcriber, SttStreaming, SpeechSynthesizer. |
-| `@effect-uai/jina` | Gains `JinaDeepSearch` alongside Embedding + Reader. Composes primitives. |
-| `@effect-uai/perplexity` | Gains sync sonar `LanguageModel` alongside WebSearch + DeepResearch. |
-| `@effect-uai/openrouter` | **New package.** LanguageModel + Synthesizer + Transcriber. Earns it on capability breadth; its audio is its own interface, not an OpenAI clone. |
-| Requesty | **No package. Docs page over `chat-completions`.** See below. |
+| `@effect-uai/mistral`          | Keeps its front door. Composes primitives (five real deviations). Also has Transcriber, SttStreaming, SpeechSynthesizer.                                                                                                                                                              |
+| `@effect-uai/jina`             | Gains `JinaDeepSearch` alongside Embedding + Reader. Composes primitives.                                                                                                                                                                                                             |
+| `@effect-uai/perplexity`       | Gains sync sonar `LanguageModel` alongside WebSearch + DeepResearch.                                                                                                                                                                                                                  |
+| `@effect-uai/openrouter`       | **New package.** LanguageModel + Synthesizer + Transcriber. Earns it on capability breadth; its audio is its own interface, not an OpenAI clone.                                                                                                                                      |
+| Requesty                       | **No package. Docs page over `chat-completions`.** See below.                                                                                                                                                                                                                         |
 
 ### Why Requesty is deferred
 
@@ -100,8 +100,8 @@ Two reasons, and the second is stronger:
    the model half. A package that looks like it guarantees GDPR compliance but only
    sets a base URL is worse than a docs page explaining both halves.
 
-Requesty's audio is **OpenAI-passthrough only** (*"Currently only OpenAI models are
-supported"*), so shipping Synthesizer/Transcriber there would ship a capability
+Requesty's audio is **OpenAI-passthrough only** (_"Currently only OpenAI models are
+supported"_), so shipping Synthesizer/Transcriber there would ship a capability
 that structurally cannot meet the compliance goal. Revisit when Requesty routes
 audio to non-OpenAI models; that would restore the breadth argument honestly.
 
@@ -166,13 +166,13 @@ two or more providers genuinely share it.
 
 Acceptance criteria for the primitives being factored correctly.
 
-| Provider | Deviations |
-|---|---|
-| **Mistral** | `required`→`"any"` tool_choice; `safe_prompt`/`random_seed`; bare-string `image_url`; `model_length` finish reason; **rejects `max_completion_tokens` (422)**; strict 422 on unknown fields; **tool-call ids must match `^[a-zA-Z0-9]{9}$`**; `document_url` content part; hosted tools in `tools[]` |
-| **OpenRouter** | **Must skip `:`-prefixed SSE comment lines**; **HTTP-200 mid-stream errors** (top-level `error` + `finish_reason: "error"`); `provider`/`models`/`route`/`plugins`/`reasoning` body fields; `HTTP-Referer`/`X-Title` headers; `reasoning_details[]`; `native_finish_reason`. Do **not** send `usage:{include:true}` or `transforms` (both dead) |
-| **Jina DeepSearch** | Separate host `deepsearch.jina.ai`; **no tool calling at all**; reasoning inlined as `<think>…</think>` in `delta.content`; **camelCase** `url_citation` (`exactQuote`/`dateTime`, no indexes); `visitedURLs`/`readURLs` only on the final chunk, top-level |
-| **Perplexity sonar** | `search_results`→`Annotation`; sync chat endpoint; codec largely already written in `PerplexityDeepResearch.ts` |
-| **Requesty** (docs only) | Top-level `requesty` object; `policy/` model prefix; EU base URL + EU model suffix; `stream_options:{include_usage:true}` for streamed usage; `usage.cost` |
+| Provider                 | Deviations                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Mistral**              | `required`→`"any"` tool_choice; `safe_prompt`/`random_seed`; bare-string `image_url`; `model_length` finish reason; **rejects `max_completion_tokens` (422)**; strict 422 on unknown fields; **tool-call ids must match `^[a-zA-Z0-9]{9}$`**; `document_url` content part; hosted tools in `tools[]`                                            |
+| **OpenRouter**           | **Must skip `:`-prefixed SSE comment lines**; **HTTP-200 mid-stream errors** (top-level `error` + `finish_reason: "error"`); `provider`/`models`/`route`/`plugins`/`reasoning` body fields; `HTTP-Referer`/`X-Title` headers; `reasoning_details[]`; `native_finish_reason`. Do **not** send `usage:{include:true}` or `transforms` (both dead) |
+| **Jina DeepSearch**      | Separate host `deepsearch.jina.ai`; **no tool calling at all**; reasoning inlined as `<think>…</think>` in `delta.content`; **camelCase** `url_citation` (`exactQuote`/`dateTime`, no indexes); `visitedURLs`/`readURLs` only on the final chunk, top-level                                                                                     |
+| **Perplexity sonar**     | `search_results`→`Annotation`; sync chat endpoint; codec largely already written in `PerplexityDeepResearch.ts`                                                                                                                                                                                                                                 |
+| **Requesty** (docs only) | Top-level `requesty` object; `policy/` model prefix; EU base URL + EU model suffix; `stream_options:{include_usage:true}` for streamed usage; `usage.cost`                                                                                                                                                                                      |
 
 ## Phases
 
@@ -188,12 +188,35 @@ against a real key; record results back into [research/](./research/).
 - **Jina**: confirm the DeepSearch field table against a live call (no OpenAPI spec
   exists); confirm whether `visitedURLs` appears on non-streaming responses.
 
-### Phase 1: fix the Mistral tool-call-id bug
+### Phase 1: fix the Mistral tool-call-id bug — DONE
 
-Independent of the extraction, shippable first. Normalize ids at the Mistral
-boundary in both directions, and replace the `` `call_${index}` `` fallback with a
-9-char alphanumeric generator. Add the regression test the current suite lacks
-(`buildRequestBody` is entirely untested today).
+The synthesised-id fallback in `applyToolCall` used `` `call_${index}` ``, which
+fails Mistral's `^[a-zA-Z0-9]{9}$` validation when replayed. Changed to
+`String(index).padStart(9, "0")`
+([codec.ts:261](../packages/providers/mistral/src/codec.ts#L261)). This is a
+wire-valid constant that also satisfies every other chat-completions provider (none
+of them constrain id format), so it becomes the base's fallback verbatim at Phase 2.
+
+**Scope decided and cut** (see [research/tool-call-ids.md](./research/tool-call-ids.md)):
+no configurable tool-call-id generator. The whole custom/stateful/effectful
+generator design was explored and dropped: it had zero current consumers, and the
+only real requirement (a fallback valid everywhere) is a constant, not a feature.
+The base does **not** need a `GenerateToolCallId` hook. If a consumer ever needs
+custom or side-effectful ids, add the hook then; the benchmark in
+[experiments/toolcallid-bench/](../experiments/toolcallid-bench/) shows the
+effectful path costs ~0.006% of a network-bound turn, so perf won't be the blocker.
+
+**No cross-provider id normalization** in any codec (per
+[feedback_no_automagic_cross_provider_fixes]). Mistral rejecting foreign ids
+(Anthropic `toolu_…`, OpenAI `call_…`) on replay stays a documented constraint, not
+a silent rewrite. Note this also affects OpenRouter, which passes upstream ids
+through verbatim, so switching models within OpenRouter reproduces the same
+failure. An opt-in history-normalization helper is the eventual answer if needed.
+
+**Separate, unrelated:** the Gemini `functionResponse.id` bug
+([research/tool-call-ids.md](./research/tool-call-ids.md)) is a real silent
+mis-pairing on parallel Gemini-3 calls. Not chat-completions, not part of this
+extraction; fix independently.
 
 ### Phase 2: extract the base
 

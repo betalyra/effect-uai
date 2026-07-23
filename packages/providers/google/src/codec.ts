@@ -135,6 +135,7 @@ type RequestPart =
     }
   | {
       readonly functionResponse: {
+        readonly id?: string
         readonly name: string
         readonly response: Record<string, unknown>
       }
@@ -340,6 +341,20 @@ const geminiField = (
   )
 
 const providerIdFor = (item: ToolCall): Option.Option<string> => geminiField(item, (g) => g.id)
+
+// The originating call's Gemini id, looked up from history by our `call_id`.
+// Gemini 3 maps a `functionResponse` back to its call by this id, so parallel
+// calls to the same function are mis-paired if we drop it.
+const providerIdForCallId = (
+  history: ReadonlyArray<HistoryItem>,
+  call_id: string,
+): Option.Option<string> =>
+  pipe(
+    history,
+    Arr.findFirst((item): item is ToolCall => isFunctionCallItem(item) && item.call_id === call_id),
+    Option.flatMap(providerIdFor),
+  )
+
 const signatureFor = (item: ToolCall): Option.Option<string> =>
   geminiField(item, (g) => g.thoughtSignature)
 
@@ -375,6 +390,10 @@ const itemToContent =
             parts: [
               {
                 functionResponse: {
+                  ...Option.match(providerIdForCallId(history, o.call_id), {
+                    onSome: (id) => ({ id }),
+                    onNone: () => ({}),
+                  }),
                   name: Option.getOrElse(nameForCallId(history, o.call_id), () => o.call_id),
                   response: parsedResponse(o.output),
                 },

@@ -2,7 +2,6 @@
 "@effect-uai/responses": minor
 "@effect-uai/google": minor
 "@effect-uai/perplexity": minor
-"@effect-uai/exa": minor
 ---
 
 Namespace `providerData` per provider, and give it a domain type where a
@@ -23,10 +22,6 @@ a consumer to read, it carries a domain value with an exported schema and
 accessor, rather than the raw wire shape. Wire schemas stay internal, so a wire
 change cannot silently alter the published type.
 
-- `@effect-uai/exa` → `ExaDeepResearch.ExaResearchData` on `providerData.exa`:
-  `sourcesByField`, which sources back which field of a structured result. This
-  is the one thing the flat `Annotation` view cannot express. Read it with
-  `ExaDeepResearch.researchDataOf(item)`.
 - `@effect-uai/google` → `GoogleDeepResearch.GeminiResearchData` on
   `providerData.gemini`: `steps`, the research trace of what the model did at
   each step and which sources it consulted there. The `Turn` keeps only the

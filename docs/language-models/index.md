@@ -199,7 +199,7 @@ searches over minutes, a long cited report). Build one over `LanguageModel` +
 the plan, fan-out, and synthesis - or hand the whole job to a provider's hosted
 agent via the sibling [`DeepResearch`](/recipes/native-deep-research/) capability
 (submit a question, stream progress, collect a cited `Turn`; OpenAI, Perplexity,
-Gemini, and Exa today).
+and Gemini today).
 
 ## What `LanguageModel` is not
 

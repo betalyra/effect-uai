@@ -57,11 +57,11 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Web search
 
-| Recipe                                                 | One-line                                                                                                                                 |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| [Grounded answer](/recipes/grounded-answer/)           | Answer a current-events question from live web search with inline citations; swap the LLM and backend at will.                           |
-| [Deep research](/recipes/deep-research/)               | Plan a broad question into sub-questions, investigate each with a streaming sub-agent, synthesize a cited report.                        |
-| [Native deep research](/recipes/native-deep-research/) | Submit one question to a provider-hosted research agent (OpenAI, Perplexity, Gemini, Exa); stream its progress and get one cited report. |
+| Recipe                                                 | One-line                                                                                                                            |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [Grounded answer](/recipes/grounded-answer/)           | Answer a current-events question from live web search with inline citations; swap the LLM and backend at will.                      |
+| [Deep research](/recipes/deep-research/)               | Plan a broad question into sub-questions, investigate each with a streaming sub-agent, synthesize a cited report.                   |
+| [Native deep research](/recipes/native-deep-research/) | Submit one question to a provider-hosted research agent (OpenAI, Perplexity, Gemini); stream its progress and get one cited report. |
 
 ## Web reading
 

@@ -46,11 +46,10 @@ The stream terminates in `TurnComplete`, whose `turn` is a `Turn` (the same valu
 a normal generation returns): project it with `Turn.assistantText` and
 `Turn.citations`. Under the hood the adapter submits a background job
 (`o3-deep-research` on OpenAI, `sonar-deep-research` on Perplexity,
-`deep-research-*` on Gemini, `exa-research` on Exa) and streams or polls it to
-completion. On providers that stream (OpenAI, Gemini) the events are real; on
-poll-only ones (Perplexity, Exa) progress is synthesized, same body. If you only
-want the final report, `research(request)` returns the `Turn` directly and drops
-the stream.
+`deep-research-*` on Gemini) and streams or polls it to completion. On providers
+that stream (OpenAI, Gemini) the events are real; on poll-only ones (Perplexity)
+progress is synthesized, same body. If you only want the final report,
+`research(request)` returns the `Turn` directly and drops the stream.
 
 ## Run it
 
@@ -58,7 +57,6 @@ the stream.
 PERPLEXITY_API_KEY=... pnpm tsx recipes/native-deep-research/run-node.ts
 OPENAI_API_KEY=...     pnpm tsx recipes/native-deep-research/run-node.ts --provider=openai
 GOOGLE_API_KEY=...     pnpm tsx recipes/native-deep-research/run-node.ts --provider=google
-EXA_API_KEY=...        pnpm tsx recipes/native-deep-research/run-node.ts --provider=exa
 
 QUESTION="compare the leading open-weight LLMs released this quarter" \
   PERPLEXITY_API_KEY=... pnpm tsx recipes/native-deep-research/run-node.ts

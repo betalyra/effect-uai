@@ -25,24 +25,6 @@ export type ExaSearchType =
   | (string & {})
 
 /**
- * Exa research model for the async `/research/v1` task API (create + poll).
- * `exa-research-fast` / `exa-research` / `exa-research-pro` trade latency for
- * depth. The `(string & {})` tail accepts any string without an SDK bump.
- *
- * Note (2026-07): Exa announced `/research/v1` deprecation in favour of
- * `/search` with `type: "deep-reasoning"`. Verify the endpoint and the
- * completed-task response shape against live docs before relying on this.
- *
- * Reference: https://docs.exa.ai/reference/research/create-a-task
- */
-export type ExaResearchModel =
-  | "exa-research"
-  | "exa-research-pro"
-  | "exa-research-fast"
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  | (string & {})
-
-/**
  * Exa's result category filter. Narrows the index to a content vertical.
  * Provider-specific, so it lives on `ExaSearchRequest`.
  */

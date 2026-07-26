@@ -97,6 +97,30 @@ describe("tokenTotals", () => {
       expect(m).toEqual({ name: "effect_uai_output_tokens", kind: "counter", value: 7 })
     }),
   )
+
+  it.effect("carries cache read and write tokens through usage and measurements", () =>
+    Effect.gen(function* () {
+      const stream = Stream.make(
+        turnComplete({
+          input_tokens: 94,
+          input_tokens_details: { cached_tokens: 31851, cache_write_tokens: 604 },
+        }),
+        turnComplete({ input_tokens: 6, input_tokens_details: { cached_tokens: 32000 } }),
+      )
+      const out = yield* Stream.runCollect(stream.pipe(tokenTotals))
+      const totals = tagged(out, "TokenTotals") as ReadonlyArray<TokenTotals>
+      expect(totals.map((t) => t.cumulative.input_tokens_details?.cache_write_tokens)).toEqual([
+        604, 604,
+      ])
+      expect(totals.map((t) => t.cumulative.input_tokens_details?.cached_tokens)).toEqual([
+        31851, 63851,
+      ])
+      const write = head(totals).measurements.find(
+        (m) => m.name === "effect_uai_cache_write_tokens",
+      )
+      expect(write).toEqual({ name: "effect_uai_cache_write_tokens", kind: "counter", value: 604 })
+    }),
+  )
 })
 
 describe("timeToFirstToken", () => {

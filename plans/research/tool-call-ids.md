@@ -146,9 +146,9 @@ length, or charset. Observed ids run 24-25 chars after the prefix, undocumented.
 Treat prefixes as convention, not contract.
 
 `tool_result.tool_use_id` must match, and the structural rules are strict: tool
-results must immediately follow the tool_use message and come first in the content
-array, else a 400 with _"tool_use ids were found without tool_result blocks
-immediately after"_.
+results must immediately follow the tool*use message and come first in the content
+array, else a 400 with *"tool*use ids were found without tool_result blocks
+immediately after"*.
 
 > Implication: our `Option.getOrElse(block.id, () => "")` fallback
 > ([anthropic/src/codec.ts:586](../../packages/providers/anthropic/src/codec.ts#L586))

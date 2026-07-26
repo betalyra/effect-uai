@@ -126,6 +126,7 @@ const MetricName = {
   totalTokens: "effect_uai_total_tokens",
   reasoningTokens: "effect_uai_reasoning_tokens",
   cachedInputTokens: "effect_uai_cached_input_tokens",
+  cacheWriteTokens: "effect_uai_cache_write_tokens",
 } as const
 
 /** Read a structural `_tag` off any value without narrowing to a closed union. */
@@ -182,6 +183,10 @@ const addUsage = (a: Usage, b: Usage): Usage => {
     a.input_tokens_details?.cached_tokens,
     b.input_tokens_details?.cached_tokens,
   )
+  const cacheWrite = sumOptional(
+    a.input_tokens_details?.cache_write_tokens,
+    b.input_tokens_details?.cache_write_tokens,
+  )
   const reasoning = sumOptional(
     a.output_tokens_details?.reasoning_tokens,
     b.output_tokens_details?.reasoning_tokens,
@@ -190,7 +195,13 @@ const addUsage = (a: Usage, b: Usage): Usage => {
     input_tokens: sumOptional(a.input_tokens, b.input_tokens),
     output_tokens: sumOptional(a.output_tokens, b.output_tokens),
     total_tokens: sumOptional(a.total_tokens, b.total_tokens),
-    input_tokens_details: cached === undefined ? undefined : { cached_tokens: cached },
+    input_tokens_details:
+      cached === undefined && cacheWrite === undefined
+        ? undefined
+        : {
+            ...(cached !== undefined && { cached_tokens: cached }),
+            ...(cacheWrite !== undefined && { cache_write_tokens: cacheWrite }),
+          },
     output_tokens_details: reasoning === undefined ? undefined : { reasoning_tokens: reasoning },
   }
 }
@@ -203,6 +214,7 @@ const usageMeasurements = (usage: Usage): ReadonlyArray<Measurement> => {
     [MetricName.totalTokens, usage.total_tokens],
     [MetricName.reasoningTokens, usage.output_tokens_details?.reasoning_tokens],
     [MetricName.cachedInputTokens, usage.input_tokens_details?.cached_tokens],
+    [MetricName.cacheWriteTokens, usage.input_tokens_details?.cache_write_tokens],
   ]
   return Arr.filterMap(pairs, ([name, value]) =>
     value === undefined

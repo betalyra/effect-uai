@@ -33,14 +33,13 @@ import {
 } from "effect"
 import * as Items from "@effect-uai/core/Items"
 import * as Turn from "@effect-uai/core/Turn"
-import { layer as exaLayer } from "@effect-uai/exa/ExaDeepResearch"
 import { layer as googleLayer } from "@effect-uai/google/GoogleDeepResearch"
 import { layer as perplexityLayer } from "@effect-uai/perplexity/PerplexityDeepResearch"
 import { layer as openaiLayer } from "@effect-uai/responses/OpenAIDeepResearch"
 import { providerChoice } from "../_shared/argv.js"
 import { nativeDeepResearch } from "./recipe.js"
 
-export type Provider = "perplexity" | "openai" | "google" | "exa"
+export type Provider = "perplexity" | "openai" | "google"
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`
 const write = (s: string) =>
@@ -57,7 +56,6 @@ const defaultModel: Record<Provider, string> = {
   perplexity: "sonar-deep-research",
   openai: "o3-deep-research",
   google: "deep-research-preview-04-2026",
-  exa: "exa-research",
 }
 
 const researchLayerFor = Match.type<Provider>().pipe(
@@ -82,14 +80,6 @@ const researchLayerFor = Match.type<Provider>().pipe(
       Effect.gen(function* () {
         const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
         return googleLayer({ apiKey })
-      }),
-    ),
-  ),
-  Match.when("exa", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("EXA_API_KEY")
-        return exaLayer({ apiKey })
       }),
     ),
   ),
@@ -134,7 +124,7 @@ const toMarkdown = (question: string, turn: Turn.Turn): string => {
 // ---------------------------------------------------------------------------
 
 export const main = Effect.gen(function* () {
-  const provider = yield* providerChoice("perplexity", "openai", "google", "exa")
+  const provider = yield* providerChoice("perplexity", "openai", "google")
   const cfg = yield* recipeConfig(provider)
   const fs = yield* FileSystem.FileSystem
 

@@ -1,5 +1,7 @@
 # @effect-uai/chat-completions
 
+## 0.12.0
+
 ## 0.11.0
 
 Initial release. A reusable OpenAI Chat Completions (`POST /chat/completions`)

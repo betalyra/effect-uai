@@ -1,5 +1,47 @@
 # @effect-uai/core
 
+## 0.12.0
+
+### Minor Changes
+
+- f86ffd3: Report Anthropic cache-creation (write) tokens, and fix a stale `total_tokens`
+  on streamed turns.
+
+  Anthropic bills input across three separate buckets: `input_tokens`
+  (post-breakpoint), cache reads, and cache writes. The provider decoded the
+  write bucket but dropped it, so a turn that populated the cache logged
+  `cached 0` and the priciest tokens were invisible in telemetry.
+  - `Items.Usage.input_tokens_details` gains `cache_write_tokens` (mirrors the
+    OpenAI Responses usage field name). Note `cached_tokens` / `cache_write_tokens`
+    are provider-relative: Anthropic reports `input_tokens` as post-breakpoint
+    only, so the buckets are additive; OpenAI counts cache reads inside
+    `input_tokens`. Read each provider's usage in its own terms.
+  - The anthropic codec now maps `cache_creation_input_tokens` to
+    `cache_write_tokens` and computes `total_tokens` from the accumulated usage
+    (all input buckets plus output). Previously `total_tokens` was set from a
+    single wire event, leaving it frozen at the `message_start` figure for
+    streamed turns.
+  - `Metrics` folds it in alongside cached tokens: `tokenTotals` cumulates it and
+    emits an `effect_uai_cache_write_tokens` counter measurement.
+
+### Patch Changes
+
+- 3831f0c: `Metrics.throughput` now measures every delta that carries generated output, not
+  just `TextDelta`. `ReasoningDelta`, `RefusalDelta` and `ToolCallArgsDelta` count
+  too.
+
+  Previously a tool-using agent measured a rate near zero for an entire run: its
+  output is mostly `ToolCallArgsDelta`, and only prose was counted. Anyone
+  charting `effect_uai_output_*_per_second` for such an agent will see the number
+  jump from ~0 to a real rate. Prose-only turns are unaffected.
+
+  `ThroughputOptions.tokenizer` is now called with the new `OutputDelta` type
+  rather than `TurnEvent`, since it only ever receives output-carrying deltas.
+  Existing tokenizers that accept a full `TurnEvent` remain assignable.
+
+  `timeToFirstToken` keeps its own narrower definition of a content delta and is
+  unchanged.
+
 ## 0.11.0
 
 ### Minor Changes
@@ -419,13 +461,13 @@
 
   ```ts
   // Before
-  import { retry } from "@effect-uai/core/LanguageModel"
-  streamTurn(req).pipe(retry(schedule))
+  import { retry } from "@effect-uai/core/LanguageModel";
+  streamTurn(req).pipe(retry(schedule));
 
   // After
-  import * as Retry from "@effect-uai/core/Retry"
-  streamTurn(req).pipe(Retry.stream(schedule))
-  embed(req).pipe(Retry.effect(schedule))
+  import * as Retry from "@effect-uai/core/Retry";
+  streamTurn(req).pipe(Retry.stream(schedule));
+  embed(req).pipe(Retry.effect(schedule));
   ```
 
   `Retryable` and `isRetryable` move to the same module.

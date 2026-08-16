@@ -73,11 +73,7 @@ const isTransientInvalidRequest = (e: AiError.AiError): boolean =>
 /** Type-narrowing predicate for the retryable subset. */
 export const isRetryable = (
   e: AiError.AiError,
-): e is
-  | AiError.RateLimited
-  | AiError.Unavailable
-  | AiError.Timeout
-  | AiError.InvalidRequest =>
+): e is AiError.RateLimited | AiError.Unavailable | AiError.Timeout | AiError.InvalidRequest =>
   e._tag === "RateLimited" ||
   e._tag === "Unavailable" ||
   e._tag === "Timeout" ||

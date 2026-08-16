@@ -94,9 +94,13 @@ freeform answer.
 
 ## Run it
 
+Runs against any OpenAI-compatible gateway. Pick it with `--base-url` / `--model`
+/ `--provider`; the key comes from `LLM_API_KEY`. Requesty with Kimi K3:
+
 ```sh
-OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-usage/run.ts
+LLM_API_KEY=... pnpm tsx recipes/basic-usage/run-node.ts \
+  --base-url https://router.requesty.ai/v1 --model moonshotai/kimi-k3 --provider requesty
 ```
 
-The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-usage/index.ts).
+`recipe.ts` is the agent loop, `app.ts` wires the provider + rendering, and
+`run-node.ts` / `run-bun.ts` / `run-deno.ts` attach the platform `HttpClient`.

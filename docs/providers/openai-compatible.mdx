@@ -1,0 +1,94 @@
+---
+title: Chat Completions (legacy)
+description: The legacy OpenAI-compatible /chat/completions dialect, for endpoints that do not speak the Responses API.
+---
+
+import Callout from "@/components/Callout"
+
+<Callout title="Prefer Responses. Use this only as a last resort.">
+
+This is the **legacy Chat Completions** dialect, kept for endpoints that speak
+nothing newer. Almost always you want [Responses](/providers/responses/)
+instead: the modern API, an [open standard](https://www.openresponses.org/),
+and supported by both [OpenRouter and Requesty](/providers/gateways/). Responses
+gives you typed reasoning items, server-side state (`store` /
+`previousResponseId`), and a typed item stream.
+
+</Callout>
+
+`@effect-uai/chat-completions` implements the generic `LanguageModel` contract
+against `POST /chat/completions`. It is one reusable base you point at any
+compatible endpoint with `baseUrl`: OpenRouter, Requesty, Groq, Together, or a
+self-hosted gateway.
+
+## Install
+
+```sh
+pnpm add @effect-uai/core @effect-uai/chat-completions effect
+```
+
+## Wire it up
+
+```ts
+import { Config, Effect, Layer } from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
+import { layer as chatLayer } from "@effect-uai/chat-completions/ChatCompletions"
+
+const provider = Layer.unwrap(
+  Effect.gen(function* () {
+    const apiKey = yield* Config.redacted("LLM_API_KEY")
+    return chatLayer({
+      apiKey,
+      baseUrl: "https://openrouter.ai/api/v1",
+      provider: "openrouter",
+    })
+  }),
+)
+
+const mainLayer = provider.pipe(Layer.provide(FetchHttpClient.layer))
+```
+
+The layer registers the generic `LanguageModel` tag only: the point is one base
+for many gateways, so there is no provider-typed tag. `model` is a plain string
+(these gateways ship hundreds of models). Streaming, tools, and structured
+output work as on any other provider.
+
+## Config
+
+```ts
+interface ChatConfig {
+  readonly apiKey: Redacted.Redacted
+  readonly baseUrl: string // e.g. https://openrouter.ai/api/v1
+  readonly provider: string // tags AiErrors from this endpoint
+  readonly path?: string // defaults to /chat/completions
+  readonly authHeader?: (req) => req // defaults to Bearer
+  readonly extraHeaders?: Record<string, string>
+  readonly extraBody?: (request) => Record<string, unknown>
+}
+```
+
+`baseUrl` and `provider` are required; the rest cover endpoints that diverge
+from the defaults. Use `authHeader` for non-Bearer schemes (Azure's `api-key`),
+`extraHeaders` for attribution headers, and `extraBody` for endpoint-specific
+request fields.
+
+## Errors
+
+Failures surface as typed `AiError` variants, tagged with your `provider`, and
+recover per-tag with `Stream.catchTag(...)`:
+
+| Status      | Error                               |
+| ----------- | ----------------------------------- |
+| `429`       | `AiError.RateLimited`               |
+| `408`/`504` | `AiError.Timeout`                   |
+| `401`       | `AiError.AuthFailed` (`auth`)       |
+| `403`       | `AiError.AuthFailed` (`permission`) |
+| `402`       | `AiError.AuthFailed` (`billing`)    |
+| `413`       | `AiError.ContextLengthExceeded`     |
+| `>= 500`    | `AiError.Unavailable`               |
+| other 4xx   | `AiError.InvalidRequest`            |
+
+## See also
+
+- [Responses](/providers/responses/): the protocol to prefer.
+- [Gateways](/providers/gateways/): OpenRouter and Requesty, in both dialects.

@@ -52,6 +52,20 @@ export type ResponsesRequest = Omit<CommonRequest, "model"> & {
   readonly promptCacheKey?: string
   readonly truncation?: "auto" | "disabled"
   /**
+   * Vendor-specific body fields merged into the request as-is.
+   *
+   * The Responses dialect is spoken by gateways as well as by OpenAI, and a
+   * gateway carries its own parameters — Requesty's `{ requesty: { auto_cache:
+   * true } }`, for example. Modelling each one would tie this provider to a
+   * catalogue of gateways it cannot see; passing them through keeps the typed
+   * surface OpenAI's and the untyped surface open.
+   *
+   * Merged over the built body, so a field named here wins over the one this
+   * provider would have sent. Per-request keys win over the layer's
+   * {@link Config.extraBody}.
+   */
+  readonly extraBody?: Readonly<Record<string, unknown>>
+  /**
    * Free-form JSON output: model emits valid JSON without schema
    * constraints. Mutually exclusive with `structured` (schema wins if
    * both are set).
@@ -108,6 +122,12 @@ export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
   readonly region?: OpenAiRegion
+  /**
+   * Vendor-specific body fields sent on every request from this layer — the
+   * place for a gateway's standing configuration, so call sites do not repeat
+   * it. Overridden per request by {@link ResponsesRequest.extraBody}.
+   */
+  readonly extraBody?: Readonly<Record<string, unknown>>
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +156,7 @@ const buildText = (request: ResponsesRequest): Record<string, unknown> | undefin
 const buildBody = (
   request: ResponsesRequest,
   providerToolWire: ReadonlyArray<Record<string, unknown>>,
+  cfg: Config,
 ): Record<string, unknown> => {
   const text = buildText(request)
   const functionTools = descriptorsOf(request.tools).map((t) => ({
@@ -176,6 +197,8 @@ const buildBody = (
     }),
     ...(request.truncation !== undefined && { truncation: request.truncation }),
     ...(text !== undefined && { text }),
+    ...cfg.extraBody,
+    ...request.extraBody,
   }
 }
 
@@ -309,7 +332,7 @@ const buildNativeStream = (cfg: Config) => {
         )
         const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.bearerToken(cfg.apiKey),
-          HttpClientRequest.bodyJsonUnsafe(buildBody(request, providerToolWire)),
+          HttpClientRequest.bodyJsonUnsafe(buildBody(request, providerToolWire, cfg)),
           HttpClientRequest.accept("text/event-stream"),
         )
         const response = yield* client

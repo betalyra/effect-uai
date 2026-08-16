@@ -1,25 +1,29 @@
-import { Array as Arr, Encoding, Match, Option, Schema } from "effect"
-import type {
-  ContentBlock,
-  HistoryItem,
-  InputImage,
-  StopReason,
-  Usage,
-} from "@effect-uai/core/Items"
-import type { StructuredFormat } from "@effect-uai/core/StructuredFormat"
-import type { ToolDescriptor } from "@effect-uai/core/Tool"
-import type { Turn } from "@effect-uai/core/Turn"
-import { TurnEvent } from "@effect-uai/core/Turn"
+import { Array as Arr, Effect, Encoding, Match, Option } from "effect"
+import type { ContentBlock, HistoryItem, InputImage } from "@effect-uai/core/Items"
+
+// The streaming decoder, tool encoding, and terminal-turn assembly are the
+// generic OpenAI chat-completions codec: Mistral speaks that dialect on the
+// wire, so it reuses them verbatim. Only request encoding diverges (below).
+export {
+  type Accumulator,
+  type WireChunk,
+  accumulatorToTurn,
+  applyChunk,
+  emptyAccumulator,
+  responseFormatWire,
+  toolsWire,
+} from "@effect-uai/chat-completions/codec"
+import {
+  type WireChunk,
+  decodeChunk as decodeChunkShared,
+} from "@effect-uai/chat-completions/codec"
 
 // ---------------------------------------------------------------------------
 // History → Mistral chat `messages`
 //
-// Mistral speaks the OpenAI chat-completions dialect: a flat list of
-// `{ role, content, ... }` objects where an assistant turn's tool calls live
-// on the assistant message (`tool_calls`) and each tool result is its own
-// `{ role: "tool", tool_call_id, content }` message. Our history is a flatter
-// item list (assistant message, then separate `function_call` items), so we
-// fold consecutive `function_call`s onto the preceding assistant message.
+// Same shape as the generic codec, with one wire quirk: Mistral takes a bare
+// `image_url` string, not OpenAI's `image_url: { url }` object. That is the
+// reason this half stays local rather than importing `itemsToMessages`.
 // ---------------------------------------------------------------------------
 
 type WireMessage = {
@@ -42,6 +46,7 @@ const blockToPart = Match.type<ContentBlock>().pipe(
     input_text: (b) => ({ type: "text", text: b.text }),
     output_text: (b) => ({ type: "text", text: b.text }),
     refusal: (b) => ({ type: "text", text: b.text }),
+    // Bare string, not `{ url }`: the Mistral divergence from OpenAI.
     input_image: (b) => ({ type: "image_url", image_url: imageSourceToUrl(b.source) }),
   }),
 )
@@ -102,25 +107,8 @@ export const itemsToMessages = (items: ReadonlyArray<HistoryItem>): ReadonlyArra
   Arr.reduce(items, [] as ReadonlyArray<WireMessage>, foldItem)
 
 // ---------------------------------------------------------------------------
-// tools / tool_choice / response_format
+// tool_choice
 // ---------------------------------------------------------------------------
-
-export const toolsWire = (
-  descriptors: ReadonlyArray<ToolDescriptor>,
-): Option.Option<ReadonlyArray<Record<string, unknown>>> =>
-  descriptors.length > 0
-    ? Option.some(
-        descriptors.map((t) => ({
-          type: "function",
-          function: {
-            name: t.name,
-            description: t.description,
-            parameters: t.inputSchema,
-            ...(t.strict !== undefined && { strict: t.strict }),
-          },
-        })),
-      )
-    : Option.none()
 
 type ToolChoice =
   | "auto"
@@ -137,202 +125,22 @@ export const toolChoiceWire = (choice: ToolChoice): string | Record<string, unkn
     Match.orElse((c) => ({ type: "function", function: { name: c.name } })),
   )
 
-export const responseFormatWire = (
-  structured: StructuredFormat<unknown>,
-): Record<string, unknown> => ({
-  type: "json_schema",
-  json_schema: {
-    name: structured.name,
-    schema: structured.schema["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
-    ...(structured.strict !== undefined && { strict: structured.strict }),
-  },
-})
-
 // ---------------------------------------------------------------------------
-// Streaming decode: chat.completion.chunk → TurnEvent
+// Streaming decode
 // ---------------------------------------------------------------------------
 
-const WireFunction = Schema.Struct({
-  name: Schema.optional(Schema.NullOr(Schema.String)),
-  arguments: Schema.optional(Schema.NullOr(Schema.String)),
-})
+// Mistral emits `model_length` when it truncates on the context window; the
+// shared decoder only knows OpenAI's `length`. Rewrite it before folding so the
+// shared accumulator maps it to `max_tokens` rather than the `stop` fallback.
+const normalizeChunk = (chunk: WireChunk): WireChunk =>
+  chunk.choices === undefined
+    ? chunk
+    : {
+        ...chunk,
+        choices: chunk.choices.map((c) =>
+          c.finish_reason === "model_length" ? { ...c, finish_reason: "length" } : c,
+        ),
+      }
 
-const WireToolCall = Schema.Struct({
-  index: Schema.optional(Schema.Number),
-  id: Schema.optional(Schema.NullOr(Schema.String)),
-  function: Schema.optional(WireFunction),
-})
-
-const WireDelta = Schema.Struct({
-  role: Schema.optional(Schema.NullOr(Schema.String)),
-  content: Schema.optional(Schema.NullOr(Schema.String)),
-  tool_calls: Schema.optional(Schema.NullOr(Schema.Array(WireToolCall))),
-})
-
-const WireChoice = Schema.Struct({
-  index: Schema.optional(Schema.Number),
-  delta: Schema.optional(WireDelta),
-  finish_reason: Schema.optional(Schema.NullOr(Schema.String)),
-})
-
-const WireUsage = Schema.Struct({
-  prompt_tokens: Schema.optional(Schema.Number),
-  completion_tokens: Schema.optional(Schema.Number),
-  total_tokens: Schema.optional(Schema.Number),
-})
-
-export const WireChunk = Schema.Struct({
-  choices: Schema.optional(Schema.Array(WireChoice)),
-  usage: Schema.optional(Schema.NullOr(WireUsage)),
-})
-export type WireChunk = typeof WireChunk.Type
-
-export const decodeChunk = Schema.decodeUnknownEffect(WireChunk)
-
-// ---------------------------------------------------------------------------
-// Accumulator
-// ---------------------------------------------------------------------------
-
-type ToolAcc = {
-  readonly call_id: string
-  readonly name: string
-  readonly arguments: string
-}
-
-export type Accumulator = {
-  readonly text: string
-  /** Tool calls keyed by their wire `index` (defaults to position when absent). */
-  readonly tools: ReadonlyMap<number, ToolAcc>
-  readonly order: ReadonlyArray<number>
-  readonly usage: Usage
-  readonly finishReason: Option.Option<string>
-}
-
-export const emptyAccumulator: Accumulator = {
-  text: "",
-  tools: new Map(),
-  order: [],
-  usage: {},
-  finishReason: Option.none(),
-}
-
-/** State threaded through the fold plus the events the step produced. */
-type Step = readonly [Accumulator, ReadonlyArray<TurnEvent>]
-
-const usageFrom = (wire: typeof WireUsage.Type): Usage => ({
-  ...(wire.prompt_tokens !== undefined && { input_tokens: wire.prompt_tokens }),
-  ...(wire.completion_tokens !== undefined && { output_tokens: wire.completion_tokens }),
-  ...(wire.total_tokens !== undefined && { total_tokens: wire.total_tokens }),
-})
-
-const reasonToStop = Match.type<string>().pipe(
-  Match.when("stop", () => "stop" as const),
-  Match.when("length", () => "max_tokens" as const),
-  Match.when("model_length", () => "max_tokens" as const),
-  Match.when("tool_calls", () => "tool_calls" as const),
-  Match.when("content_filter", () => "content_filter" as const),
-  Match.orElse(() => "stop" as const),
-)
-
-const stopReasonOf = (acc: Accumulator): StopReason =>
-  Option.match(acc.finishReason, {
-    onNone: () => (acc.tools.size > 0 ? "tool_calls" : "stop"),
-    onSome: reasonToStop,
-  })
-
-const withTool = (acc: Accumulator, index: number, tool: ToolAcc, isNew: boolean): Accumulator => ({
-  ...acc,
-  tools: new Map(acc.tools).set(index, tool),
-  order: isNew ? [...acc.order, index] : acc.order,
-})
-
-const applyContent = (acc: Accumulator, delta: typeof WireDelta.Type | undefined): Step => {
-  const content = delta?.content
-  return content !== undefined && content !== null && content.length > 0
-    ? [{ ...acc, text: acc.text + content }, [TurnEvent.TextDelta({ text: content })]]
-    : [acc, []]
-}
-
-const applyToolCall = (acc: Accumulator, tc: typeof WireToolCall.Type, position: number): Step => {
-  const index = tc.index ?? position
-  const argsDelta = tc.function?.arguments ?? ""
-  const existing = acc.tools.get(index)
-  if (existing === undefined) {
-    const call_id = tc.id ?? `call_${index}`
-    const name = tc.function?.name ?? ""
-    return [
-      withTool(acc, index, { call_id, name, arguments: argsDelta }, true),
-      [
-        TurnEvent.ToolCallStart({ call_id, name }),
-        ...(argsDelta.length > 0
-          ? [TurnEvent.ToolCallArgsDelta({ call_id, delta: argsDelta })]
-          : []),
-      ],
-    ]
-  }
-  return argsDelta.length > 0
-    ? [
-        withTool(acc, index, { ...existing, arguments: existing.arguments + argsDelta }, false),
-        [TurnEvent.ToolCallArgsDelta({ call_id: existing.call_id, delta: argsDelta })],
-      ]
-    : [acc, []]
-}
-
-const chain = (step: Step, next: (acc: Accumulator) => Step): Step => {
-  const [acc, events] = step
-  const [acc2, more] = next(acc)
-  return [acc2, [...events, ...more]]
-}
-
-const applyChoice = (step: Step, choice: typeof WireChoice.Type): Step => {
-  const withContent = chain(step, (acc) => applyContent(acc, choice.delta))
-  const withTools = Arr.reduce(choice.delta?.tool_calls ?? [], withContent, (s: Step, tc, i) =>
-    chain(s, (acc) => applyToolCall(acc, tc, i)),
-  )
-  const reason = choice.finish_reason
-  return reason !== undefined && reason !== null
-    ? [{ ...withTools[0], finishReason: Option.some(reason) }, withTools[1]]
-    : withTools
-}
-
-/**
- * Fold one decoded chunk into the accumulator, returning the next state and
- * the `TurnEvent`s the chunk produced. Mirrors Anthropic's `deltasFromEvent`,
- * but over chat-completions deltas.
- */
-export const applyChunk = (acc: Accumulator, chunk: WireChunk): Step => {
-  const afterChoices = Arr.reduce(chunk.choices ?? [], [acc, []] as Step, applyChoice)
-  const usage = chunk.usage
-  return usage !== undefined && usage !== null
-    ? chain(afterChoices, (a) => {
-        const u = usageFrom(usage)
-        return [{ ...a, usage: u }, [TurnEvent.UsageUpdate({ usage: u })]]
-      })
-    : afterChoices
-}
-
-/** Assemble the terminal `Turn` from the accumulated state. */
-export const accumulatorToTurn = (acc: Accumulator): Turn => {
-  const message: ReadonlyArray<HistoryItem> =
-    acc.text.length > 0
-      ? [{ type: "message", role: "assistant", content: [{ type: "output_text", text: acc.text }] }]
-      : []
-  const toolCalls: ReadonlyArray<HistoryItem> = acc.order.flatMap((index) => {
-    const t = acc.tools.get(index)
-    return t === undefined
-      ? []
-      : [
-          {
-            type: "function_call" as const,
-            call_id: t.call_id,
-            name: t.name,
-            arguments: t.arguments,
-          },
-        ]
-  })
-  return {
-    items: [...message, ...toolCalls],
-    usage: acc.usage,
-    stop_reason: stopReasonOf(acc),
-  }
-}
+export const decodeChunk = (u: unknown): Effect.Effect<WireChunk, unknown> =>
+  decodeChunkShared(u).pipe(Effect.map(normalizeChunk))

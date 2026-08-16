@@ -324,6 +324,20 @@ export type ThinkingConfig = {
   readonly budget_tokens: number
 }
 
+/** Cache lifetime. `1h` writes cost 2x base input; `5m` costs 1.25x. */
+export type CacheTtl = "5m" | "1h"
+
+/**
+ * Request-level cache breakpoint. Anthropic applies it to the last cacheable
+ * block and moves it forward as the conversation grows, so the cached prefix
+ * (`tools` → `system` → `messages`) follows the conversation without the
+ * caller re-placing anything.
+ */
+export type CacheControl = {
+  readonly type: "ephemeral"
+  readonly ttl?: CacheTtl
+}
+
 export type RequestBody = {
   readonly model: string
   readonly messages: ReadonlyArray<RequestMessage>
@@ -338,6 +352,7 @@ export type RequestBody = {
   readonly tool_choice?: Record<string, unknown>
   readonly metadata?: { readonly user_id: string }
   readonly output_config?: Record<string, unknown>
+  readonly cache_control?: CacheControl
   readonly stream: true
 }
 
@@ -354,6 +369,7 @@ export const buildRequestBody = (params: {
   readonly toolChoice: Option.Option<Record<string, unknown>>
   readonly userId: Option.Option<string>
   readonly outputConfig: Option.Option<Record<string, unknown>>
+  readonly cacheControl: Option.Option<CacheControl>
 }): Result.Result<RequestBody, JsonParseError> =>
   pipe(
     groupedMessages(params.history),
@@ -401,6 +417,10 @@ export const buildRequestBody = (params: {
         ...Option.match(params.outputConfig, {
           onNone: () => ({}),
           onSome: (output_config) => ({ output_config }),
+        }),
+        ...Option.match(params.cacheControl, {
+          onNone: () => ({}),
+          onSome: (cache_control) => ({ cache_control }),
         }),
         stream: true,
       }),
@@ -503,23 +523,34 @@ export const setStopReason = (acc: Accumulator, reason: string): Accumulator => 
   stopReason: Option.some(reason),
 })
 
-const cachedFromWire = (wire: WireUsage): Option.Option<number> =>
-  Option.fromNullishOr(wire.cache_read_input_tokens)
-
+// Anthropic splits input across three billed buckets: `input_tokens`
+// (post-breakpoint), cache reads, and cache writes. All three are kept;
+// `input_tokens` is not the input total. Each field carries over from the
+// prior value since a streamed turn spreads usage across events (input +
+// cache on message_start, output_tokens on message_delta), so total_tokens is
+// summed from the accumulated buckets, not one event.
 export const mergeUsage = (acc: Accumulator, wire: WireUsage): Accumulator => {
-  const cached = cachedFromWire(wire)
+  const prev = acc.usage
+  const input_tokens = wire.input_tokens ?? prev.input_tokens
+  const output_tokens = wire.output_tokens ?? prev.output_tokens
+  const cached_tokens = wire.cache_read_input_tokens ?? prev.input_tokens_details?.cached_tokens
+  const cache_write_tokens =
+    wire.cache_creation_input_tokens ?? prev.input_tokens_details?.cache_write_tokens
+
+  const buckets = [input_tokens, cached_tokens, cache_write_tokens, output_tokens]
+  const total_tokens = buckets.every((v) => v === undefined)
+    ? undefined
+    : buckets.reduce<number>((sum, v) => sum + (v ?? 0), 0)
+
+  const details: Items.InputTokensDetails = {
+    ...(cached_tokens !== undefined && { cached_tokens }),
+    ...(cache_write_tokens !== undefined && { cache_write_tokens }),
+  }
   const usage: Items.Usage = {
-    ...acc.usage,
-    ...(wire.input_tokens !== undefined && { input_tokens: wire.input_tokens }),
-    ...(wire.output_tokens !== undefined && { output_tokens: wire.output_tokens }),
-    ...(wire.input_tokens !== undefined &&
-      wire.output_tokens !== undefined && {
-        total_tokens: wire.input_tokens + wire.output_tokens,
-      }),
-    ...Option.match(cached, {
-      onNone: () => ({}),
-      onSome: (cached_tokens) => ({ input_tokens_details: { cached_tokens } }),
-    }),
+    ...(input_tokens !== undefined && { input_tokens }),
+    ...(output_tokens !== undefined && { output_tokens }),
+    ...(total_tokens !== undefined && { total_tokens }),
+    ...(Object.keys(details).length > 0 && { input_tokens_details: details }),
   }
   return { ...acc, usage }
 }

@@ -29,14 +29,55 @@ import type * as AiError from "../domain/AiError.js"
  * variants if needed (e.g. a custom schedule that observes `cause`).
  */
 export class Retryable extends Data.TaggedError("RetryableAi")<{
-  readonly cause: AiError.RateLimited | AiError.Unavailable | AiError.Timeout
+  readonly cause:
+    | AiError.RateLimited
+    | AiError.Unavailable
+    | AiError.Timeout
+    | AiError.InvalidRequest
 }> {}
+
+/**
+ * `InvalidRequest` payloads that are a transient fault on the provider's side
+ * rather than a defect in the request.
+ *
+ * The class exists because a provider can only answer within its own error
+ * vocabulary: a constrained-decoding grammar that times out while compiling is
+ * a cold-start timeout, but it arrives as `invalid_request_error` because that
+ * is where the vendor files schema problems. Replaying it succeeds — the same
+ * schema compiles on the next call.
+ *
+ * An allow-list rather than a general softening of `InvalidRequest`, and it
+ * must stay one. The whole point of that tag being fatal is that a genuinely
+ * malformed request retried on a schedule burns quota to arrive at the same
+ * rejection, slowly. An entry earns its place by having been observed to
+ * succeed on replay.
+ */
+const TRANSIENT_INVALID_REQUEST: ReadonlyArray<RegExp> = [/grammar compilation timed out/i]
+
+/** The payload as text, for matching. `raw` is whatever the provider handed
+ *  back — usually its response body as a string, sometimes a parsed object,
+ *  and occasionally something that will not serialise. */
+const rawText = (raw: unknown): string => {
+  if (typeof raw === "string") return raw
+  try {
+    return JSON.stringify(raw) ?? ""
+  } catch {
+    return String(raw)
+  }
+}
+
+const isTransientInvalidRequest = (e: AiError.AiError): boolean =>
+  e._tag === "InvalidRequest" &&
+  TRANSIENT_INVALID_REQUEST.some((pattern) => pattern.test(rawText(e.raw)))
 
 /** Type-narrowing predicate for the retryable subset. */
 export const isRetryable = (
   e: AiError.AiError,
-): e is AiError.RateLimited | AiError.Unavailable | AiError.Timeout =>
-  e._tag === "RateLimited" || e._tag === "Unavailable" || e._tag === "Timeout"
+): e is AiError.RateLimited | AiError.Unavailable | AiError.Timeout | AiError.InvalidRequest =>
+  e._tag === "RateLimited" ||
+  e._tag === "Unavailable" ||
+  e._tag === "Timeout" ||
+  isTransientInvalidRequest(e)
 
 // Lift events to Items, non-retryable failures to Terminal values
 // (escape retry), retryable failures to wrapped errors (only thing

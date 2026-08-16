@@ -62,6 +62,9 @@
     "build": "tsdown",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@effect-uai/chat-completions": "workspace:*"
+  },
   "devDependencies": {
     "@effect-uai/core": "workspace:*",
     "@types/ws": "^8.5.13",

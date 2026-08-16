@@ -1,0 +1,5 @@
+# Format staged JS/TS files with oxfmt before committing.
+files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs')
+[ -z "$files" ] && exit 0
+echo "$files" | xargs pnpm exec oxfmt
+echo "$files" | xargs git add

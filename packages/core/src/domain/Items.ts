@@ -111,6 +111,12 @@ export type Role = typeof Role.Type
 // The framework never reads or interprets it; provider modules decode
 // their own data via their own typed readers (see e.g.
 // the `@effect-uai/responses` package).
+//
+// The slot is shared, so a provider keys its data under its own name
+// (`{ responses: ... }`, `{ gemini: ... }`) and reads only that key. One item
+// can pass through several providers - falling back from one to another
+// leaves both keys on it - and a provider that finds no key of its own must
+// encode the item normally rather than assume the slot is its own.
 // ---------------------------------------------------------------------------
 
 const ProviderData = Schema.optional(Schema.Unknown)
@@ -181,8 +187,20 @@ export const isReasoning = Schema.is(Reasoning)
 // Usage and stop reason
 // ---------------------------------------------------------------------------
 
+/**
+ * Prompt-cache token breakdown. `cached_tokens` is cache reads;
+ * `cache_write_tokens` is tokens written to the cache this turn (billed at a
+ * premium). Field names mirror the OpenAI Responses usage shape.
+ *
+ * Whether these are a subset of `input_tokens` or a separate bucket is
+ * provider-specific: OpenAI counts cache reads inside `input_tokens`, while
+ * Anthropic reports `input_tokens` as post-breakpoint tokens only, with reads
+ * and writes as separate additive buckets. Read a provider's usage in its own
+ * terms; do not assume one relationship holds everywhere.
+ */
 export const InputTokensDetails = Schema.Struct({
   cached_tokens: Schema.optional(Schema.Number),
+  cache_write_tokens: Schema.optional(Schema.Number),
 })
 export type InputTokensDetails = typeof InputTokensDetails.Type
 

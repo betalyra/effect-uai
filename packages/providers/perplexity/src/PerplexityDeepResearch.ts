@@ -138,7 +138,6 @@ const completionToTurn = (wire: WireCompletion): Turn => {
         type: "message",
         role: "assistant",
         content: [{ type: "output_text", text, ...(annotations.length > 0 && { annotations }) }],
-        providerData: wire,
       },
     ],
     usage: {

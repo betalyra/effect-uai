@@ -160,17 +160,28 @@ const WireData = Schema.Struct({
   metadata: Schema.optional(WireMetadata),
 })
 
+/**
+ * `data` is optional because a failed scrape is not an HTTP failure. Firecrawl
+ * answers 200 with `{ success: false, error }` when a page is blocked, times
+ * out or renders only under JS — so requiring `data` turned every one of those
+ * into a decode error, which was then reported as a transport fault and
+ * retried on the backoff schedule.
+ */
 const WireResponse = Schema.Struct({
   success: Schema.optional(Schema.Boolean),
-  data: WireData,
+  data: Schema.optional(WireData),
+  error: Schema.optional(Schema.NullOr(Schema.String)),
 })
 type WireResponse = typeof WireResponse.Type
 
 const pickTitle = (title: string | ReadonlyArray<string> | null | undefined): string | undefined =>
   typeof title === "string" ? title : Array.isArray(title) ? title[0] : undefined
 
-const toResponse = (wire: WireResponse, request: FirecrawlReadRequest): ReadResponse => {
-  const { data } = wire
+const toResponse = (
+  wire: WireResponse,
+  data: NonNullable<WireResponse["data"]>,
+  request: FirecrawlReadRequest,
+): ReadResponse => {
   const format = request.format ?? "markdown"
   const content = (format === "html" ? data.html : data.markdown) ?? ""
   const title = pickTitle(data.metadata?.title)
@@ -219,6 +230,19 @@ const toMapResponse = (wire: WireMapResponse): MapResponse => ({
 const transportFailure = (cause: unknown): AiError.AiError =>
   new AiError.Unavailable({ provider: "firecrawl", raw: cause })
 
+/**
+ * The call arrived and the answer is unusable — a scrape Firecrawl itself
+ * reports as failed, or a body that does not match what this provider knows how
+ * to read.
+ *
+ * Deliberately not `Unavailable`: that tag is retryable, and neither of these
+ * gets better on a second attempt. A blocked page stays blocked while the
+ * backoff spends the scrape budget on it, and a changed API shape is a code
+ * problem, not a weather problem.
+ */
+const unusableResponse = (message: string, raw: unknown): AiError.AiError =>
+  new AiError.GenerationFailed({ provider: "firecrawl", message, raw })
+
 const httpStatusError = (status: number, body: string): AiError.AiError => {
   const provider = "firecrawl"
   const raw = body
@@ -250,7 +274,9 @@ const postScrape = (
     }
     const json = yield* response.json.pipe(Effect.mapError(transportFailure))
     return yield* Schema.decodeUnknownEffect(WireResponse)(json).pipe(
-      Effect.mapError(transportFailure),
+      Effect.mapError((issue) =>
+        unusableResponse("firecrawl returned a body this provider cannot read", issue),
+      ),
     )
   })
 
@@ -259,7 +285,16 @@ const readImpl =
   (
     request: FirecrawlReadRequest,
   ): Effect.Effect<ReadResponse, AiError.AiError, HttpClient.HttpClient> =>
-    Effect.map(postScrape(cfg, buildBody(request)), (wire) => toResponse(wire, request))
+    Effect.flatMap(postScrape(cfg, buildBody(request)), (wire) =>
+      // A 200 carrying `success: false` is Firecrawl reporting the page could
+      // not be scraped — blocked, JS-only, or timed out. Its own message is the
+      // useful part, so it becomes the error rather than a decode failure.
+      wire.data === undefined || wire.success === false
+        ? Effect.fail(
+            unusableResponse(wire.error ?? `firecrawl could not scrape ${request.url}`, wire),
+          )
+        : Effect.succeed(toResponse(wire, wire.data, request)),
+    )
 
 const postMap = (
   cfg: Config,

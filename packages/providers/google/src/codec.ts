@@ -5,6 +5,7 @@ import type {
   InputImage,
   HistoryItem,
   Message,
+  Annotation,
 } from "@effect-uai/core/Items"
 import type { ToolDescriptor } from "@effect-uai/core/Tool"
 import type { Turn } from "@effect-uai/core/Turn"
@@ -50,8 +51,55 @@ const Content = Schema.Struct({
   parts: Schema.optional(Schema.Array(Part)),
 })
 
+// Google grounding metadata. On a grounded response the candidate carries
+// `groundingChunks[].web.{uri,title}` - the structured form of the inline `[n]`
+// / trailing `**Sources:**` list the model renders into the answer text.
+// Decoded defensively (every field optional) as it is absent on ungrounded
+// turns. Shared with the Interactions deep-research surface via `codec.ts`.
+const GroundingChunk = Schema.Struct({
+  web: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        uri: Schema.optional(Schema.NullOr(Schema.String)),
+        title: Schema.optional(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  ),
+})
+export const GroundingMetadata = Schema.Struct({
+  groundingChunks: Schema.optional(Schema.NullOr(Schema.Array(GroundingChunk))),
+})
+export type GroundingMetadata = typeof GroundingMetadata.Type
+
+// Two citations are the same source when they point at the same url.
+const sameUrlCitation = (a: Annotation, b: Annotation): boolean =>
+  a.type === "url_citation" && b.type === "url_citation" && a.url === b.url
+
+// Grounding chunks → `url_citation` annotations, de-duped by url across every
+// metadata block passed. `web.uri` is a `grounding-api-redirect` URL and
+// `web.title` the bare domain; both are kept as-is (the redirect resolves to
+// the real page).
+export const groundingToAnnotations = (
+  ...metas: ReadonlyArray<GroundingMetadata | null | undefined>
+): ReadonlyArray<Annotation> =>
+  pipe(
+    metas,
+    Arr.flatMap((meta) => meta?.groundingChunks ?? []),
+    Arr.filterMap((chunk) =>
+      chunk.web?.uri == null
+        ? Result.failVoid
+        : Result.succeed<Annotation>({
+            type: "url_citation",
+            url: chunk.web.uri,
+            title: chunk.web.title ?? chunk.web.uri,
+          }),
+    ),
+    Arr.dedupeWith(sameUrlCitation),
+  )
+
 const Candidate = Schema.Struct({
   content: Schema.optional(Content),
+  groundingMetadata: Schema.optional(GroundingMetadata),
   finishReason: Schema.optional(Schema.String),
   index: Schema.optional(Schema.Number),
 })
@@ -87,6 +135,7 @@ type RequestPart =
     }
   | {
       readonly functionResponse: {
+        readonly id?: string
         readonly name: string
         readonly response: Record<string, unknown>
       }
@@ -292,6 +341,20 @@ const geminiField = (
   )
 
 const providerIdFor = (item: ToolCall): Option.Option<string> => geminiField(item, (g) => g.id)
+
+// The originating call's Gemini id, looked up from history by our `call_id`.
+// Gemini 3 maps a `functionResponse` back to its call by this id, so parallel
+// calls to the same function are mis-paired if we drop it.
+const providerIdForCallId = (
+  history: ReadonlyArray<HistoryItem>,
+  call_id: string,
+): Option.Option<string> =>
+  pipe(
+    history,
+    Arr.findFirst((item): item is ToolCall => isFunctionCallItem(item) && item.call_id === call_id),
+    Option.flatMap(providerIdFor),
+  )
+
 const signatureFor = (item: ToolCall): Option.Option<string> =>
   geminiField(item, (g) => g.thoughtSignature)
 
@@ -327,6 +390,10 @@ const itemToContent =
             parts: [
               {
                 functionResponse: {
+                  ...Option.match(providerIdForCallId(history, o.call_id), {
+                    onSome: (id) => ({ id }),
+                    onNone: () => ({}),
+                  }),
                   name: Option.getOrElse(nameForCallId(history, o.call_id), () => o.call_id),
                   response: parsedResponse(o.output),
                 },
@@ -466,6 +533,8 @@ export type Accumulator = {
   readonly text: string
   readonly reasoning: string
   readonly functionCalls: ReadonlyArray<AccumulatedFunctionCall>
+  /** Grounding citations, accumulated (de-duped by url) across chunks. */
+  readonly annotations: ReadonlyArray<Annotation>
   readonly finishReason: Option.Option<string>
   readonly usage: {
     readonly input_tokens?: number
@@ -480,6 +549,7 @@ export const emptyAccumulator: Accumulator = {
   text: "",
   reasoning: "",
   functionCalls: [],
+  annotations: [],
   finishReason: Option.none(),
   usage: {},
 }
@@ -598,6 +668,14 @@ const appendFunctionCalls = (
     prior,
   )
 
+// Grounding usually arrives on the final chunk, but merge across chunks and
+// de-dupe by url so a mid-stream metadata block is not lost or double-counted.
+const mergeAnnotations = (
+  prev: ReadonlyArray<Annotation>,
+  next: ReadonlyArray<Annotation>,
+): ReadonlyArray<Annotation> =>
+  next.length === 0 ? prev : Arr.dedupeWith(Arr.appendAll(prev, next), sameUrlCitation)
+
 export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => {
   const parts = chunkParts(chunk)
   const finishReason = Option.fromNullishOr(chunk.candidates?.[0]?.finishReason)
@@ -608,6 +686,10 @@ export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => 
       text: acc.text + sumStrings(parts, "text"),
       reasoning: acc.reasoning + sumStrings(parts, "reasoning"),
       functionCalls: appendFunctionCalls(acc.functionCalls, collectFunctionCalls(parts)),
+      annotations: mergeAnnotations(
+        acc.annotations,
+        groundingToAnnotations(chunk.candidates?.[0]?.groundingMetadata),
+      ),
       finishReason: Option.orElse(finishReason, () => acc.finishReason),
       usage: mergeUsage(acc.usage, chunk.usageMetadata),
     },
@@ -624,7 +706,13 @@ const assistantMessageItems = (acc: Accumulator): ReadonlyArray<HistoryItem> =>
         {
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: acc.text }],
+          content: [
+            {
+              type: "output_text",
+              text: acc.text,
+              ...(acc.annotations.length > 0 && { annotations: acc.annotations }),
+            },
+          ],
         },
       ]
 

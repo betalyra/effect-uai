@@ -1,8 +1,15 @@
 import { Effect, Option, Result, Schema } from "effect"
 import * as Tool from "@effect-uai/core/Tool"
 import { descriptorsOf, providerToolsOf } from "@effect-uai/core/Tool"
+import * as Turn from "@effect-uai/core/Turn"
 import { describe, expect, it } from "vitest"
-import { WireChunk, buildRequestBody } from "./codec.js"
+import {
+  WireChunk,
+  accumulatorToTurn,
+  buildRequestBody,
+  emptyAccumulator,
+  ingestChunk,
+} from "./codec.js"
 import { codeExecutionTool, googleSearchTool, renderProviderTools } from "./GeminiTools.js"
 
 const localTool = Tool.make({
@@ -69,14 +76,19 @@ describe("Gemini provider tools", () => {
     expect(Result.isFailure(result)).toBe(true)
   })
 
-  it("decodes a grounded chunk without throwing (groundingMetadata is dropped)", () => {
+  it("maps groundingMetadata chunks to url_citation annotations on the turn", () => {
     const grounded = {
       candidates: [
         {
           content: { role: "model", parts: [{ text: "Grounded answer." }] },
           groundingMetadata: {
             webSearchQueries: ["effect ts"],
-            groundingChunks: [{ web: { uri: "https://example.com", title: "Example" } }],
+            groundingChunks: [
+              { web: { uri: "https://example.com", title: "Example" } },
+              // Duplicate uri (de-duped) and a bare-domain title fallback.
+              { web: { uri: "https://example.com", title: "Example" } },
+              { web: { uri: "https://effect.website" } },
+            ],
           },
           finishReason: "STOP",
         },
@@ -84,5 +96,11 @@ describe("Gemini provider tools", () => {
     }
     const chunk = Schema.decodeUnknownSync(WireChunk)(grounded)
     expect(chunk.candidates?.[0]?.content?.parts?.[0]).toEqual({ text: "Grounded answer." })
+
+    const turn = accumulatorToTurn(ingestChunk(emptyAccumulator, chunk).accumulator)
+    expect(Turn.citations(turn)).toEqual([
+      { type: "url_citation", url: "https://example.com", title: "Example" },
+      { type: "url_citation", url: "https://effect.website", title: "https://effect.website" },
+    ])
   })
 })

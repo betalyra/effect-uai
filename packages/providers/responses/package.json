@@ -38,6 +38,10 @@
       "types": "./dist/Responses.d.mts",
       "import": "./dist/Responses.mjs"
     },
+    "./ResponsesTools": {
+      "types": "./dist/ResponsesTools.d.mts",
+      "import": "./dist/ResponsesTools.mjs"
+    },
     "./OpenAIDeepResearch": {
       "types": "./dist/OpenAIDeepResearch.d.mts",
       "import": "./dist/OpenAIDeepResearch.mjs"

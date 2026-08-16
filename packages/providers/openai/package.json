@@ -1,11 +1,14 @@
 {
   "name": "@effect-uai/openai",
   "version": "0.11.0",
-  "description": "OpenAI speech-to-text and text-to-speech provider for @effect-uai/core.",
+  "description": "OpenAI provider for @effect-uai/core: Responses language models, embeddings, deep research, and speech.",
   "keywords": [
     "ai",
     "effect",
     "openai",
+    "llm",
+    "responses-api",
+    "embeddings",
     "speech",
     "stt",
     "transcription",
@@ -47,6 +50,22 @@
     "./OpenAISynthesizer": {
       "types": "./dist/OpenAISynthesizer.d.mts",
       "import": "./dist/OpenAISynthesizer.mjs"
+    },
+    "./Responses": {
+      "types": "./dist/Responses.d.mts",
+      "import": "./dist/Responses.mjs"
+    },
+    "./OpenAIEmbedding": {
+      "types": "./dist/OpenAIEmbedding.d.mts",
+      "import": "./dist/OpenAIEmbedding.mjs"
+    },
+    "./OpenAIDeepResearch": {
+      "types": "./dist/OpenAIDeepResearch.d.mts",
+      "import": "./dist/OpenAIDeepResearch.mjs"
+    },
+    "./ResponsesTools": {
+      "types": "./dist/ResponsesTools.d.mts",
+      "import": "./dist/ResponsesTools.mjs"
     }
   },
   "publishConfig": {
@@ -55,6 +74,9 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect-uai/responses": "workspace:*"
   },
   "devDependencies": {
     "@effect-uai/core": "workspace:*",

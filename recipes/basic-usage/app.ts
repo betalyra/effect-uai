@@ -12,19 +12,24 @@
  * and `--model` at it.
  */
 import { Config, Effect, Layer, Logger, Match, Option, References, Stream } from "effect"
-import { layer as chatLayer } from "@effect-uai/chat-completions/ChatCompletions"
+import { LanguageModel } from "@effect-uai/core/LanguageModel"
+import { make as makeChat } from "@effect-uai/chat-completions/ChatCompletions"
+import { make as makeResponses } from "@effect-uai/responses/Responses"
 import { flagValue } from "../_shared/argv.js"
 import { makeConversation } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
 // CLI flags. Defaults target OpenRouter; point them at any OpenAI-compatible
-// gateway. The API key stays in the env (`LLM_API_KEY`).
+// gateway. `--dialect` picks the wire protocol (chat-completions vs the OpenAI
+// Responses API, both appended to the same `--base-url`). The API key stays in
+// the env (`LLM_API_KEY`).
 // ---------------------------------------------------------------------------
 
 const argv = process.argv.slice(2)
 const model = Option.getOrElse(flagValue("model", argv), () => "openai/gpt-4o-mini")
 const baseUrl = Option.getOrElse(flagValue("base-url", argv), () => "https://openrouter.ai/api/v1")
 const provider = Option.getOrElse(flagValue("provider", argv), () => "openrouter")
+const dialect = Option.getOrElse(flagValue("dialect", argv), () => "chat")
 
 // ---------------------------------------------------------------------------
 // Rendering. Print straight to stdout so the demo reads like a chat: assistant
@@ -70,7 +75,11 @@ export const main = Stream.runForEach(makeConversation(model), (event) =>
 const providerLayer = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("LLM_API_KEY")
-    return chatLayer({ apiKey, baseUrl, provider })
+    const service =
+      dialect === "responses"
+        ? yield* makeResponses({ apiKey, baseUrl })
+        : yield* makeChat({ apiKey, baseUrl, provider })
+    return Layer.succeed(LanguageModel, service)
   }),
 )
 

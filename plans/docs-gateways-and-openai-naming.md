@@ -49,9 +49,9 @@ package stays standalone.
   `@effect-uai/openai/OpenAIEmbedding`, `@effect-uai/openai/OpenAIDeepResearch`,
   `@effect-uai/openai/ResponsesTools`.
 - Result: `pnpm add @effect-uai/openai` covers LLM + embeddings + deep research
-  + speech. Gateway users who only want the protocol adapter still install
-  `@effect-uai/responses` alone (no audio surface pulled in conceptually; deps
-  are peer-based anyway).
+  - speech. Gateway users who only want the protocol adapter still install
+    `@effect-uai/responses` alone (no audio surface pulled in conceptually; deps
+    are peer-based anyway).
 - No code moves, no breaking change. Physically relocating OpenAIEmbedding into
   `openai` is a possible later cleanup, out of scope here.
 
@@ -74,8 +74,8 @@ public Mistral API does not change at all.
   optional parameters with current behavior as default.
 - Rebuild `Mistral.make` as a wrapper over chat-completions `make` with
   `{ baseUrl, provider: "mistral", wire: { imageUrl: "string",
-  forcedToolChoice: "any", stopReasonOverrides: { model_length: "max_tokens" } },
-  extraBody }` where `extraBody` maps `safePrompt` / `randomSeed` from the
+forcedToolChoice: "any", stopReasonOverrides: { model_length: "max_tokens" } },
+extraBody }` where `extraBody` maps `safePrompt` / `randomSeed` from the
   (runtime-present) typed request. Typed tag, `MistralRequest`, `MistralModel`
   union, and the dual-tag layer stay identical.
 - Delete the LLM half of `packages/providers/mistral/src/codec.ts`

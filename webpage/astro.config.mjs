@@ -35,6 +35,7 @@ export default defineConfig({
     "/concepts/language-model": "/language-models",
     "/concepts/loop": "/language-models/loop",
     "/concepts/tools": "/language-models/tools",
+    "/embeddings/providers/responses": "/embeddings/providers/openai",
   },
   vite: {
     plugins: [tailwindcss()],
@@ -109,6 +110,7 @@ export default defineConfig({
           items: [{ label: "AI SDK (Vercel)", slug: "coming-from/ai-sdk" }],
         },
         { label: "Providers", slug: "providers" },
+        { label: "Gateways", slug: "providers/gateways" },
         {
           label: "Concepts",
           items: [
@@ -125,10 +127,11 @@ export default defineConfig({
             {
               label: "Providers",
               items: [
-                { label: "Responses / OpenAI", slug: "providers/responses" },
+                { label: "Responses (OpenAI)", slug: "providers/responses" },
                 { label: "Google Gemini", slug: "providers/gemini" },
                 { label: "Anthropic", slug: "providers/anthropic" },
                 { label: "Mistral", slug: "providers/mistral" },
+                { label: "Chat Completions (legacy)", slug: "providers/openai-compatible" },
               ],
             },
             {
@@ -186,8 +189,8 @@ export default defineConfig({
               label: "Providers",
               items: [
                 {
-                  label: "Responses / OpenAI",
-                  slug: "embeddings/providers/responses",
+                  label: "OpenAI",
+                  slug: "embeddings/providers/openai",
                 },
                 { label: "Google Gemini", slug: "embeddings/providers/gemini" },
                 { label: "Jina", slug: "embeddings/providers/jina" },

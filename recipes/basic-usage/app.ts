@@ -14,6 +14,7 @@
 import { Config, Effect, Layer, Logger, Match, Option, References, Stream } from "effect"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { make as makeChat } from "@effect-uai/chat-completions/ChatCompletions"
+import { make as makeMistral } from "@effect-uai/mistral/Mistral"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
 import { flagValue } from "../_shared/argv.js"
 import { makeConversation } from "./recipe.js"
@@ -75,10 +76,11 @@ export const main = Stream.runForEach(makeConversation(model), (event) =>
 const providerLayer = Layer.unwrap(
   Effect.gen(function* () {
     const apiKey = yield* Config.redacted("LLM_API_KEY")
-    const service =
-      dialect === "responses"
-        ? yield* makeResponses({ apiKey, baseUrl })
-        : yield* makeChat({ apiKey, baseUrl, provider })
+    const service = yield* Match.value(dialect).pipe(
+      Match.when("responses", () => makeResponses({ apiKey, baseUrl })),
+      Match.when("mistral", () => makeMistral({ apiKey })), // Mistral's typed layer + base URL
+      Match.orElse(() => makeChat({ apiKey, baseUrl, provider })),
+    )
     return Layer.succeed(LanguageModel, service)
   }),
 )

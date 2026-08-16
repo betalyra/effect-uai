@@ -1,18 +1,23 @@
 ---
-title: Responses / OpenAI
-description: The OpenAI Responses API provider - typed options, layer wiring, and supported models.
+title: Responses
+description: The Responses API provider - typed options, layer wiring, and supported models.
 ---
 
-The Responses provider wraps OpenAI's `/v1/responses` SSE endpoint and
-maps it onto the core `LanguageModelService` shape. Reasoning models,
-tool calls, and response storage are all first-class via the typed
-`ResponsesRequestOptions`.
+Responses is OpenAI's modern API and an
+[open standard](https://www.openresponses.org/) backed by more than just
+OpenAI. The provider wraps the `/v1/responses` SSE endpoint onto the core
+`LanguageModelService` shape; reasoning models, tool calls, and response
+storage are all first-class via the typed `ResponsesRequestOptions`. Point
+`baseUrl` at any conforming endpoint, including [gateways](/providers/gateways/).
 
 ## Install
 
 ```sh
 pnpm add @effect-uai/core @effect-uai/responses effect
 ```
+
+`@effect-uai/openai` re-exports this provider if you want the whole OpenAI stack
+(language, embeddings, speech) under one install.
 
 ## Wire it up
 

@@ -1,5 +1,5 @@
 ---
-title: Responses / OpenAI (embeddings)
+title: OpenAI (embeddings)
 description: "OpenAI's embedding API: text-only, Matryoshka dimensions, two model sizes."
 ---
 

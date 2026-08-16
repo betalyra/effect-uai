@@ -27,7 +27,7 @@ A ✓ links to the usage page for that provider and capability.
 
 | Provider       |            LLM             |              Embeddings               |               Speech               |                    Music                     |
 | -------------- | :------------------------: | :-----------------------------------: | :--------------------------------: | :------------------------------------------: |
-| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/responses/) |   [✓](/speech/providers/openai/)   |                                              |
+| **OpenAI**     | [✓](/providers/responses/) |  [✓](/embeddings/providers/openai/)   |   [✓](/speech/providers/openai/)   |                                              |
 | **Google**     |  [✓](/providers/gemini/)   |  [✓](/embeddings/providers/gemini/)   |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |
 | **Anthropic**  | [✓](/providers/anthropic/) |                                       |                                    |                                              |
 | **Mistral**    |  [✓](/providers/mistral/)  |                                       |  [✓](/speech/providers/mistral/)   |                                              |
@@ -53,14 +53,24 @@ A ✓ links to the usage page for that provider and capability.
 | **Deno**                                           |     [✓](/sandboxes/providers/deno/)     |                              |
 | **CDP** (Chromium, obscura, hosted browser clouds) |                                         | [✓](/browser/providers/cdp/) |
 
+### Gateways and protocol adapters
+
+Not every backend is a provider. [OpenRouter and Requesty](/providers/gateways/)
+are routing gateways: one key, hundreds of models, reached through the OpenAI
+protocol adapters. Those adapters, [Responses](/providers/responses/) and the
+legacy [Chat Completions](/providers/openai-compatible/) base
+(`@effect-uai/chat-completions`), are named for the wire protocol, not a vendor,
+so they point at any conforming endpoint via `baseUrl`.
+
 ## OpenAI
 
-`@effect-uai/openai` · `@effect-uai/responses`
+`@effect-uai/openai`
 
-GPT models via the Responses API, text embeddings, and speech.
+GPT models via the Responses API, text embeddings, and speech, all under one
+install. The Responses provider also ships standalone as `@effect-uai/responses`.
 
-- Language model: [Responses / OpenAI](/providers/responses/)
-- Embeddings: [OpenAI](/embeddings/providers/responses/)
+- Language model: [Responses](/providers/responses/)
+- Embeddings: [OpenAI](/embeddings/providers/openai/)
 - Speech: [OpenAI](/speech/providers/openai/)
 
 ## Google

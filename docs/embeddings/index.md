@@ -225,6 +225,6 @@ cosine ranking, three swappable providers.
   text in one batch and rank cross-modally.
 - [Multivector embedding](/embeddings/multivector/): late-interaction
   retrieval with Jina v4.
-- Provider specifics: [OpenAI](/embeddings/providers/responses/),
+- Provider specifics: [OpenAI](/embeddings/providers/openai/),
   [Gemini](/embeddings/providers/gemini/),
   [Jina](/embeddings/providers/jina/).

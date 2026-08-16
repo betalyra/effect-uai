@@ -1,0 +1,61 @@
+---
+title: Gateways (OpenRouter, Requesty)
+description: Point the OpenAI protocol adapters at a routing gateway. One key, hundreds of models.
+---
+
+import Callout from "@/components/Callout"
+
+Gateways like [OpenRouter](https://openrouter.ai/) and
+[Requesty](https://www.requesty.ai/) are not providers in their own right: one
+key fronts hundreds of models, with routing and billing on top. You reach them
+through the protocol adapters, so this page is wiring, not a new API.
+
+Both speak the [Responses](/providers/responses/) protocol, so prefer it; drop
+to [Chat Completions](/providers/openai-compatible/) only for a model a gateway
+routes that way.
+
+| Gateway    | `baseUrl`                        | Responses                          |
+| ---------- | -------------------------------- | ---------------------------------- |
+| OpenRouter | `https://openrouter.ai/api/v1`   | beta, stateless                    |
+| Requesty   | `https://router.requesty.ai/v1`  | native via `openai-responses/` ids |
+
+## Responses at a gateway
+
+Point the [Responses](/providers/responses/) layer's `baseUrl` at the gateway;
+everything else is identical.
+
+```ts
+import { layer as responsesLayer } from "@effect-uai/responses"
+
+responsesLayer({ apiKey, baseUrl: "https://openrouter.ai/api/v1" })
+```
+
+## Chat Completions at a gateway
+
+<Callout title="Prefer Responses">
+
+Prefer [Responses](/providers/responses/) instead. Only use the legacy
+[Chat Completions](/providers/openai-compatible/) base if your provider
+explicitly does not support Responses.
+
+</Callout>
+
+```ts
+import { layer as chatLayer } from "@effect-uai/chat-completions/ChatCompletions"
+
+chatLayer({
+  apiKey,
+  baseUrl: "https://openrouter.ai/api/v1",
+  provider: "openrouter",
+  extraHeaders: { "HTTP-Referer": "https://your.app", "X-Title": "Your App" },
+})
+```
+
+## Other capabilities
+
+Both gateways clone OpenAI's brand endpoints, so the OpenAI [speech](/speech/providers/openai/)
+and [embedding](/embeddings/providers/openai/) layers reach them by setting
+`baseUrl`. These are less standardized than chat: OpenRouter's TTS returns
+`mp3`/`pcm` only, transcription `verbose_json` depends on the upstream model,
+and Requesty's audio is OpenAI-models-only. Requesty exposes `/v1/embeddings`;
+OpenRouter does not.

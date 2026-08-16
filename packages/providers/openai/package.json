@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/openai",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "OpenAI provider for @effect-uai/core: Responses language models, embeddings, deep research, and speech.",
   "keywords": [
     "ai",

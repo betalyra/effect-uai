@@ -1,5 +1,21 @@
 # @effect-uai/mistral
 
+## 0.12.0
+
+### Patch Changes
+
+- a739370: Rebuild the Mistral language model on `@effect-uai/chat-completions`. Mistral
+  speaks the OpenAI chat-completions dialect, so it now shares the streaming
+  decoder and tool encoding with the generic base, keeping only its wire quirks
+  local (bare-string `image_url`, `tool_choice: "any"`, and the `model_length`
+  finish reason). No public API change; `@effect-uai/chat-completions` becomes a
+  dependency.
+- a739370: Fix synthesized tool-call ids failing Mistral's `^[a-zA-Z0-9]{9}$` validation.
+  When a streaming tool-call chunk omits its id, the fallback is now a 9-char
+  zero-padded index instead of `call_<index>`, which Mistral rejected with a 422
+  once the id was replayed on the next turn.
+  - @effect-uai/chat-completions@0.12.0
+
 ## 0.11.0
 
 ### Patch Changes

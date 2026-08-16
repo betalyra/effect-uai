@@ -24,8 +24,8 @@ OpenAI Responses, Anthropic, and Gemini wire formats normalize to one
 
 While we're in `0.x`, minor releases may include breaking changes.
 Each one ships with a [migration guide](https://effect-uai.betalyra.com/migrations/)
-and the [`effect-uai-migrate` skill](skills/effect-uai-migrate/SKILL.md)
-encodes the rewrites for Claude Code, so upgrades are mechanical.
+written in operator form ("if you see X, write Y"), so pointing Claude
+Code at the page makes upgrades mechanical.
 
 ## Why effect-uai
 

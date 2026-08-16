@@ -15,6 +15,15 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.12](/migrations/v0-12/): two narrow breaking changes.
+  `providerData` is namespaced per provider (read Google deep-research traces via
+  `GoogleDeepResearch.researchDataOf`; Perplexity no longer writes the slot), and
+  `@effect-uai/exa/ExaDeepResearch` is removed (Exa retired the API; use OpenAI /
+  Perplexity / Gemini). Additive: `@effect-uai/chat-completions` (a reusable
+  OpenAI-compatible Chat Completions base for gateways like OpenRouter and
+  Requesty), `@effect-uai/openai` as a single install re-exporting the Responses
+  stack, Anthropic prompt caching, and throughput metrics that count every output
+  delta.
 - [Migrating to 0.11](/migrations/v0-11/): additive with one required action,
   bump the `effect` peer dependency from the pin `4.0.0-beta.57` to the range
   `>=4.0.0-beta.94 <5.0.0` (most of the release's internal diff is the
@@ -111,17 +120,11 @@ their editor).
 
 ## Using Claude to migrate
 
-The [`effect-uai-migrate` skill](https://github.com/betalyra/effect-uai/blob/main/skills/effect-uai-migrate/SKILL.md)
-encodes per-version rewrite rules in operator form: "if you see X,
-write Y." Invoke it from Claude Code:
-
-```
-/skill effect-uai-migrate
-```
-
-The skill is one source of truth shared between the migration pages
-here and the assistant. New release? Update both in the same PR (see
-[release process](#release-process) below).
+These migration pages are the source of truth. Point your AI coding
+agent (Claude Code, Cursor, …) at the page for your target version, or
+paste its "old → new" diffs: the pages are written in operator form ("if
+you see X, write Y") so the agent can apply the rewrites across your
+codebase directly.
 
 ## Release process
 
@@ -130,10 +133,9 @@ ship:
 
 1. A new `docs/migrations/v{X.Y}.md` page following the template of the
    most recent migration page.
-2. A new "X.(Y-1) → X.Y" section in `skills/effect-uai-migrate/SKILL.md`.
-3. A sidebar entry in `webpage/astro.config.mjs` linking the new page.
-4. CHANGELOG entries cross-linked to the migration page.
+2. A sidebar entry in `webpage/astro.config.mjs` linking the new page.
+3. CHANGELOG entries (via a changeset) cross-linked to the migration page.
 
 Treat these like CHANGELOG bumps: required in the same PR, not
-"I'll do it later." Stale skill content actively misleads users (and
+"I'll do it later." Stale migration content actively misleads users (and
 Claude) into recommending APIs that no longer exist.

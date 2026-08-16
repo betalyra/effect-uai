@@ -1,6 +1,6 @@
 ---
 name: effect-uai
-description: Use when building AI agents and AI media workflows with effect-uai (Effect-based primitives for agent loops, tools, streaming, structured output, embeddings, speech, and music generation). Covers design philosophy, core primitives, provider wiring, and recipe skills for retry, fallback, tool approval, embeddings, transcription, speech synthesis, voice loops, music generation, SSE/JSONL, and more.
+description: Use when building AI agents and AI media workflows with effect-uai (Effect-based primitives for agent loops, tools, streaming, structured output, embeddings, speech, and music generation). Covers design philosophy, core primitives, provider wiring, and a recipe library for retry, fallback, tool approval, embeddings, transcription, speech synthesis, voice loops, music generation, SSE/JSONL, and more.
 license: MIT
 ---
 
@@ -45,37 +45,29 @@ answer is almost always "compose primitives in the loop body", not
 ```sh
 pnpm add @effect-uai/core effect
 # pick one or more providers:
-pnpm add @effect-uai/responses     # OpenAI Responses + embeddings
-pnpm add @effect-uai/anthropic     # Anthropic Claude
-pnpm add @effect-uai/google        # Google Gemini language + embeddings + speech + music
-pnpm add @effect-uai/jina          # Jina embeddings (text + image, sparse, multivector)
-pnpm add @effect-uai/openai        # OpenAI speech (TTS + STT, separate from Responses)
-pnpm add @effect-uai/elevenlabs    # ElevenLabs speech (TTS + STT, multi-speaker dialogue)
-pnpm add @effect-uai/inworld       # Inworld speech (TTS + STT)
-pnpm add @effect-uai/microsandbox  # Local Firecracker microVMs for sandboxed code
-pnpm add @effect-uai/deno          # Hosted Firecracker microVMs on Deno Deploy
+pnpm add @effect-uai/openai            # OpenAI: Responses (language) + embeddings + speech
+pnpm add @effect-uai/responses         # OpenAI Responses adapter alone (also for gateways)
+pnpm add @effect-uai/chat-completions  # Legacy OpenAI-compatible /chat/completions base
+pnpm add @effect-uai/anthropic         # Anthropic Claude
+pnpm add @effect-uai/google            # Google Gemini language + embeddings + speech + music
+pnpm add @effect-uai/mistral           # Mistral language + Voxtral speech
+pnpm add @effect-uai/jina              # Jina embeddings (text + image, sparse, multivector)
+pnpm add @effect-uai/elevenlabs        # ElevenLabs speech (TTS + STT, multi-speaker dialogue)
+pnpm add @effect-uai/inworld           # Inworld speech (TTS + STT)
+pnpm add @effect-uai/microsandbox      # Local Firecracker microVMs for sandboxed code
+pnpm add @effect-uai/deno              # Hosted Firecracker microVMs on Deno Deploy
 ```
 
 The core package has no provider dependencies. Edge / browser builds
 only pull in what's actually used.
 
-For embedding (vectorize text or images, similarity ranking, RAG
-retrieval primitive), reach for the `effect-uai-embedding` sub-skill.
-`EmbeddingModel` is a parallel service to `LanguageModel`, with its
-own provider layers and `embed` / `embedMany` helpers.
-
-For speech and music, reach for the focused sub-skills:
-`effect-uai-basic-transcription`, `effect-uai-streaming-transcription`,
-`effect-uai-basic-speech-synthesis`, `effect-uai-streaming-synthesis`,
-`effect-uai-voice-loop`, and `effect-uai-basic-music-generation`.
-
-For running untrusted code or LLM-generated scripts inside a microVM,
-reach for `effect-uai-sandbox-basics`. The `Sandbox` capability in
-`@effect-uai/core/Sandbox` is implemented by `@effect-uai/microsandbox`
-(local Firecracker) and `@effect-uai/deno` (hosted on Deno Deploy).
-
-For migrating an existing codebase to v0.6 (the function-call / tool-call
-naming sweep), reach for `effect-uai-migrate`.
+Beyond `LanguageModel`, the core ships parallel capability services, each
+with its own provider layers and recipes in the library below:
+`EmbeddingModel` (`embed` / `embedMany`, text + image, multivector),
+`Transcriber` (file + streaming STT), `SpeechSynthesizer` (finished +
+incremental TTS, multi-speaker dialogue), `MusicGenerator`, and `Sandbox`
+(run untrusted code in a microVM: `@effect-uai/microsandbox` local,
+`@effect-uai/deno` hosted).
 
 ## Core modules (cheat sheet)
 
@@ -128,11 +120,18 @@ Effect.runPromise(program.pipe(Effect.provide(mainLayer)))
 
 For Anthropic: `import { layer as anthropicLayer } from "@effect-uai/anthropic/Anthropic"` + `ANTHROPIC_API_KEY`.
 For Gemini: `import { layer as geminiLayer } from "@effect-uai/google/Gemini"` + `GOOGLE_API_KEY`.
+For Mistral: `import { layer as mistralLayer } from "@effect-uai/mistral/Mistral"` + `MISTRAL_API_KEY`.
 
 Each provider also re-exports a typed service tag (`Responses`,
-`Anthropic`, `Gemini`) for code that wants the provider-specific
+`Anthropic`, `Gemini`, `Mistral`) for code that wants the provider-specific
 request shape (e.g. `reasoning: { effort: "low" }` on Responses).
 For provider-agnostic code, use the generic `LanguageModel` service.
+
+OpenAI-compatible gateways (OpenRouter, Requesty) are not separate
+providers. Point a protocol adapter at the gateway's `baseUrl`: prefer
+`@effect-uai/responses` (the modern Responses protocol, which both
+gateways support); drop to the legacy `@effect-uai/chat-completions` base
+only for a model served solely over `/chat/completions`.
 
 ## One turn is a stream
 
@@ -243,46 +242,57 @@ introducing wrapper services. The patterns below all live in one
   per iteration (e.g. for fallback / consensus).
 - **Run untrusted code**: yield a `SandboxService` inside the body,
   `create` a microVM, `exec` the script, and feed `stderr` back into
-  the next turn. See `effect-uai-sandbox-basics` and the
-  `sandbox-code-interpreter` recipe.
+  the next turn. See the `sandbox-code-interpreter` recipe.
 
-## Recipe catalog (use the right sub-skill)
+## Recipe library
 
-For each pattern there is a dedicated `effect-uai-<recipe>` skill with
-the loop body, the gotchas, and a runnable example. Reach for the
-matching skill when the user describes the scenario:
+The recipes are the reference implementations, each a small variation on
+the loop body above (or on the parallel capability services). They live
+in `recipes/<name>/` in the repo and, rendered, at
+`https://effect-uai.betalyra.com/recipes/<name>/`. The set grows over
+time, so treat the docs recipes index as the source of truth rather than
+this table.
 
-| Scenario                                                                                | Skill                                    |
-| --------------------------------------------------------------------------------------- | ---------------------------------------- |
-| First-time agent: tools, streaming, multi-turn loop                                     | `effect-uai-basic-usage`                 |
-| Validate a typed JSON object from the model (one-shot, server-enforced schema)          | `effect-uai-structured-output`           |
-| Stream typed JSONL objects as the model writes them                                     | `effect-uai-streaming-structured-output` |
-| Pause sensitive tool calls for a human verdict before executing                         | `effect-uai-tool-call-approval`          |
-| Show inner tool work (sub-agent, progress bar) while returning one clean output         | `effect-uai-streaming-tool-output`       |
-| Drive a long-lived chat from a queue; debounce typing bursts; check input between turns | `effect-uai-agentic-loop`                |
-| Retry rate-limited / transient provider failures with exponential backoff               | `effect-uai-model-retry`                 |
-| Fall back to another provider when the primary is rate-limited or unavailable           | `effect-uai-multi-model-fallback`        |
-| Let a cheap model escalate hard questions to a stronger model via a tool call           | `effect-uai-model-escalation`            |
-| Summarize history when it gets too long; keep going                                     | `effect-uai-auto-compaction`             |
-| Pause the loop between turns and resume later (no provider call held open)              | `effect-uai-pause-resume`                |
-| Cancel an in-flight turn through stream interruption + scope cleanup                    | `effect-uai-mid-stream-abort`            |
-| Send the same prompt to multiple providers; isolate per-member failures                 | `effect-uai-multi-model-compare`         |
-| Have models judge each other and emit a winner                                          | `effect-uai-model-council`               |
-| Project the loop's output as Server-Sent Events or JSONL on the wire                    | `effect-uai-modify-output-stream`        |
-| Embed text or images, semantic / cross-modal / multivector retrieval, RAG primitive     | `effect-uai-embedding`                   |
-| Transcribe finished audio files, optionally with word timestamps                        | `effect-uai-basic-transcription`         |
-| Build live captions from a browser mic or realtime STT stream                           | `effect-uai-streaming-transcription`     |
-| Turn finished text into an audio file or chunked playback                               | `effect-uai-basic-speech-synthesis`      |
-| Pipe incremental text / LLM deltas into low-latency TTS                                 | `effect-uai-streaming-synthesis`         |
-| Compose live STT -> LLM -> streaming TTS with turn queueing and stop-word interrupt     | `effect-uai-voice-loop`                  |
-| Generate music clips from simple or weighted prompts                                    | `effect-uai-basic-music-generation`      |
-| Run untrusted code or LLM-generated scripts inside an isolated Firecracker microVM      | `effect-uai-sandbox-basics`              |
-| Migrate an existing codebase from v0.5 to v0.6 (function-call to tool-call rename)      | `effect-uai-migrate`                     |
+**How to use one.** When a scenario matches, open the recipe and adapt it:
+`README.md` is the walkthrough (when to reach for it, the loop body, the
+gotchas); `recipe.ts` / `index.ts` is the runnable core; `app.ts` /
+`run-*.ts` wire a provider and runtime. Working outside the repo? Fetch
+the recipe's page from the docs site.
 
-When more than one applies (e.g. "agentic chat that retries on rate
-limits and falls back to another provider"), compose them: the loop
-body is just an Effect, and Effect composition is the integration
-mechanism.
+Common scenarios and where to start:
+
+| Scenario                                                             | Recipe                                                        |
+| -------------------------------------------------------------------- | ------------------------------------------------------------ |
+| First agent: tools, streaming, multi-turn loop                       | `basic-usage`                                                |
+| Typed JSON object back from the model (one-shot)                     | `structured-output`                                          |
+| Stream typed JSONL objects as the model writes them                  | `streaming-structured-output`                                |
+| Human verdict before sensitive tool calls                            | `tool-call-approval`                                         |
+| Show inner tool work while returning one clean output                | `streaming-tool-output`                                      |
+| Long-lived chat from a debounced input queue                         | `agentic-loop`                                               |
+| Retry rate-limited / transient failures with backoff                 | `model-retry`                                                |
+| Fall back to another provider on retryable errors                    | `multi-model-fallback`                                       |
+| Cheap model escalates hard questions to a stronger one               | `model-escalation`                                           |
+| Summarize history when it exceeds a budget                           | `auto-compaction`                                            |
+| Pause the loop between turns and resume later                        | `pause-resume`                                               |
+| Cancel an in-flight turn cleanly                                     | `mid-stream-abort`                                           |
+| Fan one prompt to N providers; tag each delta                        | `multi-model-compare`                                        |
+| Models judge each other and emit a winner                            | `model-council`                                              |
+| Project loop output as SSE / JSONL on the wire                       | `modify-output-stream`                                       |
+| Emit token / latency / cost metrics                                  | `basic-metrics`                                              |
+| Grounded answer over live web search                                 | `grounded-answer`                                            |
+| Long-running background research to a cited report                   | `deep-research`, `native-deep-research`                      |
+| Embed text or images; semantic / cross-modal / multivector retrieval | `basic-embedding`, `multimodal-embedding`, `multivector-embedding` |
+| Transcribe finished audio, or live mic captions                      | `basic-transcription`, `streaming-transcription`             |
+| Text to audio file, or incremental LLM deltas to TTS                 | `basic-speech-synthesis`, `streaming-synthesis`              |
+| Voice assistant: live STT to LLM to streaming TTS                    | `voice-loop`                                                 |
+| Generate music clips, or a continuous stream                         | `basic-music-generation`, `radio-station`                    |
+| Run untrusted / LLM-generated code in a microVM                      | `sandbox-code-interpreter`                                   |
+| Drive a headless browser as a tool                                   | `browser-usability`                                          |
+
+More recipes exist than are listed here (check the docs recipes index).
+When more than one applies (e.g. "agentic chat that retries on rate limits
+and falls back to another provider"), compose them: the loop body is just
+an Effect, and Effect composition is the integration mechanism.
 
 ## Common gotchas
 
@@ -305,7 +315,7 @@ mechanism.
 4. **`Stream.retry` retries on every failure.** To retry only the
    retryable `AiError` subset (`RateLimited` / `Unavailable` / `Timeout`),
    use `Retry.stream(schedule)` / `Retry.effect(schedule)` from
-   `@effect-uai/core/Retry` (see `effect-uai-model-retry`). Plain
+   `@effect-uai/core/Retry` (see the `model-retry` recipe). Plain
    `Stream.retry` will retry non-retryable errors too.
 5. **Top-level structured output schema must be `type: object`.** All
    providers reject bare arrays at the wire; wrap arrays in a
@@ -363,8 +373,9 @@ saw the history you expected.
 
 - Repo: https://github.com/betalyra/effect-uai
 - Docs: https://effect-uai.betalyra.com (or `docs/` in the repo)
-- Recipes: `recipes/` in the repo. Each recipe has an `index.ts`,
-  `index.test.ts`, and (when interactive) a `run.ts` runner.
+- Recipes: `recipes/<name>/` in the repo, one folder per pattern; also
+  rendered at https://effect-uai.betalyra.com/recipes/.
+- Migrations: `docs/migrations/` (per-version upgrade notes).
 - Concepts: `docs/concepts/items-and-turns.md`,
   `docs/language-models/index.md`, `docs/language-models/loop.md`,
   `docs/language-models/tools.md`.

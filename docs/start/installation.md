@@ -43,7 +43,8 @@ primitives, and recipe patterns:
 npx skills add betalyra/effect-uai
 ```
 
-One main skill plus fourteen recipe sub-skills, loaded lazily.
-[Skills](/skills/) has the catalog and per-skill install commands.
+One skill, loaded lazily, that points the agent at the
+[recipe library](/recipes/) for the pattern you need. [Skills](/skills/)
+has the details.
 
 Next: [stream one model turn](/start/getting-started/).

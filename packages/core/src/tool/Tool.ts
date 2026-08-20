@@ -4,7 +4,7 @@ import type { ToolCall, ToolCallOutput } from "../domain/Items.js"
 import { toolCallOutput } from "../domain/Items.js"
 import { serializeValue } from "./ToolResult.js"
 
-export class ToolError extends Schema.TaggedErrorClass<ToolError>("@betalyra/effect-uai/ToolError")(
+export class ToolError extends Schema.TaggedError<ToolError>("@betalyra/effect-uai/ToolError")(
   "ToolError",
   {
     call_id: Schema.String,
@@ -30,7 +30,7 @@ const ToolValidationIssue = Schema.Struct({
  * contract violation apart from a parse or execution failure, and so the
  * structured `issues` survive instead of being flattened into a message string.
  */
-export class ToolValidationError extends Schema.TaggedErrorClass<ToolValidationError>(
+export class ToolValidationError extends Schema.TaggedError<ToolValidationError>(
   "@betalyra/effect-uai/ToolValidationError",
 )("ToolValidationError", {
   call_id: Schema.String,
@@ -47,12 +47,13 @@ export class ToolValidationError extends Schema.TaggedErrorClass<ToolValidationE
  * (default `"tool_failed"`) so a tool can hand the model a distinguishable
  * category (`"not_found"`, `"rate_limited"`) without a new result variant.
  */
-export class ToolFailed extends Schema.TaggedErrorClass<ToolFailed>(
-  "@betalyra/effect-uai/ToolFailed",
-)("ToolFailed", {
-  message: Schema.String,
-  kind: Schema.optional(Schema.String),
-}) {}
+export class ToolFailed extends Schema.TaggedError<ToolFailed>("@betalyra/effect-uai/ToolFailed")(
+  "ToolFailed",
+  {
+    message: Schema.String,
+    kind: Schema.optional(Schema.String),
+  },
+) {}
 
 /**
  * Fail a tool's `run` with a model-visible message (optionally a `kind`).

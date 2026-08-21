@@ -29,7 +29,7 @@ const isRetryable = (
 ): e is AiError.RateLimited | AiError.Unavailable | AiError.Timeout =>
   e._tag === "RateLimited" || e._tag === "Unavailable" || e._tag === "Timeout"
 
-const fastBackoff = Schedule.exponential("1 millis", 2).pipe(Schedule.both(Schedule.recurs(3)))
+const fastBackoff = Schedule.exponential("1 millis", 2).pipe(Schedule.upTo({ times: 3 }))
 
 const retried = Effect.gen(function* () {
   const lm = yield* LanguageModel

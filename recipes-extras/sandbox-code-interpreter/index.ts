@@ -71,15 +71,14 @@ const initial: State = {
 // ---------------------------------------------------------------------------
 
 export const conversation = (service: LanguageModelService, model: string, sb: SandboxInstance) => {
-  const toolkit = Toolkit.make([makeRunPython(sb)])
-  const tools = Toolkit.toDescriptors(toolkit)
+  const toolkit = Toolkit.make(makeRunPython(sb))
 
   // After each turn: tool calls → run them and continue; no tool calls → stop.
   const nextStep = (state: State, turn: Turn.Turn) =>
     Arr.match(Turn.getToolCalls(turn), {
       onEmpty: () => stop(),
       onNonEmpty: (calls) =>
-        Toolkit.run(toolkit.tools, calls).pipe(
+        Toolkit.run(toolkit, calls).pipe(
           Toolkit.continueWithResults((results) =>
             Turn.appendToHistory(
               { ...state, index: state.index + 1 },
@@ -95,7 +94,7 @@ export const conversation = (service: LanguageModelService, model: string, sb: S
     loop((state) =>
       Effect.succeed(
         service
-          .streamTurn({ history: state.history, model, tools })
+          .streamTurn({ history: state.history, model, tools: toolkit })
           .pipe(onTurnComplete((turn) => Effect.sync(() => nextStep(state, turn)))),
       ),
     ),

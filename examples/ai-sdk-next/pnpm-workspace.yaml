@@ -6,5 +6,4 @@ packages: []
 # Next's optional native deps; we don't use image optimization, so skip their
 # build scripts (silences ERR_PNPM_IGNORED_BUILDS).
 allowBuilds:
-  msgpackr-extract: false
   sharp: false

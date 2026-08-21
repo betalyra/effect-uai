@@ -67,15 +67,15 @@
   },
   "devDependencies": {
     "@effect-uai/core": "workspace:*",
-    "@types/ws": "^8.5.13",
-    "effect": "4.0.0-beta.94",
-    "typescript": "^6.0.3",
-    "ws": "^8.18.0"
+    "@types/ws": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:",
+    "ws": "catalog:"
   },
   "peerDependencies": {
     "@effect-uai/core": "workspace:>=0.2.0 <1",
-    "effect": ">=4.0.0-beta.94 <5.0.0",
-    "ws": "^8.0.0"
+    "effect": "catalog:peer",
+    "ws": "catalog:peer"
   },
   "peerDependenciesMeta": {
     "ws": {

@@ -241,6 +241,21 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  packages/providers/mcp:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@effect/platform-node':
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94(effect@4.0.0-beta.94)(ioredis@5.10.1)
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/providers/microsandbox:
     devDependencies:
       '@effect-uai/core':

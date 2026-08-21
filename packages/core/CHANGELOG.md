@@ -1,5 +1,24 @@
 # @effect-uai/core
 
+## 0.12.1
+
+### Patch Changes
+
+- 23b1913: Require Effect `4.0.0-rc.111`
+
+  The `effect` peer range moves from `>=4.0.0-beta.94 <5.0.0` to
+  `>=4.0.0-rc.111 <5.0.0` across every package. Effect's rc line changed APIs the
+  beta line still had (for example `Schedule.both` is gone in favour of
+  `Schedule.upTo`), so a beta install is no longer supported.
+
+- 067d018: Use `Schema.TaggedError` instead of the removed `Schema.TaggedErrorClass`
+
+  Effect renamed `Schema.TaggedErrorClass` to `Schema.TaggedError` in
+  `4.0.0-beta.104`. `Tool.ts` still called the old name, so importing
+  `@effect-uai/core/Tool` threw `TypeError: Schema.TaggedErrorClass is not a
+function` on every Effect from `beta.104` onward, including the current `beta`
+  and `rc` dist-tags. The argument shape is unchanged, so this is a rename only.
+
 ## 0.12.0
 
 ### Minor Changes

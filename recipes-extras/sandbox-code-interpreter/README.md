@@ -126,7 +126,7 @@ API key for one of `ANTHROPIC_API_KEY` (default), `OPENAI_API_KEY`, or
 
 ```sh
 # install once
-pnpm -C recipes-extras/sandbox-code-interpreter install --ignore-workspace
+pnpm -C recipes-extras/sandbox-code-interpreter install
 
 # run (pass --provider openai|google to switch)
 ANTHROPIC_API_KEY=sk-... \
@@ -134,7 +134,7 @@ ANTHROPIC_API_KEY=sk-... \
   recipes-extras/sandbox-code-interpreter/run.ts
 ```
 
-The unusual `--ignore-workspace` flag and the direct `tsx` invocation
+The local `pnpm-workspace.yaml` and the direct `tsx` invocation
 are explained in [`recipes-extras/README.md`](https://github.com/betalyra/effect-uai/blob/main/recipes-extras/README.md).
 Short version: this recipe lives outside the pnpm workspace so its
 heavy native deps stay out of the monorepo's root `node_modules`.

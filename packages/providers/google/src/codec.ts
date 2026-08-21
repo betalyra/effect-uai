@@ -218,16 +218,12 @@ const messageText = (message: Message): string => message.content.map(blockText)
  */
 const imageSourceToParts = Match.type<InputImage["source"]>().pipe(
   Match.tag("url", (): ReadonlyArray<RequestPart> => []),
-  Match.tag(
-    "base64",
-    (s): ReadonlyArray<RequestPart> => [{ inlineData: { mimeType: s.mimeType, data: s.base64 } }],
-  ),
-  Match.tag(
-    "bytes",
-    (s): ReadonlyArray<RequestPart> => [
-      { inlineData: { mimeType: s.mimeType, data: Encoding.encodeBase64(s.bytes) } },
-    ],
-  ),
+  Match.tag("base64", (s): ReadonlyArray<RequestPart> => [
+    { inlineData: { mimeType: s.mimeType, data: s.base64 } },
+  ]),
+  Match.tag("bytes", (s): ReadonlyArray<RequestPart> => [
+    { inlineData: { mimeType: s.mimeType, data: Encoding.encodeBase64(s.bytes) } },
+  ]),
   Match.exhaustive,
 )
 
@@ -434,7 +430,9 @@ const sanitizeSchema = (schema: unknown): unknown => {
   )
 }
 
-const toolDescriptorsToTools = (tools: ReadonlyArray<ToolDescriptor>): ReadonlyArray<RequestTool> =>
+const toolDescriptorsToTools = (
+  tools: ReadonlyArray<ToolDescriptor>,
+): ReadonlyArray<RequestTool> =>
   tools.length === 0
     ? []
     : [

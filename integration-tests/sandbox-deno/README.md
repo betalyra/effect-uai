@@ -32,7 +32,7 @@ root `node_modules`. Same pattern as
 
 ```bash
 # install once
-pnpm -C integration-tests/sandbox-deno install --ignore-workspace
+pnpm -C integration-tests/sandbox-deno install
 
 # run from the repo root (uses this folder's local vitest)
 pnpm test:integration:deno
@@ -44,7 +44,7 @@ Override the region via env (default `ord`; `ams` also available):
 DENO_SANDBOX_REGION=ams pnpm test:integration:deno
 ```
 
-The unusual `--ignore-workspace` flag and `link:`-based deps are
+The local `pnpm-workspace.yaml` and `link:`-based deps are
 explained in [`recipes-extras/README.md`](../../recipes-extras/README.md).
 
 ## What it covers

@@ -6,13 +6,7 @@ import { PiWarningBold } from "react-icons/pi"
 // cards: a rounded-[14px] bordered panel with a bordered square icon chip
 // aligned centre with the title. The reserved red mark accent marks the chip
 // and triangle icon, in step with the design CI.
-export default function Callout({
-  title,
-  children,
-}: {
-  title?: string
-  children: ReactNode
-}) {
+export default function Callout({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <aside className="my-6 rounded-[14px] border border-(--sl-color-hairline) bg-(--sl-color-bg-sidebar) px-5 py-4">
       <div className="flex items-center gap-3">
@@ -23,9 +17,7 @@ export default function Callout({
           <p className="m-0 text-base font-semibold text-(--sl-color-white)">{title}</p>
         ) : null}
       </div>
-      <div className="mt-3 text-sm leading-relaxed *:first:mt-0 *:last:mb-0">
-        {children}
-      </div>
+      <div className="mt-3 text-sm leading-relaxed *:first:mt-0 *:last:mb-0">{children}</div>
     </aside>
   )
 }

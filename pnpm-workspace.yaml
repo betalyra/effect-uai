@@ -5,9 +5,39 @@ packages:
   - "recipes"
   - "webpage"
   - "integration-tests/*"
-  # Excluded: standalone packages with heavy native deps. Install with
-  # `pnpm install --ignore-workspace` from inside each folder. The examples/
+  # Excluded: standalone packages with heavy native deps. Each carries its own
+  # `pnpm-workspace.yaml` and installs from inside its folder. The examples/
   # apps are deliberately NOT globbed here so a repo-wide install never pulls
   # their frameworks (Next.js, etc.); each installs standalone.
   - "!integration-tests/sandbox-microsandbox"
   - "!integration-tests/sandbox-deno"
+
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true
+
+# Single source of truth for versions shared across packages. Bump here, not in
+# each package.json. `catalog:` is resolved to the literal version on publish.
+catalog:
+  "@effect/language-service": ^0.87.2
+  "@effect/platform-bun": 4.0.0-rc.111
+  "@effect/platform-node": 4.0.0-rc.111
+  "@effect/vitest": 4.0.0-rc.111
+  "@types/node": ^26.2.0
+  "@types/ws": ^8.5.13
+  effect: 4.0.0-rc.111
+  tsx: ^4.23.12
+  typescript: ^7.0.2
+  vitest: ^4.1.11
+  ws: ^8.18.0
+
+catalogs:
+  # Ranges for peerDependencies, deliberately wider than the pinned dev versions.
+  peer:
+    effect: ">=4.0.0-rc.111 <5.0.0"
+    ws: ^8.0.0
+  # `astro check` (@astrojs/language-server 2.16.x, volar 2.4.x) crashes on TS 7.
+  # Drop this catalog once it supports TS 7.
+  astro:
+    typescript: ^6.0.3

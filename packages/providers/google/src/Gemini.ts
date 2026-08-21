@@ -330,13 +330,10 @@ export const layer = (
   const typed = Layer.effect(Gemini, make(cfg))
   const generic = Layer.effect(
     LanguageModel,
-    Effect.map(
-      make(cfg),
-      (s): LanguageModelService => ({
-        streamTurn: (request) => s.streamTurn(request as GeminiRequest),
-        turn: (request) => s.turn(request as GeminiRequest),
-      }),
-    ),
+    Effect.map(make(cfg), (s): LanguageModelService => ({
+      streamTurn: (request) => s.streamTurn(request as GeminiRequest),
+      turn: (request) => s.turn(request as GeminiRequest),
+    })),
   )
   return Layer.merge(typed, generic)
 }

@@ -426,9 +426,7 @@ export type AudioMimeType =
  * upload via file path instead.
  */
 export type AudioSource =
-  | MediaUrl<AudioMimeType>
-  | MediaBase64<AudioMimeType>
-  | MediaBytes<AudioMimeType>
+  MediaUrl<AudioMimeType> | MediaBase64<AudioMimeType> | MediaBytes<AudioMimeType>
 
 /**
  * Structural audio format. Used both as TTS output spec and as STT

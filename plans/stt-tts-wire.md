@@ -355,7 +355,8 @@ Sources: [text:synthesize REST](https://docs.cloud.google.com/text-to-speech/doc
 
 ```ts
 type GoogleSynthesizeRequest = {
-  input: // SynthesisInput, oneof
+  input:
+    // SynthesisInput, oneof
     { text: string } | { ssml: string } | { markup: string } // Chirp 3 HD: pause control via inline tags
   voice: {
     languageCode: string // "en-US"
@@ -520,11 +521,7 @@ Sources: [Convert (sync)](https://elevenlabs.io/docs/api-reference/text-to-speec
 type ElevenSpeechRequest = {
   text: string
   model_id?:
-    | "eleven_v3"
-    | "eleven_multilingual_v2"
-    | "eleven_turbo_v2_5"
-    | "eleven_flash_v2_5"
-    | string
+    "eleven_v3" | "eleven_multilingual_v2" | "eleven_turbo_v2_5" | "eleven_flash_v2_5" | string
   language_code?: string // ISO-639-1; Flash/Turbo only enforce
   voice_settings?: {
     stability: number // 0..1
@@ -655,13 +652,7 @@ type DeepgramUrlBody = { url: string }
 // All options are query parameters:
 type DeepgramListenQuery = {
   model?:
-    | "nova-3"
-    | "nova-3-medical"
-    | "nova-3-multilingual"
-    | "nova-2"
-    | "enhanced"
-    | "base"
-    | string
+    "nova-3" | "nova-3-medical" | "nova-3-multilingual" | "nova-2" | "enhanced" | "base" | string
   version?: string
   language?: string // ISO; "multi" for nova-3 code-switching
   detect_language?: boolean
@@ -1574,7 +1565,8 @@ type MiniMaxT2AV2Request = {
     | string
   text: string // up to ~10 000 chars; >3 000 recommended to stream
   stream?: boolean // default false; true switches the response to SSE
-  language_boost?: // bias to a target language during synthesis
+  language_boost?:
+    // bias to a target language during synthesis
     | "Chinese"
     | "English"
     | "Spanish"

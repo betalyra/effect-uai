@@ -180,14 +180,11 @@ export const layer = (cfg: Config) =>
     Layer.effect(ElevenLabsTranscriber, make(cfg)),
     Layer.effect(
       Transcriber,
-      Effect.map(
-        make(cfg),
-        (s): TranscriberService => ({
-          transcribe: (req: CommonTranscribeRequest) =>
-            s.transcribe(req as ElevenLabsTranscribeRequest),
-          streamTranscriptionFrom: s.streamTranscriptionFrom,
-        }),
-      ),
+      Effect.map(make(cfg), (s): TranscriberService => ({
+        transcribe: (req: CommonTranscribeRequest) =>
+          s.transcribe(req as ElevenLabsTranscribeRequest),
+        streamTranscriptionFrom: s.streamTranscriptionFrom,
+      })),
     ),
     Layer.succeed(SttStreaming, undefined),
   )

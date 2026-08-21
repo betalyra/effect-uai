@@ -91,11 +91,9 @@ const itemToEmbedInput = (item: Item): Effect.Effect<EmbedInput, AiError.AiError
   item.kind === "text"
     ? Effect.succeed({ text: item.text })
     : fetchBytes(item.url).pipe(
-        Effect.map(
-          (bytes): EmbedInput => ({
-            image: Image.imageBytes(bytes, "image/jpeg"),
-          }),
-        ),
+        Effect.map((bytes): EmbedInput => ({
+          image: Image.imageBytes(bytes, "image/jpeg"),
+        })),
       )
 
 const itemLabel = (item: Item): string =>

@@ -68,10 +68,8 @@ describe("Loop.loop", () => {
 
   it("propagates errors from the body's stream", async () => {
     const boom = new Error("boom")
-    const stream = loop(
-      0,
-      (n: number): Stream.Stream<Step<number, number>, Error> =>
-        n === 2 ? Stream.fail(boom) : Stream.succeed(value(n)).pipe(Stream.concat(next(n + 1))),
+    const stream = loop(0, (n: number): Stream.Stream<Step<number, number>, Error> =>
+      n === 2 ? Stream.fail(boom) : Stream.succeed(value(n)).pipe(Stream.concat(next(n + 1))),
     )
 
     const result = await Effect.runPromiseExit(Stream.runCollect(stream))
@@ -293,13 +291,12 @@ const conversationLoop = (initial: State, runTool: ToolRunner) =>
                 ? Ref.update(textsRef, (t) => [...t, d.text])
                 : Ref.update(toolCallsRef, (t) => [...t, { id: d.id, name: d.name }]),
             ),
-            Stream.flatMap(
-              (d): Stream.Stream<Step<UiEvent, State>> =>
-                d.type === "text"
-                  ? Stream.fromIterable([value<UiEvent>({ type: "text", text: d.text })])
-                  : Stream.fromIterable([
-                      value<UiEvent>({ type: "tool_started", id: d.id, name: d.name }),
-                    ]),
+            Stream.flatMap((d): Stream.Stream<Step<UiEvent, State>> =>
+              d.type === "text"
+                ? Stream.fromIterable([value<UiEvent>({ type: "text", text: d.text })])
+                : Stream.fromIterable([
+                    value<UiEvent>({ type: "tool_started", id: d.id, name: d.name }),
+                  ]),
             ),
           )
 
@@ -314,9 +311,11 @@ const conversationLoop = (initial: State, runTool: ToolRunner) =>
 
             const turnItems: ReadonlyArray<HistoryItem> = [
               ...(texts.length > 0 ? [{ type: "assistant" as const, text: texts.join("") }] : []),
-              ...toolCalls.map(
-                (tc): HistoryItem => ({ type: "tool_call", id: tc.id, name: tc.name }),
-              ),
+              ...toolCalls.map((tc): HistoryItem => ({
+                type: "tool_call",
+                id: tc.id,
+                name: tc.name,
+              })),
             ]
 
             const outcomes = toolCalls.map((call) => ({ call, outcome: runTool(call) }))

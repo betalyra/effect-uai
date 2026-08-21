@@ -216,13 +216,9 @@ export const layer = (
     Layer.effect(InworldTranscriber, make(cfg)),
     Layer.effect(
       Transcriber,
-      Effect.map(
-        make(cfg),
-        (s): TranscriberService => ({
-          transcribe: (req: CommonTranscribeRequest) =>
-            s.transcribe(req as InworldTranscribeRequest),
-          streamTranscriptionFrom: s.streamTranscriptionFrom,
-        }),
-      ),
+      Effect.map(make(cfg), (s): TranscriberService => ({
+        transcribe: (req: CommonTranscribeRequest) => s.transcribe(req as InworldTranscribeRequest),
+        streamTranscriptionFrom: s.streamTranscriptionFrom,
+      })),
     ),
   )

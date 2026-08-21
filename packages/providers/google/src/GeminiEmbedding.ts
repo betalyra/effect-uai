@@ -121,21 +121,16 @@ const urlRejected = (param: string): AiError.AiError =>
  */
 const imageSourceToPart = (param: string) =>
   Match.type<ImageSource>().pipe(
-    Match.tag(
-      "base64",
-      (s): Effect.Effect<WirePart, AiError.AiError> =>
-        Effect.succeed({ inlineData: { mimeType: s.mimeType, data: s.base64 } }),
+    Match.tag("base64", (s): Effect.Effect<WirePart, AiError.AiError> =>
+      Effect.succeed({ inlineData: { mimeType: s.mimeType, data: s.base64 } }),
     ),
-    Match.tag(
-      "bytes",
-      (s): Effect.Effect<WirePart, AiError.AiError> =>
-        Effect.succeed({
-          inlineData: { mimeType: s.mimeType, data: Encoding.encodeBase64(s.bytes) },
-        }),
+    Match.tag("bytes", (s): Effect.Effect<WirePart, AiError.AiError> =>
+      Effect.succeed({
+        inlineData: { mimeType: s.mimeType, data: Encoding.encodeBase64(s.bytes) },
+      }),
     ),
-    Match.tag(
-      "url",
-      (): Effect.Effect<WirePart, AiError.AiError> => Effect.fail(urlRejected(param)),
+    Match.tag("url", (): Effect.Effect<WirePart, AiError.AiError> =>
+      Effect.fail(urlRejected(param)),
     ),
     Match.exhaustive,
   )
@@ -291,12 +286,10 @@ const embedImpl =
         postJson(cfg, `${baseUrl(cfg)}/models/${request.model}:embedContent`, body),
       ),
       Effect.flatMap(decodeSingle),
-      Effect.map(
-        (decoded): EmbedResponse => ({
-          embedding: valuesToEmbedding(decoded.embedding.values),
-          usage: emptyUsage,
-        }),
-      ),
+      Effect.map((decoded): EmbedResponse => ({
+        embedding: valuesToEmbedding(decoded.embedding.values),
+        usage: emptyUsage,
+      })),
     )
 
 const embedManyImpl =
@@ -309,12 +302,10 @@ const embedManyImpl =
         postJson(cfg, `${baseUrl(cfg)}/models/${request.model}:batchEmbedContents`, body),
       ),
       Effect.flatMap(decodeBatch),
-      Effect.map(
-        (decoded): EmbedManyResponse => ({
-          embeddings: decoded.embeddings.map((e) => valuesToEmbedding(e.values)),
-          usage: emptyUsage,
-        }),
-      ),
+      Effect.map((decoded): EmbedManyResponse => ({
+        embeddings: decoded.embeddings.map((e) => valuesToEmbedding(e.values)),
+        usage: emptyUsage,
+      })),
     )
 
 // ---------------------------------------------------------------------------
@@ -346,29 +337,26 @@ export const layer = (
   const typed = Layer.effect(GeminiEmbedding, make(cfg))
   const generic = Layer.effect(
     EmbeddingModel,
-    Effect.map(
-      make(cfg),
-      (s): EmbeddingModelService => ({
-        // Gemini's embed endpoints emit float32 only. Reject a non-float32
-        // `encoding` (bucket 1) so a float32 vector isn't handed back
-        // mislabeled as the requested type. `task` is left silent: it's a
-        // per-model gap (honored by gemini-embedding-001, ignored by
-        // gemini-embedding-2 server-side), and per capabilities.md §2.3 we
-        // don't maintain per-model tables; there's no wire error to translate.
-        embed: <E extends EmbedEncoding | undefined = undefined>(
-          req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
-        ) =>
-          assertEncoding(req.encoding, ["float32"], "gemini").pipe(
-            Effect.andThen(s.embed(req as GeminiEmbedRequest)),
-          ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
-        embedMany: <E extends EmbedEncoding | undefined = undefined>(
-          req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
-        ) =>
-          assertEncoding(req.encoding, ["float32"], "gemini").pipe(
-            Effect.andThen(s.embedMany(req as GeminiEmbedManyRequest)),
-          ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>,
-      }),
-    ),
+    Effect.map(make(cfg), (s): EmbeddingModelService => ({
+      // Gemini's embed endpoints emit float32 only. Reject a non-float32
+      // `encoding` (bucket 1) so a float32 vector isn't handed back
+      // mislabeled as the requested type. `task` is left silent: it's a
+      // per-model gap (honored by gemini-embedding-001, ignored by
+      // gemini-embedding-2 server-side), and per capabilities.md §2.3 we
+      // don't maintain per-model tables; there's no wire error to translate.
+      embed: <E extends EmbedEncoding | undefined = undefined>(
+        req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
+      ) =>
+        assertEncoding(req.encoding, ["float32"], "gemini").pipe(
+          Effect.andThen(s.embed(req as GeminiEmbedRequest)),
+        ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
+      embedMany: <E extends EmbedEncoding | undefined = undefined>(
+        req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+      ) =>
+        assertEncoding(req.encoding, ["float32"], "gemini").pipe(
+          Effect.andThen(s.embedMany(req as GeminiEmbedManyRequest)),
+        ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>,
+    })),
   )
   return Layer.merge(typed, generic)
 }

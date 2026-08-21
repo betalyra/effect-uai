@@ -105,19 +105,18 @@ const isClipModel = (model: string): boolean => model.includes("clip")
 
 export const realizedFormat: (mime: LyriaResponseMimeType) => AudioFormat =
   Match.type<LyriaResponseMimeType>().pipe(
-    Match.when(
-      "audio/mp3",
-      (): AudioFormat => ({ container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 }),
-    ),
-    Match.when(
-      "audio/wav",
-      (): AudioFormat => ({
-        container: "wav",
-        encoding: "pcm_s16le",
-        sampleRate: 44100,
-        channels: 2,
-      }),
-    ),
+    Match.when("audio/mp3", (): AudioFormat => ({
+      container: "mp3",
+      encoding: "mp3",
+      sampleRate: 44100,
+      channels: 2,
+    })),
+    Match.when("audio/wav", (): AudioFormat => ({
+      container: "wav",
+      encoding: "pcm_s16le",
+      sampleRate: 44100,
+      channels: 2,
+    })),
     Match.exhaustive,
   )
 
@@ -395,15 +394,12 @@ export const layer = (
     Layer.effect(LyriaGenerator, make(cfg)),
     Layer.effect(
       MusicGenerator,
-      Effect.map(
-        make(cfg),
-        (s): MusicGeneratorService => ({
-          generate: (req: CommonGenerateMusicRequest) =>
-            s.generate({ ...req, model: req.model as LyriaModel }),
-          streamGeneration: (req: CommonStreamGenerateMusicRequest) =>
-            s.streamGeneration({ ...req, model: req.model as LyriaModel }),
-          streamGenerationFrom: s.streamGenerationFrom,
-        }),
-      ),
+      Effect.map(make(cfg), (s): MusicGeneratorService => ({
+        generate: (req: CommonGenerateMusicRequest) =>
+          s.generate({ ...req, model: req.model as LyriaModel }),
+        streamGeneration: (req: CommonStreamGenerateMusicRequest) =>
+          s.streamGeneration({ ...req, model: req.model as LyriaModel }),
+        streamGenerationFrom: s.streamGenerationFrom,
+      })),
     ),
   )

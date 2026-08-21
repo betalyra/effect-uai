@@ -261,33 +261,33 @@ the recipe's page from the docs site.
 
 Common scenarios and where to start:
 
-| Scenario                                                             | Recipe                                                        |
-| -------------------------------------------------------------------- | ------------------------------------------------------------ |
-| First agent: tools, streaming, multi-turn loop                       | `basic-usage`                                                |
-| Typed JSON object back from the model (one-shot)                     | `structured-output`                                          |
-| Stream typed JSONL objects as the model writes them                  | `streaming-structured-output`                                |
-| Human verdict before sensitive tool calls                            | `tool-call-approval`                                         |
-| Show inner tool work while returning one clean output                | `streaming-tool-output`                                      |
-| Long-lived chat from a debounced input queue                         | `agentic-loop`                                               |
-| Retry rate-limited / transient failures with backoff                 | `model-retry`                                                |
-| Fall back to another provider on retryable errors                    | `multi-model-fallback`                                       |
-| Cheap model escalates hard questions to a stronger one               | `model-escalation`                                           |
-| Summarize history when it exceeds a budget                           | `auto-compaction`                                            |
-| Pause the loop between turns and resume later                        | `pause-resume`                                               |
-| Cancel an in-flight turn cleanly                                     | `mid-stream-abort`                                           |
-| Fan one prompt to N providers; tag each delta                        | `multi-model-compare`                                        |
-| Models judge each other and emit a winner                            | `model-council`                                              |
-| Project loop output as SSE / JSONL on the wire                       | `modify-output-stream`                                       |
-| Emit token / latency / cost metrics                                  | `basic-metrics`                                              |
-| Grounded answer over live web search                                 | `grounded-answer`                                            |
-| Long-running background research to a cited report                   | `deep-research`, `native-deep-research`                      |
+| Scenario                                                             | Recipe                                                             |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| First agent: tools, streaming, multi-turn loop                       | `basic-usage`                                                      |
+| Typed JSON object back from the model (one-shot)                     | `structured-output`                                                |
+| Stream typed JSONL objects as the model writes them                  | `streaming-structured-output`                                      |
+| Human verdict before sensitive tool calls                            | `tool-call-approval`                                               |
+| Show inner tool work while returning one clean output                | `streaming-tool-output`                                            |
+| Long-lived chat from a debounced input queue                         | `agentic-loop`                                                     |
+| Retry rate-limited / transient failures with backoff                 | `model-retry`                                                      |
+| Fall back to another provider on retryable errors                    | `multi-model-fallback`                                             |
+| Cheap model escalates hard questions to a stronger one               | `model-escalation`                                                 |
+| Summarize history when it exceeds a budget                           | `auto-compaction`                                                  |
+| Pause the loop between turns and resume later                        | `pause-resume`                                                     |
+| Cancel an in-flight turn cleanly                                     | `mid-stream-abort`                                                 |
+| Fan one prompt to N providers; tag each delta                        | `multi-model-compare`                                              |
+| Models judge each other and emit a winner                            | `model-council`                                                    |
+| Project loop output as SSE / JSONL on the wire                       | `modify-output-stream`                                             |
+| Emit token / latency / cost metrics                                  | `basic-metrics`                                                    |
+| Grounded answer over live web search                                 | `grounded-answer`                                                  |
+| Long-running background research to a cited report                   | `deep-research`, `native-deep-research`                            |
 | Embed text or images; semantic / cross-modal / multivector retrieval | `basic-embedding`, `multimodal-embedding`, `multivector-embedding` |
-| Transcribe finished audio, or live mic captions                      | `basic-transcription`, `streaming-transcription`             |
-| Text to audio file, or incremental LLM deltas to TTS                 | `basic-speech-synthesis`, `streaming-synthesis`              |
-| Voice assistant: live STT to LLM to streaming TTS                    | `voice-loop`                                                 |
-| Generate music clips, or a continuous stream                         | `basic-music-generation`, `radio-station`                    |
-| Run untrusted / LLM-generated code in a microVM                      | `sandbox-code-interpreter`                                   |
-| Drive a headless browser as a tool                                   | `browser-usability`                                          |
+| Transcribe finished audio, or live mic captions                      | `basic-transcription`, `streaming-transcription`                   |
+| Text to audio file, or incremental LLM deltas to TTS                 | `basic-speech-synthesis`, `streaming-synthesis`                    |
+| Voice assistant: live STT to LLM to streaming TTS                    | `voice-loop`                                                       |
+| Generate music clips, or a continuous stream                         | `basic-music-generation`, `radio-station`                          |
+| Run untrusted / LLM-generated code in a microVM                      | `sandbox-code-interpreter`                                         |
+| Drive a headless browser as a tool                                   | `browser-usability`                                                |
 
 More recipes exist than are listed here (check the docs recipes index).
 When more than one applies (e.g. "agentic chat that retries on rate limits

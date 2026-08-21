@@ -8,8 +8,8 @@
   a large toolkit are paid for once rather than on every turn.
 
   ```ts
-  anthropicLayer({ apiKey, promptCaching: true });
-  anthropicLayer({ apiKey, promptCaching: { ttl: "1h" } }); // default is 5m
+  anthropicLayer({ apiKey, promptCaching: true })
+  anthropicLayer({ apiKey, promptCaching: { ttl: "1h" } }) // default is 5m
   ```
 
   Off by default, since it changes how requests are billed. Nothing is marked up
@@ -227,13 +227,13 @@
 
   ```ts
   // Before
-  import { retry } from "@effect-uai/core/LanguageModel";
-  streamTurn(req).pipe(retry(schedule));
+  import { retry } from "@effect-uai/core/LanguageModel"
+  streamTurn(req).pipe(retry(schedule))
 
   // After
-  import * as Retry from "@effect-uai/core/Retry";
-  streamTurn(req).pipe(Retry.stream(schedule));
-  embed(req).pipe(Retry.effect(schedule));
+  import * as Retry from "@effect-uai/core/Retry"
+  streamTurn(req).pipe(Retry.stream(schedule))
+  embed(req).pipe(Retry.effect(schedule))
   ```
 
   `Retryable` and `isRetryable` move to the same module.

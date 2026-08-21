@@ -229,91 +229,89 @@ type LoopBody<S, A, E, R> = (
 export const loop: {
   <S, A, E, R>(body: LoopBody<S, A, E, R>): (initial: S) => Stream.Stream<A, E, R>
   <S, A, E, R>(initial: S, body: LoopBody<S, A, E, R>): Stream.Stream<A, E, R>
-} = Function.dual(
-  2,
-  <S, A, E, R>(initial: S, body: LoopBody<S, A, E, R>): Stream.Stream<A, E, R> =>
-    Stream.scoped(
-      Stream.fromPull(
-        Effect.gen(function* () {
-          const outerScope = yield* Effect.scope
-          let state = initial
-          let current: CurrentBody<S, A, E, R> | undefined
-          let done = false
+} = Function.dual(2, <S, A, E, R>(initial: S, body: LoopBody<S, A, E, R>): Stream.Stream<A, E, R> =>
+  Stream.scoped(
+    Stream.fromPull(
+      Effect.gen(function* () {
+        const outerScope = yield* Effect.scope
+        let state = initial
+        let current: CurrentBody<S, A, E, R> | undefined
+        let done = false
 
-          const closeActive = (
-            active: CurrentBody<S, A, E, R>,
-            exit: Exit.Exit<unknown, unknown>,
-          ) => {
-            const isActive = current === active
-            if (isActive) current = undefined
-            // Scope.close is idempotent. Multiple paths can race to close the
-            // active body during cancellation/failure, so closing twice is safe.
-            return closeBody(active, exit)
-          }
+        const closeActive = (
+          active: CurrentBody<S, A, E, R>,
+          exit: Exit.Exit<unknown, unknown>,
+        ) => {
+          const isActive = current === active
+          if (isActive) current = undefined
+          // Scope.close is idempotent. Multiple paths can race to close the
+          // active body during cancellation/failure, so closing twice is safe.
+          return closeBody(active, exit)
+        }
 
-          yield* Scope.addFinalizerExit(outerScope, (exit) =>
-            current === undefined ? Effect.void : closeActive(current, exit),
-          )
+        yield* Scope.addFinalizerExit(outerScope, (exit) =>
+          current === undefined ? Effect.void : closeActive(current, exit),
+        )
 
-          const pull = Effect.gen(function* () {
-            while (true) {
-              if (done) return yield* Cause.done()
+        const pull = Effect.gen(function* () {
+          while (true) {
+            if (done) return yield* Cause.done()
 
-              if (current === undefined) {
-                const result = body(state)
-                const stream = Effect.isEffect(result) ? Stream.unwrap(result) : result
-                const bodyScope = yield* Scope.fork(outerScope)
-                const bodyPull = yield* Channel.toPullScoped(
-                  Stream.toChannel(stream),
-                  bodyScope,
-                ).pipe(Effect.onError((cause) => Scope.close(bodyScope, Exit.failCause(cause))))
-                current = { scope: bodyScope, pull: bodyPull }
-              }
-
-              const active = current
-              const chunk = yield* active.pull.pipe(
-                Effect.catchIf(Cause.isDone, () =>
-                  closeActive(active, Exit.void).pipe(
-                    Effect.as(undefined as ReadonlyArray<Step<A, S>> | undefined),
-                  ),
-                ),
-                Effect.onError((cause) => closeActive(active, Exit.failCause(cause))),
-              )
-
-              if (chunk === undefined) {
-                done = true
-                return yield* Cause.done()
-              }
-
-              const { values, decision } = partitionChunk(chunk)
-
-              if (Option.isSome(decision)) {
-                yield* closeActive(active, Exit.void)
-                if (decision.value._tag === "Stop" || decision.value._tag === "StopWith") {
-                  // `loop` has no next iteration to apply StopWith's state to;
-                  // the state lands in `loopOver`'s outer ref or
-                  // `loopWithState`'s SubscriptionRef via their taps.
-                  done = true
-                } else if (decision.value._tag === "Next") {
-                  state = decision.value.state
-                }
-              }
-
-              // Emit the values seen so far if any. Chunks from a Stream pull
-              // are non-empty, so when `decision` is `None` every step was
-              // a `Value` and `values` is non-empty here. With a decision and
-              // no preceding values, fall through to the next iteration.
-              if (isNonEmpty(values)) return values
+            if (current === undefined) {
+              const result = body(state)
+              const stream = Effect.isEffect(result) ? Stream.unwrap(result) : result
+              const bodyScope = yield* Scope.fork(outerScope)
+              const bodyPull = yield* Channel.toPullScoped(
+                Stream.toChannel(stream),
+                bodyScope,
+              ).pipe(Effect.onError((cause) => Scope.close(bodyScope, Exit.failCause(cause))))
+              current = { scope: bodyScope, pull: bodyPull }
             }
-          })
 
-          // `Stream.fromPull` expects the generator to RETURN the pull effect,
-          // not run it; `return yield* pull` would execute a pull and break it.
-          // @effect-diagnostics-next-line effect/returnEffectInGen:off
-          return pull
-        }),
-      ),
+            const active = current
+            const chunk = yield* active.pull.pipe(
+              Effect.catchIf(Cause.isDone, () =>
+                closeActive(active, Exit.void).pipe(
+                  Effect.as(undefined as ReadonlyArray<Step<A, S>> | undefined),
+                ),
+              ),
+              Effect.onError((cause) => closeActive(active, Exit.failCause(cause))),
+            )
+
+            if (chunk === undefined) {
+              done = true
+              return yield* Cause.done()
+            }
+
+            const { values, decision } = partitionChunk(chunk)
+
+            if (Option.isSome(decision)) {
+              yield* closeActive(active, Exit.void)
+              if (decision.value._tag === "Stop" || decision.value._tag === "StopWith") {
+                // `loop` has no next iteration to apply StopWith's state to;
+                // the state lands in `loopOver`'s outer ref or
+                // `loopWithState`'s SubscriptionRef via their taps.
+                done = true
+              } else if (decision.value._tag === "Next") {
+                state = decision.value.state
+              }
+            }
+
+            // Emit the values seen so far if any. Chunks from a Stream pull
+            // are non-empty, so when `decision` is `None` every step was
+            // a `Value` and `values` is non-empty here. With a decision and
+            // no preceding values, fall through to the next iteration.
+            if (isNonEmpty(values)) return values
+          }
+        })
+
+        // `Stream.fromPull` expects the generator to RETURN the pull effect,
+        // not run it; `return yield* pull` would execute a pull and break it.
+        // @effect-diagnostics-next-line effect/returnEffectInGen:off
+        return pull
+      }),
     ),
+  ),
 )
 
 // ---------------------------------------------------------------------------

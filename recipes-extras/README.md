@@ -11,7 +11,7 @@ workspace. Nothing in this tree is installed unless you opt in.
 
 ```sh
 # from the repo root
-pnpm -C recipes-extras/<name> install --ignore-workspace
+pnpm -C recipes-extras/<name> install
 ./recipes-extras/<name>/node_modules/.bin/tsx recipes-extras/<name>/run.ts
 ```
 
@@ -20,9 +20,11 @@ the `msb` daemon for Microsandbox, hardware requirements, API keys).
 
 ## Why these flags
 
-- **`--ignore-workspace`** — without it, pnpm walks up the directory tree,
-  finds the monorepo's `pnpm-workspace.yaml`, and pulls the recipe's heavy
-  native deps into the workspace root, defeating the isolation.
+- **Own `pnpm-workspace.yaml`** (`packages: []`) — pnpm walks up the
+  directory tree looking for a workspace root; without a local one it finds
+  the monorepo's and pulls the recipe's heavy native deps into the workspace
+  root, defeating the isolation. The local file also carries `allowBuilds`,
+  which pnpm 11 no longer reads from the `pnpm` field in `package.json`.
 - **`tsx` invoked directly** — `pnpm start` triggers pnpm 10's
   pre-script "verify deps" check, which re-runs `install` in workspace
   mode and fails. Running `tsx` from the recipe's local `node_modules/.bin`

@@ -71,7 +71,7 @@ const isRetryable = (
 // ---------------------------------------------------------------------------
 
 const backoff = Schedule.exponential("200 millis", 2).pipe(
-  Schedule.both(Schedule.recurs(3)),
+  Schedule.upTo({ times: 3 }),
   Schedule.jittered,
 )
 

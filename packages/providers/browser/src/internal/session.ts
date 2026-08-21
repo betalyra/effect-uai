@@ -465,15 +465,13 @@ export const makeSession = (
               ),
             ),
             Effect.map((els) =>
-              els.map(
-                (el): CoreBrowser.ElementInfo => ({
-                  ref: el.ref,
-                  tag: el.tag,
-                  ...(el.text !== "" ? { text: el.text } : {}),
-                  attributes: el.attributes,
-                  box: el.box,
-                }),
-              ),
+              els.map((el): CoreBrowser.ElementInfo => ({
+                ref: el.ref,
+                tag: el.tag,
+                ...(el.text !== "" ? { text: el.text } : {}),
+                attributes: el.attributes,
+                box: el.box,
+              })),
             ),
           ),
         ),
@@ -486,18 +484,16 @@ export const makeSession = (
         cdp.send("Network.getCookies", {}, sessionId).pipe(
           Effect.mapError(mapCdp("cookies")),
           Effect.map((reply) =>
-            reply.cookies.map(
-              (c): CoreBrowser.Cookie => ({
-                name: c.name,
-                value: c.value,
-                domain: c.domain,
-                path: c.path,
-                expires: c.expires,
-                httpOnly: c.httpOnly,
-                secure: c.secure,
-                ...(c.sameSite !== undefined ? { sameSite: c.sameSite } : {}),
-              }),
-            ),
+            reply.cookies.map((c): CoreBrowser.Cookie => ({
+              name: c.name,
+              value: c.value,
+              domain: c.domain,
+              path: c.path,
+              expires: c.expires,
+              httpOnly: c.httpOnly,
+              secure: c.secure,
+              ...(c.sameSite !== undefined ? { sameSite: c.sameSite } : {}),
+            })),
           ),
         ),
       ),

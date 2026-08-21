@@ -195,11 +195,9 @@ const itemToAssistantBlocks = (
       function_call: (f) =>
         pipe(
           parseJson(f.arguments),
-          Result.map(
-            (input): ReadonlyArray<RequestAssistantContentBlock> => [
-              { type: "tool_use", id: f.call_id, name: f.name, input },
-            ],
-          ),
+          Result.map((input): ReadonlyArray<RequestAssistantContentBlock> => [
+            { type: "tool_use", id: f.call_id, name: f.name, input },
+          ]),
         ),
       function_call_output: (): Result.Result<
         ReadonlyArray<RequestAssistantContentBlock>,
@@ -373,58 +371,56 @@ export const buildRequestBody = (params: {
 }): Result.Result<RequestBody, JsonParseError> =>
   pipe(
     groupedMessages(params.history),
-    Result.map(
-      (messages): RequestBody => ({
-        model: params.model,
-        messages,
-        max_tokens: params.maxTokens,
-        ...Option.match(systemFromHistory(params.history), {
-          onNone: () => ({}),
-          onSome: (system) => ({ system }),
-        }),
-        ...Option.match(params.temperature, {
-          onNone: () => ({}),
-          onSome: (temperature) => ({ temperature }),
-        }),
-        ...Option.match(params.topP, {
-          onNone: () => ({}),
-          onSome: (top_p) => ({ top_p }),
-        }),
-        ...Option.match(params.topK, {
-          onNone: () => ({}),
-          onSome: (top_k) => ({ top_k }),
-        }),
-        ...Option.match(params.stopSequences, {
-          onNone: () => ({}),
-          onSome: (stop_sequences) => ({ stop_sequences }),
-        }),
-        ...Option.match(params.thinking, {
-          onNone: () => ({}),
-          onSome: (thinking) => ({ thinking }),
-        }),
-        ...Option.match(params.tools, {
-          onNone: () => ({}),
-          onSome: (tools) => ({ tools }),
-        }),
-        ...Option.match(params.toolChoice, {
-          onNone: () => ({}),
-          onSome: (tool_choice) => ({ tool_choice }),
-        }),
-        ...Option.match(params.userId, {
-          onNone: () => ({}),
-          onSome: (user_id) => ({ metadata: { user_id } }),
-        }),
-        ...Option.match(params.outputConfig, {
-          onNone: () => ({}),
-          onSome: (output_config) => ({ output_config }),
-        }),
-        ...Option.match(params.cacheControl, {
-          onNone: () => ({}),
-          onSome: (cache_control) => ({ cache_control }),
-        }),
-        stream: true,
+    Result.map((messages): RequestBody => ({
+      model: params.model,
+      messages,
+      max_tokens: params.maxTokens,
+      ...Option.match(systemFromHistory(params.history), {
+        onNone: () => ({}),
+        onSome: (system) => ({ system }),
       }),
-    ),
+      ...Option.match(params.temperature, {
+        onNone: () => ({}),
+        onSome: (temperature) => ({ temperature }),
+      }),
+      ...Option.match(params.topP, {
+        onNone: () => ({}),
+        onSome: (top_p) => ({ top_p }),
+      }),
+      ...Option.match(params.topK, {
+        onNone: () => ({}),
+        onSome: (top_k) => ({ top_k }),
+      }),
+      ...Option.match(params.stopSequences, {
+        onNone: () => ({}),
+        onSome: (stop_sequences) => ({ stop_sequences }),
+      }),
+      ...Option.match(params.thinking, {
+        onNone: () => ({}),
+        onSome: (thinking) => ({ thinking }),
+      }),
+      ...Option.match(params.tools, {
+        onNone: () => ({}),
+        onSome: (tools) => ({ tools }),
+      }),
+      ...Option.match(params.toolChoice, {
+        onNone: () => ({}),
+        onSome: (tool_choice) => ({ tool_choice }),
+      }),
+      ...Option.match(params.userId, {
+        onNone: () => ({}),
+        onSome: (user_id) => ({ metadata: { user_id } }),
+      }),
+      ...Option.match(params.outputConfig, {
+        onNone: () => ({}),
+        onSome: (output_config) => ({ output_config }),
+      }),
+      ...Option.match(params.cacheControl, {
+        onNone: () => ({}),
+        onSome: (cache_control) => ({ cache_control }),
+      }),
+      stream: true,
+    })),
   )
 
 // ---------------------------------------------------------------------------
@@ -576,52 +572,41 @@ const blocksByIndex = (acc: Accumulator): ReadonlyArray<BlockBuffer> =>
 
 const blockToItems = (block: BlockBuffer): ReadonlyArray<Items.HistoryItem> =>
   Match.value(block.type).pipe(
-    Match.when(
-      "text",
-      (): ReadonlyArray<Items.HistoryItem> =>
-        block.text.length === 0
-          ? []
-          : [
-              {
-                type: "message",
-                role: "assistant",
-                content: [{ type: "output_text", text: block.text }],
-              },
-            ],
+    Match.when("text", (): ReadonlyArray<Items.HistoryItem> =>
+      block.text.length === 0
+        ? []
+        : [
+            {
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: block.text }],
+            },
+          ],
     ),
-    Match.when(
-      "tool_use",
-      (): ReadonlyArray<Items.HistoryItem> => [
-        {
-          type: "function_call",
-          call_id: Option.getOrElse(block.id, () => ""),
-          name: Option.getOrElse(block.name, () => ""),
-          arguments: block.inputJson,
-        },
-      ],
-    ),
-    Match.when(
-      "thinking",
-      (): ReadonlyArray<Items.HistoryItem> => [
-        {
-          type: "reasoning",
-          ...(block.thinking.length > 0 && { summary: block.thinking }),
-          ...(block.signature.length > 0 && { signature: block.signature }),
-        },
-      ],
-    ),
-    Match.when(
-      "redacted_thinking",
-      (): ReadonlyArray<Items.HistoryItem> => [
-        {
-          type: "reasoning",
-          ...Option.match(block.redactedData, {
-            onNone: () => ({}),
-            onSome: (signature) => ({ signature }),
-          }),
-        },
-      ],
-    ),
+    Match.when("tool_use", (): ReadonlyArray<Items.HistoryItem> => [
+      {
+        type: "function_call",
+        call_id: Option.getOrElse(block.id, () => ""),
+        name: Option.getOrElse(block.name, () => ""),
+        arguments: block.inputJson,
+      },
+    ]),
+    Match.when("thinking", (): ReadonlyArray<Items.HistoryItem> => [
+      {
+        type: "reasoning",
+        ...(block.thinking.length > 0 && { summary: block.thinking }),
+        ...(block.signature.length > 0 && { signature: block.signature }),
+      },
+    ]),
+    Match.when("redacted_thinking", (): ReadonlyArray<Items.HistoryItem> => [
+      {
+        type: "reasoning",
+        ...Option.match(block.redactedData, {
+          onNone: () => ({}),
+          onSome: (signature) => ({ signature }),
+        }),
+      },
+    ]),
     Match.exhaustive,
   )
 

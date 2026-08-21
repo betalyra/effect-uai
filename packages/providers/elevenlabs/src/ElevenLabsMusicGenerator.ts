@@ -339,15 +339,12 @@ export const layer = (
     Layer.effect(ElevenLabsMusicGenerator, make(cfg)),
     Layer.effect(
       MusicGenerator,
-      Effect.map(
-        make(cfg),
-        (s): MusicGeneratorService => ({
-          generate: (req: CommonGenerateMusicRequest) =>
-            s.generate({ ...req, model: req.model as ElevenLabsMusicModel }),
-          streamGeneration: (req: CommonStreamGenerateMusicRequest) =>
-            s.streamGeneration({ ...req, model: req.model as ElevenLabsMusicModel }),
-          streamGenerationFrom: s.streamGenerationFrom,
-        }),
-      ),
+      Effect.map(make(cfg), (s): MusicGeneratorService => ({
+        generate: (req: CommonGenerateMusicRequest) =>
+          s.generate({ ...req, model: req.model as ElevenLabsMusicModel }),
+        streamGeneration: (req: CommonStreamGenerateMusicRequest) =>
+          s.streamGeneration({ ...req, model: req.model as ElevenLabsMusicModel }),
+        streamGenerationFrom: s.streamGenerationFrom,
+      })),
     ),
   )

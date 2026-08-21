@@ -282,36 +282,30 @@ const toDenoSeconds = (d: Duration.Input): `${number}s` => {
 const imageStep = (image: ImageRef | undefined): Effect.Effect<Step, SandboxError.SandboxError> => {
   if (image === undefined) return Effect.succeed(noop)
   return Match.value(image).pipe(
-    Match.tag(
-      "Default",
-      (): Effect.Effect<Step, SandboxError.SandboxError> => Effect.succeed(noop),
+    Match.tag("Default", (): Effect.Effect<Step, SandboxError.SandboxError> =>
+      Effect.succeed(noop),
     ),
-    Match.tag(
-      "Snapshot",
-      ({ id }): Effect.Effect<Step, SandboxError.SandboxError> => Effect.succeed(set("root", id)),
+    Match.tag("Snapshot", ({ id }): Effect.Effect<Step, SandboxError.SandboxError> =>
+      Effect.succeed(set("root", id)),
     ),
-    Match.tag(
-      "Registry",
-      (): Effect.Effect<Step, SandboxError.SandboxError> =>
-        Effect.fail(
-          new SandboxError.SandboxUnsupported({
-            provider: PROVIDER,
-            capability: "image.registry",
-            reason: "deno sandboxes do not accept OCI registry refs — boot from a snapshot instead",
-          }),
-        ),
+    Match.tag("Registry", (): Effect.Effect<Step, SandboxError.SandboxError> =>
+      Effect.fail(
+        new SandboxError.SandboxUnsupported({
+          provider: PROVIDER,
+          capability: "image.registry",
+          reason: "deno sandboxes do not accept OCI registry refs — boot from a snapshot instead",
+        }),
+      ),
     ),
-    Match.tag(
-      "Dockerfile",
-      (): Effect.Effect<Step, SandboxError.SandboxError> =>
-        Effect.fail(
-          new SandboxError.SandboxUnsupported({
-            provider: PROVIDER,
-            capability: "image.dockerfile",
-            reason:
-              "deno sandboxes do not accept Dockerfiles — install software into a bootable volume then snapshot it",
-          }),
-        ),
+    Match.tag("Dockerfile", (): Effect.Effect<Step, SandboxError.SandboxError> =>
+      Effect.fail(
+        new SandboxError.SandboxUnsupported({
+          provider: PROVIDER,
+          capability: "image.dockerfile",
+          reason:
+            "deno sandboxes do not accept Dockerfiles — install software into a bootable volume then snapshot it",
+        }),
+      ),
     ),
     Match.exhaustive,
   )
@@ -326,23 +320,20 @@ const imageStep = (image: ImageRef | undefined): Effect.Effect<Step, SandboxErro
 const networkStep = (policy: NetworkPolicy): Effect.Effect<Step, SandboxError.SandboxError> =>
   Match.value(policy).pipe(
     Match.tag("Open", (): Effect.Effect<Step, SandboxError.SandboxError> => Effect.succeed(noop)),
-    Match.tag(
-      "Blocked",
-      (): Effect.Effect<Step, SandboxError.SandboxError> => Effect.succeed(set("allowNet", [])),
+    Match.tag("Blocked", (): Effect.Effect<Step, SandboxError.SandboxError> =>
+      Effect.succeed(set("allowNet", [])),
     ),
-    Match.tag(
-      "Allowlist",
-      ({ hosts, cidrs }): Effect.Effect<Step, SandboxError.SandboxError> =>
-        cidrs !== undefined && cidrs.length > 0
-          ? Effect.fail(
-              new SandboxError.SandboxUnsupported({
-                provider: PROVIDER,
-                capability: "network.cidrs",
-                reason:
-                  "deno's allowNet accepts hostnames or literal IPs, not CIDR ranges — use hosts instead",
-              }),
-            )
-          : Effect.succeed(set("allowNet", [...(hosts ?? [])])),
+    Match.tag("Allowlist", ({ hosts, cidrs }): Effect.Effect<Step, SandboxError.SandboxError> =>
+      cidrs !== undefined && cidrs.length > 0
+        ? Effect.fail(
+            new SandboxError.SandboxUnsupported({
+              provider: PROVIDER,
+              capability: "network.cidrs",
+              reason:
+                "deno's allowNet accepts hostnames or literal IPs, not CIDR ranges — use hosts instead",
+            }),
+          )
+        : Effect.succeed(set("allowNet", [...(hosts ?? [])])),
     ),
     Match.exhaustive,
   )
@@ -637,21 +628,18 @@ const adaptInstance = (
       ),
 
     spawn: (request) =>
-      Effect.map(
-        openProcess(request),
-        ({ child, startedAt }): ProcessHandle => ({
-          pid: child.pid,
-          events: eventStream(child, startedAt),
-          kill: Effect.tryPromise({
-            try: () => child.kill("SIGTERM"),
-            catch: mapExecError,
-          }),
-          exit: Effect.tryPromise({
-            try: () => child.status,
-            catch: mapExecError,
-          }).pipe(Effect.map((status) => ({ exitCode: status.code }))),
+      Effect.map(openProcess(request), ({ child, startedAt }): ProcessHandle => ({
+        pid: child.pid,
+        events: eventStream(child, startedAt),
+        kill: Effect.tryPromise({
+          try: () => child.kill("SIGTERM"),
+          catch: mapExecError,
         }),
-      ),
+        exit: Effect.tryPromise({
+          try: () => child.status,
+          catch: mapExecError,
+        }).pipe(Effect.map((status) => ({ exitCode: status.code }))),
+      })),
 
     files: {
       read: (path) => Effect.tryPromise({ try: () => sdk.fs.readFile(path), catch: mapFsError }),

@@ -154,25 +154,19 @@ const multiPartContentRejected: AiError.AiError = new AiError.Unsupported({
  */
 const inputToItem: (input: EmbedInput) => Effect.Effect<WireItem, AiError.AiError> =
   Match.type<EmbedInput>().pipe(
-    Match.when(
-      Match.string,
-      (s): Effect.Effect<WireItem, AiError.AiError> => Effect.succeed({ text: s }),
+    Match.when(Match.string, (s): Effect.Effect<WireItem, AiError.AiError> =>
+      Effect.succeed({ text: s }),
     ),
-    Match.when(
-      { text: Match.string },
-      ({ text }): Effect.Effect<WireItem, AiError.AiError> => Effect.succeed({ text }),
+    Match.when({ text: Match.string }, ({ text }): Effect.Effect<WireItem, AiError.AiError> =>
+      Effect.succeed({ text }),
     ),
-    Match.when(
-      { image: Match.any },
-      ({ image }): Effect.Effect<WireItem, AiError.AiError> =>
-        Effect.succeed(imageSourceToItem(image)),
+    Match.when({ image: Match.any }, ({ image }): Effect.Effect<WireItem, AiError.AiError> =>
+      Effect.succeed(imageSourceToItem(image)),
     ),
-    Match.when(
-      { content: Match.any },
-      ({ content }): Effect.Effect<WireItem, AiError.AiError> =>
-        content.length === 1
-          ? Effect.succeed(contentPartToItem(content[0]!))
-          : Effect.fail(multiPartContentRejected),
+    Match.when({ content: Match.any }, ({ content }): Effect.Effect<WireItem, AiError.AiError> =>
+      content.length === 1
+        ? Effect.succeed(contentPartToItem(content[0]!))
+        : Effect.fail(multiPartContentRejected),
     ),
     Match.exhaustive,
   )
@@ -311,17 +305,14 @@ const decodeBase64Embedding = (
     onFailure: (cause) => Effect.fail(transportFailure(cause)),
     onSuccess: (bytes) =>
       Match.value(encoding).pipe(
-        Match.when(
-          "binary",
-          (): Effect.Effect<Embedding, AiError.AiError> =>
-            Effect.succeed({ _tag: "binary", vector: bytes }),
+        Match.when("binary", (): Effect.Effect<Embedding, AiError.AiError> =>
+          Effect.succeed({ _tag: "binary", vector: bytes }),
         ),
-        Match.orElse(
-          (): Effect.Effect<Embedding, AiError.AiError> =>
-            Effect.succeed({
-              _tag: "float32",
-              vector: new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4),
-            }),
+        Match.orElse((): Effect.Effect<Embedding, AiError.AiError> =>
+          Effect.succeed({
+            _tag: "float32",
+            vector: new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4),
+          }),
         ),
       ),
   })
@@ -444,9 +435,10 @@ const embedImpl =
           return Effect.fail(transportFailure("Jina returned empty `data` array"))
         }
         return payloadToEmbedding(first, request.encoding).pipe(
-          Effect.map(
-            (embedding): AnyEmbedResponse => ({ embedding, usage: usageOf(decoded.usage) }),
-          ),
+          Effect.map((embedding): AnyEmbedResponse => ({
+            embedding,
+            usage: usageOf(decoded.usage),
+          })),
         )
       }),
     )
@@ -471,12 +463,10 @@ const embedManyImpl =
       ),
       Effect.flatMap((decoded) =>
         orderedEmbeddings(decoded.data, request.encoding).pipe(
-          Effect.map(
-            (embeddings): AnyEmbedManyResponse => ({
-              embeddings,
-              usage: usageOf(decoded.usage),
-            }),
-          ),
+          Effect.map((embeddings): AnyEmbedManyResponse => ({
+            embeddings,
+            usage: usageOf(decoded.usage),
+          })),
         ),
       ),
     )
@@ -532,44 +522,41 @@ export const layer = (
   const typed = Layer.effect(JinaEmbedding, make(cfg))
   const generic = Layer.effect(
     EmbeddingModel,
-    Effect.map(
-      make(cfg),
-      (s): EmbeddingModelService => ({
-        // Jina emits dense float32 / binary (binary is bit-quantized, packed
-        // into int8 bytes on the wire - NOT scalar int8 per dimension; sparse /
-        // multivector live on the provider-typed JinaEncoding, off the
-        // cross-provider set). Reject a scalar `int8` encoding (bucket 1) so it
-        // isn't returned as a mislabeled vector, matching OpenAI / Gemini.
-        embed: <E extends EmbedEncoding | undefined = undefined>(
-          req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
-        ) => {
-          const task = mapGenericTask(req.task)
-          return assertEncoding(req.encoding, ["float32", "binary"], "jina").pipe(
-            Effect.andThen(
-              s.embed({
-                ...req,
-                model: req.model as JinaEmbeddingModel,
-                ...(task !== undefined && { task }),
-              } as JinaEmbedRequest),
-            ),
-          ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>
-        },
-        embedMany: <E extends EmbedEncoding | undefined = undefined>(
-          req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
-        ) => {
-          const task = mapGenericTask(req.task)
-          return assertEncoding(req.encoding, ["float32", "binary"], "jina").pipe(
-            Effect.andThen(
-              s.embedMany({
-                ...req,
-                model: req.model as JinaEmbeddingModel,
-                ...(task !== undefined && { task }),
-              } as JinaEmbedManyRequest),
-            ),
-          ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>
-        },
-      }),
-    ),
+    Effect.map(make(cfg), (s): EmbeddingModelService => ({
+      // Jina emits dense float32 / binary (binary is bit-quantized, packed
+      // into int8 bytes on the wire - NOT scalar int8 per dimension; sparse /
+      // multivector live on the provider-typed JinaEncoding, off the
+      // cross-provider set). Reject a scalar `int8` encoding (bucket 1) so it
+      // isn't returned as a mislabeled vector, matching OpenAI / Gemini.
+      embed: <E extends EmbedEncoding | undefined = undefined>(
+        req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
+      ) => {
+        const task = mapGenericTask(req.task)
+        return assertEncoding(req.encoding, ["float32", "binary"], "jina").pipe(
+          Effect.andThen(
+            s.embed({
+              ...req,
+              model: req.model as JinaEmbeddingModel,
+              ...(task !== undefined && { task }),
+            } as JinaEmbedRequest),
+          ),
+        ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>
+      },
+      embedMany: <E extends EmbedEncoding | undefined = undefined>(
+        req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+      ) => {
+        const task = mapGenericTask(req.task)
+        return assertEncoding(req.encoding, ["float32", "binary"], "jina").pipe(
+          Effect.andThen(
+            s.embedMany({
+              ...req,
+              model: req.model as JinaEmbeddingModel,
+              ...(task !== undefined && { task }),
+            } as JinaEmbedManyRequest),
+          ),
+        ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>
+      },
+    })),
   )
   return Layer.merge(typed, generic)
 }

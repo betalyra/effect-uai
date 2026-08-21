@@ -183,14 +183,12 @@ const step = (s: State, ev: Emission): Step =>
           ...(s.reasoningId !== null
             ? [{ type: "reasoning-end", id: s.reasoningId } as const]
             : []),
-          ...Turn.getToolCalls(e.turn).map(
-            (call): Part => ({
-              type: "tool-input-available",
-              toolCallId: call.call_id,
-              toolName: call.name,
-              input: decode(call.arguments),
-            }),
-          ),
+          ...Turn.getToolCalls(e.turn).map((call): Part => ({
+            type: "tool-input-available",
+            toolCallId: call.call_id,
+            toolName: call.name,
+            input: decode(call.arguments),
+          })),
         ]
         // Reset block ids; the loop may run further turns after tools resolve.
         return [{ ...s, textId: null, reasoningId: null }, closing]
@@ -198,19 +196,16 @@ const step = (s: State, ev: Emission): Step =>
     }),
     // The non-`_tag` arm of InteractionEvent: a resolved tool result the loop
     // appended after running the tool.
-    Match.when(
-      { type: "function_call_output" },
-      (o): Step => [
-        s,
-        [{ type: "tool-output-available", toolCallId: o.call_id, output: decode(o.output) }],
-      ],
-    ),
+    Match.when({ type: "function_call_output" }, (o): Step => [
+      s,
+      [{ type: "tool-output-available", toolCallId: o.call_id, output: decode(o.output) }],
+    ]),
     // Caller-interleaved emissions.
     Match.when({ kind: "data" }, (d): Step => [s, [toDataPart(d)]]),
-    Match.when(
-      { kind: "metadata" },
-      (m): Step => [s, [{ type: "message-metadata", messageMetadata: m.metadata }]],
-    ),
+    Match.when({ kind: "metadata" }, (m): Step => [
+      s,
+      [{ type: "message-metadata", messageMetadata: m.metadata }],
+    ]),
     Match.exhaustive,
   )
 

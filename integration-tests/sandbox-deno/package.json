@@ -14,13 +14,8 @@
     "effect": "link:../../packages/core/node_modules/effect"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.5"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
   }
 }

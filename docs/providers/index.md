@@ -25,15 +25,15 @@ A ✓ links to the usage page for that provider and capability.
 
 ### Models
 
-| Provider       |            LLM             |              Embeddings               |               Speech               |                    Music                     |
-| -------------- | :------------------------: | :-----------------------------------: | :--------------------------------: | :------------------------------------------: |
-| **OpenAI**     | [✓](/providers/responses/) |  [✓](/embeddings/providers/openai/)   |   [✓](/speech/providers/openai/)   |                                              |
-| **Google**     |  [✓](/providers/gemini/)   |  [✓](/embeddings/providers/gemini/)   |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |
-| **Anthropic**  | [✓](/providers/anthropic/) |                                       |                                    |                                              |
-| **Mistral**    |  [✓](/providers/mistral/)  |                                       |  [✓](/speech/providers/mistral/)   |                                              |
-| **ElevenLabs** |                            |                                       | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |
-| **Jina**       |                            |   [✓](/embeddings/providers/jina/)    |                                    |                                              |
-| **Inworld**    |                            |                                       |  [✓](/speech/providers/inworld/)   |                                              |
+| Provider       |            LLM             |             Embeddings             |               Speech               |                    Music                     |
+| -------------- | :------------------------: | :--------------------------------: | :--------------------------------: | :------------------------------------------: |
+| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/openai/) |   [✓](/speech/providers/openai/)   |                                              |
+| **Google**     |  [✓](/providers/gemini/)   | [✓](/embeddings/providers/gemini/) |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |
+| **Anthropic**  | [✓](/providers/anthropic/) |                                    |                                    |                                              |
+| **Mistral**    |  [✓](/providers/mistral/)  |                                    |  [✓](/speech/providers/mistral/)   |                                              |
+| **ElevenLabs** |                            |                                    | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |
+| **Jina**       |                            |  [✓](/embeddings/providers/jina/)  |                                    |                                              |
+| **Inworld**    |                            |                                    |  [✓](/speech/providers/inworld/)   |                                              |
 
 ### Web
 

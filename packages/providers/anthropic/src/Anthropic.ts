@@ -445,13 +445,10 @@ export const layer = (
   const typed = Layer.effect(Anthropic, make(cfg))
   const generic = Layer.effect(
     LanguageModel,
-    Effect.map(
-      make(cfg),
-      (s): LanguageModelService => ({
-        streamTurn: (request) => s.streamTurn(request as AnthropicRequest),
-        turn: (request) => s.turn(request as AnthropicRequest),
-      }),
-    ),
+    Effect.map(make(cfg), (s): LanguageModelService => ({
+      streamTurn: (request) => s.streamTurn(request as AnthropicRequest),
+      turn: (request) => s.turn(request as AnthropicRequest),
+    })),
   )
   return Layer.merge(typed, generic)
 }

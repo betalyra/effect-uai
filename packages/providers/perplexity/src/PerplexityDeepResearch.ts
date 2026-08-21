@@ -157,21 +157,16 @@ const jobStateOf = (wire: WireJob): ResearchState =>
   Match.value(wire.status).pipe(
     Match.when("CREATED", (): ResearchState => ({ _tag: "Pending" })),
     Match.when("IN_PROGRESS", (): ResearchState => ({ _tag: "Running" })),
-    Match.when(
-      "COMPLETED",
-      (): ResearchState =>
-        wire.response != null
-          ? { _tag: "Succeeded", result: completionToTurn(wire.response) }
-          : { _tag: "Failed", reason: "job completed with no response body", raw: wire },
+    Match.when("COMPLETED", (): ResearchState =>
+      wire.response != null
+        ? { _tag: "Succeeded", result: completionToTurn(wire.response) }
+        : { _tag: "Failed", reason: "job completed with no response body", raw: wire },
     ),
-    Match.when(
-      "FAILED",
-      (): ResearchState => ({
-        _tag: "Failed",
-        ...(wire.error_message != null && { reason: wire.error_message }),
-        raw: wire,
-      }),
-    ),
+    Match.when("FAILED", (): ResearchState => ({
+      _tag: "Failed",
+      ...(wire.error_message != null && { reason: wire.error_message }),
+      raw: wire,
+    })),
     Match.exhaustive,
   )
 

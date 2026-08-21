@@ -241,12 +241,10 @@ const embedManyImpl =
   ): Effect.Effect<EmbedManyResponse, AiError.AiError, HttpClient.HttpClient> =>
     buildBatchBody(request).pipe(
       Effect.flatMap((body) => postEmbed(cfg, body)),
-      Effect.map(
-        (decoded): EmbedManyResponse => ({
-          embeddings: orderedEmbeddings(decoded.data),
-          usage: usageOf(decoded.usage),
-        }),
-      ),
+      Effect.map((decoded): EmbedManyResponse => ({
+        embeddings: orderedEmbeddings(decoded.data),
+        usage: usageOf(decoded.usage),
+      })),
     )
 
 // ---------------------------------------------------------------------------
@@ -279,29 +277,26 @@ export const layer = (
   const typed = Layer.effect(OpenAIEmbedding, make(cfg))
   const generic = Layer.effect(
     EmbeddingModel,
-    Effect.map(
-      make(cfg),
-      (s): EmbeddingModelService => ({
-        // OpenAI emits float32 only and has no task parameter. Reject a
-        // non-float32 `encoding` (bucket 1, else a float32 vector comes back
-        // mislabeled as the requested type) and warn on a dropped `task`
-        // (bucket 2).
-        embed: <E extends EmbedEncoding | undefined = undefined>(
-          req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
-        ) =>
-          assertEncoding(req.encoding, ["float32"], "openai").pipe(
-            Effect.andThen(warnTaskDropped(req.task)),
-            Effect.andThen(s.embed(req as OpenAIEmbedRequest)),
-          ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
-        embedMany: <E extends EmbedEncoding | undefined = undefined>(
-          req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
-        ) =>
-          assertEncoding(req.encoding, ["float32"], "openai").pipe(
-            Effect.andThen(warnTaskDropped(req.task)),
-            Effect.andThen(s.embedMany(req as OpenAIEmbedManyRequest)),
-          ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>,
-      }),
-    ),
+    Effect.map(make(cfg), (s): EmbeddingModelService => ({
+      // OpenAI emits float32 only and has no task parameter. Reject a
+      // non-float32 `encoding` (bucket 1, else a float32 vector comes back
+      // mislabeled as the requested type) and warn on a dropped `task`
+      // (bucket 2).
+      embed: <E extends EmbedEncoding | undefined = undefined>(
+        req: Omit<CommonEmbedRequest, "encoding"> & { readonly encoding?: E },
+      ) =>
+        assertEncoding(req.encoding, ["float32"], "openai").pipe(
+          Effect.andThen(warnTaskDropped(req.task)),
+          Effect.andThen(s.embed(req as OpenAIEmbedRequest)),
+        ) as Effect.Effect<EmbedResponse<E>, AiError.AiError>,
+      embedMany: <E extends EmbedEncoding | undefined = undefined>(
+        req: Omit<CommonEmbedManyRequest, "encoding"> & { readonly encoding?: E },
+      ) =>
+        assertEncoding(req.encoding, ["float32"], "openai").pipe(
+          Effect.andThen(warnTaskDropped(req.task)),
+          Effect.andThen(s.embedMany(req as OpenAIEmbedManyRequest)),
+        ) as Effect.Effect<EmbedManyResponse<E>, AiError.AiError>,
+    })),
   )
   return Layer.merge(typed, generic)
 }

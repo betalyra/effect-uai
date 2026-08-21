@@ -320,7 +320,7 @@ console.log(JSON.stringify(summary))
   it("generic snapshots.create fails with SandboxUnsupported (use snapshotVolume)", async () => {
     const program = Effect.gen(function* () {
       const sb = yield* Sandbox.create({})
-      const denoSvc = yield* DenoSandbox.asEffect()
+      const denoSvc = yield* DenoSandbox
       // Direct sub-API call (not the gated free helper) so we can
       // observe the runtime failure.
       return yield* denoSvc.snapshots.create(sb, "ignored")

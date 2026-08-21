@@ -345,7 +345,7 @@ process.stdout.write(JSON.stringify(summary))
     // Phase 1: create detached (scope close should NOT destroy)
     await Effect.runPromise(
       Effect.gen(function* () {
-        const msb = yield* MicrosandboxSandbox.asEffect()
+        const msb = yield* MicrosandboxSandbox
         const sb = yield* msb.create({
           image: Image.registry(IMAGE),
           name,
@@ -396,7 +396,7 @@ process.stdout.write(JSON.stringify(summary))
   it("replace: second create with same name fails; replace:true succeeds", async () => {
     const name = `eff-uai-replace-${Date.now()}`
     const program = Effect.gen(function* () {
-      const msb = yield* MicrosandboxSandbox.asEffect()
+      const msb = yield* MicrosandboxSandbox
 
       // First sandbox stays alive in the outer scope.
       yield* msb.create({
@@ -502,7 +502,7 @@ process.stdout.write(JSON.stringify(summary))
     // Phase 1: create detached so it survives scope close
     await Effect.runPromise(
       Effect.gen(function* () {
-        const msb = yield* MicrosandboxSandbox.asEffect()
+        const msb = yield* MicrosandboxSandbox
         yield* msb.create({
           image: Image.registry(IMAGE),
           name,

@@ -173,7 +173,7 @@ const mapLookupError =
 // ---------------------------------------------------------------------------
 // Stopping & post-kill DB sync.
 //
-// Empirically (spike + SDK 0.4.6):
+// Empirically (spike + SDK 0.4.6; not re-verified on 0.6.x):
 // - `handle.connect()` + `live.stopAndWait()` resolves in 0ms on a
 //   non-owning connection — the VM keeps running. Useless.
 // - `handle.kill()` signals the runtime to terminate, but the DB row's
@@ -360,7 +360,7 @@ const replaceStep = (replace: MicrosandboxCreateRequest["replace"]): Step =>
   replace === true
     ? (b) => b.replace()
     : typeof replace === "object"
-      ? (b) => b.replaceWithGrace(replace.graceMs)
+      ? (b) => b.replaceWithTimeout(replace.graceMs)
       : noop
 
 // ---------------------------------------------------------------------------
@@ -649,7 +649,7 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
 
       const built = Arr.reduce(steps, MsbSandbox.builder(name), (b, step) => step(b))
       return yield* Effect.tryPromise({
-        try: () => (request.detached ? built.createDetached() : built.create()),
+        try: () => (request.detached ? built.detached(true) : built).create(),
         catch: mapCreateError,
       })
     })
@@ -692,10 +692,26 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
         () => Effect.void,
       ).pipe(Effect.map(adaptInstance)),
 
-    list: Effect.tryPromise({
-      try: () => MsbSandbox.list(),
-      catch: mapCreateError,
-    }).pipe(Effect.map(Arr.map((h): SandboxRef => ({ id: SandboxId(h.name), name: h.name })))),
+    // `list()` is paginated from 0.6 on; walk the cursor so the
+    // service contract stays "every visible sandbox".
+    list: Effect.gen(function* () {
+      const refs: Array<SandboxRef> = []
+      let cursor: string | undefined
+      while (true) {
+        const page = yield* Effect.tryPromise({
+          try: () =>
+            cursor === undefined
+              ? MsbSandbox.list()
+              : MsbSandbox.listWith((l) => l.cursor(cursor as string)),
+          catch: mapCreateError,
+        })
+        refs.push(
+          ...Arr.map(page.sandboxes, (h): SandboxRef => ({ id: SandboxId(h.name), name: h.name })),
+        )
+        if (page.nextCursor === undefined) return refs
+        cursor = page.nextCursor
+      }
+    }),
 
     destroy: destroyById,
 
@@ -703,10 +719,10 @@ const buildService = (config: MicrosandboxConfig): MicrosandboxSandboxService =>
       // Microsandbox requires the source sandbox to be stopped before
       // snapshotting. We must also flush root-FS writes BEFORE stop:
       // SDK 0.4.6's stop path races the guest poweroff and `fs().write`
-      // data sitting in page cache never reaches the upper.ext4. Fix
-      // landed upstream as microsandbox#746 but isn't released — we
-      // call `sync` via exec first. Drop this `flush` step once the
-      // SDK is bumped past the fix.
+      // data sitting in page cache never reaches the upper.ext4, so we
+      // call `sync` via exec first. The upstream fix (microsandbox#746)
+      // should be in 0.6.x; drop this `flush` step once a live snapshot
+      // run confirms it.
       //
       // `SandboxHandle.snapshot(name)` registers the artifact in the
       // DB index (visible to `Snapshot.list` / `msb snapshot list` /

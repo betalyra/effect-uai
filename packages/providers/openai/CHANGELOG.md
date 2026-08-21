@@ -1,5 +1,11 @@
 # @effect-uai/openai
 
+## 0.12.1
+
+### Patch Changes
+
+- @effect-uai/responses@0.12.1
+
 ## 0.12.0
 
 ### Minor Changes

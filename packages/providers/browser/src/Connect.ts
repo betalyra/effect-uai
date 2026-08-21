@@ -143,12 +143,10 @@ const makeService = (config: CdpConnectConfig): CoreBrowser.BrowserService => ({
       const { targetInfos } = yield* cdp.send("Target.getTargets").pipe(Effect.mapError(mapCreate))
       return targetInfos
         .filter((target) => target.type === "page")
-        .map(
-          (target): CoreBrowser.BrowserSessionRef => ({
-            id: CoreBrowser.BrowserSessionId(target.targetId),
-            ...(target.url !== "" ? { url: target.url } : {}),
-          }),
-        )
+        .map((target): CoreBrowser.BrowserSessionRef => ({
+          id: CoreBrowser.BrowserSessionId(target.targetId),
+          ...(target.url !== "" ? { url: target.url } : {}),
+        }))
     }),
   ),
 

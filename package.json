@@ -54,7 +54,7 @@
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "husky": "^9.1.7",
-    "oxfmt": "^0.46.0",
+    "oxfmt": "^0.64.0",
     "tsdown": "^0.22.14",
     "tsx": "catalog:",
     "typescript": "catalog:",

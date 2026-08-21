@@ -77,12 +77,10 @@ const renderOne = (
       })
     : decodeConfig(tool.config).pipe(
         Result.map(configToWire),
-        Result.mapError(
-          (): ToolRenderError => ({
-            capability: "providerTool",
-            reason: `unrecognized Gemini provider tool config on "${tool.name}"`,
-          }),
-        ),
+        Result.mapError((): ToolRenderError => ({
+          capability: "providerTool",
+          reason: `unrecognized Gemini provider tool config on "${tool.name}"`,
+        })),
       )
 
 /**

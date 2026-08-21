@@ -241,19 +241,16 @@ export const layer = (cfg: Config) =>
     Layer.effect(ElevenLabsSynthesizer, make(cfg)),
     Layer.effect(
       SpeechSynthesizer,
-      Effect.map(
-        make(cfg),
-        (s): SpeechSynthesizerService => ({
-          synthesize: (req: CommonSynthesizeRequest) =>
-            s.synthesize(req as ElevenLabsSynthesizeRequest),
-          streamSynthesis: (req: CommonSynthesizeRequest) =>
-            s.streamSynthesis(req as ElevenLabsSynthesizeRequest),
-          streamSynthesisFrom: (textIn, req: CommonStreamSynthesizeRequest) =>
-            s.streamSynthesisFrom(textIn, req),
-          synthesizeDialogue: s.synthesizeDialogue,
-          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
-        }),
-      ),
+      Effect.map(make(cfg), (s): SpeechSynthesizerService => ({
+        synthesize: (req: CommonSynthesizeRequest) =>
+          s.synthesize(req as ElevenLabsSynthesizeRequest),
+        streamSynthesis: (req: CommonSynthesizeRequest) =>
+          s.streamSynthesis(req as ElevenLabsSynthesizeRequest),
+        streamSynthesisFrom: (textIn, req: CommonStreamSynthesizeRequest) =>
+          s.streamSynthesisFrom(textIn, req),
+        synthesizeDialogue: s.synthesizeDialogue,
+        streamSynthesizeDialogue: s.streamSynthesizeDialogue,
+      })),
     ),
     Layer.succeed(TtsIncrementalText, undefined),
     Layer.succeed(MultiSpeakerTts, undefined),

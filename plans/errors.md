@@ -309,9 +309,7 @@ tag from a different signal — see §4 per-provider notes).
       "message": "...",
       "metadata": {
         "provider_name": "anthropic",
-        "raw": {
-          /* original */
-        }
+        "raw": {/* original */}
       }
     }
   }

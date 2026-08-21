@@ -182,13 +182,10 @@ export const layer = (
   const typed = Layer.effect(Mistral, make(cfg))
   const generic = Layer.effect(
     LanguageModel,
-    Effect.map(
-      make(cfg),
-      (s): LanguageModelService => ({
-        streamTurn: (request) => s.streamTurn(request as MistralRequest),
-        turn: (request) => s.turn(request as MistralRequest),
-      }),
-    ),
+    Effect.map(make(cfg), (s): LanguageModelService => ({
+      streamTurn: (request) => s.streamTurn(request as MistralRequest),
+      turn: (request) => s.turn(request as MistralRequest),
+    })),
   )
   return Layer.merge(typed, generic)
 }

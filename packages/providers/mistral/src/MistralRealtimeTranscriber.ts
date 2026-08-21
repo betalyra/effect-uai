@@ -47,14 +47,10 @@ export const layer = (
     Layer.effect(MistralTranscriber, make(cfg)),
     Layer.effect(
       Transcriber,
-      Effect.map(
-        make(cfg),
-        (s): TranscriberService => ({
-          transcribe: (req: CommonTranscribeRequest) =>
-            s.transcribe(req as MistralTranscribeRequest),
-          streamTranscriptionFrom: s.streamTranscriptionFrom,
-        }),
-      ),
+      Effect.map(make(cfg), (s): TranscriberService => ({
+        transcribe: (req: CommonTranscribeRequest) => s.transcribe(req as MistralTranscribeRequest),
+        streamTranscriptionFrom: s.streamTranscriptionFrom,
+      })),
     ),
     Layer.succeed(SttStreaming, undefined),
   )

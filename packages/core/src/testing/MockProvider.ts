@@ -90,15 +90,14 @@ const buildService = (
   const streamTurn: LanguageModelService["streamTurn"] = (request) =>
     Stream.unwrap(
       Ref.getAndUpdate(cursor, (n) => n + 1).pipe(
-        Effect.flatMap(
-          (i): Effect.Effect<Stream.Stream<TurnEvent, AiError.AiError>> =>
-            Option.match(Arr.get(scriptedTurns, i), {
-              onNone: () => Effect.succeed(Stream.fail(exhausted(scriptedTurns.length, i + 1))),
-              onSome: (turn) =>
-                record({ history: request.history, turn }).pipe(
-                  Effect.as(pacedDeltas(turn, options)),
-                ),
-            }),
+        Effect.flatMap((i): Effect.Effect<Stream.Stream<TurnEvent, AiError.AiError>> =>
+          Option.match(Arr.get(scriptedTurns, i), {
+            onNone: () => Effect.succeed(Stream.fail(exhausted(scriptedTurns.length, i + 1))),
+            onSome: (turn) =>
+              record({ history: request.history, turn }).pipe(
+                Effect.as(pacedDeltas(turn, options)),
+              ),
+          }),
         ),
       ),
     )

@@ -222,21 +222,18 @@ const unsupportedStreamDialogue: SpeechSynthesizerService["streamSynthesizeDialo
 // ---------------------------------------------------------------------------
 
 export const make = (cfg: Config) =>
-  Effect.map(
-    HttpClient.HttpClient,
-    (client): GeminiSynthesizerService => ({
-      synthesize: (r) =>
-        synthesizeImpl(cfg)(r).pipe(Effect.provideService(HttpClient.HttpClient, client)),
-      streamSynthesis: (r) =>
-        Stream.fromEffect(synthesizeImpl(cfg)(r)).pipe(
-          Stream.map((b): AudioChunk => ({ bytes: b.bytes })),
-          Stream.provideService(HttpClient.HttpClient, client),
-        ),
-      streamSynthesisFrom: unsupportedStreamFrom,
-      synthesizeDialogue: unsupportedDialogue,
-      streamSynthesizeDialogue: unsupportedStreamDialogue,
-    }),
-  )
+  Effect.map(HttpClient.HttpClient, (client): GeminiSynthesizerService => ({
+    synthesize: (r) =>
+      synthesizeImpl(cfg)(r).pipe(Effect.provideService(HttpClient.HttpClient, client)),
+    streamSynthesis: (r) =>
+      Stream.fromEffect(synthesizeImpl(cfg)(r)).pipe(
+        Stream.map((b): AudioChunk => ({ bytes: b.bytes })),
+        Stream.provideService(HttpClient.HttpClient, client),
+      ),
+    streamSynthesisFrom: unsupportedStreamFrom,
+    synthesizeDialogue: unsupportedDialogue,
+    streamSynthesizeDialogue: unsupportedStreamDialogue,
+  }))
 
 /**
  * Layer registers both `GeminiSynthesizer` and the generic
@@ -249,17 +246,13 @@ export const layer = (cfg: Config) =>
     Layer.effect(GeminiSynthesizer, make(cfg)),
     Layer.effect(
       SpeechSynthesizer,
-      Effect.map(
-        make(cfg),
-        (s): SpeechSynthesizerService => ({
-          synthesize: (req: CommonSynthesizeRequest) =>
-            s.synthesize(req as GeminiSynthesizeRequest),
-          streamSynthesis: (req: CommonSynthesizeRequest) =>
-            s.streamSynthesis(req as GeminiSynthesizeRequest),
-          streamSynthesisFrom: s.streamSynthesisFrom,
-          synthesizeDialogue: s.synthesizeDialogue,
-          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
-        }),
-      ),
+      Effect.map(make(cfg), (s): SpeechSynthesizerService => ({
+        synthesize: (req: CommonSynthesizeRequest) => s.synthesize(req as GeminiSynthesizeRequest),
+        streamSynthesis: (req: CommonSynthesizeRequest) =>
+          s.streamSynthesis(req as GeminiSynthesizeRequest),
+        streamSynthesisFrom: s.streamSynthesisFrom,
+        synthesizeDialogue: s.synthesizeDialogue,
+        streamSynthesizeDialogue: s.streamSynthesizeDialogue,
+      })),
     ),
   )

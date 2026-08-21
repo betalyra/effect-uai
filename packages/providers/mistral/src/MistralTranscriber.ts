@@ -86,9 +86,11 @@ const buildFormData = (
     const filePart: Part = isAudioUrl(request.audio)
       ? ["file_url", request.audio.url]
       : yield* audioToBlob(request.audio).pipe(
-          Effect.map(
-            (blob): Part => ["file", blob, request.fileName ?? defaultFileName(blob.type)],
-          ),
+          Effect.map((blob): Part => [
+            "file",
+            blob,
+            request.fileName ?? defaultFileName(blob.type),
+          ]),
         )
     const parts: ReadonlyArray<Part> = [
       filePart,
@@ -212,13 +214,9 @@ export const layer = (
     Layer.effect(MistralTranscriber, make(cfg)),
     Layer.effect(
       Transcriber,
-      Effect.map(
-        make(cfg),
-        (s): TranscriberService => ({
-          transcribe: (req: CommonTranscribeRequest) =>
-            s.transcribe(req as MistralTranscribeRequest),
-          streamTranscriptionFrom: s.streamTranscriptionFrom,
-        }),
-      ),
+      Effect.map(make(cfg), (s): TranscriberService => ({
+        transcribe: (req: CommonTranscribeRequest) => s.transcribe(req as MistralTranscribeRequest),
+        streamTranscriptionFrom: s.streamTranscriptionFrom,
+      })),
     ),
   )

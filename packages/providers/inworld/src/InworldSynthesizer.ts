@@ -265,17 +265,13 @@ export const layer = (
     Layer.effect(InworldSynthesizer, make(cfg)),
     Layer.effect(
       SpeechSynthesizer,
-      Effect.map(
-        make(cfg),
-        (s): SpeechSynthesizerService => ({
-          synthesize: (req: CommonSynthesizeRequest) =>
-            s.synthesize(req as InworldSynthesizeRequest),
-          streamSynthesis: (req: CommonSynthesizeRequest) =>
-            s.streamSynthesis(req as InworldSynthesizeRequest),
-          streamSynthesisFrom: s.streamSynthesisFrom,
-          synthesizeDialogue: s.synthesizeDialogue,
-          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
-        }),
-      ),
+      Effect.map(make(cfg), (s): SpeechSynthesizerService => ({
+        synthesize: (req: CommonSynthesizeRequest) => s.synthesize(req as InworldSynthesizeRequest),
+        streamSynthesis: (req: CommonSynthesizeRequest) =>
+          s.streamSynthesis(req as InworldSynthesizeRequest),
+        streamSynthesisFrom: s.streamSynthesisFrom,
+        synthesizeDialogue: s.synthesizeDialogue,
+        streamSynthesizeDialogue: s.streamSynthesizeDialogue,
+      })),
     ),
   )

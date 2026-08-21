@@ -280,26 +280,20 @@ const imageStep =
 
     return Match.value(image).pipe(
       Match.tag("Default", () => fromDefault),
-      Match.tag(
-        "Registry",
-        ({ ref }): Effect.Effect<Step, SandboxError.SandboxError> =>
-          Effect.succeed((b) => b.image(ref)),
+      Match.tag("Registry", ({ ref }): Effect.Effect<Step, SandboxError.SandboxError> =>
+        Effect.succeed((b) => b.image(ref)),
       ),
-      Match.tag(
-        "Snapshot",
-        ({ id }): Effect.Effect<Step, SandboxError.SandboxError> =>
-          Effect.succeed((b) => b.fromSnapshot(id)),
+      Match.tag("Snapshot", ({ id }): Effect.Effect<Step, SandboxError.SandboxError> =>
+        Effect.succeed((b) => b.fromSnapshot(id)),
       ),
-      Match.tag(
-        "Dockerfile",
-        (): Effect.Effect<Step, SandboxError.SandboxError> =>
-          Effect.fail(
-            new SandboxError.SandboxUnsupported({
-              provider: PROVIDER,
-              capability: "image",
-              reason: "microsandbox accepts OCI registry refs or snapshots, not Dockerfiles",
-            }),
-          ),
+      Match.tag("Dockerfile", (): Effect.Effect<Step, SandboxError.SandboxError> =>
+        Effect.fail(
+          new SandboxError.SandboxUnsupported({
+            provider: PROVIDER,
+            capability: "image",
+            reason: "microsandbox accepts OCI registry refs or snapshots, not Dockerfiles",
+          }),
+        ),
       ),
       Match.exhaustive,
     )
@@ -555,23 +549,20 @@ const adaptInstance = (msb: MsbSandbox): SandboxInstance => {
       ),
 
     spawn: (request) =>
-      Effect.map(
-        openExecStream(request),
-        ({ handle, startedAt }): ProcessHandle => ({
-          // Microsandbox surfaces pid via the "started" event; the
-          // handle exposes no sync getter. Surface 0 until it does.
-          pid: 0,
-          events: eventStream(handle, startedAt),
-          kill: Effect.tryPromise({
-            try: () => handle.kill(),
-            catch: mapExecError,
-          }),
-          exit: Effect.tryPromise({
-            try: () => handle.wait(),
-            catch: mapExecError,
-          }).pipe(Effect.map((status) => ({ exitCode: status.code }))),
+      Effect.map(openExecStream(request), ({ handle, startedAt }): ProcessHandle => ({
+        // Microsandbox surfaces pid via the "started" event; the
+        // handle exposes no sync getter. Surface 0 until it does.
+        pid: 0,
+        events: eventStream(handle, startedAt),
+        kill: Effect.tryPromise({
+          try: () => handle.kill(),
+          catch: mapExecError,
         }),
-      ),
+        exit: Effect.tryPromise({
+          try: () => handle.wait(),
+          catch: mapExecError,
+        }).pipe(Effect.map((status) => ({ exitCode: status.code }))),
+      })),
 
     files: {
       read: (path) =>

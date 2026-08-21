@@ -127,11 +127,10 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
               ),
             ),
         ),
-        Effect.map(
-          (acc): DownloadOutput =>
-            acc.completed
-              ? { status: "completed", bytes: acc.bytes, chunks: acc.chunks }
-              : { status: "failed", bytes: "", chunks: acc.chunks },
+        Effect.map((acc): DownloadOutput =>
+          acc.completed
+            ? { status: "completed", bytes: acc.bytes, chunks: acc.chunks }
+            : { status: "failed", bytes: "", chunks: acc.chunks },
         ),
       )
     },

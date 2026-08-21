@@ -99,25 +99,30 @@ export const containerToTtsFormat: (
  */
 export const realizedTtsFormat: (rf: MistralTtsFormat) => AudioFormat =
   Match.type<MistralTtsFormat>().pipe(
-    Match.when(
-      "mp3",
-      (): AudioFormat => ({ container: "mp3", encoding: "mp3", sampleRate: 24000 }),
-    ),
-    Match.when(
-      "wav",
-      (): AudioFormat => ({ container: "wav", encoding: "pcm_s16le", sampleRate: 24000 }),
-    ),
-    Match.when(
-      "pcm",
-      (): AudioFormat => ({ container: "raw", encoding: "pcm_f32le", sampleRate: 24000 }),
-    ),
-    Match.when(
-      "flac",
-      (): AudioFormat => ({ container: "flac", encoding: "flac", sampleRate: 24000 }),
-    ),
-    Match.when(
-      "opus",
-      (): AudioFormat => ({ container: "opus", encoding: "opus", sampleRate: 24000 }),
-    ),
+    Match.when("mp3", (): AudioFormat => ({
+      container: "mp3",
+      encoding: "mp3",
+      sampleRate: 24000,
+    })),
+    Match.when("wav", (): AudioFormat => ({
+      container: "wav",
+      encoding: "pcm_s16le",
+      sampleRate: 24000,
+    })),
+    Match.when("pcm", (): AudioFormat => ({
+      container: "raw",
+      encoding: "pcm_f32le",
+      sampleRate: 24000,
+    })),
+    Match.when("flac", (): AudioFormat => ({
+      container: "flac",
+      encoding: "flac",
+      sampleRate: 24000,
+    })),
+    Match.when("opus", (): AudioFormat => ({
+      container: "opus",
+      encoding: "opus",
+      sampleRate: 24000,
+    })),
     Match.exhaustive,
   )

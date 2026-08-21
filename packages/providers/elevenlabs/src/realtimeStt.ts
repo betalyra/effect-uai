@@ -137,10 +137,10 @@ export const wireToEvent =
   (msg: typeof ServerMessage.Type): TranscriptEvent | undefined =>
     Match.value(msg).pipe(
       Match.when({ message_type: "session_started" }, () => undefined),
-      Match.when(
-        { message_type: "partial_transcript" },
-        (m): TranscriptEvent => ({ _tag: "partial", text: m.text }),
-      ),
+      Match.when({ message_type: "partial_transcript" }, (m): TranscriptEvent => ({
+        _tag: "partial",
+        text: m.text,
+      })),
       Match.when({ message_type: "committed_transcript" }, (m): TranscriptEvent | undefined =>
         includeTimestamps
           ? undefined // superseded by the `_with_timestamps` variant
@@ -155,16 +155,14 @@ export const wireToEvent =
           ...(words !== undefined && words.length > 0 && { words }),
         }
       }),
-      Match.orElse(
-        (m): TranscriptEvent => ({
-          _tag: "error",
-          code: m.message_type,
-          message:
-            typeof m.error === "string"
-              ? m.error
-              : JSON.stringify(m.error ?? `ElevenLabs ${m.message_type}`),
-        }),
-      ),
+      Match.orElse((m): TranscriptEvent => ({
+        _tag: "error",
+        code: m.message_type,
+        message:
+          typeof m.error === "string"
+            ? m.error
+            : JSON.stringify(m.error ?? `ElevenLabs ${m.message_type}`),
+      })),
     )
 
 // ---------------------------------------------------------------------------

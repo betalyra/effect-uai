@@ -217,27 +217,18 @@ const turnFromInteraction = (wire: WireInteraction): Turn => {
 export const jobStateOf = (wire: WireInteraction): ResearchState =>
   Match.value(wire.status ?? "").pipe(
     Match.whenOr("queued", "pending", (): ResearchState => ({ _tag: "Pending" })),
-    Match.whenOr(
-      "in_progress",
-      "running",
-      "processing",
-      (): ResearchState => ({ _tag: "Running" }),
-    ),
-    Match.whenOr(
-      "completed",
-      "succeeded",
-      (): ResearchState => ({ _tag: "Succeeded", result: turnFromInteraction(wire) }),
-    ),
-    Match.whenOr(
-      "failed",
-      "error",
-      "cancelled",
-      (): ResearchState => ({
-        _tag: "Failed",
-        ...(wire.error?.message != null && { reason: wire.error.message }),
-        raw: wire,
-      }),
-    ),
+    Match.whenOr("in_progress", "running", "processing", (): ResearchState => ({
+      _tag: "Running",
+    })),
+    Match.whenOr("completed", "succeeded", (): ResearchState => ({
+      _tag: "Succeeded",
+      result: turnFromInteraction(wire),
+    })),
+    Match.whenOr("failed", "error", "cancelled", (): ResearchState => ({
+      _tag: "Failed",
+      ...(wire.error?.message != null && { reason: wire.error.message }),
+      raw: wire,
+    })),
     Match.orElse((): ResearchState => ({ _tag: "Running" })),
   )
 

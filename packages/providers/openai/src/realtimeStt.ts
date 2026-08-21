@@ -131,28 +131,19 @@ export const wireToEvent: (msg: typeof ServerEvent.Type) => TranscriptEvent | un
       { type: "conversation.item.input_audio_transcription.completed" },
       (m): TranscriptEvent => ({ _tag: "final", text: m.transcript }),
     ),
-    Match.when(
-      { type: "input_audio_buffer.speech_started" },
-      (m): TranscriptEvent => ({
-        _tag: "speech-started",
-        atSeconds: (m.audio_start_ms ?? 0) / 1000,
-      }),
-    ),
-    Match.when(
-      { type: "input_audio_buffer.speech_stopped" },
-      (m): TranscriptEvent => ({
-        _tag: "utterance-ended",
-        atSeconds: (m.audio_end_ms ?? 0) / 1000,
-      }),
-    ),
-    Match.when(
-      { type: "error" },
-      (m): TranscriptEvent => ({
-        _tag: "error",
-        ...(m.error.code != null && { code: m.error.code }),
-        message: m.error.message,
-      }),
-    ),
+    Match.when({ type: "input_audio_buffer.speech_started" }, (m): TranscriptEvent => ({
+      _tag: "speech-started",
+      atSeconds: (m.audio_start_ms ?? 0) / 1000,
+    })),
+    Match.when({ type: "input_audio_buffer.speech_stopped" }, (m): TranscriptEvent => ({
+      _tag: "utterance-ended",
+      atSeconds: (m.audio_end_ms ?? 0) / 1000,
+    })),
+    Match.when({ type: "error" }, (m): TranscriptEvent => ({
+      _tag: "error",
+      ...(m.error.code != null && { code: m.error.code }),
+      message: m.error.message,
+    })),
     Match.exhaustive,
   )
 

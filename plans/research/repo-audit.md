@@ -282,10 +282,7 @@ export type CommonRequest = {
   readonly model: string
   readonly tools?: Toolkit
   readonly toolChoice?:
-    | "auto"
-    | "required"
-    | "none"
-    | { readonly type: "function"; readonly name: string }
+    "auto" | "required" | "none" | { readonly type: "function"; readonly name: string }
   readonly temperature?: number
   readonly topP?: number
   readonly maxOutputTokens?: number

@@ -364,13 +364,10 @@ export const layer = (
   const typed = Layer.effect(JinaEmbedding, make(cfg))
   const generic = Layer.effect(
     EmbeddingModel,
-    Effect.map(
-      make(cfg),
-      (s): EmbeddingModelService => ({
-        embed: (req) => s.embed(req as JinaEmbedRequest),
-        embedMany: (req) => s.embedMany(req as JinaEmbedManyRequest),
-      }),
-    ),
+    Effect.map(make(cfg), (s): EmbeddingModelService => ({
+      embed: (req) => s.embed(req as JinaEmbedRequest),
+      embedMany: (req) => s.embedMany(req as JinaEmbedManyRequest),
+    })),
   )
   return Layer.merge(typed, generic)
 }

@@ -470,11 +470,10 @@ export const decodeCallInput = <Input>(
         try: () => Promise.resolve(tool.inputSchema["~standard"].validate(parsed)),
         catch: (): DecodeResult<Input> => ({ _tag: "invalid", issues: VALIDATION_THREW }),
       }).pipe(
-        Effect.map(
-          (result): DecodeResult<Input> =>
-            result.issues !== undefined
-              ? { _tag: "invalid", issues: result.issues }
-              : { _tag: "ok", input: result.value },
+        Effect.map((result): DecodeResult<Input> =>
+          result.issues !== undefined
+            ? { _tag: "invalid", issues: result.issues }
+            : { _tag: "ok", input: result.value },
         ),
       ),
     ),

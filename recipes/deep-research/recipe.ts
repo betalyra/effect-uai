@@ -111,17 +111,16 @@ const branchStream = (
         Stream.tap((ev) =>
           ev._tag === "TurnComplete" ? Ref.set(lastTurn, Option.some(ev.turn)) : Effect.void,
         ),
-        Stream.filterMap(
-          (ev): Result.Result<DeepResearchEvent, void> =>
-            Match.value(ev).pipe(
-              Match.tag("TextDelta", (e) =>
-                Result.succeed(DeepResearchEvent.AnswerDelta({ index, question, text: e.text })),
-              ),
-              Match.tag("ToolCallStart", () =>
-                Result.succeed(DeepResearchEvent.Searching({ index, question })),
-              ),
-              Match.orElse(() => Result.failVoid),
+        Stream.filterMap((ev): Result.Result<DeepResearchEvent, void> =>
+          Match.value(ev).pipe(
+            Match.tag("TextDelta", (e) =>
+              Result.succeed(DeepResearchEvent.AnswerDelta({ index, question, text: e.text })),
             ),
+            Match.tag("ToolCallStart", () =>
+              Result.succeed(DeepResearchEvent.Searching({ index, question })),
+            ),
+            Match.orElse(() => Result.failVoid),
+          ),
         ),
       )
 

@@ -396,13 +396,10 @@ export const layer = (
   const typed = Layer.effect(Responses, make(cfg))
   const generic = Layer.effect(
     LanguageModel,
-    Effect.map(
-      make(cfg),
-      (s): LanguageModelService => ({
-        streamTurn: (request) => s.streamTurn(request as ResponsesRequest),
-        turn: (request) => s.turn(request as ResponsesRequest),
-      }),
-    ),
+    Effect.map(make(cfg), (s): LanguageModelService => ({
+      streamTurn: (request) => s.streamTurn(request as ResponsesRequest),
+      turn: (request) => s.turn(request as ResponsesRequest),
+    })),
   )
   return Layer.merge(typed, generic)
 }

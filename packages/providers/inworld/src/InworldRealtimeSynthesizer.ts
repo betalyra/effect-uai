@@ -64,19 +64,15 @@ export const layer = (cfg: Config) =>
     Layer.effect(InworldSynthesizer, make(cfg)),
     Layer.effect(
       SpeechSynthesizer,
-      Effect.map(
-        make(cfg),
-        (s): SpeechSynthesizerService => ({
-          synthesize: (req: CommonSynthesizeRequest) =>
-            s.synthesize(req as InworldSynthesizeRequest),
-          streamSynthesis: (req: CommonSynthesizeRequest) =>
-            s.streamSynthesis(req as InworldSynthesizeRequest),
-          streamSynthesisFrom: (textIn, req: CommonStreamSynthesizeRequest) =>
-            s.streamSynthesisFrom(textIn, req),
-          synthesizeDialogue: s.synthesizeDialogue,
-          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
-        }),
-      ),
+      Effect.map(make(cfg), (s): SpeechSynthesizerService => ({
+        synthesize: (req: CommonSynthesizeRequest) => s.synthesize(req as InworldSynthesizeRequest),
+        streamSynthesis: (req: CommonSynthesizeRequest) =>
+          s.streamSynthesis(req as InworldSynthesizeRequest),
+        streamSynthesisFrom: (textIn, req: CommonStreamSynthesizeRequest) =>
+          s.streamSynthesisFrom(textIn, req),
+        synthesizeDialogue: s.synthesizeDialogue,
+        streamSynthesizeDialogue: s.streamSynthesizeDialogue,
+      })),
     ),
     Layer.succeed(TtsIncrementalText, undefined),
   )

@@ -252,17 +252,13 @@ export const layer = (
     Layer.effect(OpenAISynthesizer, make(cfg)),
     Layer.effect(
       SpeechSynthesizer,
-      Effect.map(
-        make(cfg),
-        (s): SpeechSynthesizerService => ({
-          synthesize: (req: CommonSynthesizeRequest) =>
-            s.synthesize(req as OpenAISynthesizeRequest),
-          streamSynthesis: (req: CommonSynthesizeRequest) =>
-            s.streamSynthesis(req as OpenAISynthesizeRequest),
-          streamSynthesisFrom: s.streamSynthesisFrom,
-          synthesizeDialogue: s.synthesizeDialogue,
-          streamSynthesizeDialogue: s.streamSynthesizeDialogue,
-        }),
-      ),
+      Effect.map(make(cfg), (s): SpeechSynthesizerService => ({
+        synthesize: (req: CommonSynthesizeRequest) => s.synthesize(req as OpenAISynthesizeRequest),
+        streamSynthesis: (req: CommonSynthesizeRequest) =>
+          s.streamSynthesis(req as OpenAISynthesizeRequest),
+        streamSynthesisFrom: s.streamSynthesisFrom,
+        synthesizeDialogue: s.synthesizeDialogue,
+        streamSynthesizeDialogue: s.streamSynthesizeDialogue,
+      })),
     ),
   )

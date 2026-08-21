@@ -1,5 +1,5 @@
 ---
-"@effect-uai/microsandbox": minor
+"@effect-uai/microsandbox": patch
 ---
 
 Require the `microsandbox` SDK `0.6.x`

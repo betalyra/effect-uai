@@ -1,5 +1,5 @@
 ---
-"@effect-uai/core": minor
+"@effect-uai/core": patch
 ---
 
 Require Effect `4.0.0-rc.111`

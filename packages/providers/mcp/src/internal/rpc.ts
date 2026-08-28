@@ -10,8 +10,10 @@ import {
   decodeInboundMessage,
   type InboundMessage,
   type JsonRpcId,
+  errorFrame,
   notificationFrame,
   requestFrame,
+  resultFrame,
 } from "./schema.js"
 
 /** Per-request transport hints (era headers on HTTP; stdio ignores them). */
@@ -43,6 +45,13 @@ export type McpConnection = {
     params?: unknown,
     meta?: SendMeta,
   ) => Effect.Effect<void, McpError>
+  /** Answer a server-initiated request (legacy era only). */
+  readonly respond: (id: JsonRpcId, result: unknown) => Effect.Effect<void, McpError>
+  readonly respondError: (
+    id: JsonRpcId,
+    code: number,
+    message: string,
+  ) => Effect.Effect<void, McpError>
 }
 
 type Pending = {
@@ -71,6 +80,19 @@ export const open = (
     const counter = yield* Ref.make(0)
     const closeCause = yield* Ref.make<unknown>(undefined)
 
+    // Fail every in-flight request with one error. Shared by transport close
+    // and by unattributable server errors: a caller must never be left
+    // awaiting a reply that cannot arrive.
+    const failAllPending = (toError: (method: string) => McpError): Effect.Effect<void> =>
+      Ref.getAndSet(pending, HashMap.empty()).pipe(
+        Effect.flatMap((taken) =>
+          Effect.forEach(HashMap.values(taken), ({ deferred, method }) =>
+            Deferred.fail(deferred, toError(method)),
+          ),
+        ),
+        Effect.asVoid,
+      )
+
     const dispatch = (raw: string): Effect.Effect<void> =>
       Effect.gen(function* () {
         const json = yield* JSONL.parseSafe(raw)
@@ -81,9 +103,25 @@ export const open = (
         if (method !== undefined) {
           return yield* onInbound({ id: Option.fromNullishOr(id), method, params })
         }
-        if (id === undefined) return
+        // JSON-RPC carries a null (or absent) id for errors raised before the
+        // request could be attributed: parse failures, a rejected content type.
+        // Nothing can be correlated, so every in-flight request takes the
+        // failure rather than waiting for a reply that will never arrive.
+        if (id === undefined || id === null) {
+          return yield* error === undefined
+            ? Effect.void
+            : failAllPending((method) => replyError(method, error))
+        }
         const taken = yield* Ref.modify(pending, (m) => [HashMap.get(m, id), HashMap.remove(m, id)])
-        if (Option.isNone(taken)) return
+        if (Option.isNone(taken)) {
+          // A result for an unknown id is a late or duplicate reply: ignore it.
+          // An *error* for an unknown id is a server-level rejection under an
+          // id we never issued (DeepWiki answers `"id":"server-error"`), so it
+          // must reach the caller rather than leave it waiting.
+          return yield* error === undefined
+            ? Effect.void
+            : failAllPending((method) => replyError(method, error))
+        }
         yield* error === undefined
           ? Deferred.succeed(taken.value.deferred, result ?? {})
           : Deferred.fail(taken.value.deferred, replyError(taken.value.method, error))
@@ -92,12 +130,8 @@ export const open = (
     // Fail every still-pending request on transport close so callers never hang.
     const failPending = Effect.gen(function* () {
       const raw = yield* Ref.get(closeCause)
-      const taken = yield* Ref.getAndSet(pending, HashMap.empty())
-      yield* Effect.forEach(HashMap.values(taken), ({ deferred, method }) =>
-        Deferred.fail(
-          deferred,
-          new McpTransportClosed({ method, reason: "connection closed", raw }),
-        ),
+      yield* failAllPending(
+        (method) => new McpTransportClosed({ method, reason: "connection closed", raw }),
       )
     })
     yield* transport.messages.pipe(
@@ -113,14 +147,14 @@ export const open = (
       meta?: SendMeta,
     ): Effect.Effect<unknown, McpError> =>
       Effect.gen(function* () {
-        const id = yield* Ref.updateAndGet(counter, (n) => n + 1)
+        const id: JsonRpcId = yield* Ref.updateAndGet(counter, (n) => n + 1)
         const deferred = yield* Deferred.make<unknown, McpError>()
-        yield* Ref.update(pending, HashMap.set(id, { method, deferred }))
+        yield* Ref.update(pending, (m) => HashMap.set(m, id, { method, deferred }))
         // `ensuring` reclaims the entry on send failure and interruption; on
         // success dispatch has already removed it.
         return yield* transport.send(requestFrame(id, method, params), meta).pipe(
           Effect.flatMap(() => Deferred.await(deferred)),
-          Effect.ensuring(Ref.update(pending, HashMap.remove(id))),
+          Effect.ensuring(Ref.update(pending, (m) => HashMap.remove(m, id))),
         )
       })
 
@@ -130,5 +164,14 @@ export const open = (
       meta?: SendMeta,
     ): Effect.Effect<void, McpError> => transport.send(notificationFrame(method, params), meta)
 
-    return { request, notify }
+    const respond = (id: JsonRpcId, result: unknown): Effect.Effect<void, McpError> =>
+      transport.send(resultFrame(id, result))
+
+    const respondError = (
+      id: JsonRpcId,
+      code: number,
+      message: string,
+    ): Effect.Effect<void, McpError> => transport.send(errorFrame(id, code, message))
+
+    return { request, notify, respond, respondError }
   })

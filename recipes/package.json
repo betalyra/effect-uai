@@ -17,6 +17,7 @@
     "@effect-uai/google": "workspace:*",
     "@effect-uai/inworld": "workspace:*",
     "@effect-uai/jina": "workspace:*",
+    "@effect-uai/mcp": "workspace:*",
     "@effect-uai/mistral": "workspace:*",
     "@effect-uai/openai": "workspace:*",
     "@effect-uai/perplexity": "workspace:*",

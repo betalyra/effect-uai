@@ -17,6 +17,7 @@ import { make as makeChat } from "@effect-uai/chat-completions/ChatCompletions"
 import { make as makeMistral } from "@effect-uai/mistral/Mistral"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
 import { flagValue } from "../_shared/argv.js"
+import { renderEvent } from "../_shared/render.js"
 import { makeConversation } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
@@ -33,39 +34,13 @@ const provider = Option.getOrElse(flagValue("provider", argv), () => "openrouter
 const dialect = Option.getOrElse(flagValue("dialect", argv), () => "chat")
 
 // ---------------------------------------------------------------------------
-// Rendering. Print straight to stdout so the demo reads like a chat: assistant
-// text streams in token by token, tool calls and their results show inline.
+// Bootstrap: run the conversation once, rendering events as they stream via
+// the shared console renderer.
 // ---------------------------------------------------------------------------
 
-const write = (s: string) => Effect.sync(() => process.stdout.write(s))
-
-const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`
-const dim = (s: string) => `\x1b[2m${s}\x1b[0m`
-
-// ---------------------------------------------------------------------------
-// Bootstrap: run the conversation once, rendering events as they stream.
-// ---------------------------------------------------------------------------
-
-export const main = Stream.runForEach(makeConversation(model), (event) =>
-  Match.value(event).pipe(
-    // Assistant prose, as it streams.
-    Match.tag("TextDelta", ({ text }) => write(text)),
-    // A tool call: name in cyan, JSON arguments stream in plain text after.
-    Match.tag("ToolCallStart", ({ name }) => write(`\n${cyan(`🔧 ${name}`)} `)),
-    Match.tag("ToolCallArgsDelta", ({ delta }) => write(delta)),
-    // The tool's result, dim under its call.
-    Match.tag("Output", ({ result }) =>
-      write(
-        dim(
-          `   ↳ ${result._tag === "Ok" ? JSON.stringify(result.value) : `failed: ${result.kind}`}`,
-        ) + "\n",
-      ),
-    ),
-    // End of a turn: reset any dim styling and break the line.
-    Match.tag("TurnComplete", () => write("\x1b[0m\n")),
-    Match.orElse(() => Effect.void),
-  ),
-).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
+export const main = Stream.runForEach(makeConversation(model), renderEvent()).pipe(
+  Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })),
+)
 
 // ---------------------------------------------------------------------------
 // App-level layer: the chat-completions provider (against the generic

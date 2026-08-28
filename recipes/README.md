@@ -19,6 +19,8 @@ that double as living regression tests for the primitive surface.
   to the user while returning one clean output to the model.
 - [`streaming-structured-output/`](./streaming-structured-output/) - decode
   prompted JSONL one object at a time.
+- [`mcp-tools/`](./mcp-tools/) - turn a live MCP server's tools into a
+  `Toolkit`; connection lifetime is stream lifetime.
 - [`multi-model-fallback/`](./multi-model-fallback/) - recover from provider
   stream failures by advancing to the next tier.
 - [`auto-compaction/`](./auto-compaction/) - summarize history when token /

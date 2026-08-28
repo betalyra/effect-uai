@@ -62,7 +62,7 @@ export const makeConversation = (
   config: McpClientConfig,
   model: string,
   prompt: string,
-  prefix?: string,
+  prefix: string,
 ) =>
   Stream.fromEffect(connect(config)).pipe(
     Stream.tap((client) =>
@@ -71,7 +71,7 @@ export const makeConversation = (
         protocolVersion: client.serverInfo.protocolVersion,
       }),
     ),
-    Stream.mapEffect((client) => mcpToolkit(client, ...(prefix === undefined ? [] : [{ prefix }]))),
+    Stream.mapEffect((client) => mcpToolkit(client, { prefix })),
     Stream.tap((kit) => Effect.logInfo("[mcp] tools", { tools: Object.keys(kit) })),
     Stream.flatMap((kit) => runLoop(model, kit, prompt)),
     Stream.scoped,

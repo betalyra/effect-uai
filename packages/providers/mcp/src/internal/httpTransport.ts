@@ -8,7 +8,7 @@
  * Interrupting a request aborts its POST, which is exactly the spec's
  * cancellation signal (closing the response stream).
  */
-import { Cause, Effect, Option, Queue, Ref, type Scope, Stream } from "effect"
+import { Cause, Effect, Match, Option, Queue, Ref, type Scope, Stream } from "effect"
 import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http"
 import * as SSE from "@effect-uai/core/SSE"
 import {
@@ -105,35 +105,45 @@ export const make = (
 
     const ingest = (
       response: HttpClientResponse.HttpClientResponse,
-    ): Effect.Effect<void, McpError> => {
-      if (response.status === 401) return Effect.fail(unauthorized(response))
-      // A 404 against a session we hold means the server dropped it; the
-      // caller reconnects rather than retrying into a dead session.
-      if (response.status === 404) {
-        return Ref.get(session).pipe(
-          Effect.flatMap((held) =>
-            Option.isSome(held)
-              ? Effect.fail(new McpTransportClosed({ reason: "the server expired this session" }))
-              : readBody(response),
-          ),
-        )
-      }
-      // 202 answers a notification and carries no body.
-      if (response.status === 202) return Effect.void
+    ): Effect.Effect<void, McpError> =>
+      Match.value(response.status).pipe(
+        Match.when(401, () => Effect.fail(unauthorized(response))),
+        Match.when(404, () => expiredOrBody(response)),
+        // 202 answers a notification and carries no body.
+        Match.when(202, () => Effect.void),
+        Match.orElse(() => readFrames(response)),
+      )
 
-      const contentType = response.headers["content-type"] ?? ""
-      if (contentType.includes("text/event-stream")) {
-        return response.stream.pipe(
-          SSE.fromBytes,
-          Stream.runForEach((event) => Queue.offer(inbox, event.data)),
-          Effect.mapError(
-            (cause) => new McpTransportClosed({ reason: "SSE stream failed", raw: cause }),
-          ),
-        )
-      }
+    // A 404 against a session we hold means the server dropped it; the caller
+    // reconnects rather than retrying into a dead session.
+    const expiredOrBody = (
+      response: HttpClientResponse.HttpClientResponse,
+    ): Effect.Effect<void, McpError> =>
+      Ref.get(session).pipe(
+        Effect.flatMap((held) =>
+          Option.isSome(held)
+            ? Effect.fail(new McpTransportClosed({ reason: "the server expired this session" }))
+            : readBody(response),
+        ),
+      )
 
-      return readBody(response)
-    }
+    const readFrames = (
+      response: HttpClientResponse.HttpClientResponse,
+    ): Effect.Effect<void, McpError> =>
+      (response.headers["content-type"] ?? "").includes("text/event-stream")
+        ? readSse(response)
+        : readBody(response)
+
+    const readSse = (
+      response: HttpClientResponse.HttpClientResponse,
+    ): Effect.Effect<void, McpError> =>
+      response.stream.pipe(
+        SSE.fromBytes,
+        Stream.runForEach((event) => Queue.offer(inbox, event.data)),
+        Effect.mapError(
+          (cause) => new McpTransportClosed({ reason: "SSE stream failed", raw: cause }),
+        ),
+      )
 
     const readBody = (
       response: HttpClientResponse.HttpClientResponse,

@@ -93,39 +93,51 @@ export const open = (
         Effect.asVoid,
       )
 
-    const dispatch = (raw: string): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        const json = yield* JSONL.parseSafe(raw)
-        if (json === undefined) return
-        const message = yield* decodeInboundMessage(json).pipe(Effect.option)
-        if (Option.isNone(message)) return
-        const { error, id, method, params, result } = message.value
-        if (method !== undefined) {
-          return yield* onInbound({ id: Option.fromNullishOr(id), method, params })
-        }
-        // JSON-RPC carries a null (or absent) id for errors raised before the
-        // request could be attributed: parse failures, a rejected content type.
-        // Nothing can be correlated, so every in-flight request takes the
-        // failure rather than waiting for a reply that will never arrive.
-        if (id === undefined || id === null) {
-          return yield* error === undefined
-            ? Effect.void
-            : failAllPending((method) => replyError(method, error))
-        }
-        const taken = yield* Ref.modify(pending, (m) => [HashMap.get(m, id), HashMap.remove(m, id)])
-        if (Option.isNone(taken)) {
-          // A result for an unknown id is a late or duplicate reply: ignore it.
-          // An *error* for an unknown id is a server-level rejection under an
-          // id we never issued (DeepWiki answers `"id":"server-error"`), so it
-          // must reach the caller rather than leave it waiting.
-          return yield* error === undefined
-            ? Effect.void
-            : failAllPending((method) => replyError(method, error))
-        }
-        yield* error === undefined
-          ? Deferred.succeed(taken.value.deferred, result ?? {})
-          : Deferred.fail(taken.value.deferred, replyError(taken.value.method, error))
+    // An error no pending request can claim: a null id (JSON-RPC raises one
+    // before the request could be attributed) or an id we never issued. It
+    // correlates to nothing, so everything in flight takes it rather than
+    // waiting for a reply that cannot arrive. A *result* nobody claims is a
+    // late or duplicate reply, and is simply dropped.
+    const unattributable = (error: InboundMessage["error"]): Effect.Effect<void> =>
+      error === undefined ? Effect.void : failAllPending((method) => replyError(method, error))
+
+    const settle = ({ deferred, method }: Pending, message: InboundMessage): Effect.Effect<void> =>
+      Effect.asVoid(
+        message.error === undefined
+          ? Deferred.succeed(deferred, message.result ?? {})
+          : Deferred.fail(deferred, replyError(method, message.error)),
+      )
+
+    const reply = (id: JsonRpcId, message: InboundMessage): Effect.Effect<void> =>
+      Ref.modify(pending, (m) => [HashMap.get(m, id), HashMap.remove(m, id)]).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => unattributable(message.error),
+            onSome: (entry) => settle(entry, message),
+          }),
+        ),
+      )
+
+    // A frame carrying a `method` is server-initiated; anything else is a
+    // reply, correlated by id.
+    const route = (message: InboundMessage): Effect.Effect<void> =>
+      Option.match(Option.fromNullishOr(message.method), {
+        onNone: () =>
+          Option.match(Option.fromNullishOr(message.id), {
+            onNone: () => unattributable(message.error),
+            onSome: (id) => reply(id, message),
+          }),
+        onSome: (method) =>
+          onInbound({ id: Option.fromNullishOr(message.id), method, params: message.params }),
       })
+
+    // Unparseable and undecodable frames are dropped: one bad frame must not
+    // end an otherwise healthy connection.
+    const dispatch = (raw: string): Effect.Effect<void> =>
+      JSONL.parseSafe(raw).pipe(
+        Effect.flatMap((json) => Effect.option(decodeInboundMessage(json))),
+        Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: route })),
+      )
 
     // Fail every still-pending request on transport close so callers never hang.
     const failPending = Effect.gen(function* () {

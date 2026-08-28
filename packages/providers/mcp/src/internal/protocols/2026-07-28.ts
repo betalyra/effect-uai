@@ -7,7 +7,7 @@
  * Files here are named for the revision they implement. A later revision that
  * keeps this wire shape gets its own file re-exporting this one.
  */
-import { Effect, Option, Record, type Scope } from "effect"
+import { Effect, Encoding, Option, Predicate, Record, type Scope } from "effect"
 import { type McpError, McpUnsupportedProtocol } from "../../McpError.js"
 import { modernRejection, type Protocol, type ProtocolProbe } from "../protocol.js"
 import type { McpConnection, SendMeta } from "../rpc.js"
@@ -27,24 +27,25 @@ import {
 
 const UNKNOWN_SERVER: ServerInfo = { name: "unknown" }
 
-/** The methods whose subject name is mirrored into `Mcp-Name`. */
-const NAME_FIELD = {
+/**
+ * Which param field carries the subject name mirrored into `Mcp-Name`, per
+ * method. Keyed by string rather than `McpMethod` so the methods a later
+ * revision adds need no cast here.
+ */
+const NAME_FIELD: Record<string, string> = {
   "tools/call": "name",
   "prompts/get": "name",
   "resources/read": "uri",
-} as const satisfies Partial<Record<McpMethod | "prompts/get" | "resources/read", string>>
+}
 
 const subjectName = (method: McpMethod, params: unknown): Option.Option<string> =>
-  Option.fromNullishOr(NAME_FIELD[method as keyof typeof NAME_FIELD]).pipe(
-    Option.flatMap((field) =>
-      Record.get(asRecord(params), field).pipe(
-        Option.filter((value): value is string => typeof value === "string"),
-      ),
-    ),
+  Record.get(NAME_FIELD, method).pipe(
+    Option.flatMap((field) => Record.get(asRecord(params), field)),
+    Option.filter(Predicate.isString),
   )
 
 const asRecord = (value: unknown): Record<string, unknown> =>
-  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
+  Predicate.isObject(value) ? value : {}
 
 const SENTINEL = /^=\?base64\?.*\?=$/
 // Visible ASCII only, no leading or trailing space (RFC 9110 field values).
@@ -54,11 +55,8 @@ const HEADER_SAFE = /^[\x21-\x7e]([\x20-\x7e]*[\x21-\x7e])?$/
  * Header values outside the safe set (and any literal that would be mistaken
  * for the marker) ride the spec's Base64 sentinel form.
  */
-export const headerValue = (raw: string): string => {
-  if (HEADER_SAFE.test(raw) && !SENTINEL.test(raw)) return raw
-  const bytes = new TextEncoder().encode(raw)
-  return `=?base64?${btoa(String.fromCharCode(...bytes))}?=`
-}
+export const headerValue = (raw: string): string =>
+  HEADER_SAFE.test(raw) && !SENTINEL.test(raw) ? raw : `=?base64?${Encoding.encodeBase64(raw)}?=`
 
 const makeProtocol = (version: ProtocolVersion, serverInfo: ServerInfo): Protocol => ({
   version,

@@ -19,10 +19,6 @@ export const LATEST_VERSION = "2026-07-28" satisfies ProtocolVersion
 
 /** The legacy handshake era we negotiate; 2025-11-25 is wire-compatible. */
 export const LEGACY_VERSION = "2025-06-18" satisfies ProtocolVersion
-export const LEGACY_VERSIONS = [
-  "2025-11-25",
-  "2025-06-18",
-] as const satisfies ReadonlyArray<ProtocolVersion>
 
 const isProtocolVersion = Schema.is(ProtocolVersion)
 
@@ -211,9 +207,6 @@ export const UnsupportedVersionData = Schema.Struct({
 export type UnsupportedVersionData = typeof UnsupportedVersionData.Type
 
 export const decodeUnsupportedVersionData = Schema.decodeUnknownOption(UnsupportedVersionData)
-
-/** The `error` object of a JSON-RPC reply, for reading `data` off a failure. */
-export const decodeJsonRpcErrorObject = Schema.decodeUnknownOption(JsonRpcErrorObject)
 
 // ---------------------------------------------------------------------------
 // Legacy era (2025-06-18 / 2025-11-25)

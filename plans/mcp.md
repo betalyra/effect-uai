@@ -23,11 +23,26 @@ package that consumes existing core surface and produces a core `Toolkit`.
 
 ## Protocol versions: modern-first, dual-era
 
-The spec split into two eras with the **2026-07-28** revision (finalized
-2026-07-28; the "stateless rewrite," SEP-2575/SEP-2567). Everything before it
-(2025-06-18, 2025-11-25) is the handshake era. The spec's own compatibility
-matrix is blunt: a modern-only client against a legacy server **fails**, with
-no graceful degradation.
+> Verified against the published spec on 2026-08-28 (`/specification/2026-07-28/`
+> changelog, `basic/versioning`, `basic/transports/streamable-http`). The deltas
+> that check corrected are marked **[spec]** throughout this plan.
+
+The spec split into two eras with the **2026-07-28** revision (the "stateless
+rewrite," SEP-2575/SEP-2567). The spec defines the vocabulary we adopt
+verbatim **[spec]**:
+
+- **Modern**: versions that carry version, identity and capabilities as
+  per-request metadata (`2026-07-28` and later).
+- **Legacy**: versions that establish a session with an `initialize`
+  handshake (`2025-11-25` and earlier).
+- **Dual-era**: an implementation supporting both. **This client is dual-era.**
+
+The spec's own compatibility matrix is blunt: a modern-only client against a
+legacy server **fails**, with no graceful degradation; only a dual-era client
+works against both. Era is a property of the _server_, not of a request, so
+the spec directs clients to cache the determination for the lifetime of the
+server process (stdio) or origin (HTTP) and re-probe only if the cached
+assumption later fails **[spec]**.
 
 Our position, and the reasoning behind it:
 
@@ -96,6 +111,10 @@ seam (§2), so the second transport is mostly a second
 - Modern era: bare `tools/list` / `tools/call` requests plus one
   `server/discover` at connect. Legacy era: the `initialize` handshake,
   `Mcp-Session-Id`, then `tools/list` / `tools/call`.
+- On HTTP, full modern request-metadata conformance: `MCP-Protocol-Version` /
+  `Mcp-Method` / `Mcp-Name`, and the `x-mcp-header` -> `Mcp-Param-*` mirroring
+  with Base64 sentinel encoding, which the spec makes a client MUST **[spec]**
+  (see §3).
 - Build a `Toolkit` from the server's advertised tools, one `LocalTool` per MCP
   tool, each calling `tools/call` over the connection.
 - Authentication as a first-class seam (§3) on the HTTP transport: a `Static`
@@ -115,13 +134,17 @@ seam (§2), so the second transport is mostly a second
   metadata; they are the designed input for a later refresh feature). Legacy
   `notifications/tools/list_changed` is likewise ignored. The `unknown_tool`
   path already degrades gracefully if a tool vanishes mid-run.
-- Sampling and elicitation. Legacy servers request these as server-initiated
-  JSON-RPC requests (we answer with method-not-found, decision 2b); modern
-  servers request them as Multi Round-Trip Requests, a result with
-  `resultType: "input_required"` (we fail typed, decision 6). Same posture in
-  both eras: v1 is a headless tools client.
-- The modern `subscriptions/listen` channel and the `io.modelcontextprotocol/tasks`
-  extension (long-running operations). Not needed for request/response tools.
+- Sampling, elicitation and roots. Legacy servers request these as
+  server-initiated JSON-RPC requests (we answer with method-not-found,
+  decision 2b); modern servers fold them into results as Multi Round-Trip
+  Requests, `resultType: "input_required"` (we fail typed, decision 6). Same
+  posture in both eras: v1 is a headless tools client. The spec has since
+  **deprecated Roots, Sampling and Logging outright** (12-month window)
+  **[spec]**, so the phase-2 work here shrank to elicitation-only MRTR.
+- The modern `subscriptions/listen` channel (which replaced the GET stream and
+  `resources/subscribe`) and the `io.modelcontextprotocol/tasks` extension,
+  now negotiated through `capabilities.extensions` rather than living in the
+  core protocol **[spec]**. Not needed for request/response tools.
 - Interactive OAuth (`OAuth.authorizationCode`: PKCE + user consent + RFC 7591
   dynamic client registration). The redirect / callback capture is an app
   concern, so this waits for a concrete app to shape the callback. Until then a
@@ -148,11 +171,49 @@ packages/providers/mcp/
     McpError.ts         # public tagged errors (transport / protocol / init / auth / version)
     internal/
       rpc.ts            # JSON-RPC 2.0 client over a Transport (hand-rolled, cdp.ts model)
-      era.ts            # era detection + the era-specific request envelope/handshake glue
+      protocol.ts       # the `Protocol` interface, the probe type, the era discriminator
+      protocols/
+        2026-07-28.ts   # stateless: _meta envelope, modern headers, server/discover
+        2025-11-25.ts   # re-export of 2025-06-18 (wire-compatible for our subset)
+        2025-06-18.ts   # handshake: initialize gate, session echo, inbound ping
       httpTransport.ts  # Streamable HTTP Transport impl (applies Auth; SSE framing; era headers)
       stdioTransport.ts # stdio Transport impl (ChildProcess + JSONL framing)
       auth.ts           # token cache/refresh, WWW-Authenticate + RFC 9728/8414 discovery
       schema.ts         # our own MCP wire schemas (Effect Schema), both eras, self-contained
+```
+
+**Files under `protocols/` are named for the spec revision they implement.**
+The revision date is the only stable identifier: "modern" ages, and the set of
+versions in an era grows. A new revision that keeps an existing wire shape gets
+its own file re-exporting the one it matches (as `2025-11-25.ts` does), so the
+directory listing alone answers "which versions do we support, and which are
+genuinely different?". `Client.ts` imports them under readable aliases, so the
+call site reads by mechanism while the file reads by revision.
+
+### One entry point, two era implementations
+
+Era is a runtime property of the _server_, not a compile-time choice of the
+app: a developer pointing at a legacy server cannot elect to speak modern to
+it, and servers will migrate legacy -> modern one at a time over the next
+year. So the package exposes **one** `connect`, and a server upgrading its era
+stays invisible to user code. (Contrast `@effect-uai/responses` vs
+`@effect-uai/chat-completions`, which are separate packages precisely because
+_there_ the protocol is the developer's choice.) The `protocol` pin covers
+"I only want stateless" without an import rewrite.
+
+The implementations are still cleanly separated, one layer down. `modern.ts`
+and `legacy.ts` each export a `make` returning an `Era`; they never import
+each other, and `connect` branches exactly once, at the probe. No era
+conditionals thread through the transports, auth, rpc core, or toolkit.
+
+```ts
+type Era = {
+  readonly version: string
+  readonly serverInfo: ServerInfo
+  readonly envelope: (method: string, params: unknown) => unknown
+  readonly headers: (method: string, params: unknown) => Record<string, string>
+  readonly onInbound: (inbound: Inbound) => Effect.Effect<void>
+}
 ```
 
 ## Key design decisions
@@ -180,9 +241,15 @@ eras:
   (`io.modelcontextprotocol/protocolVersion`, `.../clientInfo`,
   `.../clientCapabilities`, `.../serverInfo`), the `server/discover` result
   (`supportedVersions`, `capabilities`, `serverInfo`, `instructions`), the
-  required `resultType` on results, list-result `ttlMs` / `cacheScope`, and
-  the modern error codes (`-32020` HeaderMismatch, `-32022`
-  UnsupportedProtocolVersionError with its `supported` list).
+  required `resultType` on results (decoded as optional so a legacy result's
+  absent field reads as `"complete"`, which is what the spec mandates
+  **[spec]**), the `CacheableResult` `ttlMs` / `cacheScope` fields (required
+  on modern list results, absent on legacy, so optional in our decode), the
+  `InputRequiredResult` shape (`inputRequests`, and the `inputResponses` a
+  full MRTR client would send back), and all three modern error codes:
+  `-32020` HeaderMismatch, `-32021` MissingRequiredClientCapability, `-32022`
+  UnsupportedProtocolVersion with its `supported` list. All three matter
+  beyond reporting: they are the era discriminator (2c) **[spec]**.
 - **Legacy (2025-06-18 / 2025-11-25):** `InitializeRequest` /
   `InitializeResult`, the `notifications/initialized` notification, and the
   inbound `ping` request shape.
@@ -238,21 +305,37 @@ No handshake, no session. Each call is one self-describing request:
 
 - Params carry `_meta["io.modelcontextprotocol/protocolVersion"]` plus
   `clientInfo` / `clientCapabilities` (ours is `{}`; we are a pure tools
-  client).
+  client). Servers identify themselves back in each result's
+  `_meta["io.modelcontextprotocol/serverInfo"]` **[spec]**.
 - On HTTP, the headers `MCP-Protocol-Version` (which MUST match the `_meta`
   version, else `-32020` HeaderMismatch), `Mcp-Method`, and (for `tools/call`)
-  `Mcp-Name` accompany every POST. The response is `application/json` or a
-  request-scoped `text/event-stream` that ends with the JSON-RPC response;
-  the client MUST accept both.
+  `Mcp-Name` accompany every POST, and the request MUST send
+  `Accept: application/json, text/event-stream` **[spec]**. The response is
+  `application/json` or a request-scoped `text/event-stream` that ends with
+  the JSON-RPC response; the client MUST accept both.
 - `server/discover` returns `supportedVersions` / `capabilities` /
-  `serverInfo`. Calling it is optional per spec; we call it once at `connect`
-  because it doubles as our era probe (2c) and fills `serverInfo`.
+  `serverInfo`. Servers MUST implement it; clients MAY call it up front
+  **[spec]**. We call it once at `connect` because it doubles as our era
+  probe (2c) and fills `serverInfo`.
 - Cancellation is closing the request's SSE stream, which is exactly what
   Effect interruption does to the in-flight POST fiber. A broken stream is
   not resumable; the remedy is re-issuing the request with a fresh id (we
   surface `McpTransportClosed` and leave retry to the caller).
-- Results carry a required `resultType`; see decision 6 for
-  `"input_required"`.
+- Results carry a required `resultType`. Absent on legacy results, and the
+  spec requires clients to read a missing `resultType` as `"complete"`
+  **[spec]**, which is exactly what our optional-field decode does. See
+  decision 6 for `"input_required"`.
+- **No server-initiated requests exist in the modern era.** Servers MUST NOT
+  send JSON-RPC requests on a response stream; sampling / elicitation / roots
+  are folded into results as MRTR input requests **[spec]**. `ping`,
+  `logging/setLevel` and `notifications/roots/list_changed` were removed
+  outright. The rpc reader's inbound-request path is therefore legacy-only.
+- The core protocol defines **no client-to-server notifications over
+  Streamable HTTP** in this revision (`notifications/cancelled` is stdio-only)
+  **[spec]**. `notify` is a legacy-era and stdio affordance.
+- An unknown method on a modern HTTP server answers `404 Not Found` carrying
+  a JSON-RPC `-32601` body; the body is what distinguishes it from a legacy
+  HTTP+SSE server's bare `404` **[spec]**. Notification POSTs answer `202`.
 
 #### 2b. Legacy (2025-06-18 / 2025-11-25): the compatibility mode
 
@@ -277,19 +360,40 @@ The concrete deltas legacy mode adds, and nothing more:
 
 #### 2c. Era detection at `connect`
 
-Deterministic, one probe, cached for the connection's lifetime (a client is
-bound 1:1 to one server, so "cache per origin" degenerates to a field):
+One probe, cached for the connection's lifetime (a client is bound 1:1 to one
+server, so the spec's "cache per server process / origin" degenerates to a
+field). The spec specifies the mechanics **per transport**, and they differ in
+their fallback trigger, so `era.ts` takes the discriminator as a parameter
+from the transport **[spec]**:
 
-1. Attempt a modern `server/discover` (with the modern headers / `_meta`).
-2. Success: modern era. If the reply is `-32022`
-   UnsupportedProtocolVersionError, the server is modern but wants another
-   version: retry with a mutual version from its `supported` list, or fail
-   `McpUnsupportedProtocol` if there is none.
-3. Any other failure shape (HTTP 4xx with a non-modern body, JSON-RPC
-   method-not-found, a server that answers nonsense): fall back to the legacy
-   `initialize` handshake. If that negotiation lands on a version we do not
-   support (a 2025-03-26-only server), fail `McpUnsupportedProtocol` naming
-   the offered version.
+**The recognized-modern-error set.** Both transports pivot on the same
+question: is this failure a _recognized modern JSON-RPC error_? Those are
+`-32022` UnsupportedProtocolVersion, `-32021` MissingRequiredClientCapability,
+and `-32020` HeaderMismatch **[spec]**. Any of them proves the server is
+modern, so the client corrects and retries rather than falling back. Anything
+else (empty body, non-JSON-RPC body, an unrecognized code) means legacy.
+
+**stdio:** send `server/discover`; fall back to `initialize` on any error that
+is not a recognized modern error (or on a timeout).
+
+**HTTP:** issue the modern request (`server/discover`). On `400 Bad Request`,
+inspect the body before falling back, per the rule above. A `4xx` without a
+recognized modern error body means legacy.
+
+Then, in both cases:
+
+1. A `DiscoverResult` means modern; keep the negotiated version.
+2. `-32022` means modern but version-mismatched: retry with a mutual version
+   from its `supported` list, or fail `McpUnsupportedProtocol` if the
+   intersection is empty.
+3. Otherwise fall back to the legacy `initialize` handshake. If that
+   negotiation lands on a version we do not support (a 2025-03-26-only
+   server), fail `McpUnsupportedProtocol` naming the offered version.
+
+We deliberately do **not** implement the spec's further fallback to the
+deprecated 2024-11-05 HTTP+SSE transport (GET, `endpoint` event). That
+transport is Deprecated under the new feature-lifecycle policy **[spec]**;
+those servers get `McpUnsupportedProtocol`.
 
 The config can pin `protocol: "2026-07-28" | "2025-06-18"` to skip detection
 (useful for tests and for servers with ambiguous error behavior); the default
@@ -314,8 +418,34 @@ export type Transport = {
   SSE stream (`text/event-stream`) framed into `messages`; frames from all
   in-flight POSTs demux into the one stream and the rpc layer correlates by
   id. Era-specific headers (modern: `MCP-Protocol-Version` / `Mcp-Method` /
-  `Mcp-Name`; legacy: `Mcp-Session-Id`) are supplied per request by
-  `internal/era.ts`. Auth headers come from §4. Scoped.
+  `Mcp-Name` / `Mcp-Param-*`; legacy: `Mcp-Session-Id`) are supplied per
+  request by `internal/era.ts`. Auth headers come from §4. Scoped.
+
+**`x-mcp-header` -> `Mcp-Param-*` is mandatory for clients, not optional
+**[spec]**.** This is the one item the pre-verification plan got wrong and it
+moves _into_ v1 scope. The spec: "While the use of `x-mcp-header` is optional
+for servers, clients **MUST** support this feature." Concretely the HTTP
+transport must:
+
+- Read `x-mcp-header` annotations off a tool's `inputSchema` and mirror the
+  annotated argument values into `Mcp-Param-{Name}` headers on `tools/call`.
+  Only statically-reachable primitive properties (a chain of `properties`
+  keys, never through `items` / `$ref` / composition keywords) may carry one.
+- Encode values that are not header-safe (non-ASCII, control chars, leading
+  or trailing space, or a literal that looks like the sentinel) with the
+  Base64 sentinel form `=?base64?<b64>?=`. The same rule applies to `Mcp-Name`.
+- **Reject** a tool whose `x-mcp-header` annotations violate the constraints,
+  by excluding just that tool from the `tools/list` result and logging a
+  warning. One malformed tool must not sink the rest of the toolkit, which
+  lands naturally on `Toolkit.fromArray`'s filter step (§6).
+- On a `-32020` HeaderMismatch caused by missing or stale `Mcp-Param-*`, the
+  spec's remedy is to re-fetch `tools/list` and retry once. v1 surfaces
+  `McpProtocolError` instead and leaves the retry to the caller; the seam is
+  the same place a later auto-refresh would sit.
+
+stdio transports MAY ignore `x-mcp-header` entirely **[spec]**, so this lives
+solely in `httpTransport.ts`.
+
 - **stdio** (`internal/stdioTransport.ts`). Spawn the server via
   `ChildProcess`, write frames to the `stdin` sink, and frame `stdout` with
   `@effect-uai/core/JSONL` (already used by `cdp.ts` for exactly this: one
@@ -385,11 +515,27 @@ Design points:
     callback capture is inherently an application concern (it needs an HTTP
     route or a desktop loopback listener), so this ships as a helper that takes
     an app-provided "open this URL, give me back the code" callback and does
-    the RFC 7591 dynamic client registration + PKCE + code exchange + refresh
-    around it. Designed now, built when there is a concrete app to shape the
-    callback.
-  - Full automated dynamic client registration polish and resource-indicator
-    (RFC 8707) edge cases.
+    client registration + PKCE + code exchange + refresh around it. Designed
+    now, built when there is a concrete app to shape the callback.
+  - Full client-registration polish and resource-indicator (RFC 8707) edge
+    cases.
+
+**Authorization hardening in 2026-07-28 that this seam must respect
+**[spec]**.** None of it blocks v1 (`Static` / `TokenSource` /
+`clientCredentials` are unaffected), but it retargets the phase-2 helper:
+
+- **RFC 7591 Dynamic Client Registration is now deprecated** in favor of
+  **Client ID Metadata Documents**. `OAuth.authorizationCode` should target
+  CIMD first and keep DCR only as the compatibility path for authorization
+  servers that lack it. The plan's original "RFC 7591 dynamic client
+  registration" framing is stale.
+- Clients **MUST** validate a present `iss` in the authorization response
+  against the recorded issuer before redeeming the code (RFC 9207).
+- Client credentials are bound to the issuing authorization server: key
+  persisted credentials by issuer identifier, never reuse them against a
+  different AS, and re-register when the AS changes.
+- DCR requests must specify an appropriate `application_type` to avoid OIDC
+  redirect-URI conflicts.
 
 `OAuth` lives in its own export subpath (`@effect-uai/mcp/OAuth`) so the base
 client carries no OAuth code weight for users who pass a `Static` token.
@@ -502,11 +648,18 @@ const kit = yield * mcpToolkit(fs, { prefix: "fs" })
   - `isError: true` -> `yield* Tool.fail(text, { kind: "tool_failed" })` so the
     executor absorbs it into a model-visible `ToolResult.Failure`. This is the
     designed path for "the tool told the model it went wrong."
-  - modern `resultType: "input_required"` (the server wants elicitation /
-    sampling via a Multi Round-Trip Request) -> fail with a typed
-    `McpProtocolError` saying elicitation is unsupported in v1. This is a
-    protocol capability gap, not something the model can fix, so it is not a
-    model-visible failure.
+  - modern `resultType: "input_required"` (an `InputRequiredResult`: the
+    server needs elicitation / sampling / roots input and carries the asks in
+    `inputRequests`) -> fail with a typed `McpProtocolError` naming the
+    requested input kinds. This is a protocol capability gap, not something
+    the model can fix, so it is not a model-visible failure. The phase-2
+    completion is well-defined **[spec]**: gather the inputs, then **re-issue
+    the original request with a new request id** carrying `inputResponses`
+    alongside the original params. There is no server-initiated request and
+    no completion notification to wait on, so the seam is a retry loop around
+    `callTool`, not a new channel.
+  - a result that omits `resultType` (every legacy result) MUST be treated as
+    `"complete"` **[spec]**; our optional decode gives that for free.
   - otherwise -> return `structuredContent` when present, else the joined text
     content blocks. Non-text blocks (image/audio/resource) are summarized as a
     short placeholder string in v1 (see deferred scope).
@@ -548,9 +701,11 @@ A small tagged family, `describe`-able:
 4. `internal/rpc.ts`: the era-blind correlation core over a `Transport`
    (pending-`Deferred` map, reader fiber, fail-pending-on-close). Hand-rolled,
    modeled on `cdp.ts` (the decision-1 spike ruled out `effect/unstable/rpc`).
-5. `internal/era.ts`: the 2c probe, the modern `_meta` / header envelope, the
-   legacy handshake gate + session echo + inbound-request answering (`ping`
-   -> `{}`, everything else -> `-32601`).
+5. `internal/era.ts` + `internal/modern.ts` + `internal/legacy.ts`: the `Era`
+   interface and the 2c probe in `era.ts`; the modern `_meta` / header
+   envelope in `modern.ts`; the legacy handshake gate, session echo and
+   inbound-request answering (`ping` -> `{}`, everything else -> `-32601`) in
+   `legacy.ts`. The two impls are independent and separately unit-testable.
 6. `McpError.ts`: the tagged errors + `describe`.
 7. `Client.ts`: `connect` (open transport -> rpc -> era probe -> client
    value), the `Mcp` service tag, `layer`, the `Auth` type.
@@ -573,10 +728,11 @@ A small tagged family, `describe`-able:
 1. **`internal/schema.ts` + `internal/rpc.ts`**: the wire structs (both eras)
    and the era-blind correlation core. Unit-testable against an in-memory
    `Transport` stub before any network.
-2. **Modern spine over stdio + an in-repo mock server**: `server/discover` +
-   `tools/list` + `tools/call` against a tiny Node script speaking 2026-07-28
-   on stdin/stdout. The modern era is the core model and the simplest wire
-   flow, so it proves the spine first, without waiting on ecosystem servers.
+2. **Stateless spine over stdio**: `server/discover` + `tools/list` +
+   `tools/call`, unit-tested against the in-memory `Transport` stub. The
+   stateless era is the core model and the simplest wire flow, so it proves
+   the spine first, without waiting on ecosystem servers or standing up a
+   fake one.
 3. **Legacy mode over stdio against a real server**:
    `pnpx @modelcontextprotocol/server-everything` (the purpose-built client
    exerciser: 20 tools across every content type). Adds the handshake gate
@@ -587,15 +743,16 @@ A small tagged family, `describe`-able:
    the latter exercising `Mcp-Session-Id`), Hugging Face (legacy, plain
    JSON), `server-everything streamableHttp` on `http://localhost:3001/mcp`.
    GitMCP as the `McpUnsupportedProtocol` negotiation-failure test. For live
-   modern era: the GitHub MCP server (already on 2026-07-28; needs a PAT) or
-   the in-repo mock over HTTP.
+   stateless era: the GitHub MCP server (already on 2026-07-28; needs a PAT).
 5. **Auth** (HTTP): `Static` + `TokenSource` through the transport; the 401
    discovery path against Linear unauthenticated
    (`https://mcp.linear.app/mcp` returns the RFC 9728 `WWW-Authenticate`
    pointer), then a real call with the Linear API key as a `Static` bearer;
    then `OAuth.clientCredentials` discovery + grant against a token-gated
    server.
-6. **`mcpToolkit` + a recipe** driving a real server through `streamTurn`.
+6. **`mcpToolkit` + the recipe** driving a real public server through
+   `streamTurn`. This is the integration test: no mock server process exists,
+   so the recipe is what proves the stdio / HTTP transports against reality.
 7. Docs + changeset + skill (below).
 8. (Phase 2, separate change) `OAuth.authorizationCode`, behind the §4 seam.
 
@@ -607,10 +764,22 @@ A small tagged family, `describe`-able:
   close failing every pending request; modern requests carrying the `_meta`
   envelope; the legacy handshake gate; an inbound legacy `ping` answered,
   an inbound sampling request answered `-32601`.
-- Era detection against scripted stubs: a modern `server/discover` reply ->
-  modern; a `-32022` with a mutual version -> retry lands on it; a
-  method-not-found -> legacy `initialize` fallback; a 2025-03-26-only
-  negotiation -> `McpUnsupportedProtocol`.
+- Era detection against scripted stubs, covering the spec's discriminator
+  precisely **[spec]**: a modern `server/discover` reply -> modern; a `-32022`
+  with a mutual version -> retry lands on it; `-32022` with a disjoint
+  `supported` list -> `McpUnsupportedProtocol`; `-32021` and `-32020` -> still
+  modern (correct and retry, never fall back); a `400` with an empty or
+  non-JSON-RPC body -> legacy `initialize` fallback; a bare `404` -> legacy,
+  while a `404` carrying a `-32601` JSON-RPC body -> modern; a 2025-03-26-only
+  negotiation -> `McpUnsupportedProtocol`. Assert the era is probed once and
+  cached, not re-probed per request.
+- `x-mcp-header` handling (the client MUST, §3): an annotated primitive lands
+  on `Mcp-Param-{Name}`; a non-ASCII value and a value matching the sentinel
+  pattern are Base64-encoded as `=?base64?...?=`; a `null` or absent argument
+  omits the header; an annotation on a property behind `items` / `$ref` /
+  `oneOf`, on a `number`, or with a case-insensitively duplicated name causes
+  **only that tool** to be dropped from the toolkit while its siblings survive.
+  Use the spec's own `execute_sql` / `Mcp-Param-Region` example as a fixture.
 - `httpTransport` against a mock `HttpClient` layer (the providers' test
   pattern): a single-JSON response and an SSE-framed response both demux to
   the same `messages`; modern headers (`MCP-Protocol-Version`, `Mcp-Method`,
@@ -621,9 +790,17 @@ A small tagged family, `describe`-able:
   with the parsed metadata pointer; a `TokenSource` is re-read (and cached)
   across requests; `OAuth.clientCredentials` performs the discovery + grant and
   refreshes an expired token.
-- `stdioTransport` against tiny in-repo mock server scripts (one per era,
-  answering on stdin/stdout): the child is spawned, framed, and killed on
-  scope close. Needs no network, no installed server.
+- **No JavaScript fixtures, and no mock MCP server process.** An earlier draft
+  of this plan called for in-repo mock server scripts (one per era) that the
+  stdio tests would spawn. Dropped: they are `.js` in a TypeScript repo, and
+  standing up a fake server to talk to is an integration test wearing a unit
+  test's clothes. Unit tests drive `Protocol` and `rpc` through the in-memory
+  `Transport` stub instead, which exercises the same code with none of the
+  process management. `stdioTransport`'s own spawn / frame / kill-on-close path
+  is covered by the recipe below, which runs a real server.
+- Tests use `@effect/vitest` (`it.effect`), the repo standard. Assert behavior
+  that can break (era discrimination, the `-32022` retry, header/`_meta`
+  agreement, Base64 sentinel encoding), never that a constant is still itself.
 - `mcpToolkit` against a mocked client: a successful call serializes to Output,
   an `isError` call surfaces as a `ToolResult.Failure`, an `input_required`
   result fails typed, a transport failure propagates as `McpError` on
@@ -641,6 +818,37 @@ A small tagged family, `describe`-able:
   loop"). State the supported protocol versions (2026-07-28 and 2025-06-18,
   auto-negotiated) and that 2025-03-26 servers are rejected with a typed
   error. Add the sidebar entries in `webpage/astro.config.mjs`.
+
+### The recipe is also the integration test
+
+The "MCP tools in a loop" recipe points at a **public, well-known, keyless MCP
+server** and drives it through `streamTurn`, so it doubles as the end-to-end
+proof that the transport, the probe, and `mcpToolkit` work against a real
+server rather than a stub. It uses the `Stream` pipeline wiring (connection
+lifetime = stream lifetime), so nothing has to be drained at the build site:
+
+```ts
+Stream.fromEffect(Mcp.connect(config)).pipe(
+  Stream.mapEffect(mcpToolkit),
+  Stream.flatMap(loopStream),
+  Stream.scoped,
+)
+```
+
+**Preferred target: a stateless (2026-07-28) public server**, since that is the
+protocol we lead with. Open problem: as of the 2026-08-28 probe there is no
+known public _keyless_ stateless server. GitHub's MCP server is on 2026-07-28
+but needs a PAT, and every keyless server (DeepWiki, Microsoft Learn, Hugging
+Face, Cloudflare docs) is still handshake-era. So at implementation time:
+
+1. Re-probe for a keyless stateless server and prefer it if one exists.
+2. Otherwise ship the recipe against DeepWiki (keyless, legacy) and add a
+   second runner pinned to the stateless protocol against GitHub MCP, gated on
+   a `GITHUB_TOKEN` in the environment and skipped when unset.
+
+Either way the recipe demonstrates that era negotiation is invisible to the
+user's code, which is the whole point of the dual-era design.
+
 - Changeset: additive `minor`. Only the new `@effect-uai/mcp` package (no core
   change). It debuts in the fixed group at the current group version per the
   lockstep policy.
@@ -651,13 +859,18 @@ A small tagged family, `describe`-able:
 
 ## Risks / open questions
 
-- **The modern spec is three weeks old** (finalized 2026-07-28) and the
+- **The modern spec is one month old** (finalized 2026-07-28) and the
   ecosystem is still overwhelmingly legacy: every public no-auth server we
-  probed (2026-08-16) negotiates 2025-06-18, and the reference servers ship
-  on the beta TS SDK. Consequences: the legacy path gets the real-server
-  soak-testing early, and the modern path leans on the in-repo mock plus the
-  GitHub MCP server until adoption catches up. Re-probe the test targets at
-  implementation time; the era mix will shift under us.
+  probed (2026-08-16) negotiates 2025-06-18. All four Tier 1 SDKs (TypeScript,
+  Python, Go, C#) now ship 2026-07-28 support **[spec]**, so the server side
+  will move, but the deployed fleet has not yet. Consequences: the legacy path
+  gets the real-server soak-testing early, and the stateless path leans on
+  scripted stubs plus the GitHub MCP server until adoption catches up.
+  Re-probe the test targets at implementation time; the era mix will shift
+  under us. This inverts the usual confidence ordering: our primary path is
+  the one with the least real-server exposure at ship time, which is why the
+  recipe should run against a live stateless server as soon as a public one
+  exists.
 - **Era-detection robustness.** The 2c fallback keys off the shape of the
   first failure, and legacy servers are not obligated to fail modern requests
   in any particular way (the spec says they "may error arbitrarily").
@@ -665,10 +878,12 @@ A small tagged family, `describe`-able:
   under auto-detection, document the pin for it.
 - **Modern header/`_meta` conformance.** `MCP-Protocol-Version` must match the
   `_meta` version or servers reject with `-32020`; keep both minted from one
-  constant. The spec also describes mirroring designated params into
-  `Mcp-Param-*` headers via an `x-mcp-header` schema annotation (a gateway
-  routing aid); verify at implementation time whether any real server
-  requires it from clients, and defer it if none does.
+  constant. ~~The `Mcp-Param-*` mirroring is a gateway routing aid we can
+  defer~~ **Resolved 2026-08-28: it is a client MUST**, and is now in v1 scope
+  (§3). The residual risk is narrower: the annotation-validity rules are
+  fiddly (static reachability, primitive-only, no `number`, case-insensitive
+  uniqueness) and a wrong reading silently drops tools, so this needs direct
+  unit tests against the spec's own examples rather than a live server.
 - **Streamable HTTP SSE framing.** A POST is answered by either a single JSON
   body or a `text/event-stream`, in both eras (verified live both ways:
   DeepWiki/MS Learn SSE-framed, Hugging Face plain JSON). Confirm the SSE
@@ -689,16 +904,57 @@ A small tagged family, `describe`-able:
   v1 compromise. Fine for the dominant text/JSON tools; revisit when the loop
   grows a multimodal tool-output path.
 
-## Reference: verified test targets (probed 2026-08-16)
+## Reference: verified test targets (re-probed live 2026-08-28)
 
-| Target | Where | Era | Notes |
-|---|---|---|---|
-| in-repo mock scripts | `packages/providers/mcp/test/` | both | one per era; stdio + HTTP |
-| server-everything | `pnpx @modelcontextprotocol/server-everything` (stdio) / `... streamableHttp` -> `http://localhost:3001/mcp` | legacy | 20 tools, every content type; the purpose-built client exerciser |
-| DeepWiki | `https://mcp.deepwiki.com/mcp` | legacy (2025-06-18) | no auth; SSE-framed; tolerates sessionless requests; primary remote target |
-| Microsoft Learn | `https://learn.microsoft.com/api/mcp` | legacy (2025-06-18) | no auth; stateful `Mcp-Session-Id`; strict about the dual `Accept` header |
-| Hugging Face | `https://huggingface.co/mcp` | legacy (2025-06-18) | no auth (rate-limited); plain-JSON responses (covers the non-SSE shape) |
-| Cloudflare docs | `https://docs.mcp.cloudflare.com/mcp` | legacy (2025-06-18) | no auth; secondary |
-| GitMCP | `https://gitmcp.io/{owner}/{repo}` | 2025-03-26 | the `McpUnsupportedProtocol` negotiation-failure test |
-| GitHub MCP | `https://api.githubcopilot.com/mcp/` | modern (2026-07-28) | needs a PAT; earliest live modern server |
-| Linear | `https://mcp.linear.app/mcp` | legacy (handshake) | 401 + RFC 9728 discovery when unauthenticated (the `McpAuthRequired` test); accepts a Linear API key as `Static` bearer |
+| Target            | Where                                                  | Era                        | Notes                                                                                                                                                                             |
+| ----------------- | ------------------------------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Hugging Face** | `https://huggingface.co/mcp` | **stateless (2026-07-28)** | No auth, plain-JSON responses. Migrated from legacy since the 2026-08-16 probe. The recipe's default target. **Verified end to end 2026-08-28.** |
+| DeepWiki          | `https://mcp.deepwiki.com/mcp`                         | legacy (2025-06-18)        | no auth; SSE-framed. Rejects a stateless request with HTTP 400 + `-32600`, _not_ `-32022` (see below)                                                                             | **Verified end to end 2026-08-28.**
+| Microsoft Learn   | `https://learn.microsoft.com/api/mcp`                  | legacy (2025-06-18)        | no auth; stateful `Mcp-Session-Id`; answers `server/discover` with HTTP **200** + `-32601`                                                                                        | **Verified end to end 2026-08-28.**
+| Cloudflare docs   | `https://docs.mcp.cloudflare.com/mcp`                  | legacy (2025-06-18)        | no auth; secondary                                                                                                                                                                |
+| server-everything | `pnpx @modelcontextprotocol/server-everything` (stdio) | legacy                     | 20 tools, every content type; the purpose-built client exerciser                                                                                                                  |
+| GitMCP            | `https://gitmcp.io/{owner}/{repo}`                     | 2025-03-26                 | the `McpUnsupportedProtocol` negotiation-failure test                                                                                                                             |
+| GitHub MCP        | `https://api.githubcopilot.com/mcp/`                   | stateless (2026-07-28)     | needs a PAT                                                                                                                                                                       |
+| **Linear** | `https://mcp.linear.app/mcp` | **stateless (2026-07-28)** | **Also migrated; this plan previously recorded it as handshake-era.** Accepts a Linear API key as a `Static` bearer (57 tools). Unauthenticated it returns 401 + the RFC 9728 `resource_metadata` pointer. The authenticated stateless target. **Verified end to end 2026-08-28.** |
+
+### What the end-to-end runs proved (2026-08-28)
+
+Four servers driven through the full recipe (transport -> rpc -> probe ->
+toolkit -> agent loop), covering both eras and both auth states:
+
+- **Era detection works in both directions.** Hugging Face and Linear negotiate
+  the stateless protocol; DeepWiki and Microsoft Learn fall through the
+  stateless probe and land on `initialize`. User code is identical in all four.
+- **`serverInfo` resolves from both eras**: `_meta` on stateless, the
+  `InitializeResult` body on handshake.
+- **The `isError` -> `Tool.fail` path validated itself unprompted.** Linear
+  rejected a bad `fields` argument; that surfaced as a model-visible
+  `ToolResult.Failure` rather than a typed `McpError` ending the run, and the
+  model dropped the offending field and retried successfully. This is the
+  designed failure model working against a real server.
+- **Auth works** via `Auth.Static` with a Linear API key as a bearer.
+
+Four bugs were found only by running it, each now covered by a regression test:
+`bodyText` overriding the JSON content type with `text/plain`; a silent hang on
+an `id: null` error reply; a silent hang on an error under an id we never
+issued (DeepWiki answers `"id":"server-error"`); and `serverInfo` being read
+from the top level instead of `_meta`. Every one of them was invisible to unit
+tests written against a stub that behaved the way I assumed servers behave.
+
+### What the live probe proved about era detection
+
+Two real legacy servers reject a stateless request in two _different_ non-spec
+ways, which is exactly the robustness risk this plan flagged. Neither returns a
+recognized modern error code, so both correctly fall through to the handshake
+under our discriminator:
+
+- **DeepWiki**: `HTTP 400` with `-32600` (Invalid Request), and the human-readable
+  message carries the supported list instead of the `data.supported` field a
+  `-32022` would use. Falling back on "not a recognized modern code" is what
+  saves us; keying off the HTTP status alone would misread this.
+- **Microsoft Learn**: `HTTP 200` with `-32601` (Method not found). A status-based
+  discriminator would call this success. Keying off the JSON-RPC error code in
+  the body is load-bearing.
+
+This validates decision 2c: the discriminator must be the error **code**
+(`-32020` / `-32021` / `-32022`), never the HTTP status.

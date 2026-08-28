@@ -17,11 +17,12 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Tools and HITL
 
-| Recipe                                                               | One-line                                                                                          |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [Tool call approval](/recipes/tool-call-approval/)                   | Gate sensitive calls before `Toolkit.run`; still return one result per model-requested tool call. |
-| [Streaming tool output](/recipes/streaming-tool-output/)             | Show inner tool work to the user while returning one clean output to the model.                   |
-| [Streaming structured output](/recipes/streaming-structured-output/) | Validate prompted JSONL one object at a time as the model streams.                                |
+| Recipe                                                               | One-line                                                                                             |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [Tool call approval](/recipes/tool-call-approval/)                   | Gate sensitive calls before `Toolkit.run`; still return one result per model-requested tool call.    |
+| [Streaming tool output](/recipes/streaming-tool-output/)             | Show inner tool work to the user while returning one clean output to the model.                      |
+| [Streaming structured output](/recipes/streaming-structured-output/) | Validate prompted JSONL one object at a time as the model streams.                                   |
+| [MCP tools](/recipes/mcp-tools/)                                     | Turn a live MCP server's tools into a `Toolkit`; the connection lives exactly as long as the stream. |
 
 ## Reliability and lifecycle
 

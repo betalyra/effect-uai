@@ -22,6 +22,7 @@ import {
   PiMicrophone,
   PiMusicNotes,
   PiPause,
+  PiPlugsConnected,
   PiPulse,
   PiQuotes,
   PiRadio,
@@ -114,6 +115,14 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Watch tools work.** Stream progress and reasoning as they run; the model gets one clean result.",
     href: "/recipes/streaming-tool-output/",
     Icon: PiPulse,
+    category: "tools",
+  },
+  {
+    title: "MCP tools",
+    description:
+      "**Use any MCP server's tools.** Connect, and its tools become an ordinary toolkit the loop runs; the connection closes with the stream.",
+    href: "/recipes/mcp-tools/",
+    Icon: PiPlugsConnected,
     category: "tools",
   },
   {
@@ -325,7 +334,7 @@ export default function RecipesSection() {
           <div className="flex items-baseline gap-3">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
             <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
-              32 and counting
+              35 and counting
             </span>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">

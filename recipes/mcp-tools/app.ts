@@ -1,19 +1,17 @@
 /**
  * Composition + rendering for the mcp-tools recipe.
  *
- * Defaults point at Hugging Face's MCP server: public, keyless, and on the
- * stateless 2026-07-28 revision. Point `--mcp-url` at any other Streamable
- * HTTP server and it still works, because the protocol era is negotiated at
- * connect rather than configured here.
+ * Defaults point at Hugging Face's MCP server: public and keyless. Point
+ * `--mcp-url` at any other Streamable HTTP server and it still works: the
+ * protocol version is negotiated at connect rather than configured here.
  *
  * Streamable HTTP only, so the recipe needs an `HttpClient` and the platform
  * services layer, and runs identically on Node, Bun and Deno. A local stdio
  * server additionally needs a `ChildProcessSpawner`; the docs page covers it.
  *
  * Flags are read through Effect's `Stdio` service rather than `process.argv`,
- * so nothing here is Node-specific. Model selection stays deliberately minimal
- * (`--model` / `--base-url` against the Responses API); it becomes a one-line
- * swap once the shared selector in `plans/recipe-model-selector.md` lands.
+ * so nothing here is Node-specific. Model selection is deliberately minimal:
+ * `--model` / `--base-url` against the Responses API.
  */
 import { Config, Effect, Layer, Logger, Option, References, Stdio, Stream } from "effect"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"

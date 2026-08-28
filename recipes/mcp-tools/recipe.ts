@@ -8,8 +8,8 @@
  *
  *   fromEffect(connect) -> mapEffect(mcpToolkit) -> flatMap(loop) -> scoped
  *
- * Protocol era is negotiated at connect and invisible here: the same code runs
- * against a stateless 2026-07-28 server and a 2025-06-18 handshake server.
+ * The protocol version is negotiated at connect and invisible here: the same
+ * code runs against every revision of MCP this client supports.
  */
 import { Effect, pipe, Stream } from "effect"
 import * as Items from "@effect-uai/core/Items"

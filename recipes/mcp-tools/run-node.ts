@@ -3,7 +3,7 @@
  *
  *   LLM_API_KEY=sk-or-... pnpm tsx recipes/mcp-tools/run-node.ts
  *
- *   # Any other Streamable HTTP MCP server; the protocol era is auto-detected:
+ *   # Any other Streamable HTTP MCP server; the protocol version is detected:
  *   LLM_API_KEY=... pnpm tsx recipes/mcp-tools/run-node.ts \
  *     --mcp-url https://mcp.deepwiki.com/mcp --prefix wiki --prompt "..."
  *

@@ -12,7 +12,6 @@ import {
   PiClockCounterClockwise,
   PiCube,
   PiCursorClick,
-  PiDatabase,
   PiDetective,
   PiFlowArrow,
   PiFunnel,
@@ -23,11 +22,14 @@ import {
   PiMagnifyingGlass,
   PiMicrophone,
   PiMusicNotes,
+  PiNotePencil,
+  PiPath,
   PiPause,
   PiPlugsConnected,
   PiPulse,
   PiQuotes,
   PiRadio,
+  PiRanking,
   PiShieldCheck,
   PiStairs,
   PiTable,
@@ -245,17 +247,25 @@ const recipes: ReadonlyArray<Recipe> = [
   {
     title: "Retrieve and rerank",
     description:
-      '**Embedding search finds "related", not "answers this".** Cosine picks the candidates, a cross-encoder picks the answer; the before and after print side by side.',
+      "**Cosine finds related, not relevant.** Re-score the top fifteen with a cross-encoder that reads query and candidate together.",
     href: "/recipes/retrieve-and-rerank/",
-    Icon: PiFunnel,
+    Icon: PiRanking,
     category: "retrieval",
   },
   {
-    title: "Hybrid RAG",
+    title: "Agentic search",
     description:
-      "**Search that misses names, or misses meaning.** Run keyword and vector search together, and let the agent search again in its own words. One local file, no server.",
-    href: "/recipes/hybrid-rag/",
-    Icon: PiDatabase,
+      "**BM25 misses paraphrases, vectors miss names.** Fuse both with RRF, rerank the head, and give it to the agent as a tool it can call again.",
+    href: "/recipes/agentic-search/",
+    Icon: PiPath,
+    category: "retrieval",
+  },
+  {
+    title: "Contextual retrieval",
+    description:
+      "**Chunking strips each passage of its referents.** An LLM writes them back at index time, ahead of both the vector and the keyword leg.",
+    href: "/recipes/contextual-retrieval/",
+    Icon: PiNotePencil,
     category: "retrieval",
   },
   {
@@ -356,7 +366,7 @@ export default function RecipesSection() {
           <div className="flex items-baseline gap-3">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
             <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
-              37 and counting
+              40 and counting
             </span>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">

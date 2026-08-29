@@ -123,7 +123,8 @@ update. Check your provider's model list for what is current.
 ## What reranking is not
 
 - **Not retrieval.** A reranker scores candidates you already have. Finding
-  them is [embeddings](/embeddings/), [search](/search/), or your own index.
+  them is [embeddings](/embeddings/), [search](/search/), or your own index,
+  and preparing them is [retrieval](/retrieval/).
 - **Not an embedding model.** There is no vector to store. Every call scores
   one query against one candidate set, so nothing caches into an index the way
   embeddings do.
@@ -133,6 +134,8 @@ update. Check your provider's model list for what is current.
 
 - [Retrieve and rerank](/recipes/retrieve-and-rerank/): the two stages end to
   end, with the before and after printed side by side.
-- [Hybrid RAG](/recipes/hybrid-rag/): reranking on top of fused keyword and
+- [Agentic search](/recipes/agentic-search/): reranking on top of fused keyword and
   vector retrieval, as a tool an agent calls.
 - [Embeddings](/embeddings/): produce the candidates, then rerank them.
+- [Retrieval](/retrieval/): chunk the documents and fuse the rankings that
+  feed a reranker.

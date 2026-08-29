@@ -23,7 +23,8 @@
       "@effect-uai/tavily",
       "@effect-uai/firecrawl",
       "@effect-uai/ai-sdk",
-      "@effect-uai/mcp"
+      "@effect-uai/mcp",
+      "@effect-uai/retrieval"
     ]
   ],
   "linked": [],

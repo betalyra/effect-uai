@@ -1,10 +1,10 @@
 /**
- * Node runner for the hybrid-rag recipe.
+ * Node runner for the agentic-search recipe.
  *
- *   pnpm -C recipes-extras/hybrid-rag install
+ *   pnpm -C recipes-extras/agentic-search install
  *   JINA_API_KEY=jina_... LLM_API_KEY=sk-or-... \
- *     ./recipes-extras/hybrid-rag/node_modules/.bin/tsx \
- *     recipes-extras/hybrid-rag/run-node.ts "why does the speckled band kill?"
+ *     ./recipes-extras/agentic-search/node_modules/.bin/tsx \
+ *     recipes-extras/agentic-search/run-node.ts "why does the speckled band kill?"
  *
  * The first run downloads the book, chunks it, embeds it, and writes
  * `rag.db`. Later runs reuse both. Only ever run one writer at a time: the

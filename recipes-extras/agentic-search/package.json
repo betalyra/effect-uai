@@ -1,5 +1,5 @@
 {
-  "name": "@effect-uai/recipe-hybrid-rag",
+  "name": "@effect-uai/recipe-agentic-search",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,6 +12,7 @@
     "@effect-uai/core": "link:../../packages/core",
     "@effect-uai/jina": "link:../../packages/providers/jina",
     "@effect-uai/responses": "link:../../packages/providers/responses",
+    "@effect-uai/retrieval": "link:../../packages/retrieval",
     "@effect/platform-bun": "link:../../recipes/node_modules/@effect/platform-bun",
     "@effect/platform-node": "link:../../recipes/node_modules/@effect/platform-node",
     "@effect/sql-libsql": "4.0.0-rc.111",

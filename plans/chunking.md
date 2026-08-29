@@ -223,13 +223,42 @@ not code.
   HttpClient serving a real small `tokenizer.json` fixture,
   `expectTypeOf` inline.
 
-## Open questions
+## Decisions taken during implementation
 
-1. `approximate`: count-only vs fake encode/decode (leaning
-   count-only; see above).
-2. Whether `withTokenizer` sugar earns its place or callers just
-   write the two lines (leaning: include, it is the discoverable
-   bridge between the service and the pure functions).
+1. **`Tokenizer` is `encode` / `decode` only, and there is no
+   `approximate` layer.** `count` was dropped because it is
+   `encode(text).length` and our one implementation has no cheaper
+   path. `approximate` was dropped because a chars/4 heuristic has no
+   token ids to expose: a service with a fake `encode` invites misuse,
+   and a count-only service would have forced both fields optional for
+   every real implementation. The heuristic survives where it belongs,
+   as `Chunking`'s default `measure`. Both fields are therefore
+   required, and the tag means "a real vocabulary".
+2. **`withTokenizer` shipped**, as planned.
+3. **A `Chunker` capability tag was added to core**, which this plan
+   did not anticipate. Jina's Segmenter API (`POST /v1/segment`)
+   returns `chunks` plus `chunk_positions`, mapping exactly onto
+   `Chunk`, so the interface has a remote implementation today and
+   semantic chunking would fit it later. Hierarchical and contextual
+   chunking do not fit and do not need to: both run _over_ chunk
+   output (contextual retrieval chunks first, then situates each
+   chunk), and the offsets are what make them possible. The tag lives
+   in core because a provider package would implement it, the same
+   reasoning that put `Tokenizer` there. `Chunking.layer` lifts any
+   pure chunker into it.
+4. **BM25 is deferred, not shipped.** A version generic over a
+   database is not achievable: scoring needs `df`, `tf`, `|d|`, and
+   `avgdl`, which a database already has and scores in-engine, so
+   "generic" would mean pulling posting lists over the wire to compute
+   in JS what SQLite computes in C. That leaves an in-memory-only
+   build, and nothing in the repo would consume it, since hybrid-rag's
+   lexical leg is FTS5 `bm25()`. Revisit alongside a recipe that
+   actually needs an in-memory leg.
+5. **`Chunking.markdown` is fence-aware rather than parser-backed.**
+   A `#` line inside a fenced code block is common enough to hit
+   immediately, and skipping fenced regions costs a few lines against
+   a markdown parser being the package's only real dependency. Setext
+   headings stay unrecognized, and that is documented.
 
 ## Out of scope
 

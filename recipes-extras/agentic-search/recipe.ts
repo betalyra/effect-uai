@@ -7,19 +7,20 @@
  * legs (lexical and dense), fuses them by rank, and reranks the fused head, so
  * every hop is cheap and precise.
  *
- * It depends on two ports you implement for your setup, `Chunker` and
- * `ChunkStore`, plus the generic effect-uai capability tags. Nothing here
- * knows about libsql, Jina, or any particular chunking strategy: `chunk.ts`
- * and `libsql.ts` are this demo's implementations of the ports.
+ * It depends on one port you implement for your setup, `ChunkStore`, plus the
+ * generic effect-uai capability tags. Nothing here knows about libsql, Jina,
+ * or any particular chunking strategy: `libsql.ts` is this demo's
+ * implementation of the port, and `app.ts` picks the chunker.
  */
 import { Array as Arr, Context, Effect, pipe, Schema } from "effect"
 import * as AiError from "@effect-uai/core/AiError"
+import { chunk as splitDocument } from "@effect-uai/core/Chunker"
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
 import * as Items from "@effect-uai/core/Items"
 import { streamTurn } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
-import * as Rank from "@effect-uai/core/Rank"
 import { rerank } from "@effect-uai/core/Reranker"
+import * as Rank from "@effect-uai/retrieval/Rank"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -28,25 +29,16 @@ import * as Turn from "@effect-uai/core/Turn"
 // Ports
 // ---------------------------------------------------------------------------
 
-export type Chunk = {
+/** A stored chunk, addressed by the id the store gave it. */
+export type Passage = {
   readonly id: number
   readonly text: string
 }
 
-/** A chunk with the score of whichever leg returned it. Higher is better. */
-export type Scored = Chunk & {
+/** A passage with the score of whichever leg returned it. Higher is better. */
+export type Scored = Passage & {
   readonly score: number
 }
-
-/**
- * Splitting a document into retrievable passages. An effect, so this can be a
- * local splitter or a remote chunking service.
- */
-export type ChunkerService = {
-  readonly split: (text: string) => Effect.Effect<ReadonlyArray<string>>
-}
-
-export class Chunker extends Context.Service<Chunker, ChunkerService>()("hybrid-rag/Chunker") {}
 
 /**
  * The store behind both retrieval legs. Implement it against whatever you
@@ -65,7 +57,7 @@ export type ChunkStoreService = {
 }
 
 export class ChunkStore extends Context.Service<ChunkStore, ChunkStoreService>()(
-  "hybrid-rag/ChunkStore",
+  "agentic-search/ChunkStore",
 ) {}
 
 // ---------------------------------------------------------------------------
@@ -97,9 +89,11 @@ export const ingest = (text: string, options: IngestOptions) =>
     const existing = yield* store.count
     if (existing > 0) return { chunks: existing, ingested: false }
 
-    const chunker = yield* Chunker
-    const chunks = yield* chunker.split(text)
-    const batches = Arr.chunksOf(chunks, options.batchSize ?? 64)
+    const chunks = yield* splitDocument(text)
+    const batches = Arr.chunksOf(
+      Arr.map(chunks, (c) => c.text),
+      options.batchSize ?? 64,
+    )
 
     yield* Effect.forEach(
       batches,
@@ -183,7 +177,7 @@ export const hybridSearch = (query: string, options: SearchOptions) =>
     const texts = new Map([...dense, ...lexical].map((c): [number, string] => [c.id, c.text]))
     const candidates = Arr.take(fused, options.rerankDepth ?? 20)
       .map((f) => ({ id: f.value, text: texts.get(f.value) }))
-      .filter((c): c is Chunk => c.text !== undefined)
+      .filter((c): c is Passage => c.text !== undefined)
 
     const { results } = yield* rerank({
       model: options.rerankModel,

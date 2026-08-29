@@ -1,8 +1,8 @@
 /**
- * Bun runner for the hybrid-rag recipe.
+ * Bun runner for the contextual-retrieval recipe.
  *
- *   JINA_API_KEY=jina_... LLM_API_KEY=sk-or-... \
- *     bun recipes-extras/hybrid-rag/run-bun.ts "why does the speckled band kill?"
+ *   JINA_API_KEY=jina_... ANTHROPIC_API_KEY=sk-ant-... \
+ *     bun recipes-extras/contextual-retrieval/run-bun.ts
  *
  * Compare side-by-side with `run-node.ts`: only the platform layers differ.
  * The libsql native binding loads through Bun's napi support.

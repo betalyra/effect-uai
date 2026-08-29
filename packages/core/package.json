@@ -42,6 +42,10 @@
       "types": "./dist/domain/Audio.d.mts",
       "import": "./dist/domain/Audio.mjs"
     },
+    "./Chunker": {
+      "types": "./dist/chunker/Chunker.d.mts",
+      "import": "./dist/chunker/Chunker.mjs"
+    },
     "./Citation": {
       "types": "./dist/domain/Citation.d.mts",
       "import": "./dist/domain/Citation.mjs"
@@ -166,13 +170,13 @@
       "types": "./dist/retry/Retry.d.mts",
       "import": "./dist/retry/Retry.mjs"
     },
-    "./Rank": {
-      "types": "./dist/math/Rank.d.mts",
-      "import": "./dist/math/Rank.mjs"
-    },
     "./Vector": {
       "types": "./dist/math/Vector.d.mts",
       "import": "./dist/math/Vector.mjs"
+    },
+    "./Tokenizer": {
+      "types": "./dist/tokenizer/Tokenizer.d.mts",
+      "import": "./dist/tokenizer/Tokenizer.mjs"
     },
     "./Tool": {
       "types": "./dist/tool/Tool.d.mts",

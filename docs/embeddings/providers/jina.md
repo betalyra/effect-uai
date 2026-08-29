@@ -10,8 +10,8 @@ storage-tight indexes, alongside the standard text + image dense
 retrieval models.
 
 If embedding is the only thing you need from a provider, Jina is the
-broadest single surface. (Reranking is on the roadmap and uses the same
-auth: see [reranking](/reranking/).)
+broadest single surface. (The same key also covers
+[reranking](/reranking/).)
 
 ## Install
 

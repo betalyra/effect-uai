@@ -191,7 +191,7 @@ yield `EmbeddingModel` everywhere else.
 - **Not a vector store.** It produces vectors; storing and indexing
   them is userland (or a dedicated DB).
 - **Not a reranker.** Cosine on top-K embeddings is an approximation;
-  for cross-encoder re-scoring see [reranking](/reranking/) (planned).
+  for cross-encoder re-scoring see [reranking](/reranking/).
 - **Not a chunker.** Splitting documents into embeddable units is
   userland. The right strategy depends on your domain.
 

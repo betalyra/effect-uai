@@ -27,6 +27,23 @@ export type JinaEmbeddingModel =
   | (string & {})
 
 /**
+ * Known Jina reranker model identifiers.
+ *
+ * - `jina-reranker-v3.5`: flagship listwise reranker, 131k context.
+ * - `jina-reranker-v3`: previous generation, schema-identical.
+ * - `jina-reranker-m0`: multimodal, takes `{ text }` / `{ image }`
+ *   documents (see `JinaRerankRequest`).
+ *
+ * Reference: https://jina.ai/reranker/
+ */
+export type JinaRerankerModel =
+  | "jina-reranker-v3.5"
+  | "jina-reranker-v3"
+  | "jina-reranker-m0"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
  * Reader fetching engine (`X-Engine`). `browser` renders JavaScript,
  * `curl` is a fast static fetch, `auto` picks per page. Provider-specific,
  * so it lives on `JinaReadRequest`.

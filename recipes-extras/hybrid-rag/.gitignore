@@ -1,0 +1,5 @@
+# Downloaded corpus and the database it is ingested into. Both are rebuilt
+# on demand by the recipe.
+rag.db
+rag.db-*
+corpus.txt

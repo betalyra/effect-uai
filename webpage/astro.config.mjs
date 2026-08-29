@@ -6,7 +6,7 @@ import sitemap from "@astrojs/sitemap"
 import starlightLlmsTxt from "starlight-llms-txt"
 import tailwindcss from "@tailwindcss/vite"
 
-const stubPagePattern = /\/(reranking|realtime|image-generation|video-generation)\/$/
+const stubPagePattern = /\/(realtime|image-generation|video-generation)\/$/
 
 const isVercelProduction = process.env.VERCEL_ENV === "production"
 
@@ -64,7 +64,7 @@ export default defineConfig({
           description:
             "Low-level Effect-TS primitives for building AI agents: streaming agent loops, tool calling, structured output, multi-provider (OpenAI, Anthropic, Google Gemini), embeddings, and speech.",
           rawContent: true,
-          exclude: ["reranking", "realtime", "image-generation", "video-generation"],
+          exclude: ["realtime", "image-generation", "video-generation"],
         }),
       ],
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
@@ -201,7 +201,24 @@ export default defineConfig({
             {
               label: "Recipes",
               collapsed: true,
-              items: [{ label: "Basic embedding", slug: "recipes/basic-embedding" }],
+              items: [
+                { label: "Basic embedding", slug: "recipes/basic-embedding" },
+                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Reranking",
+          items: [
+            { label: "Overview", slug: "reranking" },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
+                { label: "Hybrid RAG", slug: "recipes/hybrid-rag" },
+              ],
             },
           ],
         },
@@ -385,11 +402,6 @@ export default defineConfig({
           label: "Coming soon",
           collapsed: true,
           items: [
-            {
-              label: "Reranking",
-              slug: "reranking",
-              badge: { text: "Soon", variant: "note" },
-            },
             {
               label: "Realtime",
               slug: "realtime",

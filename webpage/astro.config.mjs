@@ -35,6 +35,8 @@ export default defineConfig({
     "/concepts/language-model": "/language-models",
     "/concepts/loop": "/language-models/loop",
     "/concepts/tools": "/language-models/tools",
+    "/concepts/items-and-turns": "/language-models/items-and-turns",
+    "/concepts/metrics": "/language-models/metrics",
     "/embeddings/providers/responses": "/embeddings/providers/openai",
     "/recipes/hybrid-rag": "/recipes/agentic-search",
   },
@@ -113,24 +115,26 @@ export default defineConfig({
         { label: "Providers", slug: "providers" },
         { label: "Gateways", slug: "providers/gateways" },
         {
-          label: "Concepts",
-          items: [
-            { label: "Items and turns", slug: "concepts/items-and-turns" },
-            { label: "Metrics", slug: "concepts/metrics" },
-          ],
-        },
-        {
           label: "Language models",
           items: [
             { label: "Overview", slug: "language-models" },
+            { label: "Items and turns", slug: "language-models/items-and-turns" },
             { label: "The loop primitive", slug: "language-models/loop" },
             { label: "Tools and toolkits", slug: "language-models/tools" },
             { label: "MCP", slug: "language-models/mcp" },
             {
+              label: "Advanced",
+              collapsed: true,
+              items: [
+                { label: "Metrics", slug: "language-models/metrics" },
+                { label: "Tokenizers", slug: "language-models/tokenizers" },
+              ],
+            },
+            {
               label: "Providers",
               items: [
                 { label: "Responses (OpenAI)", slug: "providers/responses" },
-                { label: "Google Gemini", slug: "providers/gemini" },
+                { label: "Google", slug: "providers/gemini" },
                 { label: "Anthropic", slug: "providers/anthropic" },
                 { label: "Mistral", slug: "providers/mistral" },
                 { label: "Chat Completions (legacy)", slug: "providers/openai-compatible" },
@@ -193,7 +197,7 @@ export default defineConfig({
               items: [
                 { label: "OpenAI", slug: "speech/providers/openai" },
                 { label: "ElevenLabs", slug: "speech/providers/elevenlabs" },
-                { label: "Google Gemini", slug: "speech/providers/gemini" },
+                { label: "Google", slug: "speech/providers/gemini" },
                 { label: "Inworld", slug: "speech/providers/inworld" },
                 { label: "Mistral", slug: "speech/providers/mistral" },
               ],
@@ -231,11 +235,11 @@ export default defineConfig({
               label: "Providers",
               items: [
                 {
-                  label: "Google Lyria",
+                  label: "Google",
                   slug: "music-generation/providers/gemini",
                 },
                 {
-                  label: "ElevenLabs Music",
+                  label: "ElevenLabs",
                   slug: "music-generation/providers/elevenlabs",
                 },
               ],
@@ -269,7 +273,7 @@ export default defineConfig({
                   label: "OpenAI",
                   slug: "embeddings/providers/openai",
                 },
-                { label: "Google Gemini", slug: "embeddings/providers/gemini" },
+                { label: "Google", slug: "embeddings/providers/gemini" },
                 { label: "Jina", slug: "embeddings/providers/jina" },
               ],
             },
@@ -287,6 +291,7 @@ export default defineConfig({
           label: "Retrieval",
           items: [
             { label: "Overview", slug: "retrieval" },
+            { label: "Chunking", slug: "retrieval/chunking" },
             { label: "Reranking", slug: "reranking" },
             {
               label: "Recipes",
@@ -330,9 +335,9 @@ export default defineConfig({
               label: "Providers",
               items: [
                 { label: "Firecrawl", slug: "web-reading/providers/firecrawl" },
-                { label: "Jina Reader", slug: "web-reading/providers/jina" },
-                { label: "Exa Contents", slug: "web-reading/providers/exa" },
-                { label: "Tavily Extract", slug: "web-reading/providers/tavily" },
+                { label: "Jina", slug: "web-reading/providers/jina" },
+                { label: "Exa", slug: "web-reading/providers/exa" },
+                { label: "Tavily", slug: "web-reading/providers/tavily" },
               ],
             },
             {
@@ -350,7 +355,7 @@ export default defineConfig({
               label: "Providers",
               items: [
                 { label: "Microsandbox", slug: "sandboxes/providers/microsandbox" },
-                { label: "Deno Sandbox", slug: "sandboxes/providers/deno" },
+                { label: "Deno", slug: "sandboxes/providers/deno" },
               ],
             },
             {

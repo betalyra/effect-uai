@@ -21,5 +21,4 @@ model can afford to read.
   documents, using the same `ImageSource` helpers as multimodal embedding; the
   cross-provider request stays strings-only.
 
-The jina package's `description` and `keywords` have claimed `rerank` since it
-shipped. They are now true. See [reranking](https://effect-uai.betalyra.com/reranking/).
+See [reranking](https://effect-uai.betalyra.com/reranking/).

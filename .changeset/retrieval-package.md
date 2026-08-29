@@ -16,7 +16,9 @@ hosted chunking service can replace a local splitter at the layer.
 import { chunk } from "@effect-uai/core/Chunker"
 import * as Chunking from "@effect-uai/retrieval/Chunking"
 
-const passages = yield * chunk(document)
+const ingest = Effect.gen(function* () {
+  const passages = yield* chunk(document)
+})
 
 const chunker = Chunking.layer(Chunking.recursive, { targetSize: 512 })
 ```

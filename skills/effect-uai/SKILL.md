@@ -400,6 +400,8 @@ saw the history you expected.
 - Recipes: `recipes/<name>/` in the repo, one folder per pattern; also
   rendered at https://effect-uai.betalyra.com/recipes/.
 - Migrations: `docs/migrations/` (per-version upgrade notes).
-- Concepts: `docs/concepts/items-and-turns.md`,
-  `docs/language-models/index.md`, `docs/language-models/loop.md`,
-  `docs/language-models/tools.md`.
+- Language models: `docs/language-models/index.md`,
+  `docs/language-models/items-and-turns.md`, `docs/language-models/loop.md`,
+  `docs/language-models/tools.md`, `docs/language-models/tokenizers.md`.
+- Retrieval: `docs/retrieval/index.md`, `docs/retrieval/chunking.md`,
+  `docs/reranking/index.md`.

@@ -11,7 +11,7 @@
  * generic effect-uai capability tags: `libsql.ts` is this demo's implementation
  * and `app.ts` picks the chunker and providers.
  */
-import { Array as Arr, Context, Effect, pipe, Ref, Schedule } from "effect"
+import { Array as Arr, Context, Effect, pipe, Ref, Result, Schedule } from "effect"
 import { chunk as splitDocument } from "@effect-uai/core/Chunker"
 import { embed, embedMany } from "@effect-uai/core/EmbeddingModel"
 import * as Items from "@effect-uai/core/Items"
@@ -313,10 +313,14 @@ export const search = (query: string, variant: Variant, options: SearchOptions) 
     const fused = Rank.rrf([Arr.map(dense, (d) => d.id), Arr.map(lexical, (l) => l.id)])
 
     // Every fused id came from one of the legs, so their rows carry the text.
-    const texts = new Map([...dense, ...lexical].map((c): [number, string] => [c.id, c.text]))
-    const candidates = Arr.take(fused, options.rerankDepth ?? 20)
-      .map((f) => ({ id: f.value, text: texts.get(f.value) }))
-      .filter((c): c is Passage => c.text !== undefined)
+    const texts = new Map(Arr.map([...dense, ...lexical], (c): [number, string] => [c.id, c.text]))
+    const candidates = Arr.filterMap(
+      Arr.take(fused, options.rerankDepth ?? 20),
+      (f): Result.Result<Passage, void> => {
+        const text = texts.get(f.value)
+        return text === undefined ? Result.failVoid : Result.succeed({ id: f.value, text })
+      },
+    )
 
     const { results } = yield* rerank({
       model: options.rerankModel,

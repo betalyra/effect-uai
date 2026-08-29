@@ -78,6 +78,9 @@ const write = (s: string) => Effect.sync(() => process.stdout.write(s))
 const clip = (s: string, max = 58) =>
   (s.length <= max ? s : `${s.slice(0, max - 1)}…`).replace(/\s+/g, " ")
 
+const indent = (text: string): string =>
+  Arr.map(text.split("\n"), (line) => `    ${line}`).join("\n")
+
 const pct = (part: number, whole: number): string =>
   whole === 0 ? "0%" : `${Math.round((part / whole) * 100)}%`
 
@@ -214,12 +217,6 @@ export const main = Effect.gen(function* () {
     { discard: true },
   )
 }).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
-
-const indent = (text: string): string =>
-  text
-    .split("\n")
-    .map((line) => `    ${line}`)
-    .join("\n")
 
 export const appLayer = Layer.mergeAll(
   libsqlLayer(DB_URL),

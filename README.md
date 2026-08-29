@@ -167,7 +167,7 @@ Recommended reading order:
 1. [One turn is a stream](https://effect-uai.betalyra.com/start/getting-started/) - the smallest provider-agnostic primitive.
 2. [Basic usage](https://effect-uai.betalyra.com/recipes/basic-usage/) - the core agent harness: state, stream, tools, continuation.
 3. [The loop primitive](https://effect-uai.betalyra.com/language-models/loop/) - what `loop` is, its shape, and `streamUntilComplete`.
-4. [Items and turns](https://effect-uai.betalyra.com/concepts/items-and-turns/) - the conversation as a flat list, the assembled turn, the event stream.
+4. [Items and turns](https://effect-uai.betalyra.com/language-models/items-and-turns/) - the conversation as a flat list, the assembled turn, the event stream.
 5. [Tools and toolkits](https://effect-uai.betalyra.com/language-models/tools/) - `Tool.make` (with progress via `emit`), `Toolkit.make`, approval planners, `ToolEvent`.
 6. [MCP](https://effect-uai.betalyra.com/language-models/mcp/) - point at an MCP server and its tools become a `Toolkit`.
 

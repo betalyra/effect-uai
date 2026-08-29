@@ -192,8 +192,8 @@ yield `EmbeddingModel` everywhere else.
   them is userland (or a dedicated DB).
 - **Not a reranker.** Cosine on top-K embeddings is an approximation;
   for cross-encoder re-scoring see [reranking](/reranking/).
-- **Not a chunker.** Splitting documents into embeddable units is
-  userland. The right strategy depends on your domain.
+- **Not a chunker.** Splitting documents into embeddable units happens
+  before you get here; see [retrieval](/retrieval/).
 
 ## Layer registration
 
@@ -225,6 +225,8 @@ cosine ranking, three swappable providers.
   text in one batch and rank cross-modally.
 - [Multivector embedding](/embeddings/multivector/): late-interaction
   retrieval with Jina v4.
+- [Retrieval](/retrieval/): chunk documents before embedding them, and
+  fuse the rankings afterwards.
 - Provider specifics: [OpenAI](/embeddings/providers/openai/),
   [Gemini](/embeddings/providers/gemini/),
   [Jina](/embeddings/providers/jina/).

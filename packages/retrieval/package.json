@@ -1,0 +1,75 @@
+{
+  "name": "@effect-uai/retrieval",
+  "version": "0.12.1",
+  "description": "Retrieval-pipeline utilities for @effect-uai/core: text chunking, rank fusion, and a Hugging Face tokenizer layer.",
+  "keywords": [
+    "ai",
+    "chunking",
+    "effect",
+    "rag",
+    "retrieval",
+    "tokenizer"
+  ],
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/retrieval",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "license": "MIT",
+  "author": "Betalyra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai",
+    "directory": "packages/retrieval"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./Chunking": {
+      "types": "./dist/Chunking.d.mts",
+      "import": "./dist/Chunking.mjs"
+    },
+    "./Rank": {
+      "types": "./dist/Rank.d.mts",
+      "import": "./dist/Rank.mjs"
+    },
+    "./HuggingFaceTokenizer": {
+      "types": "./dist/HuggingFaceTokenizer.d.mts",
+      "import": "./dist/HuggingFaceTokenizer.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@effect-uai/core": "workspace:*",
+    "@effect/vitest": "catalog:",
+    "@huggingface/tokenizers": "^0.1.3",
+    "effect": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect-uai/core": "workspace:>=0.12.0 <1",
+    "@huggingface/tokenizers": "^0.1.0",
+    "effect": "catalog:peer"
+  },
+  "peerDependenciesMeta": {
+    "@huggingface/tokenizers": {
+      "optional": true
+    }
+  }
+}

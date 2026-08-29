@@ -1,0 +1,26 @@
+{
+  "name": "@effect-uai/recipe-contextual-retrieval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx run-node.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect-uai/anthropic": "link:../../packages/providers/anthropic",
+    "@effect-uai/core": "link:../../packages/core",
+    "@effect-uai/jina": "link:../../packages/providers/jina",
+    "@effect-uai/responses": "link:../../packages/providers/responses",
+    "@effect-uai/retrieval": "link:../../packages/retrieval",
+    "@effect/platform-bun": "link:../../recipes/node_modules/@effect/platform-bun",
+    "@effect/platform-node": "link:../../recipes/node_modules/@effect/platform-node",
+    "@effect/sql-libsql": "4.0.0-rc.111",
+    "effect": "link:../../packages/core/node_modules/effect"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}

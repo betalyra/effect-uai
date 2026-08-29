@@ -1,9 +1,9 @@
 /**
- * Deno runner for the hybrid-rag recipe.
+ * Deno runner for the agentic-search recipe.
  *
  *   JINA_API_KEY=jina_... LLM_API_KEY=sk-or-... \
  *     deno run --allow-ffi --allow-read --allow-write --allow-env --allow-net \
- *     recipes-extras/hybrid-rag/run-deno.ts "why does the speckled band kill?"
+ *     recipes-extras/agentic-search/run-deno.ts "why does the speckled band kill?"
  *
  * `--allow-ffi` is the one that matters: the libsql client loads a native
  * binding. Without it the store fails at layer construction.

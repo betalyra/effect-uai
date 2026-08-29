@@ -1,0 +1,9 @@
+# Own workspace root so this folder installs standalone: pnpm stops here
+# instead of joining the monorepo's workspace. Install from inside this folder.
+packages: []
+
+# Build scripts we allow to run (pnpm 11 no longer reads `pnpm` fields in
+# package.json). The libsql client ships a native binding.
+allowBuilds:
+  esbuild: true
+  libsql: true

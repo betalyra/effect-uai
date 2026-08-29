@@ -1,5 +1,5 @@
 /**
- * Composition + rendering for the hybrid-rag recipe.
+ * Composition + rendering for the agentic-search recipe.
  *
  * Everything replaceable is wired here: the corpus (a Gutenberg book), the
  * chunker, the libsql store, Jina for embeddings and rerank, and a
@@ -22,12 +22,12 @@ import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { layer as jinaEmbeddingLayer } from "@effect-uai/jina/JinaEmbedding"
 import { layer as jinaRerankerLayer } from "@effect-uai/jina/JinaReranker"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
+import * as Chunking from "@effect-uai/retrieval/Chunking"
 // Shared with the in-workspace recipes: same flag parsing, same renderer.
 import { flagValue } from "../../recipes/_shared/argv.js"
 import { cyan, dim, renderEvent } from "../../recipes/_shared/render.js"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { layer as chunkerLayer } from "./chunk.js"
 import { load } from "./corpus.js"
 import { layer as libsqlLayer } from "./libsql.js"
 import { agent, ingest, type Stages } from "./recipe.js"
@@ -149,7 +149,9 @@ export const main = Effect.gen(function* () {
 
 export const appLayer = Layer.mergeAll(
   libsqlLayer(DB_URL),
-  chunkerLayer(),
+  // Sentence packing keeps a passage readable; swap in `Chunking.markdown` or
+  // a hosted chunker without touching `recipe.ts`.
+  Chunking.layer(Chunking.sentences, { targetSize: 512, overlap: 64 }),
   Layer.unwrap(
     Effect.gen(function* () {
       const apiKey = yield* Config.redacted("JINA_API_KEY")

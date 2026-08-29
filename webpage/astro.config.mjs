@@ -36,6 +36,7 @@ export default defineConfig({
     "/concepts/loop": "/language-models/loop",
     "/concepts/tools": "/language-models/tools",
     "/embeddings/providers/responses": "/embeddings/providers/openai",
+    "/recipes/hybrid-rag": "/recipes/agentic-search",
   },
   vite: {
     plugins: [tailwindcss()],
@@ -182,47 +183,6 @@ export default defineConfig({
           ],
         },
         {
-          label: "Embeddings",
-          items: [
-            { label: "Overview", slug: "embeddings" },
-            { label: "Multimodal embedding", slug: "embeddings/multimodal" },
-            { label: "Multivector embedding", slug: "embeddings/multivector" },
-            {
-              label: "Providers",
-              items: [
-                {
-                  label: "OpenAI",
-                  slug: "embeddings/providers/openai",
-                },
-                { label: "Google Gemini", slug: "embeddings/providers/gemini" },
-                { label: "Jina", slug: "embeddings/providers/jina" },
-              ],
-            },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [
-                { label: "Basic embedding", slug: "recipes/basic-embedding" },
-                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
-              ],
-            },
-          ],
-        },
-        {
-          label: "Reranking",
-          items: [
-            { label: "Overview", slug: "reranking" },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [
-                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
-                { label: "Hybrid RAG", slug: "recipes/hybrid-rag" },
-              ],
-            },
-          ],
-        },
-        {
           label: "Speech",
           items: [
             { label: "Overview", slug: "speech" },
@@ -292,6 +252,49 @@ export default defineConfig({
                   label: "Radio station",
                   slug: "recipes/radio-station",
                 },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Embeddings",
+          items: [
+            { label: "Overview", slug: "embeddings" },
+            { label: "Multimodal embedding", slug: "embeddings/multimodal" },
+            { label: "Multivector embedding", slug: "embeddings/multivector" },
+            {
+              label: "Providers",
+              items: [
+                {
+                  label: "OpenAI",
+                  slug: "embeddings/providers/openai",
+                },
+                { label: "Google Gemini", slug: "embeddings/providers/gemini" },
+                { label: "Jina", slug: "embeddings/providers/jina" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Basic embedding", slug: "recipes/basic-embedding" },
+                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Retrieval",
+          items: [
+            { label: "Overview", slug: "retrieval" },
+            { label: "Reranking", slug: "reranking" },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
+                { label: "Agentic search", slug: "recipes/agentic-search" },
+                { label: "Contextual retrieval", slug: "recipes/contextual-retrieval" },
               ],
             },
           ],

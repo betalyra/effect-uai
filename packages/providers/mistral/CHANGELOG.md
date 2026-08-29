@@ -1,5 +1,11 @@
 # @effect-uai/mistral
 
+## 0.13.0
+
+### Patch Changes
+
+- @effect-uai/chat-completions@0.13.0
+
 ## 0.12.1
 
 ### Patch Changes

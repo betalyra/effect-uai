@@ -7,6 +7,19 @@ root `pnpm install`.
 Each folder here is a **standalone package**, deliberately excluded from the
 workspace. Nothing in this tree is installed unless you opt in.
 
+## The recipes
+
+- [`sandbox-code-interpreter/`](./sandbox-code-interpreter/) - you need an exact
+  answer, not a plausible one; give the model Python and let it fix its own
+  mistakes. Needs the `msb` daemon.
+- [`agentic-search/`](./agentic-search/) - search that catches exact names and
+  paraphrases both, given to an agent as a tool it can call again. Runs on one
+  local file. Needs a native libsql binding.
+- [`contextual-retrieval/`](./contextual-retrieval/) - an LLM writes one line of
+  context per chunk at indexing time, so chunks full of pronouns become
+  findable. Builds a plain and a contextual index side by side to measure it.
+  Needs a native libsql binding.
+
 ## Running a recipe
 
 ```sh

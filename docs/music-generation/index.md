@@ -1,6 +1,7 @@
 ---
 title: Music generation
 description: Prompt → music. One service tag, three modes. Two providers in tree (Google Lyria, ElevenLabs Music); cross-provider Common request trimmed to what every provider honors structurally.
+icon: PiMusicNotes
 ---
 
 A short text prompt can be enough for a usable clip.

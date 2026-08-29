@@ -6,7 +6,7 @@ import sitemap from "@astrojs/sitemap"
 import starlightLlmsTxt from "starlight-llms-txt"
 import tailwindcss from "@tailwindcss/vite"
 
-const stubPagePattern = /\/(reranking|realtime|image-generation|video-generation)\/$/
+const stubPagePattern = /\/(realtime|image-generation|video-generation)\/$/
 
 const isVercelProduction = process.env.VERCEL_ENV === "production"
 
@@ -35,7 +35,10 @@ export default defineConfig({
     "/concepts/language-model": "/language-models",
     "/concepts/loop": "/language-models/loop",
     "/concepts/tools": "/language-models/tools",
+    "/concepts/items-and-turns": "/language-models/items-and-turns",
+    "/concepts/metrics": "/language-models/metrics",
     "/embeddings/providers/responses": "/embeddings/providers/openai",
+    "/recipes/hybrid-rag": "/recipes/agentic-search",
   },
   vite: {
     plugins: [tailwindcss()],
@@ -64,7 +67,7 @@ export default defineConfig({
           description:
             "Low-level Effect-TS primitives for building AI agents: streaming agent loops, tool calling, structured output, multi-provider (OpenAI, Anthropic, Google Gemini), embeddings, and speech.",
           rawContent: true,
-          exclude: ["reranking", "realtime", "image-generation", "video-generation"],
+          exclude: ["realtime", "image-generation", "video-generation"],
         }),
       ],
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
@@ -112,24 +115,26 @@ export default defineConfig({
         { label: "Providers", slug: "providers" },
         { label: "Gateways", slug: "providers/gateways" },
         {
-          label: "Concepts",
-          items: [
-            { label: "Items and turns", slug: "concepts/items-and-turns" },
-            { label: "Metrics", slug: "concepts/metrics" },
-          ],
-        },
-        {
           label: "Language models",
           items: [
             { label: "Overview", slug: "language-models" },
+            { label: "Items and turns", slug: "language-models/items-and-turns" },
             { label: "The loop primitive", slug: "language-models/loop" },
             { label: "Tools and toolkits", slug: "language-models/tools" },
             { label: "MCP", slug: "language-models/mcp" },
             {
+              label: "Advanced",
+              collapsed: true,
+              items: [
+                { label: "Metrics", slug: "language-models/metrics" },
+                { label: "Tokenizers", slug: "language-models/tokenizers" },
+              ],
+            },
+            {
               label: "Providers",
               items: [
                 { label: "Responses (OpenAI)", slug: "providers/responses" },
-                { label: "Google Gemini", slug: "providers/gemini" },
+                { label: "Google", slug: "providers/gemini" },
                 { label: "Anthropic", slug: "providers/anthropic" },
                 { label: "Mistral", slug: "providers/mistral" },
                 { label: "Chat Completions (legacy)", slug: "providers/openai-compatible" },
@@ -182,30 +187,6 @@ export default defineConfig({
           ],
         },
         {
-          label: "Embeddings",
-          items: [
-            { label: "Overview", slug: "embeddings" },
-            { label: "Multimodal embedding", slug: "embeddings/multimodal" },
-            { label: "Multivector embedding", slug: "embeddings/multivector" },
-            {
-              label: "Providers",
-              items: [
-                {
-                  label: "OpenAI",
-                  slug: "embeddings/providers/openai",
-                },
-                { label: "Google Gemini", slug: "embeddings/providers/gemini" },
-                { label: "Jina", slug: "embeddings/providers/jina" },
-              ],
-            },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [{ label: "Basic embedding", slug: "recipes/basic-embedding" }],
-            },
-          ],
-        },
-        {
           label: "Speech",
           items: [
             { label: "Overview", slug: "speech" },
@@ -216,7 +197,7 @@ export default defineConfig({
               items: [
                 { label: "OpenAI", slug: "speech/providers/openai" },
                 { label: "ElevenLabs", slug: "speech/providers/elevenlabs" },
-                { label: "Google Gemini", slug: "speech/providers/gemini" },
+                { label: "Google", slug: "speech/providers/gemini" },
                 { label: "Inworld", slug: "speech/providers/inworld" },
                 { label: "Mistral", slug: "speech/providers/mistral" },
               ],
@@ -254,11 +235,11 @@ export default defineConfig({
               label: "Providers",
               items: [
                 {
-                  label: "Google Lyria",
+                  label: "Google",
                   slug: "music-generation/providers/gemini",
                 },
                 {
-                  label: "ElevenLabs Music",
+                  label: "ElevenLabs",
                   slug: "music-generation/providers/elevenlabs",
                 },
               ],
@@ -275,6 +256,50 @@ export default defineConfig({
                   label: "Radio station",
                   slug: "recipes/radio-station",
                 },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Embeddings",
+          items: [
+            { label: "Overview", slug: "embeddings" },
+            { label: "Multimodal embedding", slug: "embeddings/multimodal" },
+            { label: "Multivector embedding", slug: "embeddings/multivector" },
+            {
+              label: "Providers",
+              items: [
+                {
+                  label: "OpenAI",
+                  slug: "embeddings/providers/openai",
+                },
+                { label: "Google", slug: "embeddings/providers/gemini" },
+                { label: "Jina", slug: "embeddings/providers/jina" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Basic embedding", slug: "recipes/basic-embedding" },
+                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Retrieval",
+          items: [
+            { label: "Overview", slug: "retrieval" },
+            { label: "Chunking", slug: "retrieval/chunking" },
+            { label: "Reranking", slug: "reranking" },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
+                { label: "Agentic search", slug: "recipes/agentic-search" },
+                { label: "Contextual retrieval", slug: "recipes/contextual-retrieval" },
               ],
             },
           ],
@@ -310,9 +335,9 @@ export default defineConfig({
               label: "Providers",
               items: [
                 { label: "Firecrawl", slug: "web-reading/providers/firecrawl" },
-                { label: "Jina Reader", slug: "web-reading/providers/jina" },
-                { label: "Exa Contents", slug: "web-reading/providers/exa" },
-                { label: "Tavily Extract", slug: "web-reading/providers/tavily" },
+                { label: "Jina", slug: "web-reading/providers/jina" },
+                { label: "Exa", slug: "web-reading/providers/exa" },
+                { label: "Tavily", slug: "web-reading/providers/tavily" },
               ],
             },
             {
@@ -330,7 +355,7 @@ export default defineConfig({
               label: "Providers",
               items: [
                 { label: "Microsandbox", slug: "sandboxes/providers/microsandbox" },
-                { label: "Deno Sandbox", slug: "sandboxes/providers/deno" },
+                { label: "Deno", slug: "sandboxes/providers/deno" },
               ],
             },
             {
@@ -369,6 +394,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.13", slug: "migrations/v0-13" },
             { label: "Migrating to 0.12", slug: "migrations/v0-12" },
             { label: "Migrating to 0.11", slug: "migrations/v0-11" },
             { label: "Migrating to 0.10", slug: "migrations/v0-10" },
@@ -385,11 +411,6 @@ export default defineConfig({
           label: "Coming soon",
           collapsed: true,
           items: [
-            {
-              label: "Reranking",
-              slug: "reranking",
-              badge: { text: "Soon", variant: "note" },
-            },
             {
               label: "Realtime",
               slug: "realtime",

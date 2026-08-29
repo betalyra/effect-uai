@@ -1,6 +1,7 @@
 ---
 title: Sandboxes
 description: A contained OS your agent can exec into, stream stdout from, and read files out of, with destruction tied to an Effect Scope.
+icon: PiCube
 ---
 
 Sooner or later an agent wants to run code. Shell out, install a package,

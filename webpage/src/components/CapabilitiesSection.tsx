@@ -8,6 +8,7 @@ import {
   PiGraph,
   PiMagnifyingGlass,
   PiMusicNotes,
+  PiStack,
   PiWaveform,
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
@@ -36,16 +37,22 @@ const capabilities: ReadonlyArray<Capability> = [
     Icon: PiWaveform,
   },
   {
+    title: "Music generation",
+    description: "Generate music from prompts, one-shot or **streaming**.",
+    href: "/music-generation/",
+    Icon: PiMusicNotes,
+  },
+  {
     title: "Embeddings",
     description: "Vectorize text for **semantic search**, **RAG**, and clustering.",
     href: "/embeddings/",
     Icon: PiGraph,
   },
   {
-    title: "Music generation",
-    description: "Generate music from prompts, one-shot or **streaming**.",
-    href: "/music-generation/",
-    Icon: PiMusicNotes,
+    title: "Reranking",
+    description: "Cut fifty candidates down to the **five worth putting in the prompt**.",
+    href: "/reranking/",
+    Icon: PiStack,
   },
   {
     title: "Web search",

@@ -1,6 +1,7 @@
 ---
 title: Speech
 description: Two service tags (Transcriber and SpeechSynthesizer) that cross the audio boundary in either direction.
+icon: PiWaveform
 ---
 
 Speech work usually starts with one of two user problems: "turn this

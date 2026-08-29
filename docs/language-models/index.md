@@ -1,6 +1,7 @@
 ---
 title: Language model
 description: One generic service tag, multiple providers, and the seam between portable and provider-specific code.
+icon: PiBrain
 ---
 
 Provider choice should be wiring, not program structure.
@@ -109,8 +110,12 @@ import * as Metrics from "@effect-uai/core/Metrics"
 streamTurn(req).pipe(Metrics.allMetrics())
 ```
 
-See [Metrics](/concepts/metrics/) for the meter catalogue, turn-vs-loop
+See [Metrics](/language-models/metrics/) for the meter catalogue, turn-vs-loop
 scope, OTLP export, and custom metrics.
+
+That measures a turn once it has run. To count the input before you send it,
+trimming a history or a retrieved context to fit a budget, see
+[tokenizers](/language-models/tokenizers/).
 
 ## Portable vs. provider-specific
 

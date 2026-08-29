@@ -70,6 +70,14 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Market intel](/recipes/market-intel/) | Read a batch of vendor pages to clean markdown and extract a typed pricing record from each, concurrently; no selectors, so pages that share no layout still decode. |
 
+## Retrieval
+
+| Recipe                                                 | One-line                                                                                                                                                      |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Retrieve and rerank](/recipes/retrieve-and-rerank/)   | Your top results are about the question but never answer it. Add a rerank pass and watch the right document climb.                                            |
+| [Agentic search](/recipes/agentic-search/)             | Give an agent search that catches exact names and paraphrases both, and let it search again when the first try misses. No server.                             |
+| [Contextual retrieval](/recipes/contextual-retrieval/) | Chunks that say "he" and "that house" never match a question naming either. Write one line of context per chunk at indexing time, and measure the difference. |
+
 ## Speech
 
 | Recipe                                                       | One-line                                                                                            |

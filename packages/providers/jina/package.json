@@ -42,6 +42,10 @@
     "./JinaReader": {
       "types": "./dist/JinaReader.d.mts",
       "import": "./dist/JinaReader.mjs"
+    },
+    "./JinaReranker": {
+      "types": "./dist/JinaReranker.d.mts",
+      "import": "./dist/JinaReranker.mjs"
     }
   },
   "publishConfig": {

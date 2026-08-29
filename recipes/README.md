@@ -43,6 +43,9 @@ that double as living regression tests for the primitive surface.
   cross-model, and emit a winner.
 - [`external-task-polling/`](./external-task-polling/) - pause for an external
   task (CI pipeline); a forked polling fiber resolves a Deferred the loop awaits.
+- [`retrieve-and-rerank/`](./retrieve-and-rerank/) - your top results are about
+  the question but don't answer it; add a rerank pass and see which documents
+  move.
 
 Each recipe folder contains its own `README.md` describing the scenario.
 Implementations live in `index.ts`; tests in `index.test.ts`.

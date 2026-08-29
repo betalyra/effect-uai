@@ -12,8 +12,10 @@ import {
   PiClockCounterClockwise,
   PiCube,
   PiCursorClick,
+  PiDatabase,
   PiDetective,
   PiFlowArrow,
+  PiFunnel,
   PiGavel,
   PiGitFork,
   PiHandPalm,
@@ -47,6 +49,7 @@ type Category =
   | "multimodel"
   | "websearch"
   | "webreading"
+  | "retrieval"
   | "speech"
   | "music"
   | "sandboxes"
@@ -68,6 +71,7 @@ const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "multimodel",
   "websearch",
   "webreading",
+  "retrieval",
   "speech",
   "music",
   "sandboxes",
@@ -81,6 +85,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   multimodel: "Multi-model",
   websearch: "Web search",
   webreading: "Web reading",
+  retrieval: "Retrieval",
   speech: "Speech",
   music: "Music",
   sandboxes: "Sandboxes",
@@ -94,6 +99,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   multimodel: PiGitFork,
   websearch: PiMagnifyingGlass,
   webreading: PiArticle,
+  retrieval: PiFunnel,
   speech: PiWaveform,
   music: PiMusicNotes,
   sandboxes: PiCube,
@@ -237,6 +243,22 @@ const recipes: ReadonlyArray<Recipe> = [
     category: "music",
   },
   {
+    title: "Retrieve and rerank",
+    description:
+      '**Embedding search finds "related", not "answers this".** Cosine picks the candidates, a cross-encoder picks the answer; the before and after print side by side.',
+    href: "/recipes/retrieve-and-rerank/",
+    Icon: PiFunnel,
+    category: "retrieval",
+  },
+  {
+    title: "Hybrid RAG",
+    description:
+      "**Search that misses names, or misses meaning.** Run keyword and vector search together, and let the agent search again in its own words. One local file, no server.",
+    href: "/recipes/hybrid-rag/",
+    Icon: PiDatabase,
+    category: "retrieval",
+  },
+  {
     title: "Run, fix, repeat",
     description:
       "**Let the model run its own code.** It writes Python; the sandbox runs it; tracebacks feed back into the next turn until the answer's right.",
@@ -334,7 +356,7 @@ export default function RecipesSection() {
           <div className="flex items-baseline gap-3">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
             <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
-              35 and counting
+              37 and counting
             </span>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">

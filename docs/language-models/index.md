@@ -1,6 +1,7 @@
 ---
 title: Language model
 description: One generic service tag, multiple providers, and the seam between portable and provider-specific code.
+icon: PiBrain
 ---
 
 Provider choice should be wiring, not program structure.

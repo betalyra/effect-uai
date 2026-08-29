@@ -1,6 +1,7 @@
 ---
 title: Reranking
 description: Score a candidate set against a query and keep the few that matter. A filtering primitive for agent loops, one generic service tag, swappable providers.
+icon: PiStack
 ---
 
 Your agent just searched and got back fifty candidates. You can afford to put

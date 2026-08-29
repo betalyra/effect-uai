@@ -102,8 +102,10 @@ export const fromDefinition = (
         )
         return {
           encode: (text) => hf.encode(text).ids,
-          // The library mutates nothing, but its signature wants a mutable array.
-          decode: (tokens) => hf.decode(Arr.copy(tokens)),
+          // The library rejects an empty array, but `encode("")` returns one and
+          // `decode` inverts `encode`. Its signature also wants a mutable array,
+          // though it mutates nothing.
+          decode: (tokens) => (tokens.length === 0 ? "" : hf.decode(Arr.copy(tokens))),
         }
       },
       catch: (cause) => new TokenizerLoadError({ reason: "could not load the tokenizer", cause }),

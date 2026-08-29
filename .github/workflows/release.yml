@@ -69,8 +69,17 @@ jobs:
 
       # Same script the manual `tag-and-release.yml` workflow uses, so
       # the auto and manual paths produce identical artifacts.
+      #
+      # Deliberately NOT guarded on `steps.changesets.outputs.published`.
+      # That output comes from the action's post-publish phase, which has
+      # hung on OIDC publishes (0.13.0 published fine, then emitted no
+      # output, so the guard skipped this step and the release was lost).
+      # The script is idempotent: it exits 0 when the tag already exists,
+      # and fails loudly on version drift, so running it unconditionally
+      # is safe. On a release-PR run the version is unchanged and the tag
+      # already exists, so it no-ops. No `if:` at all, so it inherits the
+      # default `success()`: runs whenever every earlier step passed.
       - name: Create v<version> tag and combined GitHub Release
-        if: steps.changesets.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

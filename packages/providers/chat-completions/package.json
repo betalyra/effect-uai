@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/chat-completions",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "Reusable OpenAI Chat Completions (`/chat/completions`) LanguageModel base for @effect-uai/core. Point it at any compatible gateway (OpenRouter, Groq, Together, self-hosted).",
   "keywords": [
     "ai",

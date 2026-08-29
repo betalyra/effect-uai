@@ -62,6 +62,11 @@ legacy [Chat Completions](/providers/openai-compatible/) base
 (`@effect-uai/chat-completions`), are named for the wire protocol, not a vendor,
 so they point at any conforming endpoint via `baseUrl`.
 
+[MCP](/language-models/mcp/) is a third kind of not-a-provider: a server there
+supplies _tools_, not a capability. `@effect-uai/mcp` connects to any of them
+and hands the loop a `Toolkit`, so it composes with whichever provider you
+picked above rather than replacing one.
+
 ## OpenAI
 
 `@effect-uai/openai`

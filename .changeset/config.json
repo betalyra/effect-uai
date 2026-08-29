@@ -22,7 +22,8 @@
       "@effect-uai/exa",
       "@effect-uai/tavily",
       "@effect-uai/firecrawl",
-      "@effect-uai/ai-sdk"
+      "@effect-uai/ai-sdk",
+      "@effect-uai/mcp"
     ]
   ],
   "linked": [],

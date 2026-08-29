@@ -1,0 +1,70 @@
+{
+  "name": "@effect-uai/mcp",
+  "version": "0.12.1",
+  "description": "Model Context Protocol client provider for @effect-uai/core.",
+  "keywords": [
+    "agents",
+    "ai",
+    "effect",
+    "mcp",
+    "model-context-protocol",
+    "tools"
+  ],
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/mcp",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "license": "MIT",
+  "author": "Betalyra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai",
+    "directory": "packages/providers/mcp"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./Client": {
+      "types": "./dist/Client.d.mts",
+      "import": "./dist/Client.mjs"
+    },
+    "./Toolkit": {
+      "types": "./dist/Toolkit.d.mts",
+      "import": "./dist/Toolkit.mjs"
+    },
+    "./McpError": {
+      "types": "./dist/McpError.d.mts",
+      "import": "./dist/McpError.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@effect-uai/core": "workspace:*",
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect-uai/core": "workspace:>=0.5.0 <1",
+    "effect": "catalog:peer"
+  }
+}

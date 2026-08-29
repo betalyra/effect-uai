@@ -204,14 +204,14 @@ explicit `Toolkit.descriptors(toolkit)` still exists if you want the
 
 `Toolkit.make` is variadic, indexes by `tool.name`, and **rejects a duplicate
 literal name at compile time**. Use `Toolkit.fromArray(tools)` for a
-runtime-built array (e.g. MCP), where names are trusted and last-wins. The rendered descriptors are the
+runtime-built array (e.g. [MCP](/language-models/mcp/)), where names are trusted and last-wins. The rendered descriptors are the
 provider-agnostic `ToolDescriptor[]` the generic `LanguageModel` accepts;
 providers map `inputSchema` to their own wire field (`parameters` for OpenAI,
 `input_schema` for Anthropic).
 
 ### Composing toolkits
 
-Combine independently-built toolkits (built-ins, MCP servers, signal sets) with
+Combine independently-built toolkits (built-ins, [MCP servers](/language-models/mcp/), signal sets) with
 `Toolkit.compose`. It is the application boundary where names from separate
 sources can collide, so it is effectful: a duplicate final name fails with
 `DuplicateToolName` naming the colliding inputs, instead of silently overwriting

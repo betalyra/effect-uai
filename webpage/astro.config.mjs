@@ -124,6 +124,7 @@ export default defineConfig({
             { label: "Overview", slug: "language-models" },
             { label: "The loop primitive", slug: "language-models/loop" },
             { label: "Tools and toolkits", slug: "language-models/tools" },
+            { label: "MCP", slug: "language-models/mcp" },
             {
               label: "Providers",
               items: [
@@ -146,6 +147,7 @@ export default defineConfig({
                   label: "Streaming tool output",
                   slug: "recipes/streaming-tool-output",
                 },
+                { label: "MCP tools", slug: "recipes/mcp-tools" },
                 {
                   label: "Structured output",
                   slug: "recipes/structured-output",

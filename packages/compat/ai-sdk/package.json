@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/ai-sdk",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "Vercel AI SDK (useChat) UI Message Stream compatibility for @effect-uai/core.",
   "keywords": [
     "agents",

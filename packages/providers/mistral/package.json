@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/mistral",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "Mistral provider for @effect-uai/core: chat-completions plus Voxtral speech-to-text and text-to-speech.",
   "keywords": [
     "ai",

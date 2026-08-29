@@ -1,7 +1,7 @@
 ---
 title: Retrieval
 description: Split documents into passages worth retrieving, size them by real tokens, and merge results from searches that do not share a score scale.
-icon: PiScissors
+icon: PiCardsThree
 ---
 
 Before you can retrieve anything you have to cut your documents into passages,

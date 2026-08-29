@@ -1,6 +1,7 @@
 ---
 title: Embedding model
 description: One generic service tag, three providers, and the seam between portable and provider-specific vectorization.
+icon: PiGraph
 ---
 
 Search, retrieval, classification, clustering: all of them want to

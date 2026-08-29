@@ -1,6 +1,7 @@
 ---
 title: Browser
 description: "A live browser session your agent can drive: navigate, click, fill, read the page as markdown, and pull typed element info, with disposal tied to an Effect Scope."
+icon: PiBrowser
 ---
 
 Sooner or later an agent needs to touch the web the way a person does: open a

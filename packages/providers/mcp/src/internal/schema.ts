@@ -46,7 +46,7 @@ export const META_CLIENT_CAPABILITIES = "io.modelcontextprotocol/clientCapabilit
 /** Servers identify themselves in each *result's* `_meta`, not at the top level. */
 export const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 
-export const CLIENT_INFO = { name: "@effect-uai/mcp", version: "0.12.0" }
+export const CLIENT_INFO = { name: "@effect-uai/mcp", version: "0.12.1" }
 
 /** Modern JSON-RPC error codes. */
 export const CODE_HEADER_MISMATCH = -32020

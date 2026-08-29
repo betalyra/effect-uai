@@ -56,6 +56,7 @@ pnpm add @effect-uai/elevenlabs        # ElevenLabs speech (TTS + STT, multi-spe
 pnpm add @effect-uai/inworld           # Inworld speech (TTS + STT)
 pnpm add @effect-uai/microsandbox      # Local Firecracker microVMs for sandboxed code
 pnpm add @effect-uai/deno              # Hosted Firecracker microVMs on Deno Deploy
+pnpm add @effect-uai/mcp               # MCP client: a server's tools as a Toolkit
 ```
 
 The core package has no provider dependencies. Edge / browser builds
@@ -126,6 +127,15 @@ Each provider also re-exports a typed service tag (`Responses`,
 `Anthropic`, `Gemini`, `Mistral`) for code that wants the provider-specific
 request shape (e.g. `reasoning: { effort: "low" }` on Responses).
 For provider-agnostic code, use the generic `LanguageModel` service.
+
+`@effect-uai/mcp` is the exception to the layer pattern: an MCP server
+supplies tools, not a capability, so it is a scoped resource rather than a
+`layer({ apiKey })`. `connect(config)` returns
+`Effect<McpClient, McpError, Scope>` and `mcpToolkit(client, { prefix })`
+turns the server's tools into an ordinary `Toolkit` you compose and run
+like any other. `Effect.scoped` / `Stream.scoped` / `layer(config)` all
+close the connection; there is no `close()`. HTTP transport needs an
+`HttpClient`, stdio needs a `ChildProcessSpawner`. See `mcp-tools`.
 
 OpenAI-compatible gateways (OpenRouter, Requesty) are not separate
 providers. Point a protocol adapter at the gateway's `baseUrl`: prefer
@@ -288,6 +298,7 @@ Common scenarios and where to start:
 | Generate music clips, or a continuous stream                         | `basic-music-generation`, `radio-station`                          |
 | Run untrusted / LLM-generated code in a microVM                      | `sandbox-code-interpreter`                                         |
 | Drive a headless browser as a tool                                   | `browser-usability`                                                |
+| Use an MCP server's tools in the loop                                | `mcp-tools`                                                        |
 
 More recipes exist than are listed here (check the docs recipes index).
 When more than one applies (e.g. "agentic chat that retries on rate limits

@@ -44,3 +44,5 @@ Rank.rrf([lexicalIds, denseIds], { weights: [1, 0.7] })
 `@huggingface/tokenizers`. Downloading and building are separate, so you cache
 the vocabulary wherever you already keep things instead of refetching on every
 boot, and gated repos take an access token.
+
+See [Migrating to 0.13](https://effect-uai.betalyra.com/migrations/v0-13/).

@@ -22,3 +22,5 @@ model can afford to read.
   cross-provider request stays strings-only.
 
 See [reranking](https://effect-uai.betalyra.com/reranking/).
+
+See [Migrating to 0.13](https://effect-uai.betalyra.com/migrations/v0-13/).

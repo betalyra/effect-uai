@@ -15,6 +15,13 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.13](/migrations/v0-13/): purely additive. Retrieval arrives as
+  three core tags (`Reranker`, `Chunker`, `Tokenizer`) plus `@effect-uai/retrieval`
+  (four chunkers with source offsets, `Rank.rrf` fusion, and a Hugging Face
+  tokenizer layer) and `@effect-uai/jina/JinaReranker`. Also `@effect-uai/mcp`,
+  a Model Context Protocol client whose servers' tools become a `Toolkit` the
+  loop runs like any other. No `effect` bump; bump dependencies and run
+  typecheck.
 - [Migrating to 0.12](/migrations/v0-12/): two narrow breaking changes.
   `providerData` is namespaced per provider (read Google deep-research traces via
   `GoogleDeepResearch.researchDataOf`; Perplexity no longer writes the slot), and

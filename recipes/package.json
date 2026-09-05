@@ -13,6 +13,7 @@
     "@effect-uai/core": "workspace:*",
     "@effect-uai/elevenlabs": "workspace:*",
     "@effect-uai/exa": "workspace:*",
+    "@effect-uai/fal": "workspace:*",
     "@effect-uai/firecrawl": "workspace:*",
     "@effect-uai/google": "workspace:*",
     "@effect-uai/inworld": "workspace:*",

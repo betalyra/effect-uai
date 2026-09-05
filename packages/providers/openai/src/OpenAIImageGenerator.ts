@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, type Redacted, Schema, Stream } from "effect"
+import { Context, Effect, Layer, type Redacted, Result, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
@@ -7,9 +7,8 @@ import type {
   ImageBase64Source,
   ImageBytesSource,
   ImageMimeType,
-  ImageResolution,
 } from "@effect-uai/core/Image"
-import { imageBase64, imageUrl } from "@effect-uai/core/Image"
+import { imageBase64, imageUrl, pixelsOf } from "@effect-uai/core/Image"
 import type {
   CommonImageEditRequest,
   CommonImageGenerateRequest,
@@ -110,32 +109,9 @@ export type Config = {
 // server's call: per-model limits churn and we do not table them.
 // ---------------------------------------------------------------------------
 
-const SHORT_EDGE: Record<ImageResolution, number> = { "1K": 1024, "2K": 2048, "4K": 4096 }
-
-/** The API requires both edges to be multiples of 16. */
-const round16 = (n: number): number => Math.max(16, Math.round(n / 16) * 16)
-
-const positive = (n: number | undefined): n is number =>
-  n !== undefined && Number.isFinite(n) && n > 0
-
-/** Fails when the ratio is not arithmetic we can turn into pixels. */
-const parseRatio = (ratio: string): Effect.Effect<readonly [number, number], AiError.AiError> => {
-  const [w, h, ...rest] = ratio.split(":").map(Number)
-  return positive(w) && positive(h) && rest.length === 0
-    ? Effect.succeed([w, h] as const)
-    : Effect.fail(
-        new AiError.InvalidRequest({
-          provider: "openai",
-          param: "aspectRatio",
-          raw: `Cannot derive pixel dimensions from aspectRatio "${ratio}": the Images API takes "WxH", so the ratio must read "W:H" with positive numbers. Set \`size\` directly to bypass the derivation.`,
-        }),
-      )
-}
-
 /**
- * Derive `"WxH"`: the tier is the short edge, the long edge follows the
- * ratio, both rounded to 16. `undefined` means "send no size" and let the
- * endpoint pick.
+ * Derive `"WxH"` from the portable ratio and tier. `undefined` means
+ * "send no size" and let the endpoint pick.
  */
 export const sizeOf = (
   request: Pick<OpenAIImageGenerateRequest, "size" | "aspectRatio" | "resolution">,
@@ -159,10 +135,18 @@ export const sizeOf = (
       })
       return request.size
     }
-    if (request.aspectRatio === undefined && request.resolution === undefined) return undefined
-    const short = SHORT_EDGE[request.resolution ?? "1K"]
-    const [w, h] = yield* parseRatio(request.aspectRatio ?? "1:1")
-    return w >= h ? `${round16((short * w) / h)}x${short}` : `${short}x${round16((short * h) / w)}`
+    return yield* Result.match(pixelsOf(request), {
+      onSuccess: (pixels) =>
+        Effect.succeed(pixels === undefined ? undefined : `${pixels.width}x${pixels.height}`),
+      onFailure: (reason) =>
+        Effect.fail(
+          new AiError.InvalidRequest({
+            provider: "openai",
+            param: "aspectRatio",
+            raw: `${reason} The Images API takes "WxH"; set \`size\` directly to bypass the derivation.`,
+          }),
+        ),
+    })
   })
 
 // ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ import { imageBase64, imageUrl } from "@effect-uai/core/Image"
 import type {
   CommonImageEditRequest,
   CommonImageGenerateRequest,
+  CommonStreamImageEditRequest,
   CommonStreamImageRequest,
   ImageGeneratorService,
   ImageResponse,
@@ -68,6 +69,10 @@ export type OpenAIStreamImageRequest = Omit<CommonStreamImageRequest, "model"> &
   readonly model: OpenAIImageModel
 } & OpenAIImageKnobs
 
+export type OpenAIStreamImageEditRequest = OpenAIImageEditRequest & {
+  readonly partialImages: 1 | 2 | 3
+}
+
 export type OpenAIImageGeneratorService = {
   readonly generate: (
     request: OpenAIImageGenerateRequest,
@@ -75,6 +80,9 @@ export type OpenAIImageGeneratorService = {
   readonly edit: (request: OpenAIImageEditRequest) => Effect.Effect<ImageResponse, AiError.AiError>
   readonly streamGeneration: (
     request: OpenAIStreamImageRequest,
+  ) => Stream.Stream<ImageStreamEvent, AiError.AiError>
+  readonly streamEdit: (
+    request: OpenAIStreamImageEditRequest,
   ) => Stream.Stream<ImageStreamEvent, AiError.AiError>
 }
 
@@ -241,6 +249,16 @@ export const editForm = (
     Object.entries(knobFields(request, size)).forEach(([key, value]) =>
       form.set(key, String(value)),
     )
+    return form
+  })
+
+/** The edit form plus the two streaming fields, which multipart sends as strings. */
+export const streamEditForm = (
+  request: OpenAIStreamImageEditRequest,
+): Effect.Effect<FormData, AiError.AiError> =>
+  Effect.map(editForm(request), (form) => {
+    form.set("stream", "true")
+    form.set("partial_images", String(request.partialImages))
     return form
   })
 
@@ -491,23 +509,48 @@ const editImpl = (cfg: Config) => (request: OpenAIImageEditRequest) =>
     requestImages(cfg, "/images/edits", withBody, request.outputFormat),
   )
 
-const streamImpl = (cfg: Config) => (request: OpenAIStreamImageRequest) =>
+/** Both streaming endpoints answer with the same SSE frames. */
+const streamFrames = (
+  cfg: Config,
+  path: string,
+  withBody: (request: HttpClientRequest.HttpClientRequest) => HttpClientRequest.HttpClientRequest,
+  requested: OpenAIImageKnobs["outputFormat"],
+): Stream.Stream<ImageStreamEvent, AiError.AiError, HttpClient.HttpClient> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const body = yield* streamBody(request)
-      const response = yield* post(
-        cfg,
-        "/images/generations",
-        HttpClientRequest.bodyJsonUnsafe(body),
+      // `stream: true` in the body is what OpenAI keys off, but gateways in
+      // front of it read the header, so send both like every other
+      // streaming adapter here does.
+      const response = yield* post(cfg, path, (request) =>
+        HttpClientRequest.accept("text/event-stream")(withBody(request)),
       )
       yield* failOnStatus(response)
       return response.stream.pipe(
         Stream.mapError(transportFailure),
         SSE.fromBytes,
-        Stream.mapEffect((event) => streamEventOf(event, request.outputFormat)),
+        Stream.mapEffect((event) => streamEventOf(event, requested)),
         Stream.filter((event) => event !== undefined),
       )
     }),
+  )
+
+const streamImpl = (cfg: Config) => (request: OpenAIStreamImageRequest) =>
+  Stream.unwrap(
+    Effect.map(streamBody(request), (body) =>
+      streamFrames(
+        cfg,
+        "/images/generations",
+        HttpClientRequest.bodyJsonUnsafe(body),
+        request.outputFormat,
+      ),
+    ),
+  )
+
+const streamEditImpl = (cfg: Config) => (request: OpenAIStreamImageEditRequest) =>
+  Stream.unwrap(
+    Effect.map(Effect.flatMap(streamEditForm(request), bodyMultipart), (withBody) =>
+      streamFrames(cfg, "/images/edits", withBody, request.outputFormat),
+    ),
   )
 
 // ---------------------------------------------------------------------------
@@ -524,6 +567,8 @@ export const make = (
       editImpl(cfg)(request).pipe(Effect.provideService(HttpClient.HttpClient, client)),
     streamGeneration: (request) =>
       streamImpl(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client)),
+    streamEdit: (request) =>
+      streamEditImpl(cfg)(request).pipe(Stream.provideService(HttpClient.HttpClient, client)),
   }))
 
 /**
@@ -553,6 +598,8 @@ export const layer = (
         edit: (request: CommonImageEditRequest) => s.edit(request as OpenAIImageEditRequest),
         streamGeneration: (request: CommonStreamImageRequest) =>
           s.streamGeneration(request as OpenAIStreamImageRequest),
+        streamEdit: (request: CommonStreamImageEditRequest) =>
+          s.streamEdit(request as OpenAIStreamImageEditRequest),
       })),
     ),
     Layer.succeed(ImageStreaming, undefined),

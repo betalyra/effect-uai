@@ -40,7 +40,12 @@ One implementation, three tags:
 - **`ImageStreaming`** — the capability marker gating `streamGeneration`.
 
 `baseUrl` and `region` work as on the other OpenAI adapters, so the same
-Layer reaches an OpenAI-compatible gateway.
+Layer reaches an OpenAI-compatible gateway. **Streaming is the exception**:
+gateways that serve `/images/generations` and `/images/edits` do not
+necessarily carry `stream` and `partial_images` with them (Requesty
+documents neither), so a preview request can come back as a 400 from the
+model behind them. The marker is registered for the models this Layer
+routes to, and a gateway is not one of them.
 
 ## Models
 
@@ -103,8 +108,9 @@ repaint.
 
 ## Streaming
 
-`streamGeneration` emits `PartialImage` previews as the image resolves,
-then one `Complete`:
+`streamGeneration` and `streamEdit` emit `PartialImage` previews as the
+image resolves, then one `Complete`. Both endpoints take `stream` and
+`partial_images`, so an edit previews exactly like a generation:
 
 ```ts
 import { isPartialImage, streamGeneration } from "@effect-uai/core/ImageGenerator"
@@ -116,8 +122,8 @@ streamGeneration({
 }).pipe(Stream.filter(isPartialImage))
 ```
 
-Calling it against a Layer that does not register `ImageStreaming` is a
-compile-time error, not a runtime failure.
+Calling either against a Layer that does not register `ImageStreaming`
+is a compile-time error, not a runtime failure.
 
 ## Errors
 

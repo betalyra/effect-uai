@@ -38,8 +38,8 @@ One implementation, two tags:
   provider-portable code.
 
 **No `ImageStreaming`.** The image arrives whole, so `streamGeneration`
-against this Layer is a compile error rather than a stream that never
-previews.
+and `streamEdit` against this Layer are compile errors rather than
+streams that never preview.
 
 ## Models
 

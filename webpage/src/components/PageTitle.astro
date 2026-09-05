@@ -29,6 +29,7 @@ import {
   PiMicrophone,
   PiMusicNotes,
   PiNotePencil,
+  PiPaintBrushBroad,
   PiPath,
   PiPause,
   PiPlugsConnected,
@@ -72,6 +73,7 @@ const iconMap = {
   PiMicrophone,
   PiMusicNotes,
   PiNotePencil,
+  PiPaintBrushBroad,
   PiPath,
   PiPause,
   PiPlugsConnected,
@@ -91,7 +93,10 @@ const title = entry.data.title
 const data = entry.data as {
   source?: string
   icon?: string
-  gallery?: { images: ReadonlyArray<string>; caption?: string }
+  gallery?: {
+    images: ReadonlyArray<string | { src: string; caption: string }>
+    caption?: string
+  }
 }
 
 const source = data.source
@@ -127,7 +132,13 @@ const TitleIcon =
 
 {
   data.gallery !== undefined && (
-    <RecipeGallery client:load images={data.gallery.images} caption={data.gallery.caption} />
+    <RecipeGallery
+      client:load
+      images={data.gallery.images.map((image) =>
+        typeof image === "string" ? { src: image } : image,
+      )}
+      caption={data.gallery.caption}
+    />
   )
 }
 

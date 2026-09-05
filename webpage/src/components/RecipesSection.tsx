@@ -23,6 +23,7 @@ import {
   PiMicrophone,
   PiMusicNotes,
   PiNotePencil,
+  PiPaintBrushBroad,
   PiPath,
   PiPause,
   PiPlugsConnected,
@@ -249,6 +250,14 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/radio-station/",
     Icon: PiRadio,
     category: "music",
+  },
+  {
+    title: "Conversational image edit",
+    description:
+      "**Say what to change, keep the picture.** Getting the image you want takes a few goes, and your subject survives every one of them.",
+    href: "/recipes/conversational-image-edit/",
+    Icon: PiPaintBrushBroad,
+    category: "images",
   },
   {
     title: "Storyboard",

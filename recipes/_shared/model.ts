@@ -18,7 +18,7 @@ import { layer as geminiImageLayer } from "@effect-uai/google/GeminiImageGenerat
 import { layer as mistralLayer } from "@effect-uai/mistral/Mistral"
 import { layer as openaiImageLayer } from "@effect-uai/openai/OpenAIImageGenerator"
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
-import type { ImageGenerator } from "@effect-uai/core/ImageGenerator"
+import type { ImageGenerator, ImageStreaming } from "@effect-uai/core/ImageGenerator"
 import type { LanguageModel } from "@effect-uai/core/LanguageModel"
 
 /** The spec named a provider no registry has an entry for. */
@@ -149,15 +149,20 @@ export const languageModelLayer = (
 
 type ImageLayer = Layer.Layer<ImageGenerator, never, HttpClient.HttpClient>
 
+type StreamingImageLayer = Layer.Layer<
+  ImageGenerator | ImageStreaming,
+  never,
+  HttpClient.HttpClient
+>
+
 const imageEntries: Record<string, Entry<ImageLayer>> = {
   openai: {
     layer: (apiKey, baseUrl) => openaiImageLayer({ apiKey, ...at(baseUrl) }),
     apiKey: key("OPENAI_API_KEY"),
   },
-  openrouter: {
-    layer: (apiKey, baseUrl) => openaiImageLayer({ apiKey, baseUrl: baseUrl ?? OPENROUTER }),
-    apiKey: key("OPENROUTER_API_KEY", "LLM_API_KEY"),
-  },
+  // OpenRouter is absent: its image API is `POST /api/v1/images` taking
+  // `input_references`, not OpenAI's `/v1/images/generations` and
+  // `/v1/images/edits`, so this adapter cannot reach it at any base URL.
   requesty: {
     layer: (apiKey, baseUrl) => openaiImageLayer({ apiKey, baseUrl: baseUrl ?? REQUESTY }),
     apiKey: key("REQUESTY_API_KEY", "LLM_API_KEY"),
@@ -174,3 +179,29 @@ export const imageGeneratorLayer = (
   baseUrl?: string,
 ): Layer.Layer<ImageGenerator, Config.ConfigError | UnknownProvider, HttpClient.HttpClient> =>
   Layer.unwrap(registry(spec, baseUrl, imageEntries))
+
+/**
+ * The same, restricted to providers that emit partial images.
+ *
+ * Gemini has no partial-image wire. Requesty serves the image endpoints
+ * but drops `stream` on the way through: a bare curl carrying both
+ * `stream: true` and `partial_images: 1` still comes back "Partial images
+ * are only supported with streaming" from the provider behind it
+ * (reproduced 2026-09-05, no SDK involved). Registering either would
+ * promise previews this Layer cannot deliver.
+ */
+const streamingImageEntries: Record<string, Entry<StreamingImageLayer>> = {
+  openai: imageEntries.openai as Entry<StreamingImageLayer>,
+}
+
+/** Does this provider's adapter emit partial images? */
+export const streamsPartialImages = (provider: string): boolean => provider in streamingImageEntries
+
+export const streamingImageGeneratorLayer = (
+  spec: ModelSpec,
+  baseUrl?: string,
+): Layer.Layer<
+  ImageGenerator | ImageStreaming,
+  Config.ConfigError | UnknownProvider,
+  HttpClient.HttpClient
+> => Layer.unwrap(registry(spec, baseUrl, streamingImageEntries))

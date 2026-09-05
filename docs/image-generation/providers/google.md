@@ -150,6 +150,13 @@ Per image at 1K: Lite **$0.034**, Flash **$0.067**, Pro **$0.134**. Flash
 scales to $0.101 at 2K and $0.151 at 4K. Start on Lite and move up only
 when the result is not good enough.
 
+## Also usable as chat models
+
+These ids work as `LanguageModel` models too, answering a `Gemini.turn`
+with pictures among the content blocks. Handy when the image is part of
+a conversation rather than the point of the call:
+[images in a turn](/language-models/images-in-turns/).
+
 ## See it working
 
 The [storyboard recipe](/recipes/storyboard/) uses `generate` for a cast

@@ -122,6 +122,7 @@ export default defineConfig({
             { label: "The loop primitive", slug: "language-models/loop" },
             { label: "Tools and toolkits", slug: "language-models/tools" },
             { label: "MCP", slug: "language-models/mcp" },
+            { label: "Images in a turn", slug: "language-models/images-in-turns" },
             {
               label: "Advanced",
               collapsed: true,

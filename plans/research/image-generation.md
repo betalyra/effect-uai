@@ -290,14 +290,36 @@ Checked 2026-09-04 against `packages/core/src/domain`:
 | 1   | Core: `Watermark` to `Media.ts`, `Image.ts` additions, `ImageGenerator` tag and `ImageStreaming` marker, `generate` / `edit` / `streamGeneration` helpers, docs skeleton                                               | core, docs              | S    | 0          |
 | 2   | OpenAI Images adapter with base URL: generate, edit, mask, `streamGeneration`, registers `ImageStreaming`; mock tests                                                                                                  | openai                  | M    | 1          |
 | 3   | Gemini adapter: Nano Banana 2 / Pro / Lite via `generateContent`, `streamGeneration` as `Unsupported`; mock tests                                                                                                      | google                  | M    | 1          |
-| 4   | Recipes `storyboard` and `critique-and-regenerate`                                                                                                                                                                     | recipes                 | S+S  | 2, 3       |
-| 5   | Core: `OutputImage` content block, image `TurnEvent` variants, Gemini native image output, OpenAI Responses `image_generation` tool                                                                                    | core, responses, google | L    | 0          |
-| 6   | Recipes `conversational-image-edit` and `ad-variant-matrix`                                                                                                                                                            | recipes                 | S+M  | 5; 2, 3    |
-| 7   | Provider docs, gateway docs (xAI, Meta, Requesty, Vercel Gateway), migration doc, landing page                                                                                                                         | docs, webpage           | S    | 2, 3       |
-| 8   | `@effect-uai/fal`: client, three or four endpoints (Seedream 5 Pro, FLUX.2 klein, Muse, Qwen), first publish and OIDC. Needs its own wire research first.                                                              | new package             | M    | 1          |
+| 4   | Recipes `storyboard` and `critique-and-regenerate`. **Done**: the critique loop landed inside `storyboard` (`rounds`, `rejected/`) rather than as a second recipe                                                      | recipes                 | S+S  | 2, 3       |
+| 5   | Core: `OutputImage` content block, image `TurnEvent` variants, Gemini native image output, OpenAI Responses `image_generation` tool. **Gemini half done**; the Responses tool is deferred, see below                    | core, responses, google | L    | 0          |
+| 6   | Recipe `conversational-image-edit`. **Done.** `ad-variant-matrix` **dropped**, see below                                                                                                                                | recipes                 | S    | 5; 2, 3    |
+| 7   | Provider docs, gateway docs (xAI, Meta, Requesty, Vercel Gateway), migration doc, landing page. **Provider and turn docs done**; gateway docs and migration entry outstanding                                          | docs, webpage           | S    | 2, 3       |
+| 8   | `@effect-uai/fal`. **Done**, though scoped to image endpoints: sync `fal.run`, `sync_mode` for inline bytes, reference-field discovery. No streaming, see below                                                        | new package             | M    | 1          |
 
-Tasks 1 through 4 make a complete, shippable v0.13 item. Task 5 is
-the slip candidate and can move to v0.14 without blocking the rest;
-if it slips, `conversational-image-edit` goes with it and
-`ad-variant-matrix` ships alone. Task 8 is additive and trails into a
-patch release.
+Tasks 1 through 4 make a complete, shippable v0.13 item.
+
+**Decisions taken during the build (2026-09-05):**
+
+- **`ad-variant-matrix` dropped.** Generating N variants in parallel is
+  `Effect.forEach` with a concurrency bound, which `multi-model-compare`
+  and storyboard's cast stage already show. The use case is real; the
+  recipe taught nothing the others do not. A reframing around
+  role-tagged multi-reference composition ("your product photo, this
+  setting, this style") was considered and also declined.
+- **Task 5 split.** The Gemini half shipped: `OutputImage`,
+  `TurnEvent.ImageOutput`, `assistantImages`, `imagesAsInput`,
+  `Capabilities.warnDroppedBlocks`, decode and re-encode of `inlineData`
+  parts, plus `responseModalities` / `imageConfig` on `GeminiRequest`.
+  The Responses `image_generation` tool and its `ImageGenerationCall`
+  event are deferred: reaching them needs OpenAI credits or a gateway
+  that proxies hosted tools, and Requesty is known to strip features on
+  the image path. Note that OpenAI's side is a hosted tool call, not
+  native image output; `gpt-6-astra` is text-output only.
+- **Providers other than Gemini drop `output_image` on replay** and warn,
+  rather than inventing a wire form for it. `Turn.imagesAsInput` is the
+  opt-in conversion.
+- **fal has no image streaming.** Its `/stream` mechanism is for models
+  authored on fal, the event shape is per-model, and no image endpoint
+  documents partial images. The package registers `ImageGenerator` only.
+
+Task 8 is additive and trails into a patch release.

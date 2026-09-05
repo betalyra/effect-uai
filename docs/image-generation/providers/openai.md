@@ -40,12 +40,7 @@ One implementation, three tags:
 - **`ImageStreaming`** — the capability marker gating `streamGeneration`.
 
 `baseUrl` and `region` work as on the other OpenAI adapters, so the same
-Layer reaches an OpenAI-compatible gateway. **Streaming is the exception**:
-gateways that serve `/images/generations` and `/images/edits` do not
-necessarily carry `stream` and `partial_images` with them (Requesty
-documents neither), so a preview request can come back as a 400 from the
-model behind them. The marker is registered for the models this Layer
-routes to, and a gateway is not one of them.
+Layer reaches any OpenAI-compatible endpoint.
 
 ## Models
 

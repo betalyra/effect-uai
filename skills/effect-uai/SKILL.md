@@ -1,6 +1,6 @@
 ---
 name: effect-uai
-description: Use when building AI agents and AI media workflows with effect-uai (Effect-based primitives for agent loops, tools, streaming, structured output, embeddings, retrieval, reranking, speech, and music generation). Covers design philosophy, core primitives, provider wiring, and a recipe library for retry, fallback, tool approval, RAG and hybrid retrieval, transcription, speech synthesis, voice loops, music generation, SSE/JSONL, and more.
+description: Use when building AI agents and AI media workflows with effect-uai (Effect-based primitives for agent loops, tools, streaming, structured output, embeddings, retrieval, reranking, speech, music, and image generation). Covers design philosophy, core primitives, provider wiring, and a recipe library for retry, fallback, tool approval, RAG and hybrid retrieval, transcription, speech synthesis, voice loops, music generation, image generation and editing, SSE/JSONL, and more.
 license: MIT
 ---
 
@@ -45,11 +45,12 @@ answer is almost always "compose primitives in the loop body", not
 ```sh
 pnpm add @effect-uai/core effect
 # pick one or more providers:
-pnpm add @effect-uai/openai            # OpenAI: Responses (language) + embeddings + speech
+pnpm add @effect-uai/openai            # OpenAI: Responses (language) + embeddings + speech + images
 pnpm add @effect-uai/responses         # OpenAI Responses adapter alone (also for gateways)
 pnpm add @effect-uai/chat-completions  # Legacy OpenAI-compatible /chat/completions base
 pnpm add @effect-uai/anthropic         # Anthropic Claude
-pnpm add @effect-uai/google            # Google Gemini language + embeddings + speech + music
+pnpm add @effect-uai/google            # Google Gemini language + embeddings + speech + music + images
+pnpm add @effect-uai/fal               # fal: FLUX, Seedream, Qwen Image and the open-weights field
 pnpm add @effect-uai/mistral           # Mistral language + Voxtral speech
 pnpm add @effect-uai/jina              # Jina embeddings (text + image, sparse, multivector) + rerank
 pnpm add @effect-uai/retrieval         # Chunking, rank fusion, Hugging Face tokenizer
@@ -69,7 +70,9 @@ with its own provider layers and recipes in the library below:
 `Reranker` (`rerank`: score a candidate set against a query, best first),
 `Chunker` and `Tokenizer` (implemented by `@effect-uai/retrieval`),
 `Transcriber` (file + streaming STT), `SpeechSynthesizer` (finished +
-incremental TTS, multi-speaker dialogue), `MusicGenerator`, and `Sandbox`
+incremental TTS, multi-speaker dialogue), `MusicGenerator`,
+`ImageGenerator` (`generate` / `edit`, plus marker-gated preview
+streaming), and `Sandbox`
 (run untrusted code in a microVM: `@effect-uai/microsandbox` local,
 `@effect-uai/deno` hosted).
 
@@ -78,7 +81,7 @@ incremental TTS, multi-speaker dialogue), `MusicGenerator`, and `Sandbox`
 | Module                                  | What it gives you                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@effect-uai/core/Items`                | `HistoryItem` types (user/assistant messages, tool calls, tool call outputs, reasoning), helpers like `Items.userText`, `Items.toolCallOutput`, predicates `Items.isToolCall`, `Items.isToolCallOutput`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `@effect-uai/core/Turn`                 | `Turn`, `TurnEvent`, `Turn.getToolCalls(turn)`, `Turn.assistantMessages(turn)`, `Turn.assistantText(turn)`, `Turn.assistantTexts(turn)`, `Turn.appendToHistory(state, turn, items?)`, `Turn.decodeStructured(turn, format)`, `Turn.textDeltas`, `Turn.toSSE`, `Turn.toJSONL`, `Turn.asSSE`, `Turn.asJSONL`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `@effect-uai/core/Turn`                 | `Turn`, `TurnEvent`, `Turn.getToolCalls(turn)`, `Turn.assistantMessages(turn)`, `Turn.assistantText(turn)`, `Turn.assistantTexts(turn)`, `Turn.assistantImages(turn)`, `Turn.imagesAsInput(history)`, `Turn.appendToHistory(state, turn, items?)`, `Turn.decodeStructured(turn, format)`, `Turn.textDeltas`, `Turn.toSSE`, `Turn.toJSONL`, `Turn.asSSE`, `Turn.asJSONL`.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `@effect-uai/core/LanguageModel`        | `LanguageModel` service tag, `streamTurn(request)`, `turn(request)`, `CommonRequest` type (`tools?` takes a `Toolkit` directly; the provider renders descriptors), `turnFromStream(streamTurn)` for hand-rolled services.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `@effect-uai/core/Retry`                | `Retry.stream(schedule)`, `Retry.effect(schedule)`, `Retry.Retryable`, `Retry.isRetryable`. Retries the retryable subset of `AiError` (RateLimited \| Unavailable \| Timeout); works for any model service.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `@effect-uai/core/EmbeddingModel`       | `EmbeddingModel` service tag, `embed(request)`, `embedMany(request)`. `task: "query" \| "document"` matters for retrieval models; `dimensions` truncates Matryoshka embeddings.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -91,6 +94,7 @@ incremental TTS, multi-speaker dialogue), `MusicGenerator`, and `Sandbox`
 | `@effect-uai/core/Transcriber`          | `Transcriber` service tag, `transcribe(request)`, `streamTranscriptionFrom(request)`. Sync file STT and streaming mic STT.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `@effect-uai/core/SpeechSynthesizer`    | `SpeechSynthesizer` service tag, `synthesize`, `streamSynthesis`, `streamSynthesisFrom` for finished-text and incremental-text TTS. New in 0.6: `synthesizeDialogue`, `streamSynthesizeDialogue` (gated by the `MultiSpeakerTts` capability marker); `pronunciations` on `CommonSynthesizeRequest`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `@effect-uai/core/MusicGenerator`       | `MusicGenerator` service tag, `generate`, `streamGeneration`, `streamGenerationFrom` for prompt-to-music workflows.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `@effect-uai/core/ImageGenerator`       | `ImageGenerator` service tag, `generate` (prompt in, images out) and `edit` (prompt plus reference images). Shape is `aspectRatio` + `resolution` (`"1K"` / `"2K"` / `"4K"`), never pixels: adapters derive dimensions, exact pixels live on the provider-typed request. `streamGeneration` / `streamEdit` yield `PartialImage` frames then one `Complete`, gated by the `ImageStreaming` marker so a non-previewing provider is a compile error. Results are `ImageSource`, the same type `input_image` takes, so a generated image feeds the next turn with no conversion.                                                                                                                        |
 | `@effect-uai/core/Loop`                 | `loop`, `loopOver`, `loopWithState`, `value(a)`, `next(state)`, `stop()` / `stop(state)`, `onTurnComplete`. `Step<A, S>` is the event type. The v0.5 `nextAfter` / `stopAfter` / `stopWithAfter` / `stopEvent` / `nextAfterFold` helpers were removed in 0.6; compose with `Stream.concat` instead.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `@effect-uai/core/Tool`                 | Four model-visible tool kinds (discriminated by `_tag`): `Tool.make` (local handler: `run(input, emit)` returns an Effect, optional `emitBufferSize`), `Tool.provider` (provider-hosted, no `run`), `Tool.signal` (loop control, decode-only), `Tool.interaction` (external actor, stop/resume). Plus `Tool.fromEffectSchema`, `Tool.fromStandardSchema`, `Tool.toDescriptors`, `Tool.decodeArgs`, `Tool.withRun` (override/mock), `Tool.withName`, `Tool.AnyTool`, `Tool.ToolValidationError`. Signals/interactions replace fake `run: () => succeed` handlers; passing one to `Toolkit.run` yields `non_local_tool`.                                                                                                                                                                                                    |
 | `@effect-uai/core/Toolkit`              | A `Toolkit` is a name-indexed record of tools. `Toolkit.make(...tools)` (compile-time duplicate-name check) / `Toolkit.fromArray(tools)` (trusted dynamic source) index by name; pass the toolkit straight to `streamTurn({ tools: toolkit })` (it renders descriptors at the provider boundary; `Toolkit.descriptors(toolkit)` still exists if you want the array); `Toolkit.run(toolkit, calls)` executes locals only. Combine independent toolkits with `Toolkit.compose(...kits)` (effectful; fails `DuplicateToolName` with source provenance, compile error for static clashes); prefix with `Toolkit.namespace(prefix, kit)` / `Toolkit.makeNamespaced`. Middleware via `Toolkit.wrap(mw)`. Plus `Toolkit.continueWithResults(build)`, `Toolkit.appendToolResults(state, turn)`, `Toolkit.collectResults(stream)`. |
@@ -137,6 +141,22 @@ Each provider also re-exports a typed service tag (`Responses`,
 `Anthropic`, `Gemini`, `Mistral`) for code that wants the provider-specific
 request shape (e.g. `reasoning: { effort: "low" }` on Responses).
 For provider-agnostic code, use the generic `LanguageModel` service.
+
+Image layers follow the same shape under the `ImageGenerator` tag:
+`@effect-uai/openai/OpenAIImageGenerator` (`gpt-image-2`, the only one
+that streams previews, so the only one registering `ImageStreaming`),
+`@effect-uai/google/GeminiImageGenerator` (Nano Banana 2), and
+`@effect-uai/fal/FalImageGenerator` + `FAL_API_KEY`. On fal the model id
+is an endpoint path copied from the model's page, and generating and
+editing are separate endpoints.
+
+Google's image models double as `LanguageModel` models: give
+`Gemini.turn` an id like `gemini-3.1-flash-image` and the answer comes
+back with `output_image` blocks among its content, editable by replaying
+the history. `Turn.assistantImages(turn)` reads them;
+`Turn.imagesAsInput(history)` restates them as `input_image` when the
+next model has no assistant-image wire (every provider but Gemini, which
+drop the block on replay and log a capability warning).
 
 `@effect-uai/mcp` is the exception to the layer pattern: an MCP server
 supplies tools, not a capability, so it is a scoped resource rather than a
@@ -309,6 +329,8 @@ Common scenarios and where to start:
 | Text to audio file, or incremental LLM deltas to TTS                 | `basic-speech-synthesis`, `streaming-synthesis`                    |
 | Voice assistant: live STT to LLM to streaming TTS                    | `voice-loop`                                                       |
 | Generate music clips, or a continuous stream                         | `basic-music-generation`, `radio-station`                          |
+| Many images that keep one cast consistent across them                | `storyboard`                                                       |
+| Refine one image over several turns without losing the subject       | `conversational-image-edit`                                        |
 | Run untrusted / LLM-generated code in a microVM                      | `sandbox-code-interpreter`                                         |
 | Drive a headless browser as a tool                                   | `browser-usability`                                                |
 | Use an MCP server's tools in the loop                                | `mcp-tools`                                                        |
@@ -362,6 +384,17 @@ an Effect, and Effect composition is the integration mechanism.
     `Effect.scoped` (or compose into a `Scope`d effect) so the microVM
     is torn down on completion or interruption. Leaking sandboxes
     means leaking billable infra on hosted providers.
+11. **Ask for images by ratio and tier, not pixels.** `aspectRatio` +
+    `resolution` port across providers; a hardcoded `"1536x1024"`
+    becomes the wrong crop when you switch. Exact pixels go on the
+    provider-typed request.
+12. **An image model may answer with no text.** These models often put
+    everything, words included, in the picture. Code that reads
+    `Turn.assistantText` and stops when it is empty will miss the
+    answer; read `Turn.assistantImages` too.
+13. **`ContentBlock` and `TurnEvent` gained members in 0.13**
+    (`output_image`, `ImageOutput`). Exhaustive matches over either
+    need a new arm.
 
 ## Testing
 
@@ -405,3 +438,6 @@ saw the history you expected.
   `docs/language-models/tools.md`, `docs/language-models/tokenizers.md`.
 - Retrieval: `docs/retrieval/index.md`, `docs/retrieval/chunking.md`,
   `docs/reranking/index.md`.
+- Images: `docs/image-generation/index.md` and
+  `docs/image-generation/providers/`; for images inside a chat turn,
+  `docs/language-models/images-in-turns.md`.

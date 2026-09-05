@@ -499,6 +499,59 @@ deferred, and is a hosted tool call rather than native image output.
 Step 8's `@effect-uai/fal` landed without streaming. Rationale for each
 is in [research/image-generation.md](./research/image-generation.md).
 
+## Open
+
+Not blocking the release. In rough priority order.
+
+### `Turn.imagesAsInput` should be per-item, and named for media
+
+The exported signature is `(history) => history`, but the body is a
+`flatMap` and the transformation is item-local, so the array shape only
+takes control away from the caller. A per-item
+`(item: HistoryItem) => ReadonlyArray<HistoryItem>` composes with
+`flatMap` for the whole history and lets a caller convert only the last
+turn, which is the common want when five turns each drew something.
+Drop the array version rather than shipping both.
+
+The name should also be about media rather than direction.
+`outputAsInput` reads as the general rule but is wrong for
+`output_text` and `refusal`: those are assistant content every provider
+replays, and converting them would be a bug. The actual rule is "media
+the assistant produced that this provider cannot carry on an assistant
+turn". Something like `mediaAsInput` says that.
+
+Getting the signature right now is what makes the modality question
+additive later: with a per-item shape, `output_audio` is a new branch in
+the body rather than a rename. Designing a generic mapping today would
+be a table with one entry, and we do not know what audio-in-a-turn looks
+like, since realtime audio is deliberately out of turns.
+
+Cost of deferring: the name is already in the docs, the migration entry,
+the skill, and the spike, so it gets more expensive after a release.
+
+### fal reference-field discovery is unproven
+
+The lookup table covers the endpoints we tested, so the 422-driven
+fallback has never actually executed. It costs one image to prove
+against an endpoint absent from the table.
+
+### No tests for the new core helpers
+
+`imagesAsInput` and `Capabilities.warnDroppedBlocks` are pure with real
+branching, which is the kind worth covering. The provider codecs are
+not: those need a live call, as this build repeatedly showed.
+
+### `providerData` on `ImageResponse`
+
+There is no passthrough slot on an image result, so per-image dimensions
+and provider extras have nowhere to go. Only worth opening when someone
+asks for them.
+
+### Responses `image_generation` tool
+
+Deferred above; listed here so it is not lost. Needs OpenAI credits or a
+gateway that proxies hosted tools.
+
 ## Sources
 
 Wire schemas: [openai-wire.md](./research/image-generation/openai-wire.md),

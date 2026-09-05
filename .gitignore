@@ -51,7 +51,8 @@ coverage/
 *.wav
 *.pcm
 
-# Recipe image output
+# Whatever the recipes produced: output/<recipe>/<timestamp>/
+output/
 storyboard-out/
 
 # Nix

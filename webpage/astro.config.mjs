@@ -192,7 +192,10 @@ export default defineConfig({
             { label: "Overview", slug: "image-generation" },
             {
               label: "Providers",
-              items: [{ label: "OpenAI", slug: "image-generation/providers/openai" }],
+              items: [
+                { label: "OpenAI", slug: "image-generation/providers/openai" },
+                { label: "Google", slug: "image-generation/providers/google" },
+              ],
             },
             {
               label: "Recipes",

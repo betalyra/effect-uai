@@ -22,6 +22,7 @@ import {
   buildRequestBody,
   emptyAccumulator,
   hasUrlImageSource,
+  httpStatusError as sharedHttpStatusError,
   ingestChunk,
 } from "./codec.js"
 import { Match } from "effect"
@@ -146,18 +147,7 @@ const sseEventToChunk = (ev: SSE.Event) =>
 // Service implementation
 // ---------------------------------------------------------------------------
 
-const httpStatusError = (status: number, body: string): AiError.AiError => {
-  const provider = "gemini"
-  const raw = body
-  if (status === 429) return new AiError.RateLimited({ provider, raw })
-  if (status === 408 || status === 504) return new AiError.Timeout({ provider, raw })
-  if (status === 401) return new AiError.AuthFailed({ provider, subtype: "auth", raw })
-  if (status === 403) return new AiError.AuthFailed({ provider, subtype: "permission", raw })
-  if (status === 402) return new AiError.AuthFailed({ provider, subtype: "billing", raw })
-  if (status === 413) return new AiError.ContextLengthExceeded({ provider, raw })
-  if (status >= 500) return new AiError.Unavailable({ provider, status, raw })
-  return new AiError.InvalidRequest({ provider, raw })
-}
+const httpStatusError = sharedHttpStatusError("gemini")
 
 const buildNativeStream = (cfg: Config) => {
   const baseUrl = cfg.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta"

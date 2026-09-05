@@ -18,6 +18,25 @@ export type GoogleModel =
   | (string & {})
 
 /**
+ * Known Gemini image-generation model identifiers. The `-preview` ids
+ * were shut down 2026-06-25 and are not listed; neither is the
+ * previous-generation `gemini-2.5-flash-image`, which the `(string & {})`
+ * tail still accepts.
+ *
+ * - `gemini-3.1-flash-image` — 512 / 1K / 2K / 4K, web and image search.
+ * - `gemini-3.1-flash-lite-image` — 1K only, cheapest, no search.
+ * - `gemini-3-pro-image` — 1K / 2K / 4K, the most reference images.
+ *
+ * Reference: https://ai.google.dev/gemini-api/docs/models
+ */
+export type GeminiImageModel =
+  | "gemini-3.1-flash-image"
+  | "gemini-3.1-flash-lite-image"
+  | "gemini-3-pro-image"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
  * Deep-research agent identifiers for the Interactions API (`POST
  * /v1beta/interactions`). `-preview` is the fast tier, `-max-` the
  * comprehensive one. Preview surface: verify against live docs before relying on

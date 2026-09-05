@@ -24,6 +24,10 @@ import type {
 } from "@effect-uai/core/Music"
 import { singleVariant } from "@effect-uai/core/Music"
 import { MusicGenerator, type MusicGeneratorService } from "@effect-uai/core/MusicGenerator"
+import {
+  httpStatusError as sharedHttpStatusError,
+  transportFailure as sharedTransportFailure,
+} from "./codec.js"
 import type { LyriaModel } from "./models.js"
 
 // ---------------------------------------------------------------------------
@@ -198,43 +202,9 @@ const decodeWire = Schema.decodeUnknownEffect(Wire)
 const baseUrl = (cfg: Config): string =>
   cfg.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta"
 
-const transportFailure = (cause: unknown): AiError.AiError =>
-  new AiError.Unavailable({ provider: "lyria", raw: cause })
+const transportFailure = sharedTransportFailure("lyria")
 
-const httpStatusError: (status: number, body: string) => AiError.AiError = (status, body) =>
-  Match.value(status).pipe(
-    Match.when(
-      429,
-      (): AiError.AiError => new AiError.RateLimited({ provider: "lyria", raw: body }),
-    ),
-    Match.whenOr(
-      408,
-      504,
-      (): AiError.AiError => new AiError.Timeout({ provider: "lyria", raw: body }),
-    ),
-    Match.when(
-      401,
-      (): AiError.AiError =>
-        new AiError.AuthFailed({ provider: "lyria", subtype: "auth", raw: body }),
-    ),
-    Match.when(
-      403,
-      (): AiError.AiError =>
-        new AiError.AuthFailed({ provider: "lyria", subtype: "permission", raw: body }),
-    ),
-    Match.when(
-      402,
-      (): AiError.AiError =>
-        new AiError.AuthFailed({ provider: "lyria", subtype: "billing", raw: body }),
-    ),
-    Match.when(
-      (n) => n >= 500,
-      (n): AiError.AiError => new AiError.Unavailable({ provider: "lyria", status: n, raw: body }),
-    ),
-    Match.orElse(
-      (): AiError.AiError => new AiError.InvalidRequest({ provider: "lyria", raw: body }),
-    ),
-  )
+const httpStatusError = sharedHttpStatusError("lyria")
 
 const decodeBase64ToBytes = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
   Result.match(Encoding.decodeBase64(b64), {

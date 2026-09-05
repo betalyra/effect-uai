@@ -6,6 +6,7 @@ import {
   PiBrowser,
   PiCube,
   PiGraph,
+  PiImage,
   PiMagnifyingGlass,
   PiMusicNotes,
   PiStack,
@@ -29,6 +30,13 @@ const capabilities: ReadonlyArray<Capability> = [
       "Build streaming, tool-calling agents over **OpenAI**, **Anthropic**, **Gemini**, and **Mistral**.",
     href: "/language-models/",
     Icon: PiBrain,
+  },
+  {
+    title: "Image generation",
+    description:
+      "Generate images from a prompt, then **edit** them against references so a character stays itself.",
+    href: "/image-generation/",
+    Icon: PiImage,
   },
   {
     title: "Speech",
@@ -94,8 +102,8 @@ export default function CapabilitiesSection() {
           Build agents that do more than chat
         </h2>
         <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
-          Your agent can speak, listen, remember, search the web, and run code. Each capability is
-          one small interface, the same whichever provider you pick.
+          Your agent can speak, listen, draw, remember, search the web, and run code. Each
+          capability is one small interface, the same whichever provider you pick.
         </p>
       </div>
 

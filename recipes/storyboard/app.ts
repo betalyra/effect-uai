@@ -1,10 +1,11 @@
 /**
  * Composition + rendering for the storyboard recipe.
  *
- * Two providers, two keys: `OPENAI_API_KEY` for the images and
- * `LLM_API_KEY` for the director and the critic. Both Layers register the
- * generic tags, so `recipe.ts` never names either vendor; point
- * `--base-url` / `--llm-base-url` at a gateway and the same code runs there.
+ * Two models: one draws, one directs. Each is picked as a `provider:model`
+ * spec (`--model google:gemini-3.1-flash-image`, `--llm-model
+ * anthropic:claude-sonnet-5`), resolved to a Layer by `_shared/model.ts`,
+ * which also knows which env var holds the key. Both Layers register the
+ * generic tags, so `recipe.ts` never names a vendor.
  *
  * The comic itself is data: `story.json`, decoded here, `--story` to point
  * at another one. Each run writes to its own timestamped directory, so a
@@ -15,7 +16,6 @@
 import {
   Cause,
   Config,
-  DateTime,
   Effect,
   Encoding,
   FileSystem,
@@ -31,9 +31,14 @@ import {
   Stream,
 } from "effect"
 import type { ImageResolution, ImageSource } from "@effect-uai/core/Image"
-import { layer as openaiImageLayer } from "@effect-uai/openai/OpenAIImageGenerator"
-import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { flagValue } from "../_shared/argv.js"
+import {
+  imageGeneratorLayer,
+  languageModelLayer,
+  type ModelSpec,
+  parseModelSpec,
+} from "../_shared/model.js"
+import { runDir } from "../_shared/output.js"
 import { cyan, dim } from "../_shared/render.js"
 import { board, BoardEvent, type BoardConfig, isPanelReady, type Panel } from "./recipe.js"
 
@@ -64,8 +69,9 @@ const readStory = (file: string): Effect.Effect<Story, never, FileSystem.FileSys
   }).pipe(Effect.orDie)
 
 type Flags = {
-  readonly imageModel: string
-  readonly llmModel: string
+  /** Who draws, and who directs. Each is one `provider:model` spec. */
+  readonly image: ModelSpec
+  readonly llm: ModelSpec
   readonly resolution: ImageResolution
   readonly outDir: string
   readonly story: string
@@ -82,24 +88,22 @@ const intFlag = (name: string, argv: ReadonlyArray<string>, fallback: number): n
     onSome: (raw) => (Number.isFinite(Number(raw)) ? Number(raw) : fallback),
   })
 
-/** `2026-09-05T11-04-22`: sortable, filename-safe, and unique per run. */
-const stamp = Effect.map(DateTime.now, (now) =>
-  DateTime.formatIso(now).slice(0, 19).replaceAll(":", "-"),
-)
-
 const readFlags: Effect.Effect<Flags, never, Stdio.Stdio | Path.Path> = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio
   const path = yield* Path.Path
   const argv = yield* stdio.args
   const resolution = Option.getOrElse(flagValue("resolution", argv), () => "1K")
-  const out = yield* Option.match(flagValue("out", argv), {
-    onNone: () => Effect.map(stamp, (at) => `storyboard-out/${at}`),
-    onSome: Effect.succeed,
-  })
+  const out = yield* runDir("storyboard", argv)
   const here = path.dirname(new URL(import.meta.url).pathname)
   return {
-    imageModel: Option.getOrElse(flagValue("model", argv), () => "gpt-image-2"),
-    llmModel: Option.getOrElse(flagValue("llm-model", argv), () => "gpt-5.2"),
+    image: parseModelSpec(
+      Option.getOrElse(flagValue("model", argv), () => "gpt-image-2"),
+      "openai",
+    ),
+    llm: parseModelSpec(
+      Option.getOrElse(flagValue("llm-model", argv), () => "gpt-5.2"),
+      "openai",
+    ),
     resolution: isResolution(resolution) ? resolution : "1K",
     outDir: out,
     /** Beside the recipe unless pointed elsewhere, so it runs from any cwd. */
@@ -254,8 +258,8 @@ export const main = Effect.gen(function* () {
     style: story.style,
     sheets: story.sheets,
     beats,
-    imageModel: flags.imageModel,
-    llmModel: flags.llmModel,
+    imageModel: flags.image.model,
+    llmModel: flags.llm.model,
     resolution: flags.resolution,
     rounds: flags.rounds,
     concurrency: flags.concurrency,
@@ -265,7 +269,7 @@ export const main = Effect.gen(function* () {
     `\n${cyan("comic")}  ${beats.length} panels over ${
       new Set(beats.map((b) => b.page)).size
     } pages, ${story.sheets.length} reference sheets\n${dim(
-      `${flags.imageModel} at ${flags.resolution}, directed by ${flags.llmModel}`,
+      `${flags.image.provider} ${flags.image.model} at ${flags.resolution}, directed by ${flags.llm.provider} ${flags.llm.model}`,
     )}\n`,
   )
 
@@ -275,6 +279,14 @@ export const main = Effect.gen(function* () {
     Stream.tap(report(flags.outDir)),
     Stream.filter(isPanelReady),
     Stream.runCollect,
+    // Both providers are resolved from the specs above, so nothing outside
+    // this call knows which vendor drew the board.
+    Effect.provide(
+      Layer.mergeAll(
+        imageGeneratorLayer(flags.image, gatewayUrl("base-url")),
+        languageModelLayer(flags.llm, gatewayUrl("llm-base-url")),
+      ),
+    ),
   )
 
   yield* write(`\n${dim(`wrote ${panels.length} panels to ${flags.outDir}/`)}\n\n`)
@@ -288,25 +300,11 @@ export const main = Effect.gen(function* () {
   ),
 )
 
-const gatewayUrl = (flag: string) =>
-  Option.match(flagValue(flag, process.argv.slice(2)), {
-    onNone: () => ({}),
-    onSome: (url) => ({ baseUrl: url }),
-  })
+/** Escape hatch for a gateway the registry has no key for. */
+const gatewayUrl = (flag: string): string | undefined =>
+  Option.getOrUndefined(flagValue(flag, process.argv.slice(2)))
 
 export const appLayer = Layer.mergeAll(
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-      return openaiImageLayer({ apiKey, ...gatewayUrl("base-url") })
-    }),
-  ),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("LLM_API_KEY")
-      return responsesLayer({ apiKey, ...gatewayUrl("llm-base-url") })
-    }),
-  ),
   Logger.layer([Logger.consolePretty()]),
   Layer.unwrap(
     Effect.gen(function* () {

@@ -14,6 +14,11 @@ export type GoogleModel =
   | "gemini-2.5-pro"
   | "gemini-2.5-flash"
   | "gemini-2.5-flash-lite"
+  // Image models answer in a chat turn like any other, with pictures among
+  // the parts. See {@link GeminiImageModel}.
+  | "gemini-3.1-flash-image"
+  | "gemini-3.1-flash-lite-image"
+  | "gemini-3-pro-image"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
 

@@ -218,6 +218,10 @@
       "types": "./dist/streaming/Lines.d.mts",
       "import": "./dist/streaming/Lines.mjs"
     },
+    "./Multipart": {
+      "types": "./dist/streaming/Multipart.d.mts",
+      "import": "./dist/streaming/Multipart.mjs"
+    },
     "./SSE": {
       "types": "./dist/streaming/SSE.d.mts",
       "import": "./dist/streaming/SSE.mjs"

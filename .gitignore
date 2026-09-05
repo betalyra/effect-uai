@@ -51,6 +51,9 @@ coverage/
 *.wav
 *.pcm
 
+# Recipe image output
+storyboard-out/
+
 # Nix
 .corepack/
 .direnv/

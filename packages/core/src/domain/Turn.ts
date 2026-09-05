@@ -1,5 +1,6 @@
 import { Data, Effect, Result, Schema, Stream, pipe } from "effect"
 import * as StructuredFormat from "../structured-format/StructuredFormat.js"
+import type { ImageSource } from "./Image.js"
 import {
   type Annotation,
   HistoryItem,
@@ -9,6 +10,7 @@ import {
   ToolCall,
   ToolCallOutput,
   Usage,
+  isOutputImage,
   isOutputText,
   isReasoning,
   isRefusal,
@@ -49,6 +51,12 @@ export type Turn = typeof Turn.Type
  * `WebSearchCall`: lifecycle of a provider-executed web search within the
  * turn. Fires only when the turn grounds against search; absent otherwise.
  *
+ * `ImageOutput`: an image the model produced, whether it drew it as part
+ * of its turn or reached a hosted tool for it. `partialIndex` marks a
+ * preview frame from providers that stream them; the finished image
+ * arrives without one and is also on `TurnComplete.turn` as an
+ * `OutputImage` block.
+ *
  * `CitationAdded`: a citation attached to the answer, emitted incrementally
  * where the provider streams citations. Providers that bundle citations emit
  * none of these; their citations still arrive on `TurnComplete.turn`
@@ -65,6 +73,11 @@ export type TurnEvent = Data.TaggedEnum<{
     readonly status: "started" | "searching" | "completed"
     readonly query?: string
     readonly action?: "search" | "open_page" | "find_in_page"
+  }
+  ImageOutput: {
+    readonly image: ImageSource
+    /** Set only on a preview frame, counting from 0. Absent means finished. */
+    readonly partialIndex?: number
   }
   CitationAdded: { readonly annotation: Annotation }
   TurnComplete: { readonly turn: Turn }
@@ -108,6 +121,49 @@ export const assistantTexts = (turn: Turn): ReadonlyArray<string> =>
  * that want one concatenated string.
  */
 export const assistantText = (turn: Turn): string => assistantTexts(turn).join("")
+
+/**
+ * Every image the model produced this turn, in order. The counterpart to
+ * {@link assistantTexts}: each is an `ImageSource`, so it can be written
+ * to disk or passed straight back as an `input_image` on the next turn.
+ */
+export const assistantImages = (turn: Turn): ReadonlyArray<ImageSource> =>
+  assistantMessages(turn)
+    .flatMap((m) => m.content)
+    .filter(isOutputImage)
+    .map((b) => b.source)
+
+/**
+ * Rewrite assistant `output_image` blocks into a user message carrying
+ * the same pictures as `input_image`, so another provider can look at
+ * what this one drew.
+ *
+ * Only Gemini's wire has an assistant-role image part; every other
+ * adapter omits an `output_image` on replay and says so. Moving it to a
+ * user message is the conversion that makes it portable, and it is
+ * yours to make rather than the adapter's: "the assistant drew this" and
+ * "here is an image, look at it" are different claims, and silently
+ * swapping one for the other behind your back would be the wrong kind of
+ * helpful.
+ *
+ * Items with no images pass through untouched, and the new user message
+ * follows the assistant message it came from.
+ */
+export const imagesAsInput = (history: ReadonlyArray<HistoryItem>): ReadonlyArray<HistoryItem> =>
+  history.flatMap((item) => {
+    if (item.type !== "message" || item.role !== "assistant") return [item]
+    const images = item.content.filter(isOutputImage)
+    return images.length === 0
+      ? [item]
+      : [
+          item,
+          {
+            type: "message" as const,
+            role: "user" as const,
+            content: images.map((b) => ({ type: "input_image" as const, source: b.source })),
+          },
+        ]
+  })
 
 /**
  * Every citation annotation attached to the turn's assistant `output_text`

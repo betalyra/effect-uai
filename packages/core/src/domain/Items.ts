@@ -89,6 +89,22 @@ export const OutputText = Schema.Struct({
 export type OutputText = typeof OutputText.Type
 
 /**
+ * Model-emitted image. The counterpart to {@link InputImage}: same
+ * `ImageSource`, so an image the model drew goes straight back into the
+ * next turn with no conversion.
+ *
+ * How the pixels were produced is not modelled here. A provider may draw
+ * them itself, as an image part of the turn, or reach a hosted tool that
+ * draws them; either way the fact is the same, and enabling it is
+ * provider-specific.
+ */
+export const OutputImage = Schema.Struct({
+  type: Schema.Literal("output_image"),
+  source: ImageSource,
+})
+export type OutputImage = typeof OutputImage.Type
+
+/**
  * Model-emitted refusal. Distinct from `output_text`: the model declined
  * to answer rather than producing normal output. Pair with
  * `stop_reason: "refusal"` on the surrounding `Turn`. Streamed via the
@@ -100,7 +116,7 @@ export const Refusal = Schema.Struct({
 })
 export type Refusal = typeof Refusal.Type
 
-export const ContentBlock = Schema.Union([InputText, InputImage, OutputText, Refusal])
+export const ContentBlock = Schema.Union([InputText, InputImage, OutputText, OutputImage, Refusal])
 export type ContentBlock = typeof ContentBlock.Type
 
 export const Role = Schema.Literals(["user", "assistant", "system"])
@@ -176,6 +192,7 @@ export type HistoryItem = typeof HistoryItem.Type
 export const isInputText = Schema.is(InputText)
 export const isInputImage = Schema.is(InputImage)
 export const isOutputText = Schema.is(OutputText)
+export const isOutputImage = Schema.is(OutputImage)
 export const isRefusal = Schema.is(Refusal)
 
 export const isMessage = Schema.is(Message)

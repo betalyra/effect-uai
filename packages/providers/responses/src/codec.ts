@@ -1,4 +1,4 @@
-import { Encoding, Match, Option, Result, Schema, pipe } from "effect"
+import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
 import type { ContentBlock, InputImage, HistoryItem } from "@effect-uai/core/Items"
 import type { Turn } from "@effect-uai/core/Turn"
 
@@ -210,6 +210,9 @@ const contentBlockToInput = Match.type<ContentBlock>().pipe(
       image_url: imageSourceToUrl(b.source),
     }),
     output_text: (b) => ({ type: "output_text", text: b.text }),
+    // No assistant-image content type here. Dropped rather than relocated
+    // onto a user message, which is the caller's call: `Turn.imagesAsInput`.
+    output_image: () => undefined,
     refusal: (b) => ({ type: "refusal", refusal: b.text }),
   }),
 )
@@ -221,7 +224,10 @@ const itemToInput = (item: HistoryItem): Record<string, unknown> =>
       message: (m) => ({
         type: "message",
         role: m.role,
-        content: m.content.map(contentBlockToInput),
+        content: Arr.filterMap(m.content, (b) => {
+          const encoded = contentBlockToInput(b)
+          return encoded === undefined ? Result.failVoid : Result.succeed(encoded)
+        }),
       }),
       function_call: (f) => ({
         type: "function_call",

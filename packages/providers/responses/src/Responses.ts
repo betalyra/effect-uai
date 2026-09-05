@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Match, Option, Redacted, Result, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"
 import {
   type CommonRequest,
@@ -330,6 +331,12 @@ const buildNativeStream = (cfg: Config) => {
             onSuccess: (wire) => Effect.succeed(wire),
           },
         )
+        yield* Capabilities.warnDroppedBlocks(request.history, "output_image", {
+          provider: "responses",
+          capability: "output_image",
+          reason:
+            "Assistant messages carry no image on this wire; images here come from the `image_generation` tool. Use `Turn.imagesAsInput` to resend one as user content.",
+        })
         const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.bearerToken(cfg.apiKey),
           HttpClientRequest.bodyJsonUnsafe(buildBody(request, providerToolWire, cfg)),

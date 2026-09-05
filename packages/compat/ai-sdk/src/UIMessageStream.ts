@@ -177,6 +177,9 @@ const step = (s: State, ev: Emission): Step =>
       // part; the citations still arrive on `TurnComplete.turn`.
       WebSearchCall: (): Step => [s, []],
       CitationAdded: (): Step => [s, []],
+      // A model-drawn image reaches the UI on `TurnComplete.turn` as an
+      // `output_image` block; the incremental event has no part to map to.
+      ImageOutput: (): Step => [s, []],
       TurnComplete: (e): Step => {
         const closing: ReadonlyArray<Part> = [
           ...(s.textId !== null ? [{ type: "text-end", id: s.textId } as const] : []),

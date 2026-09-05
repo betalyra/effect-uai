@@ -1,5 +1,7 @@
 import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
 import * as AiError from "@effect-uai/core/AiError"
+import type { ImageSource } from "@effect-uai/core/Image"
+import { imageBase64 } from "@effect-uai/core/Image"
 import type {
   ContentBlock,
   ToolCall,
@@ -44,8 +46,23 @@ const FunctionCallPart = Schema.Struct({
   thoughtSignature: Schema.optional(Schema.String),
 })
 
-const Part = Schema.Union([TextPart, FunctionCallPart])
+/**
+ * An image the model drew, as a part of its own turn. Only image models
+ * emit these, and only when the request asked for the IMAGE modality.
+ * `thought: true` marks an interim image drawn while planning, which is
+ * not the answer and is dropped the same way thought text is.
+ */
+const InlineDataPart = Schema.Struct({
+  inlineData: Schema.Struct({
+    mimeType: Schema.optional(Schema.String),
+    data: Schema.String,
+  }),
+  thought: Schema.optional(Schema.Boolean),
+})
+
+const Part = Schema.Union([TextPart, FunctionCallPart, InlineDataPart])
 type WireFunctionCallPart = typeof FunctionCallPart.Type
+type WireInlineDataPart = typeof InlineDataPart.Type
 
 const Content = Schema.Struct({
   role: Schema.optional(Schema.String),
@@ -181,11 +198,19 @@ export type ThinkingConfig = {
   readonly thinkingBudget: number
 }
 
+export type ImageConfig = {
+  readonly aspectRatio?: string
+  readonly imageSize?: string
+}
+
 export type GenerationConfig = {
   readonly temperature?: number
   readonly maxOutputTokens?: number
   readonly topP?: number
   readonly thinkingConfig?: ThinkingConfig
+  /** Image models need `["TEXT", "IMAGE"]` or they answer in prose only. */
+  readonly responseModalities?: ReadonlyArray<"TEXT" | "IMAGE">
+  readonly imageConfig?: ImageConfig
   /** Set together with `responseJsonSchema` to constrain output to JSON. */
   readonly responseMimeType?: string
   /** JSON Schema constraint on the output. */
@@ -205,6 +230,7 @@ const blockText = Match.type<ContentBlock>().pipe(
     input_text: (b) => b.text,
     input_image: () => "",
     output_text: (b) => b.text,
+    output_image: () => "",
     refusal: (b) => b.text,
   }),
 )
@@ -233,6 +259,9 @@ const blockToParts = Match.type<ContentBlock>().pipe(
     input_text: (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
     input_image: (b): ReadonlyArray<RequestPart> => imageSourceToParts(b.source),
     output_text: (b): ReadonlyArray<RequestPart> => (b.text.length === 0 ? [] : [{ text: b.text }]),
+    // An image the model drew goes back as a model-role `inlineData` part,
+    // which is how a multi-turn edit keeps its subject.
+    output_image: (b): ReadonlyArray<RequestPart> => imageSourceToParts(b.source),
     // Refusals are assistant-side content; they don't round-trip into Gemini's
     // request body as parts. Skip.
     refusal: (): ReadonlyArray<RequestPart> => [],
@@ -572,6 +601,8 @@ export type AccumulatedFunctionCall = {
 export type Accumulator = {
   readonly text: string
   readonly reasoning: string
+  /** Images the model drew, in emission order. Image models only. */
+  readonly images: ReadonlyArray<ImageSource>
   readonly functionCalls: ReadonlyArray<AccumulatedFunctionCall>
   /** Grounding citations, accumulated (de-duped by url) across chunks. */
   readonly annotations: ReadonlyArray<Annotation>
@@ -588,6 +619,7 @@ export type Accumulator = {
 export const emptyAccumulator: Accumulator = {
   text: "",
   reasoning: "",
+  images: [],
   functionCalls: [],
   annotations: [],
   finishReason: Option.none(),
@@ -602,6 +634,7 @@ export const emptyAccumulator: Accumulator = {
 export type ChunkPart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "reasoning"; readonly text: string }
+  | { readonly kind: "image"; readonly source: ImageSource }
   | {
       readonly kind: "function_call"
       readonly id: Option.Option<string>
@@ -616,10 +649,19 @@ export type ChunkResult = {
   readonly finished: boolean
 }
 
-const isTextPart = (p: typeof Part.Type): p is typeof TextPart.Type => "text" in p
-
 const textToChunkParts = (p: typeof TextPart.Type): ReadonlyArray<ChunkPart> =>
   p.text.length === 0 ? [] : [{ kind: p.thought === true ? "reasoning" : "text", text: p.text }]
+
+/** Interim images drawn while planning are dropped, as thought text is. */
+const inlineDataToChunkParts = (p: WireInlineDataPart): ReadonlyArray<ChunkPart> =>
+  p.thought === true
+    ? []
+    : [
+        {
+          kind: "image",
+          source: imageBase64(p.inlineData.data, p.inlineData.mimeType ?? "image/png"),
+        },
+      ]
 
 const functionCallToChunkParts = (p: WireFunctionCallPart): ReadonlyArray<ChunkPart> => [
   {
@@ -631,8 +673,15 @@ const functionCallToChunkParts = (p: WireFunctionCallPart): ReadonlyArray<ChunkP
   },
 ]
 
-const partToChunkParts = (p: typeof Part.Type): ReadonlyArray<ChunkPart> =>
-  isTextPart(p) ? textToChunkParts(p) : functionCallToChunkParts(p)
+/** Parts are distinguished by which key they carry, not by a discriminator. */
+const partToChunkParts: (p: typeof Part.Type) => ReadonlyArray<ChunkPart> = Match.type<
+  typeof Part.Type
+>().pipe(
+  Match.when({ text: Match.string }, textToChunkParts),
+  Match.when({ inlineData: Match.defined }, inlineDataToChunkParts),
+  Match.when({ functionCall: Match.defined }, functionCallToChunkParts),
+  Match.exhaustive,
+)
 
 const chunkParts = (chunk: WireChunk): ReadonlyArray<ChunkPart> =>
   pipe(chunk.candidates?.[0]?.content?.parts ?? [], Arr.flatMap(partToChunkParts))
@@ -642,6 +691,12 @@ const sumStrings = (parts: ReadonlyArray<ChunkPart>, kind: "text" | "reasoning")
     parts,
     Arr.filterMap((p) => (p.kind === kind ? Result.succeed(p.text) : Result.failVoid)),
   ).join("")
+
+const collectImages = (parts: ReadonlyArray<ChunkPart>): ReadonlyArray<ImageSource> =>
+  pipe(
+    parts,
+    Arr.filterMap((p) => (p.kind === "image" ? Result.succeed(p.source) : Result.failVoid)),
+  )
 
 const collectFunctionCalls = (
   parts: ReadonlyArray<ChunkPart>,
@@ -725,6 +780,7 @@ export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => 
     accumulator: {
       text: acc.text + sumStrings(parts, "text"),
       reasoning: acc.reasoning + sumStrings(parts, "reasoning"),
+      images: Arr.appendAll(acc.images, collectImages(parts)),
       functionCalls: appendFunctionCalls(acc.functionCalls, collectFunctionCalls(parts)),
       annotations: mergeAnnotations(
         acc.annotations,
@@ -739,22 +795,25 @@ export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => 
 const reasoningItems = (acc: Accumulator): ReadonlyArray<HistoryItem> =>
   acc.reasoning.length > 0 ? [{ type: "reasoning", summary: acc.reasoning }] : []
 
-const assistantMessageItems = (acc: Accumulator): ReadonlyArray<HistoryItem> =>
-  acc.text.length === 0
-    ? []
-    : [
-        {
-          type: "message",
-          role: "assistant",
-          content: [
-            {
-              type: "output_text",
-              text: acc.text,
-              ...(acc.annotations.length > 0 && { annotations: acc.annotations }),
-            },
-          ],
-        },
-      ]
+/**
+ * Image models interleave text and image parts, and often answer with an
+ * image and no prose at all, so the message exists when either is present.
+ */
+const assistantMessageItems = (acc: Accumulator): ReadonlyArray<HistoryItem> => {
+  const content: ReadonlyArray<ContentBlock> = [
+    ...(acc.text.length === 0
+      ? []
+      : [
+          {
+            type: "output_text" as const,
+            text: acc.text,
+            ...(acc.annotations.length > 0 && { annotations: acc.annotations }),
+          },
+        ]),
+    ...acc.images.map((source) => ({ type: "output_image" as const, source })),
+  ]
+  return content.length === 0 ? [] : [{ type: "message", role: "assistant", content }]
+}
 
 const functionCallItems = (acc: Accumulator): ReadonlyArray<HistoryItem> =>
   pipe(

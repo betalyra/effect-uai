@@ -1,4 +1,4 @@
-import { Array as Arr, Effect, Encoding, Match, Option } from "effect"
+import { Array as Arr, Effect, Encoding, Match, Option, Result } from "effect"
 import type { ContentBlock, HistoryItem, InputImage } from "@effect-uai/core/Items"
 
 // The streaming decoder, tool encoding, and terminal-turn assembly are the
@@ -48,13 +48,17 @@ const blockToPart = Match.type<ContentBlock>().pipe(
     refusal: (b) => ({ type: "text", text: b.text }),
     // Bare string, not `{ url }`: the Mistral divergence from OpenAI.
     input_image: (b) => ({ type: "image_url", image_url: imageSourceToUrl(b.source) }),
+    // No assistant-image part here. Dropped rather than relocated onto a
+    // user message, which is the caller's call: `Turn.imagesAsInput`.
+    output_image: () => undefined,
   }),
 )
 
 const isTextBlock = (b: ContentBlock): boolean =>
   b.type === "input_text" || b.type === "output_text" || b.type === "refusal"
 
-const textOfBlock = (b: ContentBlock): string => (b.type === "input_image" ? "" : b.text)
+const textOfBlock = (b: ContentBlock): string =>
+  b.type === "input_image" || b.type === "output_image" ? "" : b.text
 
 /**
  * Collapse a message's content to a plain string when it is text-only
@@ -64,7 +68,12 @@ const textOfBlock = (b: ContentBlock): string => (b.type === "input_image" ? "" 
 const encodeContent = (
   content: ReadonlyArray<ContentBlock>,
 ): string | ReadonlyArray<Record<string, unknown>> =>
-  Arr.every(content, isTextBlock) ? content.map(textOfBlock).join("") : content.map(blockToPart)
+  Arr.every(content, isTextBlock)
+    ? content.map(textOfBlock).join("")
+    : Arr.filterMap(content, (b) => {
+        const part = blockToPart(b)
+        return part === undefined ? Result.failVoid : Result.succeed(part)
+      })
 
 const toolCallWire = (call_id: string, name: string, args: string): Record<string, unknown> => ({
   id: call_id,

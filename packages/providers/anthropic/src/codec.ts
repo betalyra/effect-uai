@@ -112,6 +112,7 @@ const blockText = Match.type<Items.ContentBlock>().pipe(
     input_text: (b) => b.text,
     input_image: () => "",
     output_text: (b) => b.text,
+    output_image: () => "",
     refusal: (b) => b.text,
   }),
 )
@@ -146,6 +147,9 @@ const userContentBlock = (
         Result.succeed({ type: "image" as const, source: imageSourceToWire(b.source) }),
       // Assistant content; never appears on a user message in practice. Skip.
       output_text: () => Result.failVoid,
+      // No assistant-image block here either. Dropped rather than relocated
+      // onto a user message, which is the caller's call: `Turn.imagesAsInput`.
+      output_image: () => Result.failVoid,
       refusal: () => Result.failVoid,
     }),
   )

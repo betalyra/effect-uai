@@ -1,0 +1,87 @@
+{
+  "scenes": [
+    {
+      "id": "roof_dusk",
+      "description": "Empty tenement rooftop at dusk before the rain: the aerial forest, dented dishes, sagging lines, low parapet and stairhead wall are slick with reflected magenta and cyan ad-light rising through smog below. The sodium lamp is a small warm anchor near the stairhead, while the sky above is dim blue and still open. Wide three-quarter establishing view, no people, no moving props.",
+      "sheets": ["roof"]
+    },
+    {
+      "id": "neon_canyon_dusk",
+      "description": "Empty vertical air above the tenement canyon at dusk: the roofline and advertising screens fall far below into smog, with layered haze swallowing the neon as the view climbs. Camera aimed steeply upward through the open shaft between buildings; no people, no moving props.",
+      "sheets": ["roof"]
+    },
+    {
+      "id": "cloud_boundary_sun",
+      "description": "Empty cloud boundary just above the city smog: a hard-edged flat cloud floor fills the top of the frame, with warm sunlight glowing beyond it and colder haze underneath. Low camera looking up from just below the cloud layer; no people, no moving props.",
+      "sheets": ["above"]
+    },
+    {
+      "id": "above_cloud_sun",
+      "description": "Empty world above the smog layer in still sunlight: a flat hard-edged cloud floor stretches to the horizon beneath a low sun and pale open sky, with no city, no screens, and no man-made objects. Wide calm view, no people, no moving props.",
+      "sheets": ["above"]
+    },
+    {
+      "id": "roof_night_rain",
+      "description": "Empty tenement rooftop later at night as rain starts: the same aerials, dishes, laundry lines, low parapet and stairhead lamp are darker and wetter than at dusk, with raindrops stippling puddles and neon reflections trembling across the roof. Wide three-quarter establishing view, no people, no moving props.",
+      "sheets": ["roof"]
+    }
+  ],
+  "shots": [
+    {
+      "panel": 1,
+      "prompt": "Wide establishing action on the dusk rooftop. Nix crouches low among the aerials, tying the last ribbon onto the kite on the wet roof beside them. The kite is nearly as tall as Nix while it lies angled through the aerial forest. Ad-light glows up through the smog below, and the mood is tense and hopeful.",
+      "sheets": ["nix", "kite"],
+      "aspect": "3:2",
+      "scene": "roof_dusk"
+    },
+    {
+      "panel": 2,
+      "prompt": "Low angle with speed lines down the length of the roof. Nix sprints hard toward the far parapet, poncho snapping backward, one hand gripping the unwinding wire spool. The kite, nearly as wide as Nix is tall, is lifting off behind them, its tail streaming and its line pulling tight. Keep the camera near roof level so the run feels fast.",
+      "sheets": ["nix", "kite"],
+      "aspect": "3:2",
+      "scene": "roof_dusk"
+    },
+    {
+      "panel": 3,
+      "prompt": "Low angle from behind Nix's shoulder, looking steeply up past their hands clamped on the wire spool. Nix is large in the near foreground only as shoulder, arms and hands; the kite is far above them, small and bright over the canyon, with the wire line stretching up into the sky. No Warden in this shot.",
+      "sheets": ["nix", "kite"],
+      "aspect": "2:3",
+      "scene": "roof_dusk"
+    },
+    {
+      "panel": 4,
+      "prompt": "Close, sudden collision of events at Nix's eye level. The Warden drone drops into frame directly in front of Nix, torso-sized compared with them, its blue lens flaring hard onto their face. At the same instant the wire parts: the spool is already tumbling out of Nix's hands, and their fingers are closing on empty air while the broken line whips upward out of frame.",
+      "sheets": ["nix", "warden"],
+      "aspect": "1:1",
+      "scene": "roof_dusk"
+    },
+    {
+      "panel": 5,
+      "prompt": "Very wide vertical shot looking up the neon canyon. The freed kite tumbles upward with loose wire trailing beneath it, while the Warden climbs after it, much smaller than the kite's span. Both are shrinking into the haze as the advertising screens and rooftops fall far below in the composition. Nix is not in this panel.",
+      "sheets": ["kite", "warden"],
+      "aspect": "2:3",
+      "scene": "neon_canyon_dusk"
+    },
+    {
+      "panel": 6,
+      "prompt": "Wide, low view from just under the cloud floor. The kite bursts through into sunlight above, caught mid-tear as hard-edged cloud chunks open around it; the Warden is right on its tail, much smaller than the kite, rotors angled hard and blue lens still burning. No people in this panel.",
+      "sheets": ["kite", "warden"],
+      "aspect": "3:2",
+      "scene": "cloud_boundary_sun"
+    },
+    {
+      "panel": 7,
+      "prompt": "Close in still sunlight above the cloud floor. The Warden drifts alongside the kite near enough to touch it; the kite's span is several times wider than the drone. The drone's rotors idle instead of pursuing, its lens is dark for the first time, and one ribbon of the kite's tail lies across its hull without being shaken off. Only the Warden and the kite are in this panel, no people.",
+      "sheets": ["warden", "kite"],
+      "aspect": "1:1",
+      "scene": "above_cloud_sun"
+    },
+    {
+      "panel": 8,
+      "prompt": "Wide shot back on the rooftop at night as rain starts. Nix turns away from the parapet with empty hands while, directly in front of them, the Warden settles onto the wet parapet and opens its claw to set the kite down mid-motion. The kite is nearly as tall as Nix, and the Warden is torso-sized beside them; the Warden lens is a low warm glow, not blue. Rain, puddles and neon reflections carry the quiet return.",
+      "sheets": ["nix", "warden", "kite"],
+      "aspect": "3:2",
+      "scene": "roof_night_rain"
+    }
+  ]
+}

@@ -28,6 +28,8 @@ import {
   PiPlugsConnected,
   PiPulse,
   PiQuotes,
+  PiImagesSquare,
+  PiSquaresFour,
   PiRadio,
   PiRanking,
   PiShieldCheck,
@@ -54,6 +56,7 @@ type Category =
   | "retrieval"
   | "speech"
   | "music"
+  | "images"
   | "sandboxes"
   | "browser"
 
@@ -76,6 +79,7 @@ const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "retrieval",
   "speech",
   "music",
+  "images",
   "sandboxes",
   "browser",
 ]
@@ -90,6 +94,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   retrieval: "Retrieval",
   speech: "Speech",
   music: "Music",
+  images: "Images",
   sandboxes: "Sandboxes",
   browser: "Browser",
 }
@@ -104,6 +109,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   retrieval: PiFunnel,
   speech: PiWaveform,
   music: PiMusicNotes,
+  images: PiImagesSquare,
   sandboxes: PiCube,
   browser: PiBrowser,
 }
@@ -243,6 +249,14 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/radio-station/",
     Icon: PiRadio,
     category: "music",
+  },
+  {
+    title: "Storyboard",
+    description:
+      "**Tell a story in pictures.** Your characters stay themselves across every panel, so eight images read as one comic instead of eight strangers.",
+    href: "/recipes/storyboard/",
+    Icon: PiSquaresFour,
+    category: "images",
   },
   {
     title: "Retrieve and rerank",

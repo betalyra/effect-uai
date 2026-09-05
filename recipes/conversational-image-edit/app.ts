@@ -50,6 +50,11 @@ import { type Draw, SessionEvent, session } from "./recipe.js"
 
 type Flags = {
   readonly image: ModelSpec
+  /**
+   * The drawing model's edit endpoint, where the provider has a separate
+   * one. Bare id, same provider and Layer as `image`.
+   */
+  readonly editModel: Option.Option<string>
   readonly resolution: ImageResolution
   /** 0 asks for no previews at all, whatever the provider can do. */
   readonly previews: 0 | 1 | 2 | 3
@@ -70,6 +75,7 @@ const readFlags: Effect.Effect<Flags, never, Stdio.Stdio> = Effect.gen(function*
       Option.getOrElse(flagValue("model", argv), () => "gpt-image-2"),
       "openai",
     ),
+    editModel: flagValue("edit-model", argv),
     resolution: isResolution(resolution) ? resolution : "1K",
     previews: isPreviewCount(previews) ? previews : 2,
     outDir: yield* runDir("conversational-image-edit", argv),
@@ -185,14 +191,25 @@ const render = (
 // choice is made once here, next to the Layer that decides the same thing.
 // ---------------------------------------------------------------------------
 
-type Drawing = { readonly model: string; readonly resolution: ImageResolution }
+type Drawing = {
+  readonly model: string
+  /** Turn 1 draws, every turn after edits, and some providers split those. */
+  readonly editModel: string
+  readonly resolution: ImageResolution
+}
 
 const previewing =
   (cfg: Drawing, partialImages: 1 | 2 | 3): Draw<ImageGenerator | ImageStreaming> =>
   (prompt, references) =>
     references.length === 0
-      ? streamGeneration({ ...cfg, prompt, partialImages })
-      : streamEdit({ ...cfg, prompt, partialImages, images: references })
+      ? streamGeneration({ model: cfg.model, resolution: cfg.resolution, prompt, partialImages })
+      : streamEdit({
+          model: cfg.editModel,
+          resolution: cfg.resolution,
+          prompt,
+          partialImages,
+          images: references,
+        })
 
 /** One `Complete` and nothing before it, which the session reads the same way. */
 const whole =
@@ -201,8 +218,13 @@ const whole =
     Stream.fromEffect(
       Effect.map(
         references.length === 0
-          ? generate({ ...cfg, prompt })
-          : edit({ ...cfg, prompt, images: references }),
+          ? generate({ model: cfg.model, resolution: cfg.resolution, prompt })
+          : edit({
+              model: cfg.editModel,
+              resolution: cfg.resolution,
+              prompt,
+              images: references,
+            }),
         (response) => ImageStreamEvent.Complete(response),
       ),
     )
@@ -234,7 +256,11 @@ export const main = Effect.gen(function* () {
   const terminal = yield* Terminal.Terminal
   const columns = yield* terminal.columns
   const paint = yield* inlineImage(Math.min(60, Math.max(20, Math.floor(columns / 2))))
-  const cfg: Drawing = { model: flags.image.model, resolution: flags.resolution }
+  const cfg: Drawing = {
+    model: flags.image.model,
+    editModel: Option.getOrElse(flags.editModel, () => flags.image.model),
+    resolution: flags.resolution,
+  }
   // Previews need both halves: a provider that emits them and a caller
   // who wants them. `--previews 0` is the way past a gateway that accepts
   // the request and then does not stream.

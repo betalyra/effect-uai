@@ -10,6 +10,7 @@ const providers: ReadonlyArray<Provider> = [
   { name: "Anthropic", href: "/providers/anthropic/" },
   { name: "Google", href: "/providers/gemini/" },
   { name: "Mistral", href: "/providers/mistral/" },
+  { name: "fal", href: "/image-generation/providers/fal/" },
   { name: "ElevenLabs", href: "/speech/providers/elevenlabs/" },
   { name: "Inworld", href: "/speech/providers/inworld/" },
   { name: "Jina", href: "/embeddings/providers/jina/" },

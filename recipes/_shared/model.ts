@@ -13,6 +13,7 @@
 import { Config, Data, Effect, Layer, type Redacted } from "effect"
 import type { HttpClient } from "effect/unstable/http"
 import { layer as anthropicLayer } from "@effect-uai/anthropic/Anthropic"
+import { layer as falImageLayer } from "@effect-uai/fal/FalImageGenerator"
 import { layer as geminiLayer } from "@effect-uai/google/Gemini"
 import { layer as geminiImageLayer } from "@effect-uai/google/GeminiImageGenerator"
 import { layer as mistralLayer } from "@effect-uai/mistral/Mistral"
@@ -170,6 +171,12 @@ const imageEntries: Record<string, Entry<ImageLayer>> = {
   google: {
     layer: (apiKey, baseUrl) => geminiImageLayer({ apiKey, ...at(baseUrl) }),
     apiKey: key("GOOGLE_API_KEY"),
+  },
+  // The model here is an endpoint path, so it carries slashes:
+  // `--model fal:bytedance/seedream/v5/pro/text-to-image`.
+  fal: {
+    layer: (apiKey, baseUrl) => falImageLayer({ apiKey, ...at(baseUrl) }),
+    apiKey: key("FAL_API_KEY"),
   },
 }
 

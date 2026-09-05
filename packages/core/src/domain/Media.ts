@@ -31,6 +31,8 @@
  * they're a separate union (`FileRef`) added when needed.
  */
 
+import { Result } from "effect"
+
 /**
  * Watermark kind a provider embedded in generated media. Shared across
  * modalities (audio, image). No provider exposes metadata beyond the
@@ -66,6 +68,34 @@ export type AspectRatio =
   | "1:8"
   | "8:1"
   | (string & {})
+
+/** Exact pixels, for adapters whose wire takes dimensions rather than a ratio. */
+export type Dimensions = {
+  readonly width: number
+  readonly height: number
+}
+
+const positive = (n: number | undefined): n is number =>
+  n !== undefined && Number.isFinite(n) && n > 0
+
+/**
+ * Read `"W:H"` as a pair. Fails when the ratio is not arithmetic, which
+ * the `(string & {})` tail on {@link AspectRatio} lets through: a caller
+ * asking for `"cinematic"` gets a message rather than NaN pixels. The
+ * failure is a plain string so this file stays free of provider
+ * vocabulary; each adapter wraps it in its own error.
+ */
+export const parseAspectRatio = (
+  ratio: AspectRatio,
+): Result.Result<readonly [number, number], string> => {
+  const [w, h, ...rest] = ratio.split(":").map(Number)
+  return positive(w) && positive(h) && rest.length === 0
+    ? Result.succeed([w, h] as const)
+    : Result.fail(`aspectRatio "${ratio}" must read "W:H" with positive numbers.`)
+}
+
+/** Several image endpoints require both edges to be multiples of 16. */
+export const round16 = (n: number): number => Math.max(16, Math.round(n / 16) * 16)
 
 export type MediaUrl<M extends string = string> = {
   readonly _tag: "url"

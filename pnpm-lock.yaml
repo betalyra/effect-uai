@@ -218,6 +218,18 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  packages/providers/fal:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   packages/providers/firecrawl:
     devDependencies:
       '@effect-uai/core':
@@ -423,6 +435,9 @@ importers:
       '@effect-uai/exa':
         specifier: workspace:*
         version: link:../packages/providers/exa
+      '@effect-uai/fal':
+        specifier: workspace:*
+        version: link:../packages/providers/fal
       '@effect-uai/firecrawl':
         specifier: workspace:*
         version: link:../packages/providers/firecrawl

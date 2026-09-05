@@ -124,3 +124,6 @@ degrades: fewer images is a different result, not a smaller one.
   including edits and partial-image streaming.
 - [Google](/image-generation/providers/google/) — Nano Banana 2, Lite
   and Pro. Faster and cheaper; no streaming.
+- [fal](/image-generation/providers/fal/) — FLUX.2, Seedream 5, Qwen
+  Image and the open-weights field, including the sub-second tier. One
+  key for models you cannot reach directly; no streaming.

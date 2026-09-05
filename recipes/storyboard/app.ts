@@ -71,6 +71,11 @@ const readStory = (file: string): Effect.Effect<Story, never, FileSystem.FileSys
 type Flags = {
   /** Who draws, and who directs. Each is one `provider:model` spec. */
   readonly image: ModelSpec
+  /**
+   * The drawing model's edit endpoint, where the provider has a separate
+   * one. Bare id, same provider and Layer as `image`.
+   */
+  readonly editModel: Option.Option<string>
   readonly llm: ModelSpec
   readonly resolution: ImageResolution
   readonly outDir: string
@@ -100,6 +105,7 @@ const readFlags: Effect.Effect<Flags, never, Stdio.Stdio | Path.Path> = Effect.g
       Option.getOrElse(flagValue("model", argv), () => "gpt-image-2"),
       "openai",
     ),
+    editModel: flagValue("edit-model", argv),
     llm: parseModelSpec(
       Option.getOrElse(flagValue("llm-model", argv), () => "gpt-5.2"),
       "openai",
@@ -259,6 +265,7 @@ export const main = Effect.gen(function* () {
     sheets: story.sheets,
     beats,
     imageModel: flags.image.model,
+    ...(Option.isSome(flags.editModel) && { editModel: flags.editModel.value }),
     llmModel: flags.llm.model,
     resolution: flags.resolution,
     rounds: flags.rounds,

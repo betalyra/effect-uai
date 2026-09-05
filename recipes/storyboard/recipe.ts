@@ -52,6 +52,12 @@ export type BoardConfig = {
   readonly sheets: ReadonlyArray<Sheet>
   readonly beats: ReadonlyArray<Beat>
   readonly imageModel: string
+  /**
+   * Endpoint for edits, where the provider splits them from generation.
+   * fal does: `fal-ai/flux/schnell` draws, `bytedance/seedream/v4.5/edit`
+   * edits. Defaults to {@link imageModel}, which is right everywhere else.
+   */
+  readonly editModel?: string
   readonly llmModel: string
   /** Panel shape is the director's, per shot. This is the tier both stages use. */
   readonly resolution?: ImageResolution
@@ -82,6 +88,8 @@ const timed = <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<readonly [A
 // ---------------------------------------------------------------------------
 // Stage 1: cast
 // ---------------------------------------------------------------------------
+
+const editModel = (cfg: BoardConfig): string => cfg.editModel ?? cfg.imageModel
 
 /** Neutral and plain-backgrounded: a sheet is a reference, not a shot. */
 const sheetOf = (
@@ -278,12 +286,13 @@ export const stage = (
   const refs = sheetsFor(sheets, scene.sheets)
   const request = {
     prompt,
-    model: cfg.imageModel,
     aspectRatio: "3:2" as const,
     ...(cfg.resolution !== undefined && { resolution: cfg.resolution }),
   }
   return Effect.map(
-    refs.length === 0 ? generate(request) : edit({ ...request, images: refs }),
+    refs.length === 0
+      ? generate({ ...request, model: cfg.imageModel })
+      : edit({ ...request, model: editModel(cfg), images: refs }),
     (response) => [scene.id, response.images[0]!.image] as const,
   )
 }
@@ -361,7 +370,7 @@ export const render = (
         Arr.map(refs, ([label]) => label),
         note,
       ),
-      model: cfg.imageModel,
+      model: editModel(cfg),
       images: Arr.map(refs, ([, image]) => image),
       aspectRatio: spec.aspect,
       ...(cfg.resolution !== undefined && { resolution: cfg.resolution }),

@@ -1,0 +1,59 @@
+{
+  "style": "Style: full colour cyberpunk manga panel art in the vein of late-80s seinen anime cels. Confident even ink outlines over flat cel shading, one hard-edged shadow shape per surface rather than rendered gradients, a limited palette per panel under a single dominant key light, deadpan faces. Read machinery, architecture, weather and sky alike in large simple blocked shapes with hard edges: backgrounds carry mood, not inventory. Drawn cel art, not a photograph and not a 3D render: no photorealism, no airbrushed gradients, no lens effects, no fine surface texture, no clutter of small details. No text, no lettering, no speech bubbles, no sound effects.",
+  "sheets": [
+    {
+      "id": "nix",
+      "description": "Character sheet. Nix, a scrawny teenage rooftop scavenger, about the height of a doorknob short of an adult. A patched oversized rain poncho in faded orange, cracked welding goggles pushed up on the forehead, black hair shaved at one side, one boot wrapped in silver tape, a spool of copper wire clipped to the belt. Standing front view, plain white background."
+    },
+    {
+      "id": "kite",
+      "description": "Prop sheet. A hand-made kite as wide as a teenager is tall, built from a silver emergency blanket stretched over thin antenna rods, seams closed with mismatched tape, a long tail of ribbon scraps and little green circuit-board offcuts. Plain white background."
+    },
+    {
+      "id": "warden",
+      "description": "Character sheet. A Warden surveillance drone, matte black and about the size of a teenager's torso: a smooth rounded lozenge body, four ducted rotors on stubby arms, a white stencilled serial on the flank, a small folded manipulator claw tucked underneath, and one large scanning lens on the front, lit blue from within and the only lit part of it, so it is the only thing about the drone that a reader can watch change. Front view, plain white background."
+    },
+    {
+      "id": "roof",
+      "description": "Location sheet. The roof of a stacked tenement in a neon canyon at night, wet with rain: a forest of aerials and dented satellite dishes, sagging laundry lines, a low parapet, puddles holding the light. Beyond the parapet the canyon drops away into smog. Deep blue-black darkness, lit only by enormous magenta and cyan advertising screens glowing up through the haze and one warm sodium lamp on the stairhead wall. Wide three-quarter view, no people."
+    },
+    {
+      "id": "above",
+      "description": "Location sheet. The world above the smog layer, which the city below has never seen: an unbroken floor of cloud stretching to the horizon, a low sun just clear of it, wide open sky, no buildings, no screens, nothing man-made anywhere. Warm gold against pale blue. The clouds are drawn as simple blocked shapes with hard edges and flat cel shading, exactly like the machinery elsewhere in the book, never as soft photographic cloud. Wide view, no people."
+    }
+  ],
+  "beats": [
+    {
+      "page": 1,
+      "shot": "Wide establishing. Dusk on the roof, ad-light glowing up through the smog below. Nix crouches among the aerials knotting the last ribbon onto the kite, which is nearly as tall as they are."
+    },
+    {
+      "page": 1,
+      "shot": "Low angle, speed lines. Nix runs the length of the roof, poncho snapping, the kite lifting off behind them and the wire spool unwinding fast in their hand."
+    },
+    {
+      "page": 1,
+      "shot": "Low angle from behind Nix's shoulder, looking steeply up past their hands on the spool. The kite is small and bright high over the canyon, the one thing in that sky that is not a machine."
+    },
+    {
+      "page": 1,
+      "shot": "Close. A Warden drone drops into frame at Nix's eye level, torso-sized, its blue lens flaring hard onto them. In the same instant the wire parts: the spool is already out of their hands and tumbling, their fingers closing on nothing."
+    },
+    {
+      "page": 2,
+      "shot": "Very wide, vertical. The freed kite tumbles upward with its wire trailing loose beneath it, the Warden climbing after it, both shrinking, the advertising screens sliding away below into haze. Nix is not in this panel."
+    },
+    {
+      "page": 2,
+      "shot": "Wide, low, looking up at the cloud floor from just under it as the kite bursts through into the sunlight above, cloud tearing open around it. The Warden is right on its tail, rotors hard over, lens still burning blue. No people in this panel."
+    },
+    {
+      "page": 2,
+      "shot": "Close, in still sunlight above the cloud floor. The Warden drifts alongside the kite near enough to touch it, rotors idling, its lens dark for the first time. One ribbon of the kite's tail has fallen across its hull and it is letting it lie there. Only the drone and the kite are in this panel, no people."
+    },
+    {
+      "page": 2,
+      "shot": "Wide, back on the roof, night, rain starting. Nix turns from the parapet with empty hands as the Warden settles onto the wet parapet in front of them and opens its claw, setting the kite down. Its lens is a low warm glow now, not blue."
+    }
+  ]
+}

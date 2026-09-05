@@ -1,0 +1,63 @@
+{
+  "style": "Style: full colour cyberpunk manga panel art in the vein of late-80s seinen anime cels. Confident even ink outlines over flat cel shading, one hard-edged shadow shape per surface rather than rendered gradients, a limited palette per panel under a single dominant key light, deadpan faces. Read machinery, architecture, weather and sky alike in large simple blocked shapes with hard edges: backgrounds carry mood, not inventory. Drawn cel art, not a photograph and not a 3D render: no photorealism, no airbrushed gradients, no lens effects, no fine surface texture, no clutter of small details. No text, no lettering, no speech bubbles, no sound effects.",
+  "sheets": [
+    {
+      "id": "vo",
+      "description": "Character sheet. Auntie Vo, a tiny ancient cook who barely comes up to an ordinary adult's chest. Deeply lined face, white hair in a bun with a lacquered chopstick through it, a padded jacket under a scorched canvas apron. The left arm is a slim old prosthetic that ends in a splayed cluster of cooking tools instead of a hand: a ladle, a cleaver, long tongs. Standing front view, plain white background."
+    },
+    {
+      "id": "kessler",
+      "description": "Character sheet. Kessler, a city enforcer built like a door and a full head and shoulders taller than an ordinary adult. Scuffed matte-black riot armour with rounded overlapping plates, a heavy full-face helmet with a single amber visor band across it and a hairline crack running through the left side, a chipped enamel department badge on the chest. Helmet on, face never visible. Standing front view, plain white background."
+    },
+    {
+      "id": "kessler-unmasked",
+      "description": "Character sheet. The same Kessler with the helmet off and held under one arm, in the same matte-black armour. The face underneath is young, plain and exhausted: close-cropped hair flattened by the helmet, a red pressure line across the forehead, dark circles, ears gone red. Standing front view, plain white background."
+    },
+    {
+      "id": "mopsa",
+      "description": "Prop sheet. Mopsa, a fat scarred alley cat the size of a large loaf of bread, dirty ginger with a torn left ear and one milky eye. Sitting, front view, plain white background."
+    },
+    {
+      "id": "helmet",
+      "description": "Prop sheet. Kessler's riot helmet alone, off the head: matte black, rounded, a single amber visor band across the front with a hairline crack through the left side, worn to bare metal at the crown. Resting upright, plain white background."
+    },
+    {
+      "id": "stall",
+      "description": "Location sheet. A four-seat noodle stall wedged under a concrete overpass at 4am, seen from the street side: a steel counter with four bolted stools, a steam-clouded cooking well behind it, a faded cloth curtain hanging across one end, bare bulbs strung overhead. Rain sheets off the overpass edge in front and magenta and cyan glow from the road beyond comes through it. No writing anywhere. Wide three-quarter view, no people."
+    }
+  ],
+  "beats": [
+    {
+      "page": 1,
+      "shot": "Wide establishing. The stall at 4am, rain coming off the overpass edge in a sheet. Vo alone behind the counter, wiping it down. Mopsa asleep at the far end of it, the size of a large loaf beside the bowls."
+    },
+    {
+      "page": 1,
+      "shot": "Medium, from behind the counter looking out. The curtain is shoved aside and Kessler ducks in under the overpass, armour streaming, filling most of the frame and a head taller than the stall's roof beam. Vo does not look up. Mopsa opens one eye."
+    },
+    {
+      "page": 1,
+      "shot": "Wide, level with the counter. Kessler sits. The stool has vanished underneath, knees up around the counter edge. Vo, barely taller standing than Kessler is seated, sets a bowl down in front of the helmet."
+    },
+    {
+      "page": 1,
+      "shot": "Close on the helmet. Both armoured gauntlets are hooked under the jaw catch, straining, plates flexing. The catch has not moved."
+    },
+    {
+      "page": 2,
+      "shot": "Close two-shot across the counter. Kessler is tilting a chopstick load of noodles up under the visor band at an impossible angle and it is not going in. Steam has fogged the visor completely blank. Mopsa has sat up to watch."
+    },
+    {
+      "page": 2,
+      "shot": "Close, over Kessler's shoulder. Vo's prosthetic arm has come all the way across the counter and one slim tool is already under the jaw catch, springing it open. Vo is not looking at the helmet, only at the pot."
+    },
+    {
+      "page": 2,
+      "shot": "Close on Kessler, helmet off and held in both hands on the counter, eyes down, ears red. Behind, Vo has turned away to the cooking well and is giving Kessler the moment."
+    },
+    {
+      "page": 2,
+      "shot": "Wide, dawn now and the rain stopped, thin flat daylight instead of neon. The stall is empty, the bowl scraped clean, and the helmet has been left upright on the counter with Mopsa curled asleep inside it. Nobody is in this panel."
+    }
+  ]
+}

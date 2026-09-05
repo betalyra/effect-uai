@@ -11,7 +11,7 @@ import {
   type TranscriberService,
 } from "@effect-uai/core/Transcriber"
 import { audioToBlob, defaultFileName } from "./audioCodec.js"
-import { httpStatusError, transportFailure } from "./http.js"
+import { bodyMultipart, httpStatusError, transportFailure } from "./http.js"
 import type { MistralTranscribeModel } from "./models.js"
 
 // ---------------------------------------------------------------------------
@@ -152,10 +152,10 @@ export const transcribeImpl =
     Effect.gen(function* () {
       const client = yield* HttpClient.HttpClient
       const baseUrl = cfg.baseUrl ?? "https://api.mistral.ai"
-      const formData = yield* buildFormData(request)
+      const withBody = yield* Effect.flatMap(buildFormData(request), bodyMultipart)
       const httpRequest = HttpClientRequest.post(`${baseUrl}/v1/audio/transcriptions`).pipe(
         HttpClientRequest.bearerToken(cfg.apiKey),
-        HttpClientRequest.bodyFormData(formData),
+        withBody,
       )
       const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
       if (response.status >= 400) {

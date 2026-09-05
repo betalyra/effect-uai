@@ -1,5 +1,6 @@
 ---
 "@effect-uai/core": minor
+"@effect-uai/openai": minor
 ---
 
 New `ImageGenerator` capability (additive). A prompt goes in, images come out,
@@ -23,5 +24,18 @@ and the same call runs on any provider whose Layer you swap in.
   moved there from `Music` (re-exported unchanged) now that image results carry
   one too. `ImageResolution` and `GeneratedImage` are in
   `@effect-uai/core/Image`.
+
+- **`@effect-uai/openai/OpenAIImageGenerator`**: the first provider, on the
+  Images API with `gpt-image-2`. Registers the typed tag, the generic one, and
+  `ImageStreaming`. The typed request adds exact `size`, `quality`,
+  `background`, `outputFormat`, `outputCompression`, `moderation`, and a `mask`
+  for inpainting. `baseUrl` and `region` work as on the other OpenAI adapters,
+  so the same Layer reaches an OpenAI-compatible gateway.
+- Ratio and tier become `"WxH"` in the adapter. A ratio the arithmetic cannot
+  consume fails `InvalidRequest`; setting `size` alongside `aspectRatio` or
+  `resolution` warns rather than dropping the shape silently. Range and
+  per-model limits are not checked client-side: the request goes out and the
+  endpoint's error is translated. Moderation blocks become `ContentFiltered`,
+  an empty response `GenerationFailed`.
 
 See [image generation](https://effect-uai.betalyra.com/image-generation/).

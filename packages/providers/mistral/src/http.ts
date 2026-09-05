@@ -1,5 +1,7 @@
-import { Match } from "effect"
+import { Effect, Match } from "effect"
+import { HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
+import * as Multipart from "@effect-uai/core/Multipart"
 
 /** Map an HTTP status from any Mistral endpoint to an `AiError` variant. */
 export const httpStatusError: (status: number, body: string) => AiError.AiError = (status, body) =>
@@ -44,3 +46,11 @@ export const httpStatusError: (status: number, body: string) => AiError.AiError 
 
 export const transportFailure = (cause: unknown): AiError.AiError =>
   new AiError.Unavailable({ provider: "mistral", raw: cause })
+
+/** Core's helper, with our transport error. Never pass `FormData` to the client. */
+export const bodyMultipart = (
+  form: FormData,
+): Effect.Effect<
+  (request: HttpClientRequest.HttpClientRequest) => HttpClientRequest.HttpClientRequest,
+  AiError.AiError
+> => Multipart.bodyMultipart(form).pipe(Effect.mapError(transportFailure))

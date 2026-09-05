@@ -106,6 +106,10 @@
       "types": "./dist/embedding-model/EmbeddingModel.d.mts",
       "import": "./dist/embedding-model/EmbeddingModel.mjs"
     },
+    "./ImageGenerator": {
+      "types": "./dist/image-generator/ImageGenerator.d.mts",
+      "import": "./dist/image-generator/ImageGenerator.mjs"
+    },
     "./LanguageModel": {
       "types": "./dist/language-model/LanguageModel.d.mts",
       "import": "./dist/language-model/LanguageModel.mjs"

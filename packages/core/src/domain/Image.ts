@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import type { MediaBase64, MediaBytes, MediaSource, MediaUrl } from "./Media.js"
+import type { MediaBase64, MediaBytes, MediaSource, MediaUrl, Watermark } from "./Media.js"
 
 /**
  * Image MIME types AI providers typically accept. The first four are the
@@ -69,6 +69,24 @@ export const imageBytes = (bytes: Uint8Array, mimeType: ImageMimeType): ImageByt
   bytes,
   mimeType,
 })
+
+/** Cross-modality; lives in `Media.ts` because video generation shares it. */
+export type { AspectRatio } from "./Media.js"
+
+/**
+ * Resolution tier, roughly the short edge in pixels. A tier rather than
+ * a pixel pair: adapters whose wire takes exact dimensions derive them
+ * from the tier and the aspect ratio. Image-typed on purpose, video
+ * models tier by scan height instead.
+ */
+export type ImageResolution = "1K" | "2K" | "4K"
+
+/** One image off a generation call, plus what the provider stamped into it. */
+export type GeneratedImage = {
+  readonly image: ImageSource
+  /** Set only when the provider applies one. */
+  readonly watermark?: Watermark
+}
 
 export const isImageUrl = Schema.is(ImageUrlSource)
 export const isImageBase64 = Schema.is(ImageBase64Source)

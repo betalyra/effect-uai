@@ -31,6 +31,42 @@
  * they're a separate union (`FileRef`) added when needed.
  */
 
+/**
+ * Watermark kind a provider embedded in generated media. Shared across
+ * modalities (audio, image). No provider exposes metadata beyond the
+ * kind, so a bare literal union is enough.
+ */
+export type Watermark = "synthid" | "c2pa" | (string & {})
+
+/**
+ * Requested shape of generated visual media, width to height. Shared by
+ * image and video generation: the listed ratios are the ones providers
+ * accept as literals, and the `(string & {})` tail keeps a
+ * newly-supported ratio working without an SDK update. Which ratios a
+ * given model accepts is not checked here; the provider rejects what it
+ * cannot render and the adapter translates that error.
+ *
+ * Resolution is NOT shared: image models tier by short edge
+ * (`ImageResolution`), video models by scan height. Each modality types
+ * its own.
+ */
+export type AspectRatio =
+  | "1:1"
+  | "2:3"
+  | "3:2"
+  | "3:4"
+  | "4:3"
+  | "4:5"
+  | "5:4"
+  | "9:16"
+  | "16:9"
+  | "21:9"
+  | "1:4"
+  | "4:1"
+  | "1:8"
+  | "8:1"
+  | (string & {})
+
 export type MediaUrl<M extends string = string> = {
   readonly _tag: "url"
   readonly url: string

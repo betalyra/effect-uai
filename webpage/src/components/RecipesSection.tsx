@@ -28,8 +28,8 @@ import {
   PiPlugsConnected,
   PiPulse,
   PiQuotes,
+  PiImage,
   PiImagesSquare,
-  PiSquaresFour,
   PiRadio,
   PiRanking,
   PiShieldCheck,
@@ -109,7 +109,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   retrieval: PiFunnel,
   speech: PiWaveform,
   music: PiMusicNotes,
-  images: PiImagesSquare,
+  images: PiImage,
   sandboxes: PiCube,
   browser: PiBrowser,
 }
@@ -255,7 +255,7 @@ const recipes: ReadonlyArray<Recipe> = [
     description:
       "**Tell a story in pictures.** Your characters stay themselves across every panel, so eight images read as one comic instead of eight strangers.",
     href: "/recipes/storyboard/",
-    Icon: PiSquaresFour,
+    Icon: PiImagesSquare,
     category: "images",
   },
   {

@@ -117,3 +117,5 @@ degrades: fewer images is a different result, not a smaller one.
 
 - [OpenAI](/image-generation/providers/openai/) — `gpt-image-2`,
   including edits and partial-image streaming.
+- [Google](/image-generation/providers/google/) — Nano Banana 2, Lite
+  and Pro. Faster and cheaper; no streaming.

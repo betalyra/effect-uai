@@ -2,7 +2,7 @@
 title: Storyboard
 description: Tell a story in pictures. Your characters stay themselves across every panel, so eight images read as one comic instead of eight strangers.
 source: recipes/storyboard
-icon: PiSquaresFour
+icon: PiImagesSquare
 gallery:
   caption: One run of the default story, in order. Every panel drawn from the same reference sheets.
   images:
@@ -23,8 +23,7 @@ three.
 **Write the story once as JSON. Get a finished board back.**
 
 ```bash
-OPENAI_API_KEY=sk-... LLM_API_KEY=sk-... \
-  pnpm tsx recipes/storyboard/run-node.ts
+OPENAI_API_KEY=sk-... pnpm tsx recipes/storyboard/run-node.ts
 ```
 
 ## Two models, one program
@@ -96,16 +95,22 @@ stage    draw each scene, empty           concurrent
 
 Point `--story` at your own file. Nothing else changes.
 
-Each run writes its own directory: the board, the `sheets/` behind it, and
-the takes the critic `rejected/`.
+Each run writes its own `output/storyboard/<timestamp>/`: the board, the
+`sheets/` behind it, and the takes the critic `rejected/`.
 
-| Flag                            |                                            |
-| ------------------------------- | ------------------------------------------ |
-| `--story`                       | Your story JSON                            |
-| `--model` / `--llm-model`       | Image model, director model                |
-| `--resolution`                  | `1K`, `2K`, `4K`. Start at 1K              |
-| `--rounds`                      | Retries when a panel drifts                |
-| `--panels`                      | Cut it short. `--panels 1` is a smoke test |
-| `--base-url` / `--llm-base-url` | Point either at a gateway                  |
+| Flag                            |                                              |
+| ------------------------------- | -------------------------------------------- |
+| `--story`                       | Your story JSON                              |
+| `--model` / `--llm-model`       | `provider:model` for the artist and director |
+| `--resolution`                  | `1K`, `2K`, `4K`. Start at 1K                |
+| `--rounds`                      | Retries when a panel drifts                  |
+| `--panels`                      | Cut it short. `--panels 1` is a smoke test   |
+| `--base-url` / `--llm-base-url` | A gateway the registry has no name for       |
+
+**Swap either model without touching the code.** `--model
+google:gemini-3.1-flash-image` draws on Gemini instead of OpenAI;
+`--llm-model anthropic:claude-sonnet-5` hands directing to Claude. Drop the
+prefix and you get OpenAI. `openrouter:` and `requesty:` route through a
+gateway on one key.
 
 Budget a minute per panel at 1K. 2K costs about four times as much.

@@ -42,6 +42,10 @@
       "types": "./dist/GeminiEmbedding.d.mts",
       "import": "./dist/GeminiEmbedding.mjs"
     },
+    "./GeminiImageGenerator": {
+      "types": "./dist/GeminiImageGenerator.d.mts",
+      "import": "./dist/GeminiImageGenerator.mjs"
+    },
     "./GeminiSynthesizer": {
       "types": "./dist/GeminiSynthesizer.d.mts",
       "import": "./dist/GeminiSynthesizer.mjs"

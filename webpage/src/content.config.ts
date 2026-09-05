@@ -37,6 +37,17 @@ export const collections = {
          * `iconMap` in `components/PageTitle.astro`.
          */
         icon: z.string().optional(),
+        /**
+         * What the recipe produced, shown as a filmstrip under the title.
+         * Paths are served from `public/`; a recipe's committed
+         * `example/` board is copied there by hand, not at build time.
+         */
+        gallery: z
+          .object({
+            images: z.array(z.string()),
+            caption: z.string().optional(),
+          })
+          .optional(),
       }),
     }),
   }),

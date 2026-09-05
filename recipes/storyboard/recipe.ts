@@ -303,6 +303,12 @@ const panelPrompt = (
     cfg.style,
     `Attached, in order: ${attached.join("; ")}.`,
     "Use the attached sheets as the exact reference for every character and prop shown.",
+    // Without a stated order the chain gets a vote on appearance, and a
+    // mistake in one panel is copied into the next as if it were canon.
+    "Where the attached images disagree, the sheets win: they alone decide what anything looks like. The scene decides the place and the light. The previous panel decides only where things had got to and which way they were facing. If the previous panel contradicts a sheet, the previous panel is wrong.",
+    // Asymmetry is what these models resolve by duplicating: a single
+    // prosthetic arm comes back as two, a scar appears on both cheeks.
+    "The sheets are complete. A character has exactly the parts their sheet shows and no others: never add a feature the sheet does not have, and never copy a feature onto the other side of a body when the sheet gives it to one side only.",
     // Each sheet fills its own square, so their apparent sizes are all equal
     // and all wrong. Without this the mug comes out the size of a head.
     "The sheets fix design and colour only. They are all drawn at the same size, which carries no meaning: sizes, poses and staging come from the shot below, and everything it describes must appear.",
@@ -391,6 +397,13 @@ const CRITIC = [
   "face, hairstyle, colour, marking, garment or signature part that does not",
   "match its sheet, a palette or line style that breaks from the rest of the",
   "book, or lettering that should not be there.",
+  "",
+  "Count before you compare. Take each distinctive part in turn, the ones that",
+  "make a character recognisable, and count them in the panel against the",
+  "sheet. A part the sheet gives to one side of a body appearing on both, a",
+  "part that is missing, a part the sheet does not have at all: each of those",
+  "is drift, however well drawn. It is not staging, and an unusual angle does",
+  "not excuse it.",
   "",
   "The shot outranks the sheet on everything else. Pose, camera angle,",
   "silhouette, expression, what a character is holding or has been rebuilt",

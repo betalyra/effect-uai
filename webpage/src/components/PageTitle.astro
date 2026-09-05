@@ -1,5 +1,6 @@
 ---
 import { Icon } from "@astrojs/starlight/components"
+import { RecipeGallery } from "./RecipeGallery"
 import {
   PiArrowsClockwise,
   PiArrowsInLineHorizontal,
@@ -16,6 +17,7 @@ import {
   PiCursorClick,
   PiDatabase,
   PiDetective,
+  PiSquaresFour,
   PiFlowArrow,
   PiFunnel,
   PiGavel,
@@ -58,6 +60,7 @@ const iconMap = {
   PiCursorClick,
   PiDatabase,
   PiDetective,
+  PiSquaresFour,
   PiFlowArrow,
   PiFunnel,
   PiGavel,
@@ -85,7 +88,11 @@ type IconKey = keyof typeof iconMap
 
 const { entry } = Astro.locals.starlightRoute
 const title = entry.data.title
-const data = entry.data as { source?: string; icon?: string }
+const data = entry.data as {
+  source?: string
+  icon?: string
+  gallery?: { images: ReadonlyArray<string>; caption?: string }
+}
 
 const source = data.source
 const sourceUrl =
@@ -117,6 +124,12 @@ const TitleIcon =
     )
   }
 </div>
+
+{
+  data.gallery !== undefined && (
+    <RecipeGallery client:load images={data.gallery.images} caption={data.gallery.caption} />
+  )
+}
 
 <style>
   .title-row {

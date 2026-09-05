@@ -8,8 +8,7 @@ illustration draft, or an edit of an image your agent is already
 holding. You want to write that once and not rewrite it when you
 switch providers.
 
-That is the `ImageGenerator` tag. A prompt goes in, images come out,
-in a few seconds.
+That is the `ImageGenerator` tag. A prompt goes in, images come out.
 
 ```ts
 import { Effect } from "effect"
@@ -30,57 +29,45 @@ Swap the Layer and the same call runs on a different provider.
 
 ## Three calls
 
-- **`generate`**: prompt in, images out.
-- **`edit`**: prompt plus the images you want changed. A separate
-  call because the reference images are required here and meaningless
-  there, and providers treat the two as different endpoints.
-- **`streamGeneration`**: preview frames while the image resolves,
-  then the finished one. Useful when a user is watching. Gated by the
-  `ImageStreaming` marker, so a provider that can't preview is a
-  compile-time error rather than a surprise at runtime.
+- **`generate`** — prompt in, images out.
+- **`edit`** — prompt plus the images you want changed. Separate,
+  because references are required here and meaningless there, and
+  providers treat them as different endpoints.
+- **`streamGeneration`** — preview frames while the image resolves,
+  for when someone is watching a spinner. Gated by the
+  `ImageStreaming` marker, so a provider that cannot preview is a
+  compile error rather than a surprise at runtime.
 
-## Asking for a size
-
-You ask for a **shape and a tier**, not pixels:
+## Ask for a shape, not pixels
 
 ```ts
 readonly aspectRatio?: AspectRatio     // "1:1", "16:9", "21:9", …
 readonly resolution?: ImageResolution  // "1K" | "2K" | "4K"
 ```
 
-Pixels don't port. One provider takes `"1536x1024"`, the next takes
-`16:9` plus `2K`, and a hardcoded pixel pair silently becomes the
-wrong crop when you switch. Ratio plus tier is what both understand,
-so adapters whose wire wants exact dimensions derive them for you.
-When you do need exact pixels, set them on that provider's typed
-request and they win.
+**Pixels don't port.** One provider takes `"1536x1024"`, the next takes
+`16:9` plus `2K`, and a hardcoded pair silently becomes the wrong crop
+when you switch. Ratio plus tier is what both understand, so adapters
+derive the dimensions for you. Need exact pixels? Set them on that
+provider's typed request and they win.
 
-Not every model accepts every ratio or tier, and the list changes
-with each model release. Rather than shipping a table that goes stale,
-the adapter sends what you asked for and hands you the provider's
-rejection.
+Not every model accepts every ratio, and the list changes with each
+release, so rather than ship a table that goes stale the adapter sends
+what you asked for and hands you the provider's answer.
 
-## What you get back
+## Feed the result into the next turn
 
 ```ts
-type ImageResponse = {
-  readonly images: ReadonlyArray<GeneratedImage>
-  readonly usage: ImageUsage // all fields optional
-}
-
-type GeneratedImage = {
-  readonly image: ImageSource
-  readonly watermark?: Watermark // "synthid" | "c2pa" | (string & {})
-}
+const { images, usage } = yield* generate({ … })
+const [{ image, watermark }] = images
 ```
 
-`image` is an `ImageSource`, the same type you pass _into_ a
-multimodal language model. So the picture you just generated goes
-straight into the next turn with no conversion step. Adapters hand
-back the bytes the provider sent, with its MIME type, and never
-re-encode.
-
-`watermark` is set only when the provider stamped one.
+`image` is an `ImageSource`, **the same type you pass into a
+multimodal language model**, so a picture you just generated goes
+straight into the next turn with no conversion. Adapters hand back the
+bytes the provider sent, with its MIME type, and never re-encode.
+`watermark` is set only when the provider stamped one, and every
+`usage` field is optional since not all providers report.
 
 ## Editing
 
@@ -97,40 +84,36 @@ const dawn = Effect.gen(function* () {
 })
 ```
 
-Masks are not in the portable request: only inpainting endpoints have
-one, so it lives on the typed request of providers that do. Same for
-quality tiers, output encodings, and moderation levels. `seed` and
-`negativePrompt` are absent because no in-tree provider has them.
+Conditioning on references is also how you keep a character or a
+product consistent across many images: see the
+[storyboard recipe](/recipes/storyboard/).
 
-## Streaming previews
+Masks stay off the portable request, since only inpainting endpoints
+have one; same for quality tiers, output encodings and moderation
+levels. They live on the typed request of providers that support them.
+
+## Previews while it renders
+
+`streamGeneration` emits zero or more `PartialImage` frames, then
+exactly one `Complete`. `Complete` carries the response fields flat, so
+it _is_ an `ImageResponse`: filter for it and pass it on.
 
 ```ts
-type ImageStreamEvent = Data.TaggedEnum<{
-  PartialImage: { image: ImageSource; index: number }
-  Complete: { images: ReadonlyArray<GeneratedImage>; usage: ImageUsage }
-}>
+streamGeneration({ prompt, model, partialImages: 2 }).pipe(Stream.filter(isPartialImage))
 ```
-
-Zero or more `PartialImage` frames, then exactly one `Complete`.
-`Complete` carries the response fields flat, so it _is_ an
-`ImageResponse`: filter for it and pass it on.
 
 ## When something goes wrong
 
-- Prompt or output blocked by moderation: `AiError.ContentFiltered`.
-- The provider returned no image at all: `AiError.GenerationFailed`.
-- You asked for something the provider structurally cannot do, like
-  more images than its endpoint returns: `AiError.Unsupported`,
-  before the request goes out. Fewer images than you asked for is a
-  different result, not a smaller one, so it fails rather than
-  degrades.
+| Situation                                     | Error                                      |
+| --------------------------------------------- | ------------------------------------------ |
+| Prompt or output blocked by moderation        | `ContentFiltered`                          |
+| Provider returned no image                    | `GenerationFailed`                         |
+| Something the provider structurally cannot do | `Unsupported`, before the request goes out |
 
-## Notes
-
-`AspectRatio` lives in `@effect-uai/core/Media`: video generation
-takes the same strings. `ImageResolution` stays image-specific, since
-video models tier by scan height instead.
+Asking for more images than an endpoint returns fails rather than
+degrades: fewer images is a different result, not a smaller one.
 
 ## Providers
 
-Adapter pages land with their adapters.
+- [OpenAI](/image-generation/providers/openai/) — `gpt-image-2`,
+  including edits and partial-image streaming.

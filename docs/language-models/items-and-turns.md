@@ -23,7 +23,7 @@ type HistoryItem = Message | ToolCall | ToolCallOutput | Reasoning
 
 - **`Message`** - a `role` (`user` / `assistant` / `system`) plus
   `content: ContentBlock[]`. Content blocks are `input_text`,
-  `input_image`, `output_text`, or `refusal`.
+  `input_image`, `output_text`, `output_image`, or `refusal`.
 - **`ToolCall`** - the assistant asking for a tool, with `call_id`,
   `name`, and a JSON `arguments` string.
 - **`ToolCallOutput`** - the result you feed back, keyed by
@@ -70,12 +70,14 @@ Turn.getToolCalls(turn) // ToolCall[] - the tool requests
 Turn.assistantMessages(turn) // Message[] with role: "assistant"
 Turn.assistantTexts(turn) // string[] - one per assistant output_text block
 Turn.assistantText(turn) // string - joined assistant text, for logging / display
+Turn.assistantImages(turn) // ImageSource[] - pictures the model drew
 Turn.reasonings(turn) // Reasoning[]
 ```
 
 `assistantText` covers the common case ("just give me what the model
 said as a string"); reach for `assistantTexts` only when you need to
-keep block boundaries.
+keep block boundaries. `assistantImages` is the same idea for models
+that draw: see [images in a turn](/language-models/images-in-turns/).
 
 `Turn.decodeStructured(turn, format)` decodes the assembled assistant text
 against an Effect Schema and surfaces `RefusalRejected`,
@@ -117,6 +119,7 @@ type TurnEvent = Data.TaggedEnum<{
   ToolCallStart: { call_id: string; name: string }
   ToolCallArgsDelta: { call_id: string; delta: string }
   UsageUpdate: { usage: Usage }
+  ImageOutput: { image: ImageSource; partialIndex?: number }
   TurnComplete: { turn: Turn }
 }>
 ```

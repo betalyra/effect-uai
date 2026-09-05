@@ -491,6 +491,14 @@ step, one manual run against the real API per adapter.
 Steps 1 to 4 are a complete v0.13 item. Step 5 is the slip candidate.
 If it slips, `conversational-image-edit` slips with it.
 
+**As built (2026-09-05).** The critique loop folded into `storyboard`
+rather than becoming its own recipe. `ad-variant-matrix` was dropped:
+parallel fan-out is `Effect.forEach` and two recipes already show it.
+Step 5 shipped its Gemini half; the Responses `image_generation` tool is
+deferred, and is a hosted tool call rather than native image output.
+Step 8's `@effect-uai/fal` landed without streaming. Rationale for each
+is in [research/image-generation.md](./research/image-generation.md).
+
 ## Sources
 
 Wire schemas: [openai-wire.md](./research/image-generation/openai-wire.md),

@@ -97,9 +97,10 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Images
 
-| Recipe                             | One-line                                                                                                         |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| [Storyboard](/recipes/storyboard/) | Tell a story in pictures: your characters stay themselves across every panel, so eight images read as one comic. |
+| Recipe                                                                | One-line                                                                                                                     |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| [Storyboard](/recipes/storyboard/)                                     | Tell a story in pictures: your characters stay themselves across every panel, so eight images read as one comic.             |
+| [Conversational image edit](/recipes/conversational-image-edit/)       | Say what to change, keep the picture. Getting the image you want takes a few goes, and your subject survives every one of them. |
 
 ## Sandboxes
 

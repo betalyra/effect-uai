@@ -88,6 +88,7 @@ const imageMock = Effect.gen(function* () {
         { images: [{ image: imageBase64("panel", "image/png") }], usage: {} },
       ),
     streamGeneration: () => Effect.die("not used") as never,
+    streamEdit: () => Effect.die("not used") as never,
   })
   return { layer, calls }
 })

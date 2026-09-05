@@ -200,7 +200,13 @@ export default defineConfig({
             {
               label: "Recipes",
               collapsed: true,
-              items: [{ label: "Storyboard", slug: "recipes/storyboard" }],
+              items: [
+                { label: "Storyboard", slug: "recipes/storyboard" },
+                {
+                  label: "Conversational image edit",
+                  slug: "recipes/conversational-image-edit",
+                },
+              ],
             },
           ],
         },

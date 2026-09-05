@@ -9,9 +9,15 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel"
 
+type Slide = {
+  /** Path under `public/`. */
+  readonly src: string
+  /** Shown under this slide. For an edit session, the request that made it. */
+  readonly caption?: string
+}
+
 type Props = {
-  /** Paths under `public/`, in order. */
-  readonly images: ReadonlyArray<string>
+  readonly images: ReadonlyArray<Slide>
   readonly caption?: string
 }
 
@@ -35,16 +41,16 @@ export function RecipeGallery({ caption, images }: Props) {
         opts={{ align: "start", dragFree: true, containScroll: "trimSnaps" }}
         className="px-11"
       >
-        <CarouselContent className="h-40 sm:h-64 lg:h-80">
-          {images.map((src, i) => (
-            <CarouselItem key={src} className="basis-auto">
+        <CarouselContent className="items-start">
+          {images.map(({ caption: label, src }, i) => (
+            <CarouselItem key={src} className="flex basis-auto flex-col gap-2">
               <button
                 type="button"
                 onClick={() => setOpen(i)}
                 aria-label={`Enlarge image ${i + 1} of ${images.length}`}
                 // `block` on both, or the button's inline baseline leaves a
                 // strip of its own background under the image.
-                className="block h-full cursor-pointer overflow-hidden rounded-xl border bg-card shadow-sm transition-colors hover:border-(--color-mark) focus-visible:border-(--color-mark) focus-visible:outline-none"
+                className="block h-40 cursor-pointer overflow-hidden rounded-xl border bg-card shadow-sm transition-colors hover:border-(--color-mark) focus-visible:border-(--color-mark) focus-visible:outline-none sm:h-64 lg:h-80"
               >
                 <img
                   src={src}
@@ -54,6 +60,11 @@ export function RecipeGallery({ caption, images }: Props) {
                   className="block h-full w-auto"
                 />
               </button>
+              {label !== undefined && (
+                <p className="max-w-xs text-(length:--sl-text-xs) text-(--sl-color-gray-3)">
+                  {label}
+                </p>
+              )}
             </CarouselItem>
           ))}
         </CarouselContent>
@@ -75,7 +86,7 @@ export function RecipeGallery({ caption, images }: Props) {
           className="fixed inset-0 z-100 flex items-center justify-center bg-black/85 p-8"
         >
           <img
-            src={images[open]}
+            src={images[open]?.src}
             alt=""
             className="max-h-full max-w-full rounded-md object-contain"
           />

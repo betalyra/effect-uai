@@ -33,10 +33,10 @@ Swap the Layer and the same call runs on a different provider.
 - **`edit`** — prompt plus the images you want changed. Separate,
   because references are required here and meaningless there, and
   providers treat them as different endpoints.
-- **`streamGeneration`** — preview frames while the image resolves,
-  for when someone is watching a spinner. Gated by the
-  `ImageStreaming` marker, so a provider that cannot preview is a
-  compile error rather than a surprise at runtime.
+- **`streamGeneration`** and **`streamEdit`** — preview frames while
+  the image resolves, for when someone is watching a spinner. Both are
+  gated by the `ImageStreaming` marker, so a provider that cannot
+  preview is a compile error rather than a surprise at runtime.
 
 ## Ask for a shape, not pixels
 
@@ -96,11 +96,16 @@ levels. They live on the typed request of providers that support them.
 
 `streamGeneration` emits zero or more `PartialImage` frames, then
 exactly one `Complete`. `Complete` carries the response fields flat, so
-it _is_ an `ImageResponse`: filter for it and pass it on.
+it _is_ an `ImageResponse`: filter for it and pass it on. `streamEdit`
+does the same for an edit, which is what makes a conversational editing
+session feel live rather than frozen.
 
 ```ts
 streamGeneration({ prompt, model, partialImages: 2 }).pipe(Stream.filter(isPartialImage))
 ```
+
+See the [conversational image edit recipe](/recipes/conversational-image-edit/),
+which draws those frames straight into your terminal.
 
 ## When something goes wrong
 

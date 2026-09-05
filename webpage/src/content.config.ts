@@ -44,7 +44,9 @@ export const collections = {
          */
         gallery: z
           .object({
-            images: z.array(z.string()),
+            images: z.array(
+              z.union([z.string(), z.object({ src: z.string(), caption: z.string() })]),
+            ),
             caption: z.string().optional(),
           })
           .optional(),

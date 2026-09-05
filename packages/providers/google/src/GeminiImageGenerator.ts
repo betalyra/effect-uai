@@ -12,6 +12,7 @@ import { imageBase64 } from "@effect-uai/core/Image"
 import type {
   CommonImageEditRequest,
   CommonImageGenerateRequest,
+  CommonStreamImageEditRequest,
   CommonStreamImageRequest,
   ImageGeneratorService,
   ImageResponse,
@@ -63,8 +64,9 @@ export type GeminiImageGeneratorService = {
     request: GeminiImageGenerateRequest,
   ) => Effect.Effect<ImageResponse, AiError.AiError>
   readonly edit: (request: GeminiImageEditRequest) => Effect.Effect<ImageResponse, AiError.AiError>
-  /** Always `Unsupported`: `ImageStreaming` is not registered by {@link layer}. */
+  /** Both always `Unsupported`: `ImageStreaming` is not registered by {@link layer}. */
   readonly streamGeneration: ImageGeneratorService["streamGeneration"]
+  readonly streamEdit: ImageGeneratorService["streamEdit"]
 }
 
 /**
@@ -332,13 +334,13 @@ const requestImages = (
  * typecheck, which is the intended UX; this branch covers the service
  * being used directly.
  */
-const streamUnsupported = (): Stream.Stream<ImageStreamEvent, AiError.AiError> =>
+const streamUnsupported = (capability: string): Stream.Stream<ImageStreamEvent, AiError.AiError> =>
   Stream.fail(
     new AiError.Unsupported({
       provider: PROVIDER,
-      capability: "streamGeneration",
+      capability,
       reason:
-        "Gemini image models have no partial-image wire; the image arrives whole. Use `generate` and render when it resolves.",
+        "Gemini image models have no partial-image wire; the image arrives whole. Use `generate` or `edit` and render when it resolves.",
     }),
   )
 
@@ -356,7 +358,8 @@ export const make = (
       requestImages(cfg, request, request.images).pipe(
         Effect.provideService(HttpClient.HttpClient, client),
       ),
-    streamGeneration: streamUnsupported,
+    streamGeneration: () => streamUnsupported("streamGeneration"),
+    streamEdit: () => streamUnsupported("streamEdit"),
   }))
 
 /**
@@ -379,7 +382,9 @@ export const layer = (
         generate: (request: CommonImageGenerateRequest) =>
           s.generate(request as GeminiImageGenerateRequest),
         edit: (request: CommonImageEditRequest) => s.edit(request as GeminiImageEditRequest),
-        streamGeneration: (_request: CommonStreamImageRequest) => streamUnsupported(),
+        streamGeneration: (_request: CommonStreamImageRequest) =>
+          streamUnsupported("streamGeneration"),
+        streamEdit: (_request: CommonStreamImageEditRequest) => streamUnsupported("streamEdit"),
       })),
     ),
   )

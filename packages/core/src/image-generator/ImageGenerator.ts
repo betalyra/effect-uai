@@ -36,6 +36,11 @@ export type CommonStreamImageRequest = CommonImageGenerateRequest & {
   readonly partialImages: 1 | 2 | 3
 }
 
+/** The same previews, for an edit. Gated by {@link ImageStreaming}. */
+export type CommonStreamImageEditRequest = CommonImageEditRequest & {
+  readonly partialImages: 1 | 2 | 3
+}
+
 /** Optional throughout: not every provider bills or reports per token. */
 export type ImageUsage = {
   readonly inputTokens?: number
@@ -90,6 +95,10 @@ export type ImageGeneratorService = {
   readonly streamGeneration: (
     request: CommonStreamImageRequest,
   ) => Stream.Stream<ImageStreamEvent, AiError.AiError>
+  /** {@link streamGeneration} conditioned on reference images. */
+  readonly streamEdit: (
+    request: CommonStreamImageEditRequest,
+  ) => Stream.Stream<ImageStreamEvent, AiError.AiError>
 }
 
 export class ImageGenerator extends Context.Service<ImageGenerator, ImageGeneratorService>()(
@@ -128,5 +137,17 @@ export const streamGeneration = (
       const g = yield* ImageGenerator
       yield* ImageStreaming
       return g.streamGeneration(request)
+    }),
+  )
+
+/** The same, conditioned on reference images. Requires {@link ImageStreaming} in R. */
+export const streamEdit = (
+  request: CommonStreamImageEditRequest,
+): Stream.Stream<ImageStreamEvent, AiError.AiError, ImageGenerator | ImageStreaming> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const g = yield* ImageGenerator
+      yield* ImageStreaming
+      return g.streamEdit(request)
     }),
   )

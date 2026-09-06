@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/tavily",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Tavily provider for @effect-uai/core (web search, web read).",
   "keywords": [
     "ai",

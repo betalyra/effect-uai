@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/firecrawl",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Firecrawl provider for @effect-uai/core (web read).",
   "keywords": [
     "ai",

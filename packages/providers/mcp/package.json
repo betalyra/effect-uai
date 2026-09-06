@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/mcp",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Model Context Protocol client provider for @effect-uai/core.",
   "keywords": [
     "agents",

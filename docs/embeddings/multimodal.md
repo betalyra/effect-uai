@@ -1,6 +1,7 @@
 ---
 title: Multimodal embedding
 description: "Cross-modal retrieval: embed images and text in one batch, rank either against either."
+source: recipes/multimodal-embedding
 ---
 
 You have a corpus of product photos and product descriptions. A user
@@ -110,11 +111,11 @@ with `AiError.InvalidRequest`. No silent fallback.
 ## Run it
 
 ```sh
-GOOGLE_API_KEY=... pnpm tsx recipes/multimodal-embedding/index.ts
+GOOGLE_API_KEY=... pnpm tsx recipes/multimodal-embedding/run.ts
 ```
 
 The full source is at
-[`recipes/multimodal-embedding/index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multimodal-embedding/index.ts).
+[`recipes/multimodal-embedding/recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multimodal-embedding/recipe.ts).
 The recipe fetches three Unsplash images, mixes them with text in one
 batch, and ranks against an image query.
 

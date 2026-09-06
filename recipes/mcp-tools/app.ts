@@ -10,20 +10,18 @@
  * server additionally needs a `ChildProcessSpawner`; the docs page covers it.
  *
  * Flags are read through Effect's `Stdio` service rather than `process.argv`,
- * so nothing here is Node-specific. Model selection is deliberately minimal:
- * `--model` / `--base-url` against the Responses API.
+ * so nothing here is Node-specific. `--model provider:model` resolves through
+ * `_shared/model.ts`, as everywhere else.
  */
-import { Config, Effect, Layer, Logger, Option, References, Stdio, Stream } from "effect"
-import { LanguageModel } from "@effect-uai/core/LanguageModel"
+import { Config, Effect, Option, Stdio, Stream } from "effect"
 import { Auth, type McpClientConfig } from "@effect-uai/mcp/Client"
-import { make as makeResponses } from "@effect-uai/responses/Responses"
-import { flagValue } from "../_shared/argv.js"
-import { renderEvent } from "../_shared/render.js"
+import { flagValue } from "@effect-uai/recipe-kit/argv"
+import { languageModelLayer, type ModelSpec, parseModelSpec } from "../_shared/model.js"
+import { renderEvent } from "@effect-uai/recipe-kit/render"
 import { makeConversation } from "./recipe.js"
 
 type Flags = {
-  readonly model: string
-  readonly baseUrl: string
+  readonly model: ModelSpec
   readonly mcp: McpClientConfig
   readonly prefix: string
   readonly prompt: string
@@ -48,8 +46,10 @@ const readFlags: Effect.Effect<Flags, never, Stdio.Stdio> = Effect.gen(function*
   const argv = yield* stdio.args
   const auth = yield* readAuth(argv)
   return {
-    model: Option.getOrElse(flagValue("model", argv), () => "openai/gpt-4o-mini"),
-    baseUrl: Option.getOrElse(flagValue("base-url", argv), () => "https://openrouter.ai/api/v1"),
+    model: parseModelSpec(
+      Option.getOrElse(flagValue("model", argv), () => "openai/gpt-4o-mini"),
+      "openrouter",
+    ),
     mcp: {
       transport: "http",
       url: Option.getOrElse(flagValue("mcp-url", argv), () => "https://huggingface.co/mcp"),
@@ -64,33 +64,11 @@ const readFlags: Effect.Effect<Flags, never, Stdio.Stdio> = Effect.gen(function*
   }
 })
 
-/**
- * The language model, built from the same flags the conversation uses. Read
- * inside the program (not at module scope) so the flags have one source.
- */
-const languageModel = (flags: Flags) =>
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("LLM_API_KEY")
-    return yield* makeResponses({ apiKey, baseUrl: flags.baseUrl })
-  })
-
 // MCP tool results are prose-heavy, so cap what the terminal echoes.
 export const main = Effect.gen(function* () {
   const flags = yield* readFlags
-  const model = yield* languageModel(flags)
   yield* Stream.runForEach(
-    makeConversation(flags.mcp, flags.model, flags.prompt, flags.prefix),
+    makeConversation(flags.mcp, flags.model.model, flags.prompt, flags.prefix),
     renderEvent({ maxResultChars: 300 }),
-  ).pipe(Effect.provideService(LanguageModel, model))
+  ).pipe(Effect.provide(languageModelLayer(flags.model)))
 }).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
-
-/** Logging only; the model is provided inside `main` from the parsed flags. */
-export const appLayer = Layer.mergeAll(
-  Logger.layer([Logger.consolePretty()]),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-      return Layer.succeed(References.MinimumLogLevel, level)
-    }),
-  ),
-)

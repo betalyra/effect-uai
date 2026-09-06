@@ -10,15 +10,12 @@
  */
 import {
   Cause,
-  Config,
   Effect,
   Encoding,
   FileSystem,
   Layer,
-  Logger,
   Match,
   Option,
-  References,
   Result,
   Stdio,
   Stream,
@@ -35,8 +32,8 @@ import {
   streamEdit,
   streamGeneration,
 } from "@effect-uai/core/ImageGenerator"
-import { flagValue } from "../_shared/argv.js"
-import { inlineImage } from "../_shared/inline-image.js"
+import { flagValue } from "@effect-uai/recipe-kit/argv"
+import { inlineImage } from "@effect-uai/recipe-kit/inline-image"
 import {
   imageGeneratorLayer,
   type ModelSpec,
@@ -44,8 +41,8 @@ import {
   streamingImageGeneratorLayer,
   streamsPartialImages,
 } from "../_shared/model.js"
-import { runDir } from "../_shared/output.js"
-import { cyan, dim } from "../_shared/render.js"
+import { runDir } from "@effect-uai/recipe-kit/output"
+import { cyan, dim } from "@effect-uai/recipe-kit/render"
 import { type Draw, SessionEvent, session } from "./recipe.js"
 
 type Flags = {
@@ -315,13 +312,3 @@ export const main = Effect.gen(function* () {
 /** Escape hatch for a gateway the registry has no name for. */
 const gatewayUrl = (flag: string): string | undefined =>
   Option.getOrUndefined(flagValue(flag, process.argv.slice(2)))
-
-export const appLayer = Layer.mergeAll(
-  Logger.layer([Logger.consolePretty()]),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-      return Layer.succeed(References.MinimumLogLevel, level)
-    }),
-  ),
-)

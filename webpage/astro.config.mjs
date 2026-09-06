@@ -308,6 +308,8 @@ export default defineConfig({
               collapsed: true,
               items: [
                 { label: "Basic embedding", slug: "recipes/basic-embedding" },
+                { label: "Multimodal embedding", slug: "embeddings/multimodal" },
+                { label: "Multivector embedding", slug: "embeddings/multivector" },
                 { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
               ],
             },

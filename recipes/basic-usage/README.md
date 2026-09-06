@@ -98,9 +98,10 @@ Runs against any OpenAI-compatible gateway. Pick it with `--base-url` / `--model
 / `--provider`; the key comes from `LLM_API_KEY`. Requesty with Kimi K3:
 
 ```sh
-LLM_API_KEY=... pnpm tsx recipes/basic-usage/run-node.ts \
+LLM_API_KEY=... pnpm tsx recipes/basic-usage/run.ts \
   --base-url https://router.requesty.ai/v1 --model moonshotai/kimi-k3 --provider requesty
 ```
 
 `recipe.ts` is the agent loop, `app.ts` wires the provider + rendering, and
-`run-node.ts` / `run-bun.ts` / `run-deno.ts` attach the platform `HttpClient`.
+`run.ts` attaches the platform `HttpClient` on whichever runtime you start it
+with.

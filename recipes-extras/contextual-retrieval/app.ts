@@ -16,8 +16,8 @@ import { layer as jinaRerankerLayer } from "@effect-uai/jina/JinaReranker"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
 import * as Chunking from "@effect-uai/retrieval/Chunking"
 // Shared with the in-workspace recipes: same flag parsing, same colours.
-import { flagValue } from "../../recipes/_shared/argv.js"
-import { cyan, dim } from "../../recipes/_shared/render.js"
+import { flagValue } from "@effect-uai/recipe-kit/argv"
+import { cyan, dim } from "@effect-uai/recipe-kit/render"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { load } from "./corpus.js"
@@ -155,6 +155,19 @@ const languageModel = (flags: { readonly baseUrl: Option.Option<string> }) =>
       ),
   })
 
+const services = Layer.mergeAll(
+  libsqlLayer(DB_URL),
+  // Identical to agentic-search's chunker and parameters: contextualization has to
+  // be the only difference between the two recipes.
+  Chunking.layer(Chunking.sentences, { targetSize: 512, overlap: 64 }),
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const apiKey = yield* Config.redacted("JINA_API_KEY")
+      return Layer.merge(jinaEmbeddingLayer({ apiKey }), jinaRerankerLayer({ apiKey }))
+    }),
+  ),
+)
+
 export const main = Effect.gen(function* () {
   const flags = yield* readFlags
   const model = yield* languageModel(flags)
@@ -216,24 +229,7 @@ export const main = Effect.gen(function* () {
       }),
     { discard: true },
   )
-}).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
-
-export const appLayer = Layer.mergeAll(
-  libsqlLayer(DB_URL),
-  // Identical to agentic-search's chunker and parameters: contextualization has to
-  // be the only difference between the two recipes.
-  Chunking.layer(Chunking.sentences, { targetSize: 512, overlap: 64 }),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("JINA_API_KEY")
-      return Layer.merge(jinaEmbeddingLayer({ apiKey }), jinaRerankerLayer({ apiKey }))
-    }),
-  ),
-  Logger.layer([Logger.consolePretty()]),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-      return Layer.succeed(References.MinimumLogLevel, level)
-    }),
-  ),
+}).pipe(
+  Effect.provide(services),
+  Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })),
 )

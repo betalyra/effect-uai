@@ -1,61 +1,14 @@
 /**
- * Runner for the streaming-tool-output recipe. Demonstrates the
- * progress-and-result pattern (download_artifact) since it's the more
- * visual demo. Swap to the sub-agent variant by importing
- * `makeSubAgent` + `realInnerAgent` instead.
+ * Runner for the streaming-tool-output recipe. Same file on every runtime:
  *
- * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/streaming-tool-output/run.ts`
+ *   OPENAI_API_KEY=... pnpm tsx recipes/streaming-tool-output/run.ts
+ *   OPENAI_API_KEY=... bun recipes/streaming-tool-output/run.ts
+ *   OPENAI_API_KEY=... deno run --allow-all recipes/streaming-tool-output/run.ts
+ *
+ * The download is simulated, so nothing is fetched over the network beyond
+ * the model call itself.
  */
-import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import * as Items from "@effect-uai/core/Items"
-import * as Toolkit from "@effect-uai/core/Toolkit"
-import { layer as responsesLayer } from "@effect-uai/responses/Responses"
-import { type State, buildConversation, makeDownloadTool } from "./index.js"
+import { runRecipe } from "@effect-uai/recipe-kit/runtime"
+import { main } from "./app.js"
 
-const downloadArtifact = makeDownloadTool()
-const toolkit = Toolkit.make(downloadArtifact)
-
-const initial: State = {
-  history: [Items.userText("Download https://example.com/big-blob and tell me the byte count.")],
-  index: 0,
-}
-
-const program = Stream.runForEach(buildConversation(toolkit, initial), (event) =>
-  Match.value(event).pipe(
-    Match.when({ _tag: "Progress" }, (e) =>
-      Effect.logInfo("download progress", { call_id: e.call_id, data: e.data }),
-    ),
-    Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("download result", { result })),
-    Match.discriminators("_tag")({
-      TurnComplete: ({ turn }) =>
-        Effect.logInfo("turn complete", {
-          stop_reason: turn.stop_reason,
-          usage: turn.usage,
-        }),
-    }),
-    Match.orElse(() => Effect.void),
-  ),
-)
-
-const apiKeyLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    return responsesLayer({ apiKey })
-  }),
-)
-
-const mainLayer = Layer.mergeAll(
-  apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
-  Logger.layer([Logger.consolePretty()]),
-)
-
-Effect.runPromise(
-  program.pipe(
-    Effect.provide(mainLayer),
-    Effect.provideService(References.MinimumLogLevel, "Info"),
-  ),
-).catch((err) => {
-  console.error("recipe failed:", err)
-  process.exit(1)
-})
+runRecipe(main)

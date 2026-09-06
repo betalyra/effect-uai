@@ -1,20 +1,17 @@
 /**
  * Composition + reporting for the browser-usability recipe.
  *
- * Runtime-agnostic wiring lives here: the CDP browser Layer (generic
- * `Browser` tag) pointed at a headless Chromium, the Gemini Flash model
- * Layer (generic `LanguageModel` tag), env-driven config (`GOAL`,
- * `START_URL`, `MODEL`, `MAX_STEPS`, `CDP_URL`), the report formatter, and
- * the bootstrap `main`. The runner supplies the platform `HttpClient`.
+ * Runtime-agnostic wiring lives here: flags (`--model`, `--goal`, `--url`,
+ * `--max-steps`, `--cdp`), the report formatter, and the bootstrap `main`.
+ * `run.ts` supplies the platform `HttpClient`.
  *
- * Swapping the browser backend is a one-line change here and nothing else:
- * point `CDP_URL` at any other CDP endpoint (a hosted vendor, a local
- * Chrome, obscura), and `recipe.ts` is untouched.
+ * Swapping the browser backend is `--cdp` and nothing else: point it at any
+ * other CDP endpoint (a hosted vendor, a local Chrome, obscura), and
+ * `recipe.ts` is untouched.
  */
-import { Cause, Config, Console, Effect, Layer, Logger, References, Schema } from "effect"
-import { HttpClient } from "effect/unstable/http"
-import { layer as cdpLayer } from "@effect-uai/browser/Connect"
-import { layer as geminiLayer } from "@effect-uai/google/Gemini"
+import { Cause, Console, Effect, Layer, Option, Stdio } from "effect"
+import { flagValue, intFlag } from "@effect-uai/recipe-kit/argv"
+import { browserLayer, languageModelLayer, parseModelSpec } from "../_shared/model.js"
 import { runUsabilityTest, type UsabilityReport } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
@@ -54,15 +51,22 @@ const formatReport = (report: UsabilityReport): string => {
 // open-source art-supplies demo store. It exercises the verbs a read-only
 // goal never touches (category navigation, adding to cart, search submit) and
 // stops cleanly at the checkout boundary.
-const recipeConfig = Config.all({
-  model: Config.string("MODEL").pipe(Config.withDefault("gemini-3-flash-preview")),
-  goal: Config.string("GOAL").pipe(
-    Config.withDefault(
-      "Shop for calligraphy brush pens: find them (search, or browse the category tree if search does not respond), add two different brush pens to the cart, then open the ORDER page and report how many items are in the cart and the total price. Stop at the checkout page; do not sign in or pay.",
+const DEFAULT_GOAL =
+  "Shop for calligraphy brush pens: find them (search, or browse the category tree if search does not respond), add two different brush pens to the cart, then open the ORDER page and report how many items are in the cart and the total price. Stop at the checkout page; do not sign in or pay."
+
+const readFlags = Effect.gen(function* () {
+  const stdio = yield* Stdio.Stdio
+  const argv = yield* stdio.args
+  return {
+    model: parseModelSpec(
+      Option.getOrElse(flagValue("model", argv), () => "gemini-3-flash-preview"),
+      "google",
     ),
-  ),
-  startUrl: Config.string("START_URL").pipe(Config.withDefault("https://next-faster.vercel.app")),
-  maxSteps: Config.int("MAX_STEPS").pipe(Config.withDefault(20)),
+    goal: Option.getOrElse(flagValue("goal", argv), () => DEFAULT_GOAL),
+    startUrl: Option.getOrElse(flagValue("url", argv), () => "https://next-faster.vercel.app"),
+    maxSteps: intFlag("max-steps", argv, 20),
+    cdp: Option.getOrUndefined(flagValue("cdp", argv)),
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -70,11 +74,15 @@ const recipeConfig = Config.all({
 // ---------------------------------------------------------------------------
 
 export const main = Effect.gen(function* () {
-  const cfg = yield* recipeConfig
+  const flags = yield* readFlags
 
-  yield* Effect.logInfo(`Driving ${cfg.startUrl} toward: "${cfg.goal}" (max ${cfg.maxSteps} steps)`)
+  yield* Effect.logInfo(
+    `Driving ${flags.startUrl} toward: "${flags.goal}" (max ${flags.maxSteps} steps)`,
+  )
 
-  const report = yield* runUsabilityTest(cfg)
+  const report = yield* runUsabilityTest({ ...flags, model: flags.model.model }).pipe(
+    Effect.provide(Layer.merge(browserLayer(flags.cdp), languageModelLayer(flags.model))),
+  )
 
   yield* Console.log(`\n${formatReport(report)}`)
 }).pipe(
@@ -85,60 +93,4 @@ export const main = Effect.gen(function* () {
       if (err?.raw !== undefined) yield* Console.error("RAW ERROR BODY:", err.raw)
     }),
   ),
-)
-
-// ---------------------------------------------------------------------------
-// App-level layer: Chromium over CDP (Browser) + Gemini (LanguageModel).
-// ---------------------------------------------------------------------------
-
-const VersionInfo = Schema.Struct({ webSocketDebuggerUrl: Schema.String })
-
-/**
- * `ws://` passes through; `http://` is resolved via CDP's `/json/version`.
- * Only the path is taken from the response - the host/port stay as
- * configured, so a port-remapped container (whose Chrome reports its
- * internal port) still resolves correctly.
- */
-const resolveCdpEndpoint = (raw: string) =>
-  raw.startsWith("http")
-    ? Effect.gen(function* () {
-        const client = yield* HttpClient.HttpClient
-        const base = raw.replace(/\/$/, "")
-        const response = yield* client.get(`${base}/json/version`)
-        const body = yield* response.json
-        const info = yield* Schema.decodeUnknownEffect(VersionInfo)(body)
-        const path = new URL(info.webSocketDebuggerUrl).pathname
-        return `${base.replace(/^http/, "ws")}${path}`
-      })
-    : Effect.succeed(raw)
-
-// A headless Chromium with its DevTools port open. Start it with:
-//   docker run -d --name chromium -p 127.0.0.1:9222:9222 chromedp/headless-shell
-const chromiumLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const raw = yield* Config.string("CDP_URL").pipe(Config.withDefault("http://127.0.0.1:9222"))
-    const endpoint = yield* resolveCdpEndpoint(raw)
-    return cdpLayer({ endpoint })
-  }),
-)
-
-const geminiProviderLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
-    return geminiLayer({ apiKey })
-  }),
-)
-
-const logLevelLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-    return Layer.succeed(References.MinimumLogLevel, level)
-  }),
-)
-
-export const appLayer = Layer.mergeAll(
-  chromiumLayer,
-  geminiProviderLayer,
-  Logger.layer([Logger.consolePretty()]),
-  logLevelLayer,
 )

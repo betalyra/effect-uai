@@ -40,7 +40,7 @@ winner.
 ## The pattern
 
 The library bit lives in
-[`council.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multi-model-compare/council.ts):
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multi-model-compare/recipe.ts):
 
 ```ts
 export type CouncilEvent =
@@ -109,7 +109,7 @@ identically.
 
 ```sh
 OPENAI_API_KEY=sk-... GOOGLE_API_KEY=... ANTHROPIC_API_KEY=... \
-  pnpm tsx recipes/multi-model-compare/index.ts
+  pnpm tsx recipes/multi-model-compare/run.ts
 ```
 
 You'll see one verdict log per member as each completes - in whatever

@@ -20,7 +20,7 @@ prompt each time starts over, and the model hands you a different picture.
 **Say what to change. Keep the picture.**
 
 ```bash
-GOOGLE_API_KEY=... pnpm tsx recipes/conversational-image-edit/run-node.ts
+GOOGLE_API_KEY=... pnpm tsx recipes/conversational-image-edit/run.ts
 ```
 
 ```

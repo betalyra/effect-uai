@@ -116,9 +116,9 @@ The runner is an interactive chat - type a question, watch which tier
 answers.
 
 ```sh
-pnpm tsx recipes/model-escalation/run-node.ts --provider openai     # OPENAI_API_KEY=sk-...
-pnpm tsx recipes/model-escalation/run-node.ts --provider google     # GOOGLE_API_KEY=...
-pnpm tsx recipes/model-escalation/run-node.ts --provider anthropic  # ANTHROPIC_API_KEY=sk-...
+pnpm tsx recipes/model-escalation/run.ts --provider openai     # OPENAI_API_KEY=sk-...
+pnpm tsx recipes/model-escalation/run.ts --provider google     # GOOGLE_API_KEY=...
+pnpm tsx recipes/model-escalation/run.ts --provider anthropic  # ANTHROPIC_API_KEY=sk-...
 ```
 
 Default is `--provider openai`. Cheap / strong pairs:
@@ -142,5 +142,5 @@ you> Why does a quantum harmonic oscillator have non-zero ground-state energy?
 ```
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-escalation/index.ts)
-and [`run-node.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-escalation/run-node.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-escalation/recipe.ts)
+and [`run.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-escalation/run.ts).

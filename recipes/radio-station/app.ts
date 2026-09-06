@@ -1,115 +1,63 @@
 /**
  * Runtime-agnostic composition of the radio-station recipe.
  *
- * Everything that doesn't depend on Bun / Node / Deno lives here:
- *   - provider selection from argv (Match dispatch over `--provider`)
- *   - provider service layers (ElevenLabs Music, Google Lyria, OpenAI
- *     Responses) and their HTTP client
- *   - recipe config (`STATION_BRIEF`, `TRACK_COUNT`, model overrides)
- *   - HTTP routes (`/`, `/client.js`, `/ws`) and the WebSocket handler
- *   - the bootstrap `main` effect: read paths, ensure cache dir,
- *     bundle the browser client, read the static HTML, launch the
- *     HTTP router
- *   - logger + log-level layer
+ * Everything that doesn't depend on Bun / Node / Deno lives here: the flags
+ * (`--music-model`, `--planner-model`, `--brief`, `--tracks`, `--cache`),
+ * the HTTP routes (`/`, `/client.js`, `/ws`) and their WebSocket handler,
+ * and the bootstrap `main`, which bundles the browser client, reads the
+ * static HTML and launches the router. `run.ts` supplies the platform
+ * `HttpServer`, `FileSystem` and `Path`.
  *
- * Each runner (`run-bun.ts`, `run-node.ts`, ...) provides only the
- * three platform pieces: `HttpServer`, `FileSystem`, `Path`, then
- * calls the matching `XxxRuntime.runMain(main.pipe(Effect.provide(...)))`.
+ * Both music providers register the generic `MusicGenerator` tag, so
+ * `--music-model google:lyria-3-clip-preview` changes only the Layer and
+ * `recipe.ts` is untouched.
  */
 import {
   Cause,
   Channel,
-  Config,
   Effect,
   FileSystem,
   Layer,
-  Logger,
-  Match,
   Option,
   Path,
   Queue,
-  References,
+  Stdio,
   Stream,
 } from "effect"
 import * as HttpRouter from "effect/unstable/http/HttpRouter"
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
-import { layer as elevenlabsMusicLayer } from "@effect-uai/elevenlabs/ElevenLabsMusicGenerator"
-import { layer as lyriaLayer } from "@effect-uai/google/LyriaGenerator"
-import { layer as responsesLayer } from "@effect-uai/responses/Responses"
-import { providerFlag } from "../_shared/argv.js"
-import { bundleClient } from "../_shared/bundle.js"
+import { flagValue, intFlag } from "@effect-uai/recipe-kit/argv"
+import { bundleClient } from "@effect-uai/recipe-kit/bundle"
+import { languageModelLayer, musicGeneratorLayer, parseModelSpec } from "../_shared/model.js"
+import { cacheDir } from "@effect-uai/recipe-kit/output"
 import { runStation, type ServerEvent } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
-// Provider selection. `--provider=google|elevenlabs` (default elevenlabs).
-// Both register the generic `MusicGenerator` service tag, so the recipe
-// body in recipe.ts doesn't change.
+// Flags
 // ---------------------------------------------------------------------------
 
-export type Provider = "elevenlabs" | "google"
-
-const decodeProvider = (raw: string): Provider => {
-  const v = raw.toLowerCase()
-  if (v === "google" || v === "lyria") return "google"
-  if (v === "elevenlabs" || v === "eleven") return "elevenlabs"
-  throw new Error(`unknown provider: ${raw} (expected: elevenlabs | google)`)
-}
-
-export const provider: Provider = Option.getOrElse(
-  providerFlag(decodeProvider),
-  (): Provider => "elevenlabs",
-)
-
-const defaultMusicModel = {
-  elevenlabs: "music_v1",
-  google: "lyria-3-clip-preview",
-} as const
-
-const musicLayerFor = Match.type<Provider>().pipe(
-  Match.when("elevenlabs", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
-        return elevenlabsMusicLayer({ apiKey })
-      }),
+const readFlags = Effect.gen(function* () {
+  const stdio = yield* Stdio.Stdio
+  const argv = yield* stdio.args
+  return {
+    brief: Option.getOrElse(
+      flagValue("brief", argv),
+      () => "late-night lo-fi study session, mellow and instrumental",
     ),
-  ),
-  Match.when("google", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
-        return lyriaLayer({ apiKey })
-      }),
+    trackCount: intFlag("tracks", argv, 10),
+    planner: parseModelSpec(
+      Option.getOrElse(flagValue("planner-model", argv), () => "gpt-5.4-mini"),
+      "openai",
     ),
-  ),
-  Match.exhaustive,
-)
-
-// Provider layers don't bake in an `HttpClient` — each runner provides
-// its own (FetchHttpClient under Bun, NodeHttpClient.layerUndici under
-// Node, etc.) since Node's native fetch has known SSE-streaming issues.
-const providerLayers = Layer.mergeAll(
-  musicLayerFor(provider),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const openaiKey = yield* Config.redacted("OPENAI_API_KEY")
-      return responsesLayer({ apiKey: openaiKey })
-    }),
-  ),
-)
-
-// ---------------------------------------------------------------------------
-// Recipe config (env-driven via Config).
-// ---------------------------------------------------------------------------
-
-const recipeConfig = Config.all({
-  brief: Config.string("STATION_BRIEF").pipe(
-    Config.withDefault("late-night lo-fi study session, mellow and instrumental"),
-  ),
-  trackCount: Config.int("TRACK_COUNT").pipe(Config.withDefault(10)),
-  plannerModel: Config.string("PLANNER_MODEL").pipe(Config.withDefault("gpt-5.4-mini")),
-  musicModel: Config.string("MUSIC_MODEL").pipe(Config.withDefault(defaultMusicModel[provider])),
+    music: parseModelSpec(
+      Option.getOrElse(flagValue("music-model", argv), () => "music_v1"),
+      "elevenlabs",
+    ),
+    // Not `runDir`: a fresh directory per run would miss the cache every
+    // time, and the whole point is that a replayed track is not re-generated.
+    cache: cacheDir("radio-station", argv),
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -213,57 +161,44 @@ const routesLayer = (cfg: RoutesConfig) =>
 // ---------------------------------------------------------------------------
 
 export const main = Effect.gen(function* () {
-  const cfg = yield* recipeConfig
+  const flags = yield* readFlags
   const path = yield* Path.Path
   const fs = yield* FileSystem.FileSystem
 
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
-  const tracksDir = path.join(recipeDir, "tracks", provider)
+  const tracksDir = path.join(flags.cache, flags.music.provider)
   yield* fs.makeDirectory(tracksDir, { recursive: true })
 
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "client/index.html"))
 
-  yield* Effect.logInfo(`radio-station (responses + ${provider} music: ${cfg.musicModel})`)
+  yield* Effect.logInfo(
+    `radio-station (${flags.planner.model} planning, ${flags.music.provider} ${flags.music.model} playing)`,
+  )
   yield* Effect.logInfo(`tracks cached at: ${tracksDir}`)
 
   // The rule's `return yield*` suggestion would surface the served layer's
-  // requirements onto main's R and break the runners' types, so keep returning
-  // the launch effect here.
+  // requirements onto main's R and break `run.ts`, so keep returning the
+  // launch effect here.
   // @effect-diagnostics-next-line effect/returnEffectInGen:off
   return Layer.launch(
     HttpRouter.serve(
       routesLayer({
-        brief: cfg.brief,
-        trackCount: cfg.trackCount,
-        plannerModel: cfg.plannerModel,
-        musicModel: cfg.musicModel,
+        brief: flags.brief,
+        trackCount: flags.trackCount,
+        plannerModel: flags.planner.model,
+        musicModel: flags.music.model,
         tracksDir,
         indexHtml,
         clientJs,
       }),
     ),
+  ).pipe(
+    Effect.provide(
+      Layer.merge(musicGeneratorLayer(flags.music), languageModelLayer(flags.planner)),
+    ),
   )
 }).pipe(
   Effect.flatten,
   Effect.tapCause((cause) => Effect.logError("[main] fatal", { cause })),
-)
-
-// ---------------------------------------------------------------------------
-// App-level layer: everything that's NOT platform-specific. Runners
-// merge this with their platform layers (`HttpServer`, `FileSystem`,
-// `Path`) and call `XxxRuntime.runMain`.
-// ---------------------------------------------------------------------------
-
-const logLevelLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-    return Layer.succeed(References.MinimumLogLevel, level)
-  }),
-)
-
-export const appLayer = Layer.mergeAll(
-  providerLayers,
-  Logger.layer([Logger.consolePretty()]),
-  logLevelLayer,
 )

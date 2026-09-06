@@ -38,7 +38,7 @@ framework:
   into audio chunks.
 
 The pipeline is still ordinary Effect code. Provider selection and the
-HTTP/WebSocket server live in `app.ts`; the recipe body in `index.ts`
+HTTP/WebSocket server live in `app.ts`; the recipe body in `recipe.ts`
 works against the service tags and capability markers, so swapping the
 whole STT/LLM/TTS stack is a Layer change, not a code change.
 
@@ -79,16 +79,16 @@ the current audio and queues the chemistry question as the next turn.
 
 The recipe runs on Bun, Node, or Deno. The runtime-specific file only
 attaches platform layers (`HttpServer`, `FileSystem`, `Path`,
-`HttpClient`); `app.ts` and `index.ts` are shared.
+`HttpClient`); `app.ts` and `recipe.ts` are shared.
 
 ```sh
 # Default stack: ElevenLabs STT/TTS + Gemini LLM
-ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... bun recipes/voice-loop/run-bun.ts
-ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/voice-loop/run-node.ts
-ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... deno run --allow-all recipes/voice-loop/run-deno.ts
+ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... bun recipes/voice-loop/run.ts
+ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/voice-loop/run.ts
+ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... deno run --allow-all recipes/voice-loop/run.ts
 
 # All-Mistral stack (Voxtral STT/TTS + Mistral LLM)
-MISTRAL_API_KEY=... bun recipes/voice-loop/run-bun.ts --provider=mistral
+MISTRAL_API_KEY=... bun recipes/voice-loop/run.ts --provider=mistral
 ```
 
 Open <http://localhost:3000>, click **Start**, allow mic access,
@@ -101,7 +101,7 @@ Env vars:
 - `GOOGLE_API_KEY`: `elevenlabs` stack: Gemini 2.5 Flash.
 - `MISTRAL_API_KEY`: `mistral` stack: Voxtral STT/TTS + Mistral LLM.
 - `PORT`: optional, defaults to `3000`.
-- `PIPELINE_DEBUG=1`: optional, logs every partial transcript.
+- `--debug`: optional, logs every partial transcript.
 
 ## Architecture
 

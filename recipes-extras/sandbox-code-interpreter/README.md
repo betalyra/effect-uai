@@ -140,5 +140,5 @@ Short version: this recipe lives outside the pnpm workspace so its
 heavy native deps stay out of the monorepo's root `node_modules`.
 
 Full source:
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes-extras/sandbox-code-interpreter/index.ts),
-[`run.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes-extras/sandbox-code-interpreter/run.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes-extras/sandbox-code-interpreter/recipe.ts),
+[`app.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes-extras/sandbox-code-interpreter/app.ts).

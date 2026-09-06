@@ -134,8 +134,8 @@ yield* saveHistory(conversationId, finalState.history)
 ## Run it
 
 ```sh
-OPENAI_API_KEY=sk-... pnpm tsx recipes/auto-compaction/index.ts
+OPENAI_API_KEY=sk-... pnpm tsx recipes/auto-compaction/run.ts
 ```
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/auto-compaction/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/auto-compaction/recipe.ts).

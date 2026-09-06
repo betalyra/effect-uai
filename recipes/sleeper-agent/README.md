@@ -103,4 +103,4 @@ can be opened and closed repeatedly, overkill for a single completion
 event, and it doesn't carry a result value.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/sleeper-agent/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/sleeper-agent/recipe.ts).

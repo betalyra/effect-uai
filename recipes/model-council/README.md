@@ -59,7 +59,7 @@ then highlight the winner.
 ## The pattern
 
 The library bit lives in
-[`council.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-council/council.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-council/recipe.ts).
 The shape, in three layers:
 
 **Per candidate**: accumulate text, emit deltas live, emit complete
@@ -179,7 +179,7 @@ Same for transport failures (`RateLimited`, `Unavailable`, etc.):
 
 ```sh
 OPENAI_API_KEY=sk-... GOOGLE_API_KEY=... ANTHROPIC_API_KEY=... \
-  pnpm tsx recipes/model-council/index.ts
+  pnpm tsx recipes/model-council/run.ts
 ```
 
 The runner streams each candidate's text live (prefixed with the

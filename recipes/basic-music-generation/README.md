@@ -34,7 +34,7 @@ yield * writeFile("out.mp3", result.primary.audio.bytes)
 ```
 
 The recipe yields the generic `MusicGenerator` service. The runner
-([`run-node.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-music-generation/run-node.ts))
+([`run.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-music-generation/run.ts))
 picks the Layer based on `--provider=`, so the same body works
 against both providers without changes.
 
@@ -42,14 +42,14 @@ against both providers without changes.
 
 ```sh
 # Default: Google Lyria with the built-in prompt
-GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts
+GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts
 
 # Explicit provider
-GOOGLE_API_KEY=...     pnpm tsx recipes/basic-music-generation/run-node.ts --provider=google
-ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts --provider=elevenlabs
+GOOGLE_API_KEY=...     pnpm tsx recipes/basic-music-generation/run.ts --provider=google
+ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts --provider=elevenlabs
 
 # Custom prompt from a .txt file
-ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run-node.ts --provider=elevenlabs ./my-prompt.txt
+ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts --provider=elevenlabs ./my-prompt.txt
 ```
 
 Writes `out-google.mp3` or `out-elevenlabs.mp3` next to the recipe.
@@ -83,4 +83,4 @@ or session setup behind the same calls. The
 shapes and the capability marker that gates bidirectional sessions.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-music-generation/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-music-generation/recipe.ts).

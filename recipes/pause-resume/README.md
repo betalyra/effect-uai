@@ -85,7 +85,7 @@ section in the auto-compaction recipe).
 ## Run it
 
 ```sh
-OPENAI_API_KEY=sk-... pnpm tsx recipes/pause-resume/index.ts
+OPENAI_API_KEY=sk-... pnpm tsx recipes/pause-resume/run.ts
 ```
 
 Watch the timestamps in the log output - you'll see ~5 seconds of
@@ -93,4 +93,4 @@ silence between turns 3 and 4 while the controller holds the latch
 closed.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/pause-resume/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/pause-resume/recipe.ts).

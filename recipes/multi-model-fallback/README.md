@@ -83,8 +83,8 @@ runs against the real endpoint and produces the answer.
 ## Run it
 
 ```sh
-OPENAI_API_KEY=sk-... GOOGLE_API_KEY=... pnpm tsx recipes/multi-model-fallback/index.ts
+OPENAI_API_KEY=sk-... GOOGLE_API_KEY=... pnpm tsx recipes/multi-model-fallback/run.ts
 ```
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multi-model-fallback/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multi-model-fallback/recipe.ts).

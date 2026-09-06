@@ -1,8 +1,14 @@
 import { Context, Data, Effect, Stream } from "effect"
 import type * as AiError from "../domain/AiError.js"
-import type { AspectRatio, GeneratedImage, ImageResolution, ImageSource } from "../domain/Image.js"
+import type {
+  AspectRatio,
+  GeneratedImage,
+  ImageResolution,
+  ImageSource,
+  ProviderData,
+} from "../domain/Image.js"
 
-export type { AspectRatio, GeneratedImage, ImageResolution } from "../domain/Image.js"
+export type { AspectRatio, GeneratedImage, ImageResolution, ProviderData } from "../domain/Image.js"
 
 /**
  * Cross-provider text-to-image request. Shape and resolution are given
@@ -51,6 +57,12 @@ export type ImageUsage = {
 export type ImageResponse = {
   readonly images: ReadonlyArray<GeneratedImage>
   readonly usage: ImageUsage
+  /**
+   * Response-level extras, keyed by provider name: the seed a request
+   * resolved to, timings, safety flags. Per-image extras live on each
+   * {@link GeneratedImage} instead. See `Image.ProviderData`.
+   */
+  readonly providerData?: ProviderData
 }
 
 /**

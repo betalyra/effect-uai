@@ -77,6 +77,28 @@ export type FalImageEditRequest = Omit<CommonImageEditRequest, "model"> & {
   readonly model: FalImageEditModel
 } & FalImageKnobs
 
+/**
+ * Per-image extras on `GeneratedImage.providerData.fal`. All optional:
+ * which of them an endpoint reports is per-model. Read with
+ * {@link imageDataOf}.
+ */
+const ImageData = Schema.Struct({
+  width: Schema.optional(Schema.Number),
+  height: Schema.optional(Schema.Number),
+  fileName: Schema.optional(Schema.String),
+  fileSize: Schema.optional(Schema.Number),
+})
+export type FalImageData = typeof ImageData.Type
+
+/** Response-level extras on `ImageResponse.providerData.fal`. */
+const ResponseData = Schema.Struct({
+  /** The seed the request resolved to. Send it back for the same image. */
+  seed: Schema.optional(Schema.Number),
+  timings: Schema.optional(Schema.Unknown),
+  hasNsfwConcepts: Schema.optional(Schema.Array(Schema.Boolean)),
+})
+export type FalResponseData = typeof ResponseData.Type
+
 export type FalImageGeneratorService = {
   readonly generate: (
     request: FalImageGenerateRequest,
@@ -165,29 +187,6 @@ const referenceUrl: (image: ImageSource) => string = Match.type<ImageSource>().p
   Match.exhaustive,
 )
 
-/**
- * Which wire field an endpoint reads references from.
- *
- * Every current flagship edit endpoint converged on `image_urls`, across
- * vendors: `fal-ai/flux-2-pro/edit`, `bytedance/seedream/v5/pro/edit`,
- * `alibaba/qwen-image-3/edit`, `fal-ai/nano-banana-2/edit` and
- * `openai/gpt-image-2/edit` all take the array. So the default is right
- * for the models anyone reaches for, and the table below is the older
- * single-image generation that predates the convention.
- *
- * The owner namespace does *not* predict this: all four spellings we
- * found live under `fal-ai/`. Only the endpoint does.
- */
-const DEFAULT_REFERENCE_FIELD = "image_urls"
-
-const KNOWN_REFERENCE_FIELD: Record<string, string> = {
-  "fal-ai/qwen-image-edit": "image_url",
-  "fal-ai/flux/dev/image-to-image": "image_url",
-  "fal-ai/flux-lora/image-to-image": "image_url",
-  "fal-ai/image-editing/professional-photo": "image_url",
-  "fal-ai/uso": "input_image_urls",
-}
-
 /** `_urls` takes the set, `_url` takes one. True of every spelling fal uses. */
 const takesMany = (field: string): boolean => field.endsWith("_urls")
 
@@ -215,7 +214,7 @@ export type WireBody = Record<string, unknown> & {
 export const buildBody = (
   request: FalImageGenerateRequest,
   images: ReadonlyArray<ImageSource>,
-  field: string = DEFAULT_REFERENCE_FIELD,
+  field: string = "image_urls",
 ): Effect.Effect<WireBody, AiError.AiError> =>
   Effect.gen(function* () {
     const imageSize = yield* imageSizeOf(request)
@@ -245,15 +244,19 @@ export const buildBody = (
 // ---------------------------------------------------------------------------
 
 /**
- * Only what is read. fal's per-model schemas carry `width`, `height`,
- * `file_name` and `file_size` too, and declare every one of them
- * *nullable*: an endpoint that has nothing to say sends `null` rather
- * than omitting the key. Declaring a field we never use is a decode
- * failure waiting for the first endpoint that leaves it empty.
+ * Every field is optional *and* nullable, because fal's per-model
+ * schemas disagree about both: one endpoint declares `width` required,
+ * the next declares it nullable and sends `null`. Only `url` is
+ * dependable. Anything beyond it reaches the caller through
+ * `providerData` rather than a promised field.
  */
 const ImageFile = Schema.Struct({
   url: Schema.String,
   content_type: Schema.optional(Schema.NullOr(Schema.String)),
+  width: Schema.optional(Schema.NullOr(Schema.Number)),
+  height: Schema.optional(Schema.NullOr(Schema.Number)),
+  file_name: Schema.optional(Schema.NullOr(Schema.String)),
+  file_size: Schema.optional(Schema.NullOr(Schema.Number)),
 })
 type ImageFile = typeof ImageFile.Type
 
@@ -262,6 +265,9 @@ const Wire = Schema.Struct({
   images: Schema.optional(Schema.NullOr(Schema.Array(ImageFile))),
   image: Schema.optional(Schema.NullOr(ImageFile)),
   has_nsfw_concepts: Schema.optional(Schema.NullOr(Schema.Array(Schema.Boolean))),
+  /** The seed a request resolved to, which is what makes a run repeatable. */
+  seed: Schema.optional(Schema.NullOr(Schema.Number)),
+  timings: Schema.optional(Schema.NullOr(Schema.Unknown)),
 })
 type Wire = typeof Wire.Type
 
@@ -300,13 +306,25 @@ const dataUri = (url: string): Option.Option<readonly [string, string]> =>
     ),
   )
 
-/** No fal image model documents a watermark, so none is claimed. */
-const generatedImage = (file: ImageFile): GeneratedImage => ({
-  image: Option.match(dataUri(file.url), {
-    onNone: () => imageUrl(file.url, file.content_type ?? undefined),
-    onSome: ([mimeType, base64]) => imageBase64(base64, mimeType),
-  }),
+/** Only what the endpoint actually reported; absent keys stay absent. */
+const imageExtras = (file: ImageFile): FalImageData => ({
+  ...(file.width != null && { width: file.width }),
+  ...(file.height != null && { height: file.height }),
+  ...(file.file_name != null && { fileName: file.file_name }),
+  ...(file.file_size != null && { fileSize: file.file_size }),
 })
+
+/** No fal image model documents a watermark, so none is claimed. */
+const generatedImage = (file: ImageFile): GeneratedImage => {
+  const extras = imageExtras(file)
+  return {
+    image: Option.match(dataUri(file.url), {
+      onNone: () => imageUrl(file.url, file.content_type ?? undefined),
+      onSome: ([mimeType, base64]) => imageBase64(base64, mimeType),
+    }),
+    ...(Object.keys(extras).length > 0 && { providerData: { fal: extras } }),
+  }
+}
 
 /** Every image flagged means nothing usable came back, which is a refusal. */
 const refused = (wire: Wire): boolean => {
@@ -325,6 +343,11 @@ export const toResponse = (wire: Wire): Effect.Effect<ImageResponse, AiError.AiE
       }),
     )
   }
+  const extras: FalResponseData = {
+    ...(wire.seed != null && { seed: wire.seed }),
+    ...(wire.timings != null && { timings: wire.timings }),
+    ...(wire.has_nsfw_concepts != null && { hasNsfwConcepts: wire.has_nsfw_concepts }),
+  }
   // fal bills per image and per megapixel, not per token, so there is no
   // usage to report.
   return files.length === 0
@@ -335,8 +358,31 @@ export const toResponse = (wire: Wire): Effect.Effect<ImageResponse, AiError.AiE
           raw: wire,
         }),
       )
-    : Effect.succeed({ images: files.map(generatedImage), usage: {} })
+    : Effect.succeed({
+        images: files.map(generatedImage),
+        usage: {},
+        ...(Object.keys(extras).length > 0 && { providerData: { fal: extras } }),
+      })
 }
+
+// ---------------------------------------------------------------------------
+// Reading the extras
+// ---------------------------------------------------------------------------
+
+const decodeImageData = Schema.decodeUnknownOption(Schema.Struct({ fal: ImageData }))
+const decodeResponseData = Schema.decodeUnknownOption(Schema.Struct({ fal: ResponseData }))
+
+/**
+ * Pixel dimensions and file metadata for one image, where the endpoint
+ * reported them. `providerData` is a shared slot, so this reads only the
+ * `fal` key and returns `None` for an image from another provider.
+ */
+export const imageDataOf = (image: GeneratedImage): Option.Option<FalImageData> =>
+  Option.map(decodeImageData(image.providerData), (d) => d.fal)
+
+/** The seed a request resolved to, plus timings and safety flags. */
+export const responseDataOf = (response: ImageResponse): Option.Option<FalResponseData> =>
+  Option.map(decodeResponseData(response.providerData), (d) => d.fal)
 
 // ---------------------------------------------------------------------------
 // HTTP
@@ -390,8 +436,11 @@ const requestImages = (
   learned: Ref.Ref<Record<string, string>>,
 ): Effect.Effect<ImageResponse, AiError.AiError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
+    // Current endpoints take `image_urls`; older ones want `image_url` or
+    // another spelling, which their 422 names. Neither the id nor the
+    // owner namespace predicts it, so guess and correct.
     const remembered = yield* Ref.get(learned)
-    const field = remembered[model] ?? KNOWN_REFERENCE_FIELD[model] ?? DEFAULT_REFERENCE_FIELD
+    const field = remembered[model] ?? "image_urls"
     const first = yield* attempt(cfg, model, request, images, field)
     if (first.status < 400 || images.length === 0) return yield* finish(first)
 

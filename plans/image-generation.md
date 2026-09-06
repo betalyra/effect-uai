@@ -529,11 +529,17 @@ like, since realtime audio is deliberately out of turns.
 Cost of deferring: the name is already in the docs, the migration entry,
 the skill, and the spike, so it gets more expensive after a release.
 
-### fal reference-field discovery is unproven
+### fal reference-field discovery: proven, table removed
 
-The lookup table covers the endpoints we tested, so the 422-driven
-fallback has never actually executed. It costs one image to prove
-against an endpoint absent from the table.
+`fal-ai/qwen-image-edit`, `fal-ai/flux/dev/image-to-image` and
+`fal-ai/flux-general/image-to-image` all refuse `image_urls` and name
+`image_url` in the 422, and the adapter's own parser reads it back
+correctly from each. Discovery is the only mechanism now; the lookup
+table it backed up was removed, since the correction costs one
+sub-second validation round trip that is cached per endpoint.
+
+`fal-ai/uso` hung rather than answering and is still unmeasured. Probe
+with `experiments/fal-reference-field`.
 
 ### No tests for the new core helpers
 

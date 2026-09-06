@@ -1,52 +1,46 @@
 /**
  * Runtime-agnostic composition of the voice-loop recipe.
  *
- * Everything that doesn't depend on Bun / Node / Deno lives here:
- *   - provider selection from argv (`--provider elevenlabs|mistral`)
- *   - provider service layers (STT + LLM + TTS) and their WebSocket
- *     constructor; the HTTP client comes from each runner's platform layer
- *   - HTTP routes (`/`, `/client.js`, `/config`, the two AudioWorklets,
- *     `/ws`) and the bidirectional WebSocket handler
- *   - the bootstrap `main` effect: bundle the browser client, read the
- *     static assets, launch the HTTP router
- *   - logger + log-level layer
+ * `--provider elevenlabs|mistral` picks a whole stack, not one model: each
+ * preset below fixes the STT, LLM and TTS models together with the voice and
+ * the audio formats they agree on, which is why this recipe takes a provider
+ * rather than three separate `--model` flags. `--debug` turns on the
+ * per-frame pipeline log.
  *
- * Each runner (`run-bun.ts`, `run-node.ts`, `run-deno.ts`) provides only the
- * platform pieces (`HttpServer`, `FileSystem`, `Path`, `HttpClient`) and calls
- * the matching `XxxRuntime.runMain`.
+ * Also here: the HTTP routes (`/`, `/client.js`, `/config`, the two
+ * AudioWorklets, `/ws`), the bidirectional WebSocket handler, and the
+ * bootstrap `main`, which bundles the browser client and launches the router.
+ * `run.ts` supplies the platform `HttpServer`, `FileSystem`, `Path`,
+ * `HttpClient` and the WebSocket constructor.
  */
 import {
   Cause,
   Channel,
-  Config,
   Effect,
   FileSystem,
   Layer,
-  Logger,
-  Match,
   Option,
   Path,
   Queue,
   References,
+  Stdio,
   Stream,
 } from "effect"
 import * as HttpRouter from "effect/unstable/http/HttpRouter"
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
-import * as Socket from "effect/unstable/socket/Socket"
-import { layer as elevenlabsSynthesizer } from "@effect-uai/elevenlabs/ElevenLabsSynthesizer"
-import { layer as elevenlabsTranscriber } from "@effect-uai/elevenlabs/ElevenLabsTranscriber"
-import { layer as geminiLayer } from "@effect-uai/google/Gemini"
-import { layer as mistralLayer } from "@effect-uai/mistral/Mistral"
-import { layer as mistralRealtimeTranscriber } from "@effect-uai/mistral/MistralRealtimeTranscriber"
-import { layer as mistralSynthesizer } from "@effect-uai/mistral/MistralSynthesizer"
 import type { AudioFormat } from "@effect-uai/core/Audio"
-import { providerFlag } from "../_shared/argv.js"
-import { bundleClient } from "../_shared/bundle.js"
+import { flagValue, providerChoice } from "@effect-uai/recipe-kit/argv"
+import {
+  incrementalSynthesizerLayer,
+  languageModelLayer,
+  streamingTranscriberLayer,
+} from "../_shared/model.js"
+import { bundleClient } from "@effect-uai/recipe-kit/bundle"
 import { type PipelineConfig, runPipeline, type StatusEvent } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
-// Config presets — one PipelineConfig per provider stack. These pick concrete
+// Config presets: one PipelineConfig per provider stack. These pick concrete
 // models / voices / formats; the recipe body in recipe.ts is config-agnostic.
 // ---------------------------------------------------------------------------
 
@@ -111,7 +105,7 @@ const configFor = (provider: Provider): PipelineConfig =>
   provider === "mistral" ? mistralConfig : elevenlabsConfig
 
 // ---------------------------------------------------------------------------
-// Audio glue — the browser playback worklet plays raw s16le PCM. Voxtral TTS
+// Audio glue. The browser playback worklet plays raw s16le PCM; Voxtral TTS
 // emits float32 LE, so the server converts f32le chunks before sending them;
 // s16le chunks pass through. Sample count (and thus duration) is unchanged.
 // ---------------------------------------------------------------------------
@@ -139,46 +133,31 @@ const toPlaybackS16le = (format: AudioFormat, bytes: Uint8Array): Uint8Array =>
 
 type Provider = "elevenlabs" | "mistral"
 
-const decodeProvider = (raw: string): Provider => {
-  const v = raw.toLowerCase()
-  if (v === "mistral" || v === "voxtral") return "mistral"
-  if (v === "elevenlabs" || v === "eleven") return "elevenlabs"
-  throw new Error(`unknown provider: ${raw} (expected: elevenlabs | mistral)`)
-}
+const readFlags = Effect.gen(function* () {
+  const stdio = yield* Stdio.Stdio
+  const argv = yield* stdio.args
+  return {
+    provider: yield* providerChoice("elevenlabs", "mistral"),
+    debug: Option.isSome(flagValue("debug", argv)),
+  }
+})
 
-export const provider: Provider = Option.getOrElse(
-  providerFlag(decodeProvider),
-  (): Provider => "elevenlabs",
-)
-
-const layerFor = Match.type<Provider>().pipe(
-  Match.when("elevenlabs", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const elevenKey = yield* Config.redacted("ELEVENLABS_API_KEY")
-        const googleKey = yield* Config.redacted("GOOGLE_API_KEY")
-        return Layer.mergeAll(
-          elevenlabsTranscriber({ apiKey: elevenKey }),
-          elevenlabsSynthesizer({ apiKey: elevenKey }),
-          geminiLayer({ apiKey: googleKey }),
-        )
-      }),
-    ),
-  ),
-  Match.when("mistral", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("MISTRAL_API_KEY")
-        return Layer.mergeAll(
-          mistralRealtimeTranscriber({ apiKey }),
-          mistralSynthesizer({ apiKey }),
-          mistralLayer({ apiKey }),
-        )
-      }),
-    ),
-  ),
-  Match.exhaustive,
-)
+/**
+ * The three capabilities the pipeline needs, resolved from the preset's own
+ * model ids. ElevenLabs has no language model, so that stack borrows Gemini.
+ */
+const layersFor = (provider: Provider, cfg: PipelineConfig) =>
+  provider === "mistral"
+    ? Layer.mergeAll(
+        streamingTranscriberLayer({ provider: "mistral", model: cfg.stt.model }),
+        incrementalSynthesizerLayer({ provider: "mistral", model: cfg.tts.model }),
+        languageModelLayer({ provider: "mistral", model: cfg.llm.model }),
+      )
+    : Layer.mergeAll(
+        streamingTranscriberLayer({ provider: "elevenlabs", model: cfg.stt.model }),
+        incrementalSynthesizerLayer({ provider: "elevenlabs", model: cfg.tts.model }),
+        languageModelLayer({ provider: "google", model: cfg.llm.model }),
+      )
 
 // ---------------------------------------------------------------------------
 // WebSocket handler.
@@ -273,11 +252,9 @@ const routesLayer = (assets: Assets) =>
 export const main = Effect.gen(function* () {
   const path = yield* Path.Path
   const fs = yield* FileSystem.FileSystem
-  const cfg = configFor(provider)
-  const minLevel =
-    (yield* Config.string("PIPELINE_DEBUG").pipe(Config.withDefault("0"))) === "1"
-      ? "Debug"
-      : "Info"
+  const flags = yield* readFlags
+  const cfg = configFor(flags.provider)
+  const minLevel = flags.debug ? "Debug" : "Info"
 
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   // All client code is TypeScript, bundled on demand (no prebuilt JS on disk).
@@ -289,30 +266,19 @@ export const main = Effect.gen(function* () {
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "client/index.html"))
 
   yield* Effect.logInfo(
-    `voice-loop (${provider}: stt=${cfg.stt.model} llm=${cfg.llm.model} tts=${cfg.tts.model})`,
+    `voice-loop (${flags.provider}: stt=${cfg.stt.model} llm=${cfg.llm.model} tts=${cfg.tts.model})`,
   )
 
   // The rule's `return yield*` suggestion would surface the served layer's
-  // requirements onto main's R and break the runners' types, so keep returning
-  // the launch effect here.
+  // requirements onto main's R and break `run.ts`, so keep returning the
+  // launch effect here.
   // @effect-diagnostics-next-line effect/returnEffectInGen:off
   return Layer.launch(
     HttpRouter.serve(
       routesLayer({ cfg, indexHtml, clientJs, micWorkletJs, playbackWorkletJs, minLevel }),
     ),
-  )
+  ).pipe(Effect.provide(layersFor(flags.provider, cfg)))
 }).pipe(
   Effect.flatten,
   Effect.tapCause((cause) => Effect.logError("[main] fatal", { cause })),
-)
-
-// ---------------------------------------------------------------------------
-// App-level layer: everything that's NOT platform-specific. Runners merge
-// this with their platform layers (`HttpServer`, `FileSystem`, `Path`,
-// `HttpClient`) and call `XxxRuntime.runMain`.
-// ---------------------------------------------------------------------------
-
-export const appLayer = Layer.mergeAll(
-  layerFor(provider).pipe(Layer.provide(Socket.layerWebSocketConstructorGlobal)),
-  Logger.layer([Logger.consolePretty()]),
 )

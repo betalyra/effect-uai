@@ -93,12 +93,12 @@ when ignored, important when honoured.
 Three providers, same program:
 
 ```sh
-GOOGLE_API_KEY=...   pnpm tsx recipes/basic-embedding/index.ts --provider=gemini
-OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-embedding/index.ts --provider=openai
-JINA_API_KEY=...     pnpm tsx recipes/basic-embedding/index.ts --provider=jina
+GOOGLE_API_KEY=...   pnpm tsx recipes/basic-embedding/run.ts --model google:gemini-embedding-2
+OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-embedding/run.ts --model openai:text-embedding-3-small
+JINA_API_KEY=...     pnpm tsx recipes/basic-embedding/run.ts --model jina:jina-embeddings-v4
 ```
 
-The recipe parses `--provider` and selects:
+The recipe parses `--model provider:model` and selects:
 
 | Provider | Model                    |
 | -------- | ------------------------ |
@@ -130,4 +130,4 @@ Same shape, larger surface:
 - [Embedding model](/embeddings/): the concept: service tag, encoding
   union, multimodal input, vector math.
 - The full source is at
-  [`recipes/basic-embedding/index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-embedding/index.ts).
+  [`recipes/basic-embedding/recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-embedding/recipe.ts).

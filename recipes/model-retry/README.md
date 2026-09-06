@@ -141,8 +141,8 @@ OPENAI_API_KEY=sk-... pnpm tsx recipes/model-retry/run.ts
 The runner just drives a single conversation against OpenAI; retries
 will only fire if the API actually returns a retryable failure during
 the run. The unit tests in
-[`index.test.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-retry/index.test.ts)
+[`recipe.test.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-retry/recipe.test.ts)
 cover the retry behavior offline against a flaky in-memory model.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-retry/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/model-retry/recipe.ts).

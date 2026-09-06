@@ -1,46 +1,53 @@
 /**
  * Composition + rendering for the retrieve-and-rerank recipe.
  *
- * `JINA_API_KEY` covers both retrieval stages (embeddings and rerank are the
- * same key). The grounded answer needs a language model, so `LLM_API_KEY` is
- * read separately; without it the recipe still prints the before/after
- * ranking, which is the part worth looking at.
+ * Three model specs, one per stage: `--embed-model`, `--rerank-model` and
+ * `--model` for the grounded answer, each resolved to a Layer by
+ * `_shared/model.ts`. Without a key for the answer model the recipe still
+ * prints the before/after ranking, which is the part worth looking at.
  */
-import { Config, Effect, Layer, Logger, Option, References, Stdio, Stream } from "effect"
-import { LanguageModel } from "@effect-uai/core/LanguageModel"
-import { layer as jinaEmbeddingLayer } from "@effect-uai/jina/JinaEmbedding"
-import { layer as jinaRerankerLayer } from "@effect-uai/jina/JinaReranker"
-import { make as makeResponses } from "@effect-uai/responses/Responses"
-import { flagValue } from "../_shared/argv.js"
-import { cyan, dim, renderEvent } from "../_shared/render.js"
+import { Effect, Layer, Option, Stdio, Stream } from "effect"
+import { flagValue, intFlag } from "@effect-uai/recipe-kit/argv"
+import {
+  embeddingModelLayer,
+  languageModelLayer,
+  type ModelSpec,
+  parseModelSpec,
+  rerankerLayer,
+} from "../_shared/model.js"
+import { cyan, dim, renderEvent } from "@effect-uai/recipe-kit/render"
 import { documents, questions } from "./corpus.js"
 import { answer, type Ranked, retrieve } from "./recipe.js"
 
 type Flags = {
   readonly question: string
-  readonly model: string
-  readonly baseUrl: string
-  readonly embedModel: string
-  readonly rerankModel: string
+  readonly model: ModelSpec
+  /** Escape hatch for a gateway the registry has no base URL for. */
+  readonly baseUrl: string | undefined
+  readonly embed: ModelSpec
+  readonly rerank: ModelSpec
   readonly candidates: number
   readonly keep: number
 }
-
-const intFlag = (name: string, argv: ReadonlyArray<string>, fallback: number): number =>
-  Option.match(flagValue(name, argv), {
-    onNone: () => fallback,
-    onSome: (raw) => (Number.isFinite(Number(raw)) ? Number(raw) : fallback),
-  })
 
 const readFlags: Effect.Effect<Flags, never, Stdio.Stdio> = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio
   const argv = yield* stdio.args
   return {
     question: Option.getOrElse(flagValue("question", argv), () => questions[0]!),
-    model: Option.getOrElse(flagValue("model", argv), () => "openai/gpt-4o-mini"),
-    baseUrl: Option.getOrElse(flagValue("base-url", argv), () => "https://openrouter.ai/api/v1"),
-    embedModel: Option.getOrElse(flagValue("embed-model", argv), () => "jina-embeddings-v4"),
-    rerankModel: Option.getOrElse(flagValue("rerank-model", argv), () => "jina-reranker-v3.5"),
+    model: parseModelSpec(
+      Option.getOrElse(flagValue("model", argv), () => "openai/gpt-4o-mini"),
+      "openrouter",
+    ),
+    baseUrl: Option.getOrUndefined(flagValue("base-url", argv)),
+    embed: parseModelSpec(
+      Option.getOrElse(flagValue("embed-model", argv), () => "jina-embeddings-v4"),
+      "jina",
+    ),
+    rerank: parseModelSpec(
+      Option.getOrElse(flagValue("rerank-model", argv), () => "jina-reranker-v3.5"),
+      "jina",
+    ),
     candidates: intFlag("candidates", argv, 15),
     keep: intFlag("keep", argv, 4),
   }
@@ -77,11 +84,13 @@ export const main = Effect.gen(function* () {
   const { cosine, reranked } = yield* retrieve({
     query: flags.question,
     documents,
-    embedModel: flags.embedModel,
-    rerankModel: flags.rerankModel,
+    embedModel: flags.embed.model,
+    rerankModel: flags.rerank.model,
     candidates: flags.candidates,
     keep: flags.keep,
-  })
+  }).pipe(
+    Effect.provide(Layer.merge(embeddingModelLayer(flags.embed), rerankerLayer(flags.rerank))),
+  )
 
   // Highlight the documents the reranker promoted into the answer set.
   const kept = new Set(reranked.map((r) => r.id))
@@ -92,35 +101,17 @@ export const main = Effect.gen(function* () {
   )
   yield* table(`after rerank (top ${reranked.length})`, reranked, kept)
 
+  // The ranking above is the point of the recipe, so a missing answer-model
+  // key is a note rather than a failure.
   const context = reranked.map((r) => documents[r.id]!)
-  const apiKey = yield* Config.redacted("LLM_API_KEY").pipe(Effect.option)
-
-  yield* Option.match(apiKey, {
-    onNone: () => write(dim("\nSet LLM_API_KEY to also generate the grounded answer.\n")),
-    onSome: (key) =>
-      Effect.gen(function* () {
-        yield* write(`\n${cyan("answer")}\n`)
-        const model = yield* makeResponses({ apiKey: key, baseUrl: flags.baseUrl })
-        yield* Stream.runForEach(
-          answer({ question: flags.question, model: flags.model, context }),
-          renderEvent(),
-        ).pipe(Effect.provideService(LanguageModel, model))
-      }),
-  })
+  yield* write(`\n${cyan("answer")}\n`)
+  yield* Stream.runForEach(
+    answer({ question: flags.question, model: flags.model.model, context }),
+    renderEvent(),
+  ).pipe(
+    Effect.provide(languageModelLayer(flags.model, flags.baseUrl)),
+    Effect.catchTag("ConfigError", () =>
+      write(dim("(set the answer model's API key to also generate the grounded answer)\n")),
+    ),
+  )
 }).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
-
-export const appLayer = Layer.mergeAll(
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("JINA_API_KEY")
-      return Layer.merge(jinaEmbeddingLayer({ apiKey }), jinaRerankerLayer({ apiKey }))
-    }),
-  ),
-  Logger.layer([Logger.consolePretty()]),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-      return Layer.succeed(References.MinimumLogLevel, level)
-    }),
-  ),
-)

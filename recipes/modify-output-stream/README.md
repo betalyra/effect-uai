@@ -82,4 +82,4 @@ The runner prints both wire formats back-to-back so you can copy a
 frame straight from the terminal.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/modify-output-stream/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/modify-output-stream/recipe.ts).

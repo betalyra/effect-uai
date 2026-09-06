@@ -1,0 +1,209 @@
+/**
+ * Streaming tool output: two patterns of a tool whose `run` emits events.
+ *
+ *   - Sub-agent (`makeSubAgent`)
+ *       run: consumes an inner agent's `Stream<TurnEvent>`, emitting each
+ *       event and folding the text deltas into the final answer
+ *
+ *   - Progress + result (`makeDownloadTool`)
+ *       run: emits one progress event per chunk, then folds the terminal
+ *       result event into the model-facing output
+ *
+ * Both flow inner events through to the consumer as `ToolEvent.Progress`s in
+ * real time via `emit`, while `run` returns the single structured `Output`
+ * the model sees. The dual-view pattern (rich UI for the user, clean data for
+ * the model) is the point of a streaming tool.
+ *
+ * This file exports the building blocks; `app.ts` wires the provider.
+ */
+import { Duration, Effect, Schema, Stream, pipe } from "effect"
+import * as Items from "@effect-uai/core/Items"
+import { LanguageModel } from "@effect-uai/core/LanguageModel"
+import { loop, stop, onTurnComplete } from "@effect-uai/core/Loop"
+import * as Tool from "@effect-uai/core/Tool"
+import * as Toolkit from "@effect-uai/core/Toolkit"
+import * as Turn from "@effect-uai/core/Turn"
+
+// ---------------------------------------------------------------------------
+// Pattern 1: sub-agent. `run` is parametrized over a `runInner` so tests
+// inject a mocked `Stream<TurnEvent>` and production passes a real
+// inner-loop stream.
+// ---------------------------------------------------------------------------
+
+const SubAgentInput = Schema.Struct({ question: Schema.String })
+
+export interface SubAgentOutput {
+  readonly answer: string
+}
+
+export const makeSubAgent = (
+  runInner: (question: string) => Stream.Stream<Turn.TurnEvent, unknown, never>,
+) =>
+  Tool.make({
+    name: "ask_subagent",
+    description: "Ask a specialist sub-agent for help with a hard question.",
+    inputSchema: Tool.fromEffectSchema(SubAgentInput),
+    // Emit each inner event to the consumer in real time while folding the
+    // text deltas into the model-facing answer (single pass, no buffering).
+    run: ({ question }, emit) =>
+      runInner(question).pipe(
+        Stream.runFoldEffect(
+          () => "",
+          (answer, event) =>
+            emit(event).pipe(Effect.as(event._tag === "TextDelta" ? answer + event.text : answer)),
+        ),
+        Effect.map((answer): SubAgentOutput => ({ answer })),
+      ),
+    strict: true,
+  })
+
+// ---------------------------------------------------------------------------
+// Pattern 2: progress + terminal result. `run` emits one `progress` event per
+// chunk plus one terminal `result` event, folding them into the model-facing
+// output (bytes from the result event, chunk count from the progress events).
+// ---------------------------------------------------------------------------
+
+export type DownloadEvent =
+  | { readonly type: "progress"; readonly pct: number; readonly chunk: number }
+  | { readonly type: "result"; readonly bytes: string }
+
+export interface DownloadOutput {
+  readonly status: "completed" | "failed"
+  readonly bytes: string
+  readonly chunks: number
+}
+
+const DownloadInput = Schema.Struct({
+  url: Schema.String,
+  /** number of chunks to fake. Defaults to 4. */
+  chunks: Schema.optional(Schema.Number),
+})
+
+/**
+ * Configurable per-chunk delay so callers can dial up/down for demos
+ * vs. tests.
+ */
+export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =>
+  Tool.make({
+    name: "download_artifact",
+    description:
+      "Download bytes from a URL. Emits progress events while running; the model receives the final byte payload.",
+    inputSchema: Tool.fromEffectSchema(DownloadInput),
+    run: ({ url, chunks }, emit) => {
+      const total = chunks ?? 4
+      const next = (i: number): readonly [DownloadEvent, number] | undefined => {
+        if (i > total) return undefined
+        if (i === total) return [{ type: "result", bytes: `bytes-of-${url}` }, i + 1]
+        return [
+          {
+            type: "progress",
+            pct: Math.round(((i + 1) / total) * 100),
+            chunk: i + 1,
+          },
+          i + 1,
+        ]
+      }
+      const events = Stream.unfold(0, (i: number) => {
+        const step = next(i)
+        // `undefined` is unfold's "stop" sentinel here, not a void result, so
+        // Effect.void would not typecheck against `[event, state] | undefined`.
+        // @effect-diagnostics-next-line effect/effectSucceedWithVoid:off
+        if (step === undefined) return Effect.succeed(undefined)
+        return step[0].type === "result"
+          ? Effect.succeed(step)
+          : Effect.delay(Effect.succeed(step), perChunkDelay)
+      })
+      // Emit each event to the consumer while folding to the model-facing
+      // output: the result event carries the bytes, progress events are counted.
+      return events.pipe(
+        Stream.runFoldEffect(
+          () => ({ bytes: "", chunks: 0, completed: false }),
+          (acc, event) =>
+            emit(event).pipe(
+              Effect.as(
+                event.type === "result"
+                  ? { ...acc, bytes: event.bytes, completed: true }
+                  : { ...acc, chunks: acc.chunks + 1 },
+              ),
+            ),
+        ),
+        Effect.map((acc): DownloadOutput =>
+          acc.completed
+            ? { status: "completed", bytes: acc.bytes, chunks: acc.chunks }
+            : { status: "failed", bytes: "", chunks: acc.chunks },
+        ),
+      )
+    },
+    strict: true,
+  })
+
+// ---------------------------------------------------------------------------
+// Recipe shape - identical to basic-usage; only the toolkit differs.
+// ---------------------------------------------------------------------------
+
+export interface State {
+  readonly history: ReadonlyArray<Items.HistoryItem>
+  readonly index: number
+}
+
+export const DEFAULT_MODEL = "gpt-5.4-mini"
+
+/** Build a conversation against the given toolkit. */
+export const buildConversation = (
+  toolkit: Toolkit.Toolkit,
+  initial: State,
+  model = DEFAULT_MODEL,
+) =>
+  pipe(
+    initial,
+    loop((state) =>
+      Effect.gen(function* () {
+        const lm = yield* LanguageModel
+        return lm
+          .streamTurn({
+            history: state.history,
+            model,
+            tools: toolkit,
+          })
+          .pipe(
+            onTurnComplete((turn) =>
+              Effect.sync(() => {
+                const calls = Turn.getToolCalls(turn)
+                if (calls.length === 0) return stop()
+
+                return Toolkit.run(toolkit, calls).pipe(
+                  Toolkit.continueWithResults(
+                    Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
+                  ),
+                )
+              }),
+            ),
+          )
+      }),
+    ),
+  )
+
+// ---------------------------------------------------------------------------
+// Production `runInner` for the sub-agent: a real inner loop against the
+// same provider with a focused system prompt. Stays separate from the
+// recipe body so tests can inject mocks without spinning up an HTTP
+// client.
+// ---------------------------------------------------------------------------
+
+export const realInnerAgent = (
+  question: string,
+  model = DEFAULT_MODEL,
+): Stream.Stream<Turn.TurnEvent, unknown, never> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const lm = yield* LanguageModel
+      return lm.streamTurn({
+        history: [
+          Items.userText(
+            `You are a focused specialist. Answer concisely.\n\nQuestion: ${question}`,
+          ),
+        ],
+        model,
+      })
+    }),
+  ) as Stream.Stream<Turn.TurnEvent, unknown, never>

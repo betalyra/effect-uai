@@ -1,0 +1,235 @@
+/**
+ * Human-in-the-loop tool approval. Sensitive tool calls (`send_email`,
+ * `delete_user`) require a verdict before they run; safe ones run
+ * immediately.
+ *
+ * Two transport flavors. Same primitives, different approval planner:
+ *
+ *   - HTTP (primary)         : approvals arrive synchronously bundled
+ *                              with the next request. `fromMap`
+ *                              splits calls into `approved` and `rejected`;
+ *                              missing entries synthesize `cancelled`
+ *                              outputs.
+ *
+ *   - Queue (enhancement)    : long-lived channel (WebSocket / SSE).
+ *                              `fromQueue` returns safe calls
+ *                              immediately and a stream of later decisions
+ *                              for gated calls; `ApprovalRequested` events
+ *                              drive the UI.
+ *
+ * This file exports the building blocks for both. `app.ts` drives the
+ * queue variant (more visual demo).
+ */
+import * as Approval from "@effect-uai/core/Approval"
+import { type ApprovalMapEntry, type Verdict } from "@effect-uai/core/Approval"
+import * as Items from "@effect-uai/core/Items"
+import { LanguageModel } from "@effect-uai/core/LanguageModel"
+import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
+import * as Tool from "@effect-uai/core/Tool"
+import { ToolEvent } from "@effect-uai/core/ToolEvent"
+import * as Toolkit from "@effect-uai/core/Toolkit"
+import * as Turn from "@effect-uai/core/Turn"
+import { Effect, Queue, Schema, Stream, pipe } from "effect"
+
+// ---------------------------------------------------------------------------
+// Tools - one safe, two sensitive.
+// ---------------------------------------------------------------------------
+
+const SearchEmailsInput = Schema.Struct({ query: Schema.String })
+const searchEmails = Tool.make({
+  name: "search_emails",
+  description: "Search the user's recent emails. Returns up to three subject lines.",
+  inputSchema: Tool.fromEffectSchema(SearchEmailsInput),
+  run: ({ query }) =>
+    Effect.succeed({
+      query,
+      results: [
+        "Q3 expense report - final draft",
+        "Receipts: Lisbon offsite",
+        "Re: corporate card limits",
+      ],
+    }),
+  strict: true,
+})
+
+const SendEmailInput = Schema.Struct({
+  to: Schema.String,
+  subject: Schema.String,
+  body: Schema.String,
+})
+const sendEmail = Tool.make({
+  name: "send_email",
+  description: "Send an email on behalf of the user.",
+  inputSchema: Tool.fromEffectSchema(SendEmailInput),
+  run: ({ to, subject }) =>
+    Effect.succeed({ status: "sent", to, subject, sent_at: new Date().toISOString() }),
+  strict: true,
+})
+
+const DeleteUserInput = Schema.Struct({ user_id: Schema.String })
+const deleteUser = Tool.make({
+  name: "delete_user",
+  description: "Permanently delete a user account.",
+  inputSchema: Tool.fromEffectSchema(DeleteUserInput),
+  run: ({ user_id }) => Effect.succeed({ status: "deleted", user_id }),
+  strict: true,
+})
+
+export const toolkit = Toolkit.make(searchEmails, sendEmail, deleteUser)
+
+const decisionEvents = (decision: Approval.ApprovalDecision): Stream.Stream<ToolEvent> =>
+  decision._tag === "Approved"
+    ? Toolkit.run(toolkit, [decision.call])
+    : Stream.succeed(ToolEvent.Output({ result: decision.result }))
+
+// ---------------------------------------------------------------------------
+// Approval policy. Sensitivity is just a predicate - swap in anything:
+// per-tool, per-arg, role-based, etc.
+// ---------------------------------------------------------------------------
+
+const SENSITIVE_TOOLS: ReadonlySet<string> = new Set(["send_email", "delete_user"])
+export const isSensitive: (call: Items.ToolCall) => boolean = (call) =>
+  SENSITIVE_TOOLS.has(call.name)
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+export interface State {
+  readonly history: ReadonlyArray<Items.HistoryItem>
+}
+
+export const initial: State = {
+  history: [
+    Items.userText(
+      "Search my emails for the latest expense report, then send a one-line summary " +
+        "to alice@example.com. After that, please remove the deprecated user u-deprecated.",
+    ),
+  ],
+}
+
+// ---------------------------------------------------------------------------
+// HTTP variant (primary). Approvals are a synchronous map keyed by
+// `call_id`; missing entries become `cancelled`. Pure planner, no
+// approvalRequests stream, no router fiber - the request payload IS the answer.
+//
+// Typical usage in an HTTP handler:
+//
+//   const approvals: Map<string, ApprovalMapEntry> =
+//     parseApprovalsFromRequestBody(req)
+//   const reconciledHistory = [
+//     ...storedHistory,
+//     ...cancelAllPending(storedHistory).map(toToolCallOutput),
+//     Items.userText(req.body.message),
+//   ]
+//   return httpConversation(approvals, { history: reconciledHistory })
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_MODEL = "gpt-5.4-mini"
+
+export const httpConversation = (
+  approvals: ReadonlyMap<string, ApprovalMapEntry>,
+  state: State = initial,
+  model = DEFAULT_MODEL,
+) =>
+  pipe(
+    state,
+    loop((current) =>
+      Effect.gen(function* () {
+        const lm = yield* LanguageModel
+        return lm
+          .streamTurn({
+            history: current.history,
+            model,
+            tools: toolkit,
+          })
+          .pipe(
+            onTurnComplete((turn) =>
+              Effect.sync(() => {
+                const calls = Turn.getToolCalls(turn)
+                if (calls.length === 0) return stop()
+
+                const plan = Approval.fromMap(isSensitive, approvals)(calls)
+                return Stream.merge(
+                  Toolkit.run(toolkit, plan.approved),
+                  Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
+                ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
+              }),
+            ),
+          )
+      }),
+    ),
+  )
+
+// ---------------------------------------------------------------------------
+// Queue variant (enhancement). Long-lived channel; verdicts arrive over
+// time. `fromQueue` returns safe calls up-front, plus an `approvalRequests`
+// stream of `ApprovalRequested` events and a decision stream for gated calls.
+// The recipe explicitly chooses what to execute and which rejected results
+// to return to the model.
+// ---------------------------------------------------------------------------
+
+export const queueConversation = (
+  verdicts: Queue.Queue<Verdict>,
+  state: State = initial,
+  model = DEFAULT_MODEL,
+) =>
+  pipe(
+    state,
+    loop((current) =>
+      Effect.gen(function* () {
+        const lm = yield* LanguageModel
+        return lm
+          .streamTurn({
+            history: current.history,
+            model,
+            tools: toolkit,
+          })
+          .pipe(
+            onTurnComplete((turn) =>
+              Effect.sync(() => {
+                const calls = Turn.getToolCalls(turn)
+                if (calls.length === 0) return stop()
+
+                // Stream.unwrap supplies the Scope that fromQueue's
+                // router fiber lives in. Router stays alive as long as the
+                // consumer is pulling from `events`.
+                const events = Stream.unwrap(
+                  Effect.gen(function* () {
+                    const { approved, decisions, approvalRequests } = yield* Approval.fromQueue(
+                      isSensitive,
+                      verdicts,
+                    )(calls)
+                    return Stream.merge(
+                      approvalRequests,
+                      Stream.merge(
+                        Toolkit.run(toolkit, approved),
+                        decisions.pipe(Stream.flatMap(decisionEvents)),
+                      ),
+                    )
+                  }),
+                )
+
+                return events.pipe(
+                  Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)),
+                )
+              }),
+            ),
+          )
+      }),
+    ),
+  )
+
+// ---------------------------------------------------------------------------
+// Demo policy for the queue variant. In a real app verdicts come from a
+// UI / Slack / approval workflow; here we just decide based on the tool.
+// ---------------------------------------------------------------------------
+
+export const demoVerdict = (event: Extract<ToolEvent, { _tag: "ApprovalRequested" }>): Verdict =>
+  event.tool === "delete_user"
+    ? {
+        call_id: event.call_id,
+        decision: "deny",
+        reason: "Out of scope for this demo - ask an admin to confirm first.",
+      }
+    : { call_id: event.call_id, decision: "approve" }

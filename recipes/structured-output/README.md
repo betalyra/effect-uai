@@ -101,10 +101,10 @@ live results list, a long batch you don't want to wait out), reach for
 ## Run it
 
 ```sh
-OPENAI_API_KEY=sk-... pnpm tsx recipes/structured-output/index.ts --provider=responses
-ANTHROPIC_API_KEY=... pnpm tsx recipes/structured-output/index.ts --provider=anthropic
-GOOGLE_API_KEY=...    pnpm tsx recipes/structured-output/index.ts --provider=gemini
+OPENAI_API_KEY=sk-... pnpm tsx recipes/structured-output/run.ts --model openai:gpt-5.4-mini
+ANTHROPIC_API_KEY=... pnpm tsx recipes/structured-output/run.ts --model anthropic:claude-sonnet-4-5
+GOOGLE_API_KEY=...    pnpm tsx recipes/structured-output/run.ts --model google:gemini-2.5-flash
 ```
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/structured-output/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/structured-output/recipe.ts).

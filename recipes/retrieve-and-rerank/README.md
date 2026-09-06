@@ -62,15 +62,15 @@ Skip it and you lose recall on the queries you care about most. See
 ## Run it
 
 ```sh
-JINA_API_KEY=jina_... pnpm tsx recipes/retrieve-and-rerank/run-node.ts
+JINA_API_KEY=jina_... pnpm tsx recipes/retrieve-and-rerank/run.ts
 ```
 
 One key covers both stages. Add `LLM_API_KEY` to generate the answer too;
 without it you still get the rankings.
 
 ```sh
-... run-node.ts --question "How long are audit logs kept in the EU region?"
-... run-node.ts --candidates 25 --keep 6
+... run.ts --question "How long are audit logs kept in the EU region?"
+... run.ts --candidates 25 --keep 6
 ```
 
 You get two tables over the same candidates, `by cosine` then `after rerank`,

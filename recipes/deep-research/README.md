@@ -56,18 +56,18 @@ type DeepResearchEvent =
 
 The `index` on each event tells you which sub-agent it came from, so you
 can show parallel work in lanes, or read it top-to-bottom at
-`CONCURRENCY=1`. The synthesized report streams out at the end with inline
+`--concurrency 1`. The synthesized report streams out at the end with inline
 citations and a consolidated source list.
 
 ## Tuning a run
 
 The knobs that matter, and the cost that comes with them:
 
-- **`SUB_QUESTIONS`** is how many angles you investigate. More angles means
+- **`--sub-questions`** is how many angles you investigate. More angles means
   broader coverage and more searches.
-- **`CONCURRENCY`** is how many sub-agents run at once. Raise it for speed;
+- **`--concurrency`** is how many sub-agents run at once. Raise it for speed;
   keep it within your search provider's rate limit.
-- **`MAX_ROUNDS`** (set per sub-agent in the recipe) bounds how hard each
+- **`maxRounds`** (set per sub-agent in `recipe.ts`) bounds how hard each
   angle digs before it answers.
 
 A deep-research run fans out real agents, so it costs noticeably more than a
@@ -88,20 +88,22 @@ to take it further once you need them:
 
 ```sh
 OPENAI_API_KEY=... PERPLEXITY_API_KEY=... \
-  pnpm tsx recipes/deep-research/run-node.ts
+  pnpm tsx recipes/deep-research/run.ts
 
 # Ask your own, broaden it, run the sub-agents in parallel, swap providers:
-QUESTION="compare managed Postgres providers in 2026" SUB_QUESTIONS=5 CONCURRENCY=3 \
-  pnpm tsx recipes/deep-research/run-node.ts --llm=gemini --search=tavily
+GOOGLE_API_KEY=... TAVILY_API_KEY=... pnpm tsx recipes/deep-research/run.ts \
+  --question "compare managed Postgres providers in 2026" \
+  --sub-questions 5 --concurrency 3 \
+  --model google:gemini-2.5-flash --search tavily
 ```
 
-| Env / flag      | Meaning                           | Default      |
-| --------------- | --------------------------------- | ------------ |
-| `QUESTION`      | the research question             | (a sample)   |
-| `SUB_QUESTIONS` | how many angles to investigate    | `4`          |
-| `CONCURRENCY`   | concurrent sub-agents             | `1`          |
-| `--llm`         | `openai` \| `gemini`              | `openai`     |
-| `--search`      | `perplexity` \| `exa` \| `tavily` | `perplexity` |
+| Flag              | Meaning                           | Default               |
+| ----------------- | --------------------------------- | --------------------- |
+| `--question`      | the research question             | (a sample)            |
+| `--sub-questions` | how many angles to investigate    | `4`                   |
+| `--concurrency`   | concurrent sub-agents             | `1`                   |
+| `--model`         | `provider:model` for every agent  | `openai:gpt-5.4-mini` |
+| `--search`        | `perplexity` \| `exa` \| `tavily` | `perplexity`          |
 
 ## See also
 

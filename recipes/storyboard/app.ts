@@ -11,35 +11,32 @@
  * at another one. Each run writes to its own timestamped directory, so a
  * run never overwrites an earlier one (or the committed `example/` board).
  *
- * The runners supply the platform `HttpClient`, `FileSystem` and `Path`.
+ * `run.ts` supplies the platform `HttpClient`, `FileSystem` and `Path`.
  */
 import {
   Cause,
-  Config,
   Effect,
   Encoding,
   FileSystem,
   Layer,
-  Logger,
   Match,
   Option,
   Path,
-  References,
   Result,
   Schema,
   Stdio,
   Stream,
 } from "effect"
 import type { ImageResolution, ImageSource } from "@effect-uai/core/Image"
-import { flagValue } from "../_shared/argv.js"
+import { flagValue, intFlag } from "@effect-uai/recipe-kit/argv"
 import {
   imageGeneratorLayer,
   languageModelLayer,
   type ModelSpec,
   parseModelSpec,
 } from "../_shared/model.js"
-import { runDir } from "../_shared/output.js"
-import { cyan, dim } from "../_shared/render.js"
+import { runDir } from "@effect-uai/recipe-kit/output"
+import { cyan, dim } from "@effect-uai/recipe-kit/render"
 import { board, BoardEvent, type BoardConfig, isPanelReady, type Panel } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
@@ -86,12 +83,6 @@ type Flags = {
 }
 
 const isResolution = (s: string): s is ImageResolution => s === "1K" || s === "2K" || s === "4K"
-
-const intFlag = (name: string, argv: ReadonlyArray<string>, fallback: number): number =>
-  Option.match(flagValue(name, argv), {
-    onNone: () => fallback,
-    onSome: (raw) => (Number.isFinite(Number(raw)) ? Number(raw) : fallback),
-  })
 
 const readFlags: Effect.Effect<Flags, never, Stdio.Stdio | Path.Path> = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio
@@ -310,13 +301,3 @@ export const main = Effect.gen(function* () {
 /** Escape hatch for a gateway the registry has no key for. */
 const gatewayUrl = (flag: string): string | undefined =>
   Option.getOrUndefined(flagValue(flag, process.argv.slice(2)))
-
-export const appLayer = Layer.mergeAll(
-  Logger.layer([Logger.consolePretty()]),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-      return Layer.succeed(References.MinimumLogLevel, level)
-    }),
-  ),
-)

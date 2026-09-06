@@ -23,7 +23,7 @@ three.
 **Write the story once as JSON. Get a finished board back.**
 
 ```bash
-OPENAI_API_KEY=sk-... pnpm tsx recipes/storyboard/run-node.ts
+OPENAI_API_KEY=sk-... pnpm tsx recipes/storyboard/run.ts
 ```
 
 ## Two models, one program

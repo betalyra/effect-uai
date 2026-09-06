@@ -31,13 +31,13 @@ Gemini tool to the Anthropic model and the request fails with
 ## Run it
 
 ```bash
-GOOGLE_API_KEY=...    pnpm tsx recipes/native-grounding/run-node.ts
-ANTHROPIC_API_KEY=... pnpm tsx recipes/native-grounding/run-node.ts --provider=anthropic
-OPENAI_API_KEY=...    pnpm tsx recipes/native-grounding/run-node.ts --provider=openai
+GOOGLE_API_KEY=...    pnpm tsx recipes/native-grounding/run.ts
+ANTHROPIC_API_KEY=... pnpm tsx recipes/native-grounding/run.ts --provider=anthropic
+OPENAI_API_KEY=...    pnpm tsx recipes/native-grounding/run.ts --provider=openai
 
-QUESTION="who won the 2026 F1 season opener?" \
-  GOOGLE_API_KEY=... pnpm tsx recipes/native-grounding/run-node.ts
+GOOGLE_API_KEY=... pnpm tsx recipes/native-grounding/run.ts \
+  --question "who won the 2026 F1 season opener?"
 ```
 
-The answer streams to stdout as the model writes it. `run-bun.ts` and
-`run-deno.ts` differ only in the platform HttpClient.
+The answer streams to stdout as the model writes it. `run.ts` and
+`run.ts` differ only in the platform HttpClient.

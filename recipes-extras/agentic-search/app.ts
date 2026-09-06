@@ -7,25 +7,15 @@
  *
  * `JINA_API_KEY` covers both retrieval stages; `LLM_API_KEY` runs the agent.
  */
-import {
-  Array as Arr,
-  Config,
-  Effect,
-  Layer,
-  Logger,
-  Option,
-  References,
-  Stdio,
-  Stream,
-} from "effect"
+import { Array as Arr, Config, Effect, Layer, Option, Stdio, Stream } from "effect"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { layer as jinaEmbeddingLayer } from "@effect-uai/jina/JinaEmbedding"
 import { layer as jinaRerankerLayer } from "@effect-uai/jina/JinaReranker"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
 import * as Chunking from "@effect-uai/retrieval/Chunking"
 // Shared with the in-workspace recipes: same flag parsing, same renderer.
-import { flagValue } from "../../recipes/_shared/argv.js"
-import { cyan, dim, renderEvent } from "../../recipes/_shared/render.js"
+import { flagValue } from "@effect-uai/recipe-kit/argv"
+import { cyan, dim, renderEvent } from "@effect-uai/recipe-kit/render"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { load } from "./corpus.js"
@@ -48,7 +38,7 @@ const readFlags = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio
   const argv = yield* stdio.args
   return {
-    // A bare argument is the question, so `run-node.ts "why ...?"` works.
+    // A bare argument is the question, so `run.ts "why ...?"` works.
     question: Option.getOrElse(
       Option.orElse(flagValue("question", argv), () =>
         Arr.findFirst(argv, (a) => !a.startsWith("--")),
@@ -104,6 +94,19 @@ const renderStages = (stages: Stages): Effect.Effect<void> => {
   )
 }
 
+const services = Layer.mergeAll(
+  libsqlLayer(DB_URL),
+  // Sentence packing keeps a passage readable; swap in `Chunking.markdown` or
+  // a hosted chunker without touching `recipe.ts`.
+  Chunking.layer(Chunking.sentences, { targetSize: 512, overlap: 64 }),
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const apiKey = yield* Config.redacted("JINA_API_KEY")
+      return Layer.merge(jinaEmbeddingLayer({ apiKey }), jinaRerankerLayer({ apiKey }))
+    }),
+  ),
+)
+
 export const main = Effect.gen(function* () {
   const flags = yield* readFlags
 
@@ -145,24 +148,7 @@ export const main = Effect.gen(function* () {
     // The tool result is the passages, already shown by `renderStages`.
     renderEvent({ maxResultChars: 0 }),
   ).pipe(Effect.provideService(LanguageModel, model))
-}).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
-
-export const appLayer = Layer.mergeAll(
-  libsqlLayer(DB_URL),
-  // Sentence packing keeps a passage readable; swap in `Chunking.markdown` or
-  // a hosted chunker without touching `recipe.ts`.
-  Chunking.layer(Chunking.sentences, { targetSize: 512, overlap: 64 }),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("JINA_API_KEY")
-      return Layer.merge(jinaEmbeddingLayer({ apiKey }), jinaRerankerLayer({ apiKey }))
-    }),
-  ),
-  Logger.layer([Logger.consolePretty()]),
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-      return Layer.succeed(References.MinimumLogLevel, level)
-    }),
-  ),
+}).pipe(
+  Effect.provide(services),
+  Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })),
 )

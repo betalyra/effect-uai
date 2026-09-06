@@ -85,11 +85,11 @@ Stream.catchTags({
 ## Run it
 
 ```sh
-OPENAI_API_KEY=sk-... pnpm tsx recipes/streaming-structured-output/index.ts --provider=responses
+OPENAI_API_KEY=sk-... pnpm tsx recipes/streaming-structured-output/run.ts --model openai:gpt-5.4-mini
 ```
 
 Requires the matching API key in the environment: `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, or `GOOGLE_API_KEY`.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-structured-output/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-structured-output/recipe.ts).

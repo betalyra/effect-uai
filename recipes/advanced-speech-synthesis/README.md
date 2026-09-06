@@ -92,13 +92,13 @@ and substitute IDs from the response.
 
 ```sh
 # Default: one-shot dialogue
-ELEVENLABS_API_KEY=... pnpm tsx recipes/advanced-speech-synthesis/run-node.ts
+ELEVENLABS_API_KEY=... pnpm tsx recipes/advanced-speech-synthesis/run.ts
 
 # Streamed dialogue
-ELEVENLABS_API_KEY=... pnpm tsx recipes/advanced-speech-synthesis/run-node.ts --mode dialogue-stream
+ELEVENLABS_API_KEY=... pnpm tsx recipes/advanced-speech-synthesis/run.ts --mode dialogue-stream
 
 # Both
-ELEVENLABS_API_KEY=... pnpm tsx recipes/advanced-speech-synthesis/run-node.ts --mode both
+ELEVENLABS_API_KEY=... pnpm tsx recipes/advanced-speech-synthesis/run.ts --mode both
 ```
 
 Writes `out-dialogue.mp3` and/or `out-dialogue-stream.mp3` next to the
@@ -109,7 +109,7 @@ recipe.
 The recipe deliberately uses the **generic** `SpeechSynthesizer`
 helpers, not `@effect-uai/elevenlabs`'s typed surface. Swapping in a
 future Hume or Google Cloud TTS Layer at the runner level keeps
-`index.ts` unchanged: same `synthesizeDialogue` + `pronunciations`
+`recipe.ts` unchanged: same `synthesizeDialogue` + `pronunciations`
 contract, different wire underneath.
 
-Source: [`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/advanced-speech-synthesis/index.ts).
+Source: [`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/advanced-speech-synthesis/recipe.ts).

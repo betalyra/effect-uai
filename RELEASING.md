@@ -88,13 +88,12 @@ so the bootstrap version does not interfere.
 
 ### The bootstrap version is usually broken
 
-The bootstrap publishes at the *current* version, which is the one already
+The bootstrap publishes at the _current_ version, which is the one already
 released. If the new package depends on core APIs that landed after that release
 and are still sitting in unconsumed changesets, those APIs are not in the
 published core, and the bootstrap version cannot work.
 
-That is expected and the window is short. Setting the peer floor correctly (step
-2) makes it fail honestly: the peer range resolves to nothing and the user gets
+That is expected and the window is short. Setting the peer floor correctly (step 2) makes it fail honestly: the peer range resolves to nothing and the user gets
 an unmet-peer warning at install rather than a module-not-found at import.
 
 Deprecate it once the real version is live:
@@ -124,8 +123,8 @@ change.
 
 All three are idempotent and safe to re-run.
 
-| Situation                                        | Action                                                                          |
-| ------------------------------------------------ | ------------------------------------------------------------------------------- |
-| Publish partially completed                      | Re-run `release.yml` via `workflow_dispatch`; `changeset publish` skips what is already on npm |
+| Situation                                        | Action                                                                                                |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Publish partially completed                      | Re-run `release.yml` via `workflow_dispatch`; `changeset publish` skips what is already on npm        |
 | OIDC publish failed and you need to ship now     | [`release-manual.yml`](.github/workflows/release-manual.yml), which takes an OTP and uses `NPM_TOKEN` |
-| Published fine but the tag or Release is missing | [`tag-and-release.yml`](.github/workflows/tag-and-release.yml)                   |
+| Published fine but the tag or Release is missing | [`tag-and-release.yml`](.github/workflows/tag-and-release.yml)                                        |

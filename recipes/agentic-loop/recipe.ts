@@ -19,7 +19,7 @@
  * the fiber after a timeout (or on a stop signal). The loop itself
  * never decides to stop - that's a UI / lifetime concern.
  *
- * `index.ts` exports the building blocks; the runner lives in `run.ts`.
+ * This file exports the building blocks; `app.ts` wires the provider.
  */
 import { Duration, Effect, Queue, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"

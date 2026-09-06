@@ -22,8 +22,8 @@
  * `escalate` function call. It gets a fresh, clean history with the restated
  * question, so it doesn't need to know about a tool it can't see.
  *
- * `index.ts` builds the conversation given two tiers. The runner in
- * `run-node.ts` wires real providers (OpenAI / Google / Anthropic).
+ * This file builds the conversation given two tiers. `app.ts` wires real
+ * providers (OpenAI / Google / Anthropic).
  */
 import { Array as Arr, Effect, Option, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"

@@ -12,16 +12,17 @@
  * distinct tag (`JsonParseError`, `StructuredDecodeError`), so the
  * caller picks the policy: fail-fast, skip-bad, log-and-continue.
  *
- * Switch providers via `--provider`:
+ * Switch providers via `--model provider:model`:
  *
  *   pnpm tsx recipes/streaming-structured-output/run.ts
- *   pnpm tsx recipes/structured-output/streaming.ts --provider=anthropic
+ *   pnpm tsx recipes/streaming-structured-output/run.ts --model anthropic:claude-sonnet-4-6
  *   pnpm tsx recipes/streaming-structured-output/run.ts --model google:gemini-2.5-flash
  *
  * Caveat: prompt-driven JSONL is fragile. Models sometimes pretty-print
  * (newlines inside objects) or wrap output in code fences. This recipe
  * uses an explicit example in the prompt to anchor the format. For
- * server-enforced shape, use the single-object pattern in `index.ts`.
+ * server-enforced shape, use the single-object pattern in
+ * `recipes/structured-output/`.
  */
 import { Effect, Schema, Stream } from "effect"
 import * as Items from "@effect-uai/core/Items"

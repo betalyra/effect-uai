@@ -11,7 +11,7 @@
  * policy: this version forwards text deltas and completion, and drops
  * reasoning / tool-call internals.
  *
- * `index.ts` exports the building blocks; the runner lives in `run.ts`.
+ * This file exports the building blocks; `app.ts` wires the provider.
  */
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"

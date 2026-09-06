@@ -17,8 +17,8 @@
  *                              for gated calls; `ApprovalRequested` events
  *                              drive the UI.
  *
- * `index.ts` exports the building blocks for both. The runner in
- * `run.ts` drives the queue variant (more visual demo).
+ * This file exports the building blocks for both. `app.ts` drives the
+ * queue variant (more visual demo).
  */
 import * as Approval from "@effect-uai/core/Approval"
 import { type ApprovalMapEntry, type Verdict } from "@effect-uai/core/Approval"

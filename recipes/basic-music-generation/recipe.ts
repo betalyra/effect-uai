@@ -1,10 +1,10 @@
 /**
  * Generate a short clip via the generic `MusicGenerator` service. The
  * recipe body stays provider-agnostic: it returns Effects that read a
- * `MusicGenerator` from context. `run-node.ts` dispatches between
+ * `MusicGenerator` from context. `app.ts` dispatches between
  * `@effect-uai/google/LyriaGenerator` and
  * `@effect-uai/elevenlabs/ElevenLabsMusicGenerator` via the
- * `--provider=` flag. `index.test.ts` swaps in a `MockMusicGenerator`
+ * `--provider=` flag. `recipe.test.ts` swaps in a `MockMusicGenerator`
  * Layer.
  *
  * Only Common-request fields appear here. Provider-specific extras

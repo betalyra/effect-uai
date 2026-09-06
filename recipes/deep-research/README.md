@@ -63,11 +63,11 @@ citations and a consolidated source list.
 
 The knobs that matter, and the cost that comes with them:
 
-- **`SUB_QUESTIONS`** is how many angles you investigate. More angles means
+- **`--sub-questions`** is how many angles you investigate. More angles means
   broader coverage and more searches.
-- **`CONCURRENCY`** is how many sub-agents run at once. Raise it for speed;
+- **`--concurrency`** is how many sub-agents run at once. Raise it for speed;
   keep it within your search provider's rate limit.
-- **`MAX_ROUNDS`** (set per sub-agent in the recipe) bounds how hard each
+- **`maxRounds`** (set per sub-agent in `recipe.ts`) bounds how hard each
   angle digs before it answers.
 
 A deep-research run fans out real agents, so it costs noticeably more than a
@@ -97,13 +97,13 @@ GOOGLE_API_KEY=... TAVILY_API_KEY=... pnpm tsx recipes/deep-research/run.ts \
   --model google:gemini-2.5-flash --search tavily
 ```
 
-| Env / flag      | Meaning                           | Default      |
-| --------------- | --------------------------------- | ------------ |
-| `QUESTION`      | the research question             | (a sample)   |
-| `SUB_QUESTIONS` | how many angles to investigate    | `4`          |
-| `CONCURRENCY`   | concurrent sub-agents             | `1`          |
-| `--llm`         | `openai` \| `gemini`              | `openai`     |
-| `--search`      | `perplexity` \| `exa` \| `tavily` | `perplexity` |
+| Flag              | Meaning                           | Default               |
+| ----------------- | --------------------------------- | --------------------- |
+| `--question`      | the research question             | (a sample)            |
+| `--sub-questions` | how many angles to investigate    | `4`                   |
+| `--concurrency`   | concurrent sub-agents             | `1`                   |
+| `--model`         | `provider:model` for every agent  | `openai:gpt-5.4-mini` |
+| `--search`        | `perplexity` \| `exa` \| `tavily` | `perplexity`          |
 
 ## See also
 

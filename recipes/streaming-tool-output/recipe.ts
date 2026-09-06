@@ -14,7 +14,7 @@
  * the model sees. The dual-view pattern (rich UI for the user, clean data for
  * the model) is the point of a streaming tool.
  *
- * `index.ts` exports the building blocks; the runner lives in `run.ts`.
+ * This file exports the building blocks; `app.ts` wires the provider.
  */
 import { Duration, Effect, Schema, Stream, pipe } from "effect"
 import * as Items from "@effect-uai/core/Items"

@@ -22,6 +22,8 @@ import { makeConversation } from "./recipe.js"
 
 type Flags = {
   readonly model: ModelSpec
+  /** Escape hatch for a gateway the registry has no base URL for. */
+  readonly baseUrl: string | undefined
   readonly mcp: McpClientConfig
   readonly prefix: string
   readonly prompt: string
@@ -50,6 +52,7 @@ const readFlags: Effect.Effect<Flags, never, Stdio.Stdio> = Effect.gen(function*
       Option.getOrElse(flagValue("model", argv), () => "openai/gpt-4o-mini"),
       "openrouter",
     ),
+    baseUrl: Option.getOrUndefined(flagValue("base-url", argv)),
     mcp: {
       transport: "http",
       url: Option.getOrElse(flagValue("mcp-url", argv), () => "https://huggingface.co/mcp"),
@@ -70,5 +73,5 @@ export const main = Effect.gen(function* () {
   yield* Stream.runForEach(
     makeConversation(flags.mcp, flags.model.model, flags.prompt, flags.prefix),
     renderEvent({ maxResultChars: 300 }),
-  ).pipe(Effect.provide(languageModelLayer(flags.model)))
+  ).pipe(Effect.provide(languageModelLayer(flags.model, flags.baseUrl)))
 }).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))

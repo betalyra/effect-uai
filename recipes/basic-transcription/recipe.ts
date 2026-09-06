@@ -1,11 +1,11 @@
 /**
  * Transcribe an audio file via the generic `Transcriber` service. The
  * audio is supplied as an `AudioSource` so this recipe is independent
- * of the filesystem (`run-node.ts` reads bytes off disk; in a browser
+ * of the filesystem (`app.ts` reads bytes off disk; in a browser
  * the same calls work with a `Uint8Array` from a `File`).
  *
  * Provider-specific request shape is keyed off a `Provider` tagged
- * union so `run-node.ts` can pick the Layer based on a `--provider`
+ * union so `app.ts` can pick the Layer based on a `--provider`
  * CLI flag.
  *
  * Two variants:
@@ -18,7 +18,7 @@
  *
  * Add a new provider in two places:
  *   1. extend the `Provider` union below
- *   2. add a `Match.when` case in `fastModelFor` and in `run-node.ts`'
+ *   2. add a `Match.when` case in `fastModelFor` and in `app.ts`'s
  *      `layerFor`.
  */
 import { Match } from "effect"

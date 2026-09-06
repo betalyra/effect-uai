@@ -22,6 +22,8 @@ import { answer, type Ranked, retrieve } from "./recipe.js"
 type Flags = {
   readonly question: string
   readonly model: ModelSpec
+  /** Escape hatch for a gateway the registry has no base URL for. */
+  readonly baseUrl: string | undefined
   readonly embed: ModelSpec
   readonly rerank: ModelSpec
   readonly candidates: number
@@ -37,6 +39,7 @@ const readFlags: Effect.Effect<Flags, never, Stdio.Stdio> = Effect.gen(function*
       Option.getOrElse(flagValue("model", argv), () => "openai/gpt-4o-mini"),
       "openrouter",
     ),
+    baseUrl: Option.getOrUndefined(flagValue("base-url", argv)),
     embed: parseModelSpec(
       Option.getOrElse(flagValue("embed-model", argv), () => "jina-embeddings-v4"),
       "jina",
@@ -106,7 +109,7 @@ export const main = Effect.gen(function* () {
     answer({ question: flags.question, model: flags.model.model, context }),
     renderEvent(),
   ).pipe(
-    Effect.provide(languageModelLayer(flags.model)),
+    Effect.provide(languageModelLayer(flags.model, flags.baseUrl)),
     Effect.catchTag("ConfigError", () =>
       write(dim("(set the answer model's API key to also generate the grounded answer)\n")),
     ),

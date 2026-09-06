@@ -139,8 +139,8 @@ GOOGLE_API_KEY=...     # music (Google Lyria), alternative
 
 bun recipes/radio-station/run.ts
 
-# Pick a provider; switch via argv:
-bun recipes/radio-station/run.ts --provider=google
+# Pick a music provider; switch via argv:
+bun recipes/radio-station/run.ts --music-model=google:lyria-3-clip-preview
 
 # Custom brief, custom track count:
 bun recipes/radio-station/run.ts \

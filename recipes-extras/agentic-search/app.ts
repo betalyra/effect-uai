@@ -38,7 +38,7 @@ const readFlags = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio
   const argv = yield* stdio.args
   return {
-    // A bare argument is the question, so `run-node.ts "why ...?"` works.
+    // A bare argument is the question, so `run.ts "why ...?"` works.
     question: Option.getOrElse(
       Option.orElse(flagValue("question", argv), () =>
         Arr.findFirst(argv, (a) => !a.startsWith("--")),

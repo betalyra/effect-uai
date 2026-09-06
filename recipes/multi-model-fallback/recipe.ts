@@ -8,7 +8,7 @@
  * which runs against the real endpoint and produces the answer.
  *
  * Run with:
- *   OPENAI_API_KEY=sk-... GOOGLE_API_KEY=... pnpm tsx recipes/multi-model-fallback/index.ts
+ *   OPENAI_API_KEY=sk-... GOOGLE_API_KEY=... pnpm tsx recipes/multi-model-fallback/run.ts
  */
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"

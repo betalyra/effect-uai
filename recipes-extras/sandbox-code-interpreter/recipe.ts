@@ -5,8 +5,8 @@
  * if exit code was non-zero. Stops when the model produces a final text
  * answer (no further tool calls).
  *
- * `index.ts` builds the conversation; `run.ts` wires the provider,
- * the Microsandbox layer, and runs it.
+ * This file builds the conversation; `app.ts` wires the provider and
+ * the Microsandbox layer.
  */
 import * as Items from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"

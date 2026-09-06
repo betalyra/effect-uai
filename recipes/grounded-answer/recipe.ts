@@ -21,7 +21,7 @@
  * stdout live.
  *
  * `recipe.ts` is the runtime-agnostic logic; `app.ts` wires providers and
- * the runners (`run-node.ts`, ...) supply the platform HttpClient.
+ * `run.ts` supplies the platform HttpClient.
  */
 import { Effect, pipe } from "effect"
 import * as AiError from "@effect-uai/core/AiError"

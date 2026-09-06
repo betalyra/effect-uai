@@ -151,7 +151,7 @@ OPENAI_API_KEY=sk-... pnpm tsx recipes/streaming-tool-output/run.ts
 ```
 
 The runner drives the download pattern (more visual demo). Tests in
-`index.test.ts` cover both patterns offline using mocked inner streams.
+`recipe.test.ts` cover both patterns offline using mocked inner streams.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-tool-output/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-tool-output/recipe.ts).

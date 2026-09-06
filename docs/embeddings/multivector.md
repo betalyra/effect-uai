@@ -1,6 +1,7 @@
 ---
 title: Multivector embedding
 description: "Late-interaction retrieval: one vector per token, scored with MaxSim."
+source: recipes/multivector-embedding
 ---
 
 A query like "store sourdough starter at room temperature" has four
@@ -119,11 +120,11 @@ multivector (or a reranker) only on the candidate set.
 ## Run it
 
 ```sh
-JINA_API_KEY=... pnpm tsx recipes/multivector-embedding/index.ts
+JINA_API_KEY=... pnpm tsx recipes/multivector-embedding/run.ts
 ```
 
 The full source is at
-[`recipes/multivector-embedding/index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multivector-embedding/index.ts).
+[`recipes/multivector-embedding/recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/multivector-embedding/recipe.ts).
 The recipe ranks five documents (sourdough, marathon, TypeScript,
 bread machines, hydration) by both MaxSim and cosine so you can see
 the patterns side by side.

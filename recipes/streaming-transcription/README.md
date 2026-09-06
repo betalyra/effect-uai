@@ -37,17 +37,17 @@ const transcripts = micFrames.pipe(
 ```
 
 The recipe UI renders `partial` events as tentative text and `final`
-events as committed transcript lines. `index.ts` is provider-agnostic;
-`run-bun.ts` chooses OpenAI Realtime or ElevenLabs.
+events as committed transcript lines. `recipe.ts` is provider-agnostic;
+`run.ts` chooses OpenAI Realtime or ElevenLabs.
 
 ## Run it
 
 ```sh
 # Default: OpenAI Realtime (24 kHz pcm16)
-OPENAI_API_KEY=sk-... bun recipes/streaming-transcription/run-bun.ts
+OPENAI_API_KEY=sk-... bun recipes/streaming-transcription/run.ts
 
 # ElevenLabs Scribe v2 Realtime (16 kHz pcm16)
-ELEVENLABS_API_KEY=... bun recipes/streaming-transcription/run-bun.ts --provider elevenlabs
+ELEVENLABS_API_KEY=... bun recipes/streaming-transcription/run.ts --provider elevenlabs
 ```
 
 Open <http://localhost:3000>, click **Start**, allow mic access, and
@@ -91,4 +91,4 @@ Live transcription is usually the first half of a larger flow. Pipe
 full STT → LLM → TTS composition, see [Voice loop](/recipes/voice-loop/).
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-transcription/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-transcription/recipe.ts).

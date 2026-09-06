@@ -137,23 +137,22 @@ OPENAI_API_KEY=...     # planner (Responses)
 ELEVENLABS_API_KEY=... # music (ElevenLabs Music), default
 GOOGLE_API_KEY=...     # music (Google Lyria), alternative
 
-bun recipes/radio-station/run-bun.ts
+bun recipes/radio-station/run.ts
 
 # Pick a provider; switch via argv:
-bun recipes/radio-station/run-bun.ts --provider=google
+bun recipes/radio-station/run.ts --provider=google
 
 # Custom brief, custom track count:
-STATION_BRIEF="synthwave roadtrip, neon and fast" \
-TRACK_COUNT=8 \
-  bun recipes/radio-station/run-bun.ts
+bun recipes/radio-station/run.ts \
+  --brief "synthwave roadtrip, neon and fast" --tracks 8
 ```
 
 Open `http://localhost:3000`, click **Start**. Tracks land in
 `recipes/radio-station/tracks/{provider}/`. Delete the folder to
 force fresh generation with a new plan; tracks are reused across runs.
 
-There are equivalent `run-node.ts` and `run-deno.ts` runners next to
-`run-bun.ts`, same recipe body, swapped platform layers.
+There are equivalent `run.ts` and `run.ts` runners next to
+`run.ts`, same recipe body, swapped platform layers.
 
 ## Cost shape
 

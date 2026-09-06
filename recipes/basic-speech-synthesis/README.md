@@ -56,13 +56,13 @@ valid for the provider you picked.
 
 ```sh
 # Defaults: --provider openai --mode one-shot
-OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-speech-synthesis/run-node.ts
+OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-speech-synthesis/run.ts
 
 # Streaming only
-OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-speech-synthesis/run-node.ts --mode streaming
+OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-speech-synthesis/run.ts --mode streaming
 
 # Both modes, Gemini
-GOOGLE_API_KEY=... pnpm tsx recipes/basic-speech-synthesis/run-node.ts --provider gemini --mode both
+GOOGLE_API_KEY=... pnpm tsx recipes/basic-speech-synthesis/run.ts --provider google --mode both
 ```
 
 Writes `out-oneshot.<ext>` and/or `out-streaming.<ext>` next to the
@@ -77,4 +77,4 @@ and turns them into audio chunks as they arrive. The
 [Voice loop](/recipes/voice-loop/) uses that shape for LLM → TTS.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-speech-synthesis/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-speech-synthesis/recipe.ts).

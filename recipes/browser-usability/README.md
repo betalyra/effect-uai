@@ -32,16 +32,16 @@ art-supplies demo store: find calligraphy brush pens, add two to the cart,
 reach the order page, stop before checkout.
 
 ```sh
-GOOGLE_API_KEY=... pnpm tsx recipes/browser-usability/run-node.ts
+GOOGLE_API_KEY=... pnpm tsx recipes/browser-usability/run.ts
 ```
 
 Point it at your own site by overriding the goal and URL:
 
 ```sh
-GOAL="Find the pricing page and read the top tier" \
-  START_URL="https://exa.ai" \
-  MAX_STEPS=8 \
-  GOOGLE_API_KEY=... pnpm tsx recipes/browser-usability/run-node.ts
+GOOGLE_API_KEY=... pnpm tsx recipes/browser-usability/run.ts \
+  --goal "Find the pricing page and read the top tier" \
+  --url https://exa.ai \
+  --max-steps 8
 ```
 
 Worth trying: ask for something the store does not sell (a kitchen mug in
@@ -78,7 +78,7 @@ how to test.
 - `recipe.ts`: the loop, the `finish` tool, and the trail bookkeeping.
 - `app.ts`: composition (Chromium `Browser` Layer, Gemini `LanguageModel`
   Layer), env config, and the report formatter.
-- `run-node.ts`: attaches the Node `HttpClient` and starts the runtime.
+- `run.ts`: attaches the Node `HttpClient` and starts the runtime.
 
 `app.ts` drives any CDP endpoint. Point `CDP_URL` at a locally installed
 Chrome (`--remote-debugging-port=9222`), a hosted CDP vendor, or even

@@ -115,21 +115,21 @@ citations, and a natural next step once the prompt-level version works.
 ```sh
 # OpenAI + Perplexity (defaults)
 OPENAI_API_KEY=... PERPLEXITY_API_KEY=... \
-  pnpm tsx recipes/grounded-answer/run-node.ts
+  pnpm tsx recipes/grounded-answer/run.ts
 
 # Swap either axis; each backend brings its own key.
 GOOGLE_API_KEY=... PERPLEXITY_API_KEY=... \
-  pnpm tsx recipes/grounded-answer/run-node.ts --llm=gemini
+  pnpm tsx recipes/grounded-answer/run.ts --model google:gemini-2.5-flash
 OPENAI_API_KEY=... EXA_API_KEY=... \
-  pnpm tsx recipes/grounded-answer/run-node.ts --search=exa
+  pnpm tsx recipes/grounded-answer/run.ts --search exa
 OPENAI_API_KEY=... TAVILY_API_KEY=... \
-  pnpm tsx recipes/grounded-answer/run-node.ts --search=tavily
+  pnpm tsx recipes/grounded-answer/run.ts --search tavily
 ```
 
-| Flag       | Values                            | Default      |
-| ---------- | --------------------------------- | ------------ |
-| `--llm`    | `openai` \| `gemini`              | `openai`     |
-| `--search` | `perplexity` \| `exa` \| `tavily` | `perplexity` |
+| Flag       | Values                            | Default               |
+| ---------- | --------------------------------- | --------------------- |
+| `--model`  | `provider:model`                  | `openai:gpt-5.4-mini` |
+| `--search` | `perplexity` \| `exa` \| `tavily` | `perplexity`          |
 
 Set `QUESTION` to ask your own, and tune `MODEL`, `MAX_ROUNDS`, and
 `MAX_RESULTS` the same way. The answer streams to stdout as the model

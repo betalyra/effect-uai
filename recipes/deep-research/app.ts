@@ -1,158 +1,43 @@
 /**
  * Runtime-agnostic composition of the deep-research recipe.
  *
- * Same two-flag provider selection as grounded-answer (`--llm`, `--search`),
- * the recipe config (`QUESTION`, `MODEL`, `SUB_QUESTIONS`, `CONCURRENCY`),
- * and a `main` that renders the recipe's tagged event stream to the
- * terminal: the plan, each sub-agent's searches and answer as they stream,
- * then the synthesized report.
+ * Same two-flag provider selection as grounded-answer (`--model`,
+ * `--search`), the recipe flags (`--question`, `--sub-questions`,
+ * `--concurrency`), and a `main` that renders the recipe's tagged event
+ * stream to the terminal: the plan, each sub-agent's searches and answer as
+ * they stream, then the synthesized report.
  *
- * The provider Layers require an `HttpClient` but don't bake one in; each
- * runner supplies the platform client and calls the matching `runMain`.
+ * Both Layers come from `_shared/model.ts`, so nothing here names a vendor.
+ * `run.ts` supplies the platform `HttpClient`.
  */
-import {
-  Config,
-  Console,
-  Data,
-  Effect,
-  Layer,
-  Logger,
-  Match,
-  Option,
-  Ref,
-  References,
-  Stream,
-} from "effect"
-import { layer as exaLayer } from "@effect-uai/exa/ExaSearch"
-import { layer as geminiLayer } from "@effect-uai/google/Gemini"
-import { layer as perplexityLayer } from "@effect-uai/perplexity/PerplexitySearch"
-import { layer as responsesLayer } from "@effect-uai/responses/Responses"
-import { layer as tavilyLayer } from "@effect-uai/tavily/TavilySearch"
-import { flagValue } from "../_shared/argv.js"
+import { Console, Effect, Layer, Match, Option, Ref, Stdio, Stream } from "effect"
+import { flagValue, intFlag } from "@effect-uai/recipe-kit/argv"
+import { languageModelLayer, parseModelSpec, webSearchLayer } from "../_shared/model.js"
 import { deepResearch, type DeepResearchEvent } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
-// Provider selection - two orthogonal flags, decoded functionally.
+// Flags
 // ---------------------------------------------------------------------------
 
-export type LlmProvider = "openai" | "gemini"
-export type SearchProvider = "perplexity" | "exa" | "tavily"
+const DEFAULT_QUESTION =
+  "Compare the leading open-source vector databases for production RAG in 2026."
 
-const argv = process.argv.slice(2)
-
-class UnknownFlag extends Data.TaggedError("UnknownFlag")<{
-  readonly flag: string
-  readonly value: string
-  readonly expected: string
-}> {}
-
-const llmAliases: Record<string, LlmProvider> = {
-  openai: "openai",
-  oai: "openai",
-  gemini: "gemini",
-  google: "gemini",
-}
-
-const searchAliases: Record<string, SearchProvider> = {
-  perplexity: "perplexity",
-  pplx: "perplexity",
-  exa: "exa",
-  tavily: "tavily",
-}
-
-const parseFlag = <A extends string>(
-  flag: string,
-  aliases: Record<string, A>,
-  fallback: A,
-): Effect.Effect<A, UnknownFlag> =>
-  Option.match(flagValue(flag, argv), {
-    onNone: (): Effect.Effect<A, UnknownFlag> => Effect.succeed(fallback),
-    onSome: (raw): Effect.Effect<A, UnknownFlag> =>
-      Option.match(Option.fromNullishOr(aliases[raw.toLowerCase()]), {
-        onNone: () =>
-          Effect.fail(
-            new UnknownFlag({
-              flag,
-              value: raw,
-              expected: [...new Set(Object.values(aliases))].join(" | "),
-            }),
-          ),
-        onSome: (a) => Effect.succeed(a),
-      }),
-  })
-
-const defaultModel: Record<LlmProvider, string> = {
-  openai: "gpt-5.4-mini",
-  gemini: "gemini-2.5-flash",
-}
-
-// ---------------------------------------------------------------------------
-// Layers.
-// ---------------------------------------------------------------------------
-
-const llmLayerFor = Match.type<LlmProvider>().pipe(
-  Match.when("openai", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-        return responsesLayer({ apiKey })
-      }),
+const readFlags = Effect.gen(function* () {
+  const stdio = yield* Stdio.Stdio
+  const argv = yield* stdio.args
+  return {
+    model: parseModelSpec(
+      Option.getOrElse(flagValue("model", argv), () => "gpt-5.4-mini"),
+      "openai",
     ),
-  ),
-  Match.when("gemini", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
-        return geminiLayer({ apiKey })
-      }),
-    ),
-  ),
-  Match.exhaustive,
-)
-
-const searchLayerFor = Match.type<SearchProvider>().pipe(
-  Match.when("perplexity", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("PERPLEXITY_API_KEY")
-        return perplexityLayer({ apiKey })
-      }),
-    ),
-  ),
-  Match.when("exa", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("EXA_API_KEY")
-        return exaLayer({ apiKey })
-      }),
-    ),
-  ),
-  Match.when("tavily", () =>
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const apiKey = yield* Config.redacted("TAVILY_API_KEY")
-        return tavilyLayer({ apiKey })
-      }),
-    ),
-  ),
-  Match.exhaustive,
-)
-
-// ---------------------------------------------------------------------------
-// Recipe config.
-// ---------------------------------------------------------------------------
-
-const recipeConfig = (llm: LlmProvider) =>
-  Config.all({
-    question: Config.string("QUESTION").pipe(
-      Config.withDefault(
-        "Compare the leading open-source vector databases for production RAG in 2026.",
-      ),
-    ),
-    model: Config.string("MODEL").pipe(Config.withDefault(defaultModel[llm])),
-    subQuestions: Config.int("SUB_QUESTIONS").pipe(Config.withDefault(4)),
-    concurrency: Config.int("CONCURRENCY").pipe(Config.withDefault(1)),
-  })
+    search: Option.getOrElse(flagValue("search", argv), () => "perplexity"),
+    question: Option.getOrElse(flagValue("question", argv), () => DEFAULT_QUESTION),
+    subQuestions: intFlag("sub-questions", argv, 4),
+    // One at a time by default: search providers rate-limit hard, and a
+    // branch that 429s costs more than the parallelism saves.
+    concurrency: intFlag("concurrency", argv, 1),
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Render the tagged event stream to the terminal.
@@ -189,37 +74,24 @@ const render =
 // ---------------------------------------------------------------------------
 
 export const main = Effect.gen(function* () {
-  const llm = yield* parseFlag("llm", llmAliases, "openai")
-  const search = yield* parseFlag("search", searchAliases, "perplexity")
-  const cfg = yield* recipeConfig(llm)
+  const flags = yield* readFlags
 
-  yield* Effect.logInfo(`deep-research (llm: ${llm} ${cfg.model}, search: ${search})`)
-  yield* Effect.logInfo(`question: ${cfg.question}`)
+  yield* Effect.logInfo(
+    `deep-research (llm: ${flags.model.provider} ${flags.model.model}, search: ${flags.search})`,
+  )
+  yield* Effect.logInfo(`question: ${flags.question}`)
 
   const reportStarted = yield* Ref.make(false)
 
   yield* deepResearch({
-    question: cfg.question,
-    model: cfg.model,
-    subQuestions: cfg.subQuestions,
-    concurrency: cfg.concurrency,
+    question: flags.question,
+    model: flags.model.model,
+    subQuestions: flags.subQuestions,
+    concurrency: flags.concurrency,
   }).pipe(
     Stream.runForEach(render(reportStarted)),
-    Effect.provide(Layer.mergeAll(llmLayerFor(llm), searchLayerFor(search))),
+    Effect.provide(Layer.mergeAll(languageModelLayer(flags.model), webSearchLayer(flags.search))),
   )
 
   yield* Console.log("")
 }).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
-
-// ---------------------------------------------------------------------------
-// App-level layer.
-// ---------------------------------------------------------------------------
-
-const logLevelLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-    return Layer.succeed(References.MinimumLogLevel, level)
-  }),
-)
-
-export const appLayer = Layer.mergeAll(Logger.layer([Logger.consolePretty()]), logLevelLayer)

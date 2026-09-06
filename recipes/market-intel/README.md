@@ -64,18 +64,18 @@ the generic tag.
 ## Run it
 
 ```bash
-FIRECRAWL_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run-node.ts
+FIRECRAWL_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run.ts
 
 # read with a different backend, same recipe (needs that provider's key):
-READ_PROVIDER=jina JINA_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run-node.ts
-READ_PROVIDER=exa EXA_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run-node.ts
+JINA_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run.ts --read jina
+EXA_API_KEY=...  GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run.ts --read exa
 
 # override the pages, model, or concurrency:
-URLS="https://stripe.com/pricing,https://www.notion.so/pricing" CONCURRENCY=2 \
-  FIRECRAWL_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run-node.ts
+FIRECRAWL_API_KEY=... GOOGLE_API_KEY=... pnpm tsx recipes/market-intel/run.ts \
+  --urls "https://stripe.com/pricing,https://www.notion.so/pricing" --concurrency 2
 ```
 
-The same `app.ts` runs under Bun (`run-bun.ts`) and Deno (`run-deno.ts`); only
+The same `app.ts` runs under Bun (`run.ts`) and Deno (`run.ts`); only
 the platform `HttpClient` differs.
 
 ## Where to go next

@@ -1,46 +1,14 @@
 /**
- * Runner for the model-retry recipe. Wires up the real Responses
- * provider + logging and drives the conversation built in `index.ts`.
+ * Runner for the model-retry recipe. Same file on every runtime:
  *
- * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/model-retry/run.ts`
+ *   OPENAI_API_KEY=... pnpm tsx recipes/model-retry/run.ts
+ *   OPENAI_API_KEY=... bun recipes/model-retry/run.ts
+ *   OPENAI_API_KEY=... deno run --allow-all recipes/model-retry/run.ts
+ *
+ *   # Any other provider the registry knows:
+ *   GOOGLE_API_KEY=... ... run.ts --model google:gemini-2.5-flash
  */
-import { Config, Effect, Layer, Logger, Match, References, Stream } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import * as Turn from "@effect-uai/core/Turn"
-import { layer as responsesLayer } from "@effect-uai/responses/Responses"
-import { conversation } from "./index.js"
+import { runRecipe } from "@effect-uai/recipe-kit/runtime"
+import { main } from "./app.js"
 
-const program = Stream.runForEach(conversation, (event) =>
-  Match.value(event).pipe(
-    Match.discriminators("_tag")({
-      TurnComplete: ({ turn }) =>
-        Effect.logInfo("turn complete", {
-          stop_reason: turn.stop_reason,
-          assistant: Turn.assistantTexts(turn).join(" "),
-        }),
-    }),
-    Match.orElse(() => Effect.void),
-  ),
-)
-
-const apiKeyLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    return responsesLayer({ apiKey })
-  }),
-)
-
-const mainLayer = Layer.mergeAll(
-  apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer)),
-  Logger.layer([Logger.consolePretty()]),
-)
-
-Effect.runPromise(
-  program.pipe(
-    Effect.provide(mainLayer),
-    Effect.provideService(References.MinimumLogLevel, "Info"),
-  ),
-).catch((err) => {
-  console.error("recipe failed:", err)
-  process.exit(1)
-})
+runRecipe(main)

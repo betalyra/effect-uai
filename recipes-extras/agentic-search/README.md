@@ -36,7 +36,7 @@ pnpm -C recipes-extras/agentic-search install
 
 JINA_API_KEY=jina_... LLM_API_KEY=sk-... \
   ./recipes-extras/agentic-search/node_modules/.bin/tsx \
-  recipes-extras/agentic-search/run-node.ts "why does the speckled band kill?"
+  recipes-extras/agentic-search/run.ts "why does the speckled band kill?"
 ```
 
 The first run downloads a public-domain book, chunks it, embeds it, and writes
@@ -48,7 +48,7 @@ Bun and Deno work too. Deno needs `--allow-ffi` for the libsql native binding:
 
 ```sh
 deno run --allow-ffi --allow-read --allow-write --allow-env --allow-net \
-  recipes-extras/agentic-search/run-deno.ts "who is Helen Stoner afraid of?"
+  recipes-extras/agentic-search/run.ts "who is Helen Stoner afraid of?"
 ```
 
 **One writer at a time.** Two processes ingesting the same file corrupt the

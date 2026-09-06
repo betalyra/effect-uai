@@ -54,13 +54,13 @@ progress is synthesized, same body. If you only want the final report,
 ## Run it
 
 ```bash
-PERPLEXITY_API_KEY=... pnpm tsx recipes/native-deep-research/run-node.ts
-OPENAI_API_KEY=...     pnpm tsx recipes/native-deep-research/run-node.ts --provider=openai
-GOOGLE_API_KEY=...     pnpm tsx recipes/native-deep-research/run-node.ts --provider=google
+PERPLEXITY_API_KEY=... pnpm tsx recipes/native-deep-research/run.ts
+OPENAI_API_KEY=...     pnpm tsx recipes/native-deep-research/run.ts --provider=openai
+GOOGLE_API_KEY=...     pnpm tsx recipes/native-deep-research/run.ts --provider=google
 
-QUESTION="compare the leading open-weight LLMs released this quarter" \
-  PERPLEXITY_API_KEY=... pnpm tsx recipes/native-deep-research/run-node.ts
+PERPLEXITY_API_KEY=... pnpm tsx recipes/native-deep-research/run.ts \
+  --question "compare the leading open-weight LLMs released this quarter"
 ```
 
-The report prints once the job completes, followed by its sources. `run-bun.ts`
-and `run-deno.ts` differ only in the platform HttpClient.
+The report prints once the job completes, followed by its sources. `run.ts`
+and `run.ts` differ only in the platform HttpClient.

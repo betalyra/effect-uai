@@ -43,7 +43,7 @@ the whole utterance, so playback can begin before the final text exists.
 ## Run it
 
 ```sh
-ELEVENLABS_API_KEY=... bun recipes/streaming-synthesis/run-bun.ts
+ELEVENLABS_API_KEY=... bun recipes/streaming-synthesis/run.ts
 ```
 
 Open <http://localhost:3000>, paste text, click **Synthesize**. Audio
@@ -86,4 +86,4 @@ with the model's text deltas. [Voice loop](/recipes/voice-loop/) does
 exactly that: LLM `Stream<string>` in, streaming TTS audio out.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-synthesis/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/streaming-synthesis/recipe.ts).

@@ -10,7 +10,15 @@ Each recipe shows one design move you can copy into your own agent: gate tool
 calls before execution, stream inner work, catch provider failures, rewrite
 history, pause between turns, or fan out to multiple models. They are real,
 type-checked code in [`recipes/`](https://github.com/betalyra/effect-uai/tree/main/recipes),
-and each page mirrors the `README.md` sitting next to its `index.ts` and tests.
+and each page mirrors the `README.md` sitting next to its `recipe.ts`,
+`app.ts` and `run.ts`.
+
+Every recipe has the same four files: `recipe.ts` holds the effect-uai logic
+and names capability tags rather than vendors, `app.ts` composes it (flags,
+provider Layers, rendering), `run.ts` is one line and works unchanged on Node,
+Bun and Deno, and `README.md` is the page you are reading. Run any of them
+with `pnpm tsx recipes/<name>/run.ts`, `bun recipes/<name>/run.ts`, or
+`deno run --allow-all recipes/<name>/run.ts`.
 
 For the foundational shapes, start with [One turn is a stream](/start/getting-started/),
 [Basic usage](/recipes/basic-usage/), and [Structured output](/recipes/structured-output/).

@@ -58,7 +58,7 @@ pnpm -C recipes-extras/contextual-retrieval install
 
 JINA_API_KEY=jina_... ANTHROPIC_API_KEY=sk-ant-... \
   ./recipes-extras/contextual-retrieval/node_modules/.bin/tsx \
-  recipes-extras/contextual-retrieval/run-node.ts "who inherited the estate?"
+  recipes-extras/contextual-retrieval/run.ts "who inherited the estate?"
 ```
 
 The first run downloads a public-domain book, chunks it, writes a blurb per
@@ -75,7 +75,7 @@ Bun and Deno work too, Deno needing `--allow-ffi` for the libsql binding:
 
 ```sh
 deno run --allow-ffi --allow-read --allow-write --allow-env --allow-net \
-  recipes-extras/contextual-retrieval/run-deno.ts
+  recipes-extras/contextual-retrieval/run.ts
 ```
 
 **One writer at a time.** Two processes ingesting the same file corrupt the

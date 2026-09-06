@@ -11,11 +11,11 @@ server, which is public and needs no key, so this runs with nothing but a model
 API key:
 
 ```bash
-LLM_API_KEY=sk-or-... pnpm tsx recipes/mcp-tools/run-node.ts
+LLM_API_KEY=sk-or-... pnpm tsx recipes/mcp-tools/run.ts
 ```
 
-Also runs on Bun (`bun recipes/mcp-tools/run-bun.ts`) and Deno
-(`deno run --allow-all recipes/mcp-tools/run-deno.ts`).
+Also runs on Bun (`bun recipes/mcp-tools/run.ts`) and Deno
+(`deno run --allow-all recipes/mcp-tools/run.ts`).
 
 ## What it shows
 
@@ -55,7 +55,7 @@ upgrading its protocol needs no change here.
 Point it at a different server and ask it something else:
 
 ```bash
-LLM_API_KEY=... pnpm tsx recipes/mcp-tools/run-node.ts \
+LLM_API_KEY=... pnpm tsx recipes/mcp-tools/run.ts \
   --mcp-url https://mcp.deepwiki.com/mcp --prefix wiki \
   --prompt "What does effect-smol's Queue.end do?"
 ```
@@ -68,7 +68,7 @@ secret lands in `ps` output or shell history:
 
 ```bash
 LLM_API_KEY=... LINEAR_API_KEY=lin_api_... \
-  pnpm tsx recipes/mcp-tools/run-node.ts \
+  pnpm tsx recipes/mcp-tools/run.ts \
   --mcp-url https://mcp.linear.app/mcp --mcp-token-env LINEAR_API_KEY \
   --prefix linear --prompt "show me my backlog tickets"
 ```

@@ -80,14 +80,14 @@ token figure is exact even though the live throughput was estimated.
 ## Run it
 
 ```bash
-GOOGLE_API_KEY=... pnpm tsx recipes/basic-metrics/run-node.ts
+GOOGLE_API_KEY=... pnpm tsx recipes/basic-metrics/run.ts
 
-# override the story, model, or output path:
-PROMPT="a story about a clockwork dragon" OUTPUT_FILE=dragon.txt \
-  GOOGLE_API_KEY=... pnpm tsx recipes/basic-metrics/run-node.ts
+# override the story, the model, or where it lands:
+GOOGLE_API_KEY=... pnpm tsx recipes/basic-metrics/run.ts \
+  --prompt "a story about a clockwork dragon" --model openai:gpt-5.2 --max-tokens 4096
 ```
 
-The same `app.ts` runs under Bun (`run-bun.ts`) and Deno (`run-deno.ts`); only
+The same `app.ts` runs under Bun (`run.ts`) and Deno (`run.ts`); only
 the platform `HttpClient` + `FileSystem` differ.
 
 ## Where to go next

@@ -48,15 +48,15 @@ dashboard](https://plausible.io/plausible.io), live traffic for
 plausible.io, public on purpose:
 
 ```sh
-GOOGLE_API_KEY=... pnpm tsx recipes/dashboard-briefing/run-node.ts
+GOOGLE_API_KEY=... pnpm tsx recipes/dashboard-briefing/run.ts
 ```
 
 Point it at your own dashboard, e.g. a Plausible share link, a public
 Grafana, or any URL you can open in a browser:
 
 ```sh
-DASHBOARD_URL="https://plausible.io/share/yoursite.com?auth=..." \
-  GOOGLE_API_KEY=... pnpm tsx recipes/dashboard-briefing/run-node.ts
+GOOGLE_API_KEY=... pnpm tsx recipes/dashboard-briefing/run.ts \
+  --url "https://plausible.io/share/yoursite.com?auth=..."
 ```
 
 ## Configuration
@@ -82,7 +82,7 @@ values read verbatim, estimates marked with `~`, no invented numbers.
 - `recipe.ts`: the briefing schema and the screenshot-then-decode flow.
 - `app.ts`: composition (Chromium `Browser` Layer, Gemini `LanguageModel`
   Layer), env config, and the briefing formatter.
-- `run-node.ts`: attaches the Node `HttpClient` and starts the runtime.
+- `run.ts`: attaches the Node `HttpClient` and starts the runtime.
 
 Next to [agent usability testing](/recipes/browser-usability/) this is the
 other half of the `Browser` story: that recipe acts on pages through a tool

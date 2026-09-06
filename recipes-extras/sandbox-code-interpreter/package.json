@@ -12,6 +12,7 @@
     "@effect-uai/core": "link:../../packages/core",
     "@effect-uai/google": "link:../../packages/providers/google",
     "@effect-uai/microsandbox": "link:../../packages/providers/microsandbox",
+    "@effect-uai/recipe-kit": "link:../../packages/recipe-kit",
     "@effect-uai/responses": "link:../../packages/providers/responses",
     "effect": "link:../../packages/core/node_modules/effect",
     "microsandbox": "^0.6.12"

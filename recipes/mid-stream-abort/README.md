@@ -86,11 +86,11 @@ output go.
 ## Run it
 
 ```sh
-OPENAI_API_KEY=sk-... pnpm tsx recipes/mid-stream-abort/index.ts
+OPENAI_API_KEY=sk-... pnpm tsx recipes/mid-stream-abort/run.ts
 ```
 
 You'll see a stream of `delta` log lines, then `abort fired after 3
 seconds`, then `loop ended`. No `TurnComplete` line.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/mid-stream-abort/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/mid-stream-abort/recipe.ts).

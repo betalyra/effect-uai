@@ -167,4 +167,4 @@ The runner drives the queue variant since it's the more visual demo
 better exercised by tests or in a real HTTP handler.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/tool-call-approval/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/tool-call-approval/recipe.ts).

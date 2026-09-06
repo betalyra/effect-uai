@@ -17,18 +17,15 @@ importers:
       '@effect-uai/jina':
         specifier: link:../../packages/providers/jina
         version: link:../../packages/providers/jina
+      '@effect-uai/recipe-kit':
+        specifier: link:../../packages/recipe-kit
+        version: link:../../packages/recipe-kit
       '@effect-uai/responses':
         specifier: link:../../packages/providers/responses
         version: link:../../packages/providers/responses
       '@effect-uai/retrieval':
         specifier: link:../../packages/retrieval
         version: link:../../packages/retrieval
-      '@effect/platform-bun':
-        specifier: link:../../recipes/node_modules/@effect/platform-bun
-        version: link:../../recipes/node_modules/@effect/platform-bun
-      '@effect/platform-node':
-        specifier: link:../../recipes/node_modules/@effect/platform-node
-        version: link:../../recipes/node_modules/@effect/platform-node
       '@effect/sql-libsql':
         specifier: 4.0.0-rc.111
         version: 4.0.0-rc.111(effect@..+packages+core+node_modules+effect)

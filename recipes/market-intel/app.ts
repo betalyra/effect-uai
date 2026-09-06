@@ -1,24 +1,17 @@
 /**
  * Composition + reporting for the market-intel recipe.
  *
- * Runtime-agnostic wiring lives here: the Firecrawl read Layer (generic
- * `WebRead` tag) and the Gemini Flash model Layer (generic `LanguageModel`
- * tag), env-driven config (`MODEL`, `URLS`, `CONCURRENCY`), the report
- * formatter, and the bootstrap `main`. The runners supply the platform
- * `HttpClient`.
+ * Runtime-agnostic wiring lives here: flags (`--model`, `--read`, `--urls`,
+ * `--concurrency`), the report formatter, and the bootstrap `main`. `run.ts`
+ * supplies the platform `HttpClient`.
  *
- * Swapping providers is a one-line change here and nothing else: replace
- * `firecrawlLayer` with any other `WebRead` backend, or `geminiLayer` with any
- * other `LanguageModel`, and `recipe.ts` is untouched.
+ * The portability payoff is `--read`: the page reader swaps between
+ * Firecrawl, Jina, Exa and Tavily and `recipe.ts` is untouched, because it
+ * only ever names the generic `WebRead` tag.
  */
-import { Config, Console, Effect, Layer, Logger, Match, References, Result } from "effect"
-import { HttpClient } from "effect/unstable/http"
-import { WebRead } from "@effect-uai/core/WebRead"
-import { layer as exaLayer } from "@effect-uai/exa/ExaContents"
-import { layer as firecrawlLayer } from "@effect-uai/firecrawl/FirecrawlRead"
-import { layer as geminiLayer } from "@effect-uai/google/Gemini"
-import { layer as jinaLayer } from "@effect-uai/jina/JinaReader"
-import { layer as tavilyLayer } from "@effect-uai/tavily/TavilyRead"
+import { Console, Effect, Layer, Option, Result, Stdio } from "effect"
+import { flagValue, intFlag } from "@effect-uai/recipe-kit/argv"
+import { languageModelLayer, parseModelSpec, webReadLayer } from "../_shared/model.js"
 import { marketIntel, type Product } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
@@ -60,18 +53,25 @@ const DEFAULT_URLS = [
   "https://www.scrapingbee.com/pricing/",
 ]
 
-const recipeConfig = Config.all({
-  model: Config.string("MODEL").pipe(Config.withDefault("gemini-2.5-flash")),
-  urls: Config.string("URLS").pipe(
-    Config.map((s) =>
-      s
-        .split(",")
-        .map((u) => u.trim())
-        .filter((u) => u.length > 0),
+const readFlags = Effect.gen(function* () {
+  const stdio = yield* Stdio.Stdio
+  const argv = yield* stdio.args
+  return {
+    model: parseModelSpec(
+      Option.getOrElse(flagValue("model", argv), () => "gemini-2.5-flash"),
+      "google",
     ),
-    Config.withDefault(DEFAULT_URLS),
-  ),
-  concurrency: Config.int("CONCURRENCY").pipe(Config.withDefault(3)),
+    read: Option.getOrElse(flagValue("read", argv), () => "firecrawl"),
+    urls: Option.match(flagValue("urls", argv), {
+      onNone: (): ReadonlyArray<string> => DEFAULT_URLS,
+      onSome: (raw) =>
+        raw
+          .split(",")
+          .map((u) => u.trim())
+          .filter((u) => u.length > 0),
+    }),
+    concurrency: intFlag("concurrency", argv, 3),
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -79,66 +79,17 @@ const recipeConfig = Config.all({
 // ---------------------------------------------------------------------------
 
 export const main = Effect.gen(function* () {
-  const cfg = yield* recipeConfig
+  const flags = yield* readFlags
 
-  yield* Effect.logInfo(`Extracting ${cfg.urls.length} pages with ${cfg.model}...`)
+  yield* Effect.logInfo(
+    `Extracting ${flags.urls.length} pages with ${flags.read} + ${flags.model.model}...`,
+  )
 
-  const rows = yield* marketIntel(cfg)
+  const rows = yield* marketIntel({ ...flags, model: flags.model.model }).pipe(
+    Effect.provide(Layer.merge(webReadLayer(flags.read), languageModelLayer(flags.model))),
+  )
 
   yield* Effect.forEach(rows, ([url, result]) => Console.log(`\n${formatRow(url, result)}`), {
     discard: true,
   })
 }).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))
-
-// ---------------------------------------------------------------------------
-// App-level layer: Firecrawl (WebRead) + Gemini (LanguageModel) + logging.
-// ---------------------------------------------------------------------------
-
-// Each WebRead backend reads its own API key from a different env var.
-const apiKeyEnvFor = (provider: string): string =>
-  Match.value(provider).pipe(
-    Match.when("jina", () => "JINA_API_KEY"),
-    Match.when("exa", () => "EXA_API_KEY"),
-    Match.when("tavily", () => "TAVILY_API_KEY"),
-    Match.orElse(() => "FIRECRAWL_API_KEY"),
-  )
-
-// Pick the WebRead backend from `READ_PROVIDER` (default firecrawl). This is
-// the recipe's portability payoff: the read provider swaps here, the recipe
-// code does not. Only the selected provider's key is read. Every branch
-// registers the generic `WebRead` tag, so the annotation widens the Match
-// union to it (Layer is covariant in its output).
-const readProviderLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const provider = yield* Config.string("READ_PROVIDER").pipe(Config.withDefault("firecrawl"))
-    const apiKey = yield* Config.redacted(apiKeyEnvFor(provider))
-    const layer: Layer.Layer<WebRead, never, HttpClient.HttpClient> = Match.value(provider).pipe(
-      Match.when("jina", () => jinaLayer({ apiKey })),
-      Match.when("exa", () => exaLayer({ apiKey })),
-      Match.when("tavily", () => tavilyLayer({ apiKey })),
-      Match.orElse(() => firecrawlLayer({ apiKey })),
-    )
-    return layer
-  }),
-)
-
-const geminiProviderLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
-    return geminiLayer({ apiKey })
-  }),
-)
-
-const logLevelLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const level = yield* Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const))
-    return Layer.succeed(References.MinimumLogLevel, level)
-  }),
-)
-
-export const appLayer = Layer.mergeAll(
-  readProviderLayer,
-  geminiProviderLayer,
-  Logger.layer([Logger.consolePretty()]),
-  logLevelLayer,
-)

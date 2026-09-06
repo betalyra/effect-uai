@@ -20,6 +20,9 @@ importers:
       '@effect-uai/microsandbox':
         specifier: link:../../packages/providers/microsandbox
         version: link:../../packages/providers/microsandbox
+      '@effect-uai/recipe-kit':
+        specifier: link:../../packages/recipe-kit
+        version: link:../../packages/recipe-kit
       '@effect-uai/responses':
         specifier: link:../../packages/providers/responses
         version: link:../../packages/providers/responses

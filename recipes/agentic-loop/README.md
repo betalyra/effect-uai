@@ -121,4 +121,4 @@ The runner includes `get_current_time(timezone)` and `roll_dice(sides)` with a
 small artificial delay so the multi-turn flow is visible in the terminal.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/agentic-loop/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/agentic-loop/recipe.ts).

@@ -34,7 +34,7 @@ const result =
 ```
 
 The important part is the boundary: audio bytes in, typed transcript
-data out. `index.ts` only depends on the generic `Transcriber` tag, so
+data out. `recipe.ts` only depends on the generic `Transcriber` tag, so
 the runner can provide OpenAI or Gemini without changing the recipe
 body.
 
@@ -48,7 +48,7 @@ The recipe includes two paths:
   you get `result.words` as well as `result.text`.
 
 Gemini's transcription is prompt-driven and text-only, so the runner
-skips the timestamp variant when you choose `--provider gemini`.
+skips the timestamp variant on any provider but `openai`.
 
 | Provider | Fast model          | Timestamp path |
 | -------- | ------------------- | -------------- |
@@ -59,10 +59,10 @@ skips the timestamp variant when you choose `--provider gemini`.
 
 ```sh
 # Default: OpenAI
-OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-transcription/run-node.ts path/to/audio.wav
+OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-transcription/run.ts path/to/audio.wav
 
 # Gemini
-GOOGLE_API_KEY=...   pnpm tsx recipes/basic-transcription/run-node.ts --provider gemini path/to/audio.wav
+ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-transcription/run.ts --provider elevenlabs path/to/audio.wav
 ```
 
 Accepted formats: `m4a`, `mp3`, `mp4`, `mpeg`, `mpga`, `oga`, `ogg`,
@@ -77,4 +77,4 @@ the shape is the same service, but the input is a `Stream<Uint8Array>`
 and the output is a stream of partial and final transcript events.
 
 The full source lives next to this README at
-[`index.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-transcription/index.ts).
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/basic-transcription/recipe.ts).

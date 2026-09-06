@@ -1,41 +1,13 @@
 /**
- * Runner for the modify-output-stream recipe. Drives the conversation
- * against the real Responses provider and prints both wire formats so
- * you can copy a frame straight from the terminal.
+ * Runner for the modify-output-stream recipe. Same file on every runtime:
  *
- * The recipe maps local `toSSE` / `toJSONL` projections over the loop's
- * output with `Stream.filterMap`; that's the whole transport layer.
+ *   OPENAI_API_KEY=... pnpm tsx recipes/modify-output-stream/run.ts
+ *   OPENAI_API_KEY=... bun recipes/modify-output-stream/run.ts
+ *   OPENAI_API_KEY=... deno run --allow-all recipes/modify-output-stream/run.ts
  *
- * Run with: `OPENAI_API_KEY=sk-... pnpm tsx recipes/modify-output-stream/run.ts`
+ * Prints the same turn twice, once as SSE frames and once as JSONL.
  */
-import { Config, Console, Effect, Layer, Stream } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import * as SSE from "@effect-uai/core/SSE"
-import { layer as responsesLayer } from "@effect-uai/responses/Responses"
-import { conversation, toJSONL, toSSE } from "./index.js"
+import { runRecipe } from "@effect-uai/recipe-kit/runtime"
+import { main } from "./app.js"
 
-const decoder = new TextDecoder("utf-8")
-
-const program = Effect.gen(function* () {
-  yield* Console.log("--- as SSE bytes -----------------------------------")
-  const sseBytes = conversation.pipe(Stream.filterMap(toSSE), SSE.toBytes)
-  yield* Stream.runForEach(sseBytes, (chunk) => Console.log(decoder.decode(chunk).trimEnd()))
-
-  yield* Console.log("\n--- as JSONL lines ---------------------------------")
-  const jsonl = conversation.pipe(Stream.filterMap(toJSONL))
-  yield* Stream.runForEach(jsonl, (line: string) => Console.log(line.trimEnd()))
-})
-
-const apiKeyLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    return responsesLayer({ apiKey })
-  }),
-)
-
-const mainLayer = apiKeyLayer.pipe(Layer.provide(FetchHttpClient.layer))
-
-Effect.runPromise(program.pipe(Effect.provide(mainLayer))).catch((err) => {
-  console.error("recipe failed:", err)
-  process.exit(1)
-})
+runRecipe(main)

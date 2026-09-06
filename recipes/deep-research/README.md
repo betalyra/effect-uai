@@ -56,7 +56,7 @@ type DeepResearchEvent =
 
 The `index` on each event tells you which sub-agent it came from, so you
 can show parallel work in lanes, or read it top-to-bottom at
-`CONCURRENCY=1`. The synthesized report streams out at the end with inline
+`--concurrency 1`. The synthesized report streams out at the end with inline
 citations and a consolidated source list.
 
 ## Tuning a run
@@ -88,11 +88,13 @@ to take it further once you need them:
 
 ```sh
 OPENAI_API_KEY=... PERPLEXITY_API_KEY=... \
-  pnpm tsx recipes/deep-research/run-node.ts
+  pnpm tsx recipes/deep-research/run.ts
 
 # Ask your own, broaden it, run the sub-agents in parallel, swap providers:
-QUESTION="compare managed Postgres providers in 2026" SUB_QUESTIONS=5 CONCURRENCY=3 \
-  pnpm tsx recipes/deep-research/run-node.ts --llm=gemini --search=tavily
+GOOGLE_API_KEY=... TAVILY_API_KEY=... pnpm tsx recipes/deep-research/run.ts \
+  --question "compare managed Postgres providers in 2026" \
+  --sub-questions 5 --concurrency 3 \
+  --model google:gemini-2.5-flash --search tavily
 ```
 
 | Env / flag      | Meaning                           | Default      |

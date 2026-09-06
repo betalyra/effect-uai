@@ -27,14 +27,13 @@ const capabilities: ReadonlyArray<Capability> = [
   {
     title: "Language models",
     description:
-      "Build streaming, tool-calling agents over **OpenAI**, **Anthropic**, **Gemini**, and **Mistral**.",
+      "Build **streaming**, **tool-calling** agents once, then swap the provider underneath.",
     href: "/language-models/",
     Icon: PiBrain,
   },
   {
     title: "Image generation",
-    description:
-      "Generate images from a prompt, then **edit** them against references so a character stays itself.",
+    description: "**Generate** images from a prompt, then **edit** them against references.",
     href: "/image-generation/",
     Icon: PiImage,
   },

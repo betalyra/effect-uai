@@ -53,7 +53,7 @@
     "typescript": "catalog:"
   },
   "peerDependencies": {
-    "@effect-uai/core": "workspace:>=0.2.0 <1",
+    "@effect-uai/core": "workspace:>=0.14.0 <1",
     "effect": "catalog:peer"
   }
 }

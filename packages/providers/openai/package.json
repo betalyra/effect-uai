@@ -47,6 +47,10 @@
       "types": "./dist/OpenAIRealtimeTranscriber.d.mts",
       "import": "./dist/OpenAIRealtimeTranscriber.mjs"
     },
+    "./OpenAIImageGenerator": {
+      "types": "./dist/OpenAIImageGenerator.d.mts",
+      "import": "./dist/OpenAIImageGenerator.mjs"
+    },
     "./OpenAISynthesizer": {
       "types": "./dist/OpenAISynthesizer.d.mts",
       "import": "./dist/OpenAISynthesizer.mjs"

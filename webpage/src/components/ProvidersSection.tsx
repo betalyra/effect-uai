@@ -10,6 +10,7 @@ const providers: ReadonlyArray<Provider> = [
   { name: "Anthropic", href: "/providers/anthropic/" },
   { name: "Google", href: "/providers/gemini/" },
   { name: "Mistral", href: "/providers/mistral/" },
+  { name: "fal", href: "/image-generation/providers/fal/" },
   { name: "ElevenLabs", href: "/speech/providers/elevenlabs/" },
   { name: "Inworld", href: "/speech/providers/inworld/" },
   { name: "Jina", href: "/embeddings/providers/jina/" },
@@ -19,6 +20,7 @@ const providers: ReadonlyArray<Provider> = [
   { name: "Firecrawl", href: "/web-reading/providers/firecrawl/" },
   { name: "Microsandbox", href: "/sandboxes/providers/microsandbox/" },
   { name: "Deno", href: "/sandboxes/providers/deno/" },
+  { name: "CDP", href: "/browser/providers/cdp/" },
 ]
 
 export default function ProvidersSection() {
@@ -27,7 +29,7 @@ export default function ProvidersSection() {
       <div style={{ marginBottom: "2rem" }} className="flex items-baseline justify-between gap-4">
         <div className="flex flex-col gap-1.5">
           <h2 className="text-3xl font-bold tracking-tight text-foreground">
-            13 providers. Swap anytime.
+            15 providers. Swap anytime.
           </h2>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
             Write against a shared interface and switch providers without touching your agent code.

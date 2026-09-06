@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import type { ContentBlock, HistoryItem } from "../domain/Items.js"
 
 /**
  * Structured event emitted when a provider adapter drops a Common
@@ -79,3 +80,40 @@ export const warnDroppedWhen = <T>(
   value: T | undefined,
   warning: Omit<CapabilityWarning, "_tag" | "value">,
 ): Effect.Effect<void> => (value === undefined ? Effect.void : warnDropped({ ...warning, value }))
+
+/**
+ * Warn when history carries a content block this provider's wire has no
+ * place for, which its encoder therefore omits.
+ *
+ * History is provider-agnostic, so a turn one provider produced can be
+ * replayed into another. A block only one provider can express
+ * (`output_image`, which needs an assistant-role image part) then reaches
+ * an encoder with nothing to map it to. Omitting is right, since failing
+ * would break replaying a mixed history just to continue the text, but it
+ * should not be silent.
+ *
+ * Call once from the effectful request path; the block encoders stay pure.
+ *
+ * @example
+ * ```ts
+ * yield* warnDroppedBlocks(history, "output_image", {
+ *   provider: "anthropic",
+ *   capability: "output_image",
+ *   reason: "Assistant messages carry no image here. Convert with `imagesAsInput` to send it as user content.",
+ * })
+ * ```
+ */
+export const warnDroppedBlocks = (
+  history: ReadonlyArray<HistoryItem>,
+  type: ContentBlock["type"],
+  warning: Omit<CapabilityWarning, "_tag" | "field" | "value">,
+): Effect.Effect<void> => {
+  const count = history.reduce(
+    (n, item) =>
+      n + (item.type === "message" ? item.content.filter((b) => b.type === type).length : 0),
+    0,
+  )
+  return count === 0
+    ? Effect.void
+    : warnDropped({ ...warning, field: type, value: `${count} block(s)` })
+}

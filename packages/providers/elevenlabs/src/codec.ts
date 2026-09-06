@@ -1,6 +1,8 @@
 import { Array as Arr, Effect, Encoding, Match, Option, Result } from "effect"
+import { HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat, AudioSource } from "@effect-uai/core/Audio"
+import * as Multipart from "@effect-uai/core/Multipart"
 import type { CustomPronunciation } from "@effect-uai/core/SpeechSynthesizer"
 
 // ---------------------------------------------------------------------------
@@ -230,3 +232,11 @@ export const httpStatusError: (status: number, body: string) => AiError.AiError 
 
 export const transportFailure = (cause: unknown): AiError.AiError =>
   new AiError.Unavailable({ provider: "elevenlabs", raw: cause })
+
+/** Core's helper, with our transport error. Never pass `FormData` to the client. */
+export const bodyMultipart = (
+  form: FormData,
+): Effect.Effect<
+  (request: HttpClientRequest.HttpClientRequest) => HttpClientRequest.HttpClientRequest,
+  AiError.AiError
+> => Multipart.bodyMultipart(form).pipe(Effect.mapError(transportFailure))

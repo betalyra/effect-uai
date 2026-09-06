@@ -6,7 +6,7 @@ import sitemap from "@astrojs/sitemap"
 import starlightLlmsTxt from "starlight-llms-txt"
 import tailwindcss from "@tailwindcss/vite"
 
-const stubPagePattern = /\/(realtime|image-generation|video-generation)\/$/
+const stubPagePattern = /\/(realtime|video-generation)\/$/
 
 const isVercelProduction = process.env.VERCEL_ENV === "production"
 
@@ -67,7 +67,7 @@ export default defineConfig({
           description:
             "Low-level Effect-TS primitives for building AI agents: streaming agent loops, tool calling, structured output, multi-provider (OpenAI, Anthropic, Google Gemini), embeddings, and speech.",
           rawContent: true,
-          exclude: ["realtime", "image-generation", "video-generation"],
+          exclude: ["realtime", "video-generation"],
         }),
       ],
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
@@ -122,6 +122,7 @@ export default defineConfig({
             { label: "The loop primitive", slug: "language-models/loop" },
             { label: "Tools and toolkits", slug: "language-models/tools" },
             { label: "MCP", slug: "language-models/mcp" },
+            { label: "Images in a turn", slug: "language-models/images-in-turns" },
             {
               label: "Advanced",
               collapsed: true,
@@ -182,6 +183,31 @@ export default defineConfig({
                 },
                 { label: "Model council", slug: "recipes/model-council" },
                 { label: "Basic metrics", slug: "recipes/basic-metrics" },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Image generation",
+          items: [
+            { label: "Overview", slug: "image-generation" },
+            {
+              label: "Providers",
+              items: [
+                { label: "OpenAI", slug: "image-generation/providers/openai" },
+                { label: "Google", slug: "image-generation/providers/google" },
+                { label: "fal", slug: "image-generation/providers/fal" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Storyboard", slug: "recipes/storyboard" },
+                {
+                  label: "Conversational image edit",
+                  slug: "recipes/conversational-image-edit",
+                },
               ],
             },
           ],
@@ -414,11 +440,6 @@ export default defineConfig({
             {
               label: "Realtime",
               slug: "realtime",
-              badge: { text: "Soon", variant: "note" },
-            },
-            {
-              label: "Image generation",
-              slug: "image-generation",
               badge: { text: "Soon", variant: "note" },
             },
             {

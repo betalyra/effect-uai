@@ -23,11 +23,14 @@ import {
   PiMicrophone,
   PiMusicNotes,
   PiNotePencil,
+  PiPaintBrushBroad,
   PiPath,
   PiPause,
   PiPlugsConnected,
   PiPulse,
   PiQuotes,
+  PiImage,
+  PiImagesSquare,
   PiRadio,
   PiRanking,
   PiShieldCheck,
@@ -54,6 +57,7 @@ type Category =
   | "retrieval"
   | "speech"
   | "music"
+  | "images"
   | "sandboxes"
   | "browser"
 
@@ -76,6 +80,7 @@ const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "retrieval",
   "speech",
   "music",
+  "images",
   "sandboxes",
   "browser",
 ]
@@ -90,6 +95,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   retrieval: "Retrieval",
   speech: "Speech",
   music: "Music",
+  images: "Images",
   sandboxes: "Sandboxes",
   browser: "Browser",
 }
@@ -104,6 +110,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   retrieval: PiFunnel,
   speech: PiWaveform,
   music: PiMusicNotes,
+  images: PiImage,
   sandboxes: PiCube,
   browser: PiBrowser,
 }
@@ -243,6 +250,22 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/radio-station/",
     Icon: PiRadio,
     category: "music",
+  },
+  {
+    title: "Conversational image edit",
+    description:
+      "**Say what to change, keep the picture.** Getting the image you want takes a few goes, and your subject survives every one of them.",
+    href: "/recipes/conversational-image-edit/",
+    Icon: PiPaintBrushBroad,
+    category: "images",
+  },
+  {
+    title: "Storyboard",
+    description:
+      "**Tell a story in pictures.** Your characters stay themselves across every panel, so eight images read as one comic instead of eight strangers.",
+    href: "/recipes/storyboard/",
+    Icon: PiImagesSquare,
+    category: "images",
   },
   {
     title: "Retrieve and rerank",

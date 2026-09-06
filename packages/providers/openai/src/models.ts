@@ -36,6 +36,22 @@ export type OpenAITtsModel =
   | (string & {})
 
 /**
+ * OpenAI image models. `gpt-image-2` is the alias, tracking whichever
+ * snapshot is current.
+ *
+ * The `(string & {})` tail keeps autocomplete on the literals while
+ * accepting any string, so a newly-released model, or a model id served
+ * by a gateway on the same wire protocol, works without an SDK update.
+ *
+ * Reference: https://developers.openai.com/api/docs/models/gpt-image-2
+ */
+export type OpenAIImageModel =
+  | "gpt-image-2"
+  | "gpt-image-2-2026-04-21"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
  * OpenAI stock voices for TTS. No custom voice cloning is available on
  * the public API — these are the full set. `ballad`, `coral`, and
  * `verse` are `gpt-4o-mini-tts`-only.

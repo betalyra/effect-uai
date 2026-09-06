@@ -14,6 +14,30 @@ export type GoogleModel =
   | "gemini-2.5-pro"
   | "gemini-2.5-flash"
   | "gemini-2.5-flash-lite"
+  // Image models answer in a chat turn like any other, with pictures among
+  // the parts. See {@link GeminiImageModel}.
+  | "gemini-3.1-flash-image"
+  | "gemini-3.1-flash-lite-image"
+  | "gemini-3-pro-image"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
+ * Known Gemini image-generation model identifiers. The `-preview` ids
+ * were shut down 2026-06-25 and are not listed; neither is the
+ * previous-generation `gemini-2.5-flash-image`, which the `(string & {})`
+ * tail still accepts.
+ *
+ * - `gemini-3.1-flash-image` — 512 / 1K / 2K / 4K, web and image search.
+ * - `gemini-3.1-flash-lite-image` — 1K only, cheapest, no search.
+ * - `gemini-3-pro-image` — 1K / 2K / 4K, the most reference images.
+ *
+ * Reference: https://ai.google.dev/gemini-api/docs/models
+ */
+export type GeminiImageModel =
+  | "gemini-3.1-flash-image"
+  | "gemini-3.1-flash-lite-image"
+  | "gemini-3-pro-image"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
 

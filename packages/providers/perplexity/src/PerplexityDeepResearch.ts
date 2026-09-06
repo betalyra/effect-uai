@@ -98,6 +98,7 @@ const blockText = Match.type<ContentBlock>().pipe(
     input_text: (b) => b.text,
     output_text: (b) => b.text,
     input_image: () => "",
+    output_image: () => "",
     refusal: () => "",
   }),
 )

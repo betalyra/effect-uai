@@ -59,3 +59,14 @@ and [embedding](/embeddings/providers/openai/) layers reach them by setting
 `mp3`/`pcm` only, transcription `verbose_json` depends on the upstream model,
 and Requesty's audio is OpenAI-models-only. Requesty exposes `/v1/embeddings`;
 OpenRouter does not.
+
+## Images at a gateway
+
+`@effect-uai/openai/OpenAIImageGenerator` reaches Requesty by setting
+`baseUrl`. `generate` and `edit` work; partial-image streaming does not,
+so leave `partialImages` unset there.
+
+For a wider set of image models, reach for
+[fal](/image-generation/providers/fal/): FLUX, Seedream, Qwen Image and
+the open-weights field behind one key. It is a provider package rather
+than a base-URL swap, and it does not stream previews either.

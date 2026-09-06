@@ -12,6 +12,7 @@ import {
 } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import {
   type CommonRequest,
   LanguageModel,
@@ -324,6 +325,12 @@ const buildNativeStream = (cfg: Config) => {
             onSuccess: (wire) => Effect.succeed(wire),
           },
         )
+        yield* Capabilities.warnDroppedBlocks(request.history, "output_image", {
+          provider: "anthropic",
+          capability: "output_image",
+          reason:
+            "Assistant messages carry no image on this wire. Use `Turn.imagesAsInput` to resend it as user content.",
+        })
         const bodyResult = buildRequestBody({
           model: request.model,
           history: request.history,

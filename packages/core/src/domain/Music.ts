@@ -1,5 +1,6 @@
 import type { Duration } from "effect"
 import type { AudioBlob, AudioChunk, AudioFormat } from "./Audio.js"
+import type { Watermark } from "./Media.js"
 
 /**
  * Prompt fragment with a relative weight. Native to Lyria RealTime
@@ -95,10 +96,10 @@ export const controlInput = (action: MusicSessionControl): MusicSessionInput => 
 
 /**
  * Watermark kind on the response. SynthID is mandatory on Lyria; C2PA
- * is opt-in on ElevenLabs. No provider exposes additional metadata
- * about the watermark itself, so a bare literal-union is enough.
+ * is opt-in on ElevenLabs. Lives in `Media.ts` since image providers
+ * report the same kinds; re-exported here unchanged.
  */
-export type Watermark = "synthid" | "c2pa" | (string & {})
+export type { Watermark } from "./Media.js"
 
 /**
  * Labelled section with absolute timing. Populated when the provider

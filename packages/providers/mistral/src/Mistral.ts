@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Option, Redacted, Result, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import {
   type CommonRequest,
   LanguageModel,
@@ -116,6 +117,12 @@ const buildStream = (cfg: Config) => {
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
+        yield* Capabilities.warnDroppedBlocks(request.history, "output_image", {
+          provider: "mistral",
+          capability: "output_image",
+          reason:
+            "Assistant messages carry no image on this wire. Use `Turn.imagesAsInput` to resend it as user content.",
+        })
         const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.setHeader("authorization", `Bearer ${Redacted.value(cfg.apiKey)}`),
           HttpClientRequest.bodyJsonUnsafe(buildRequestBody(request)),

@@ -1,6 +1,7 @@
 import { Effect, Layer, Option, Redacted, Result, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
+import * as Capabilities from "@effect-uai/core/Capabilities"
 import {
   type CommonRequest,
   LanguageModel,
@@ -100,6 +101,12 @@ const buildStream = (cfg: ChatConfig) => {
     Stream.unwrap(
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient
+        yield* Capabilities.warnDroppedBlocks(request.history, "output_image", {
+          provider: cfg.provider,
+          capability: "output_image",
+          reason:
+            "Assistant messages carry no image on this wire. Use `Turn.imagesAsInput` to resend it as user content.",
+        })
         const httpRequest = HttpClientRequest.post(url).pipe(
           auth,
           HttpClientRequest.setHeaders(cfg.extraHeaders ?? {}),

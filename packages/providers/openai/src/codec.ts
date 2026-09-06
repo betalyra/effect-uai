@@ -1,6 +1,9 @@
 import { Array, Effect, Encoding, Match, Option, Result } from "effect"
+import { HttpClientRequest } from "effect/unstable/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat, AudioSource } from "@effect-uai/core/Audio"
+import type { ImageSource } from "@effect-uai/core/Image"
+import * as Multipart from "@effect-uai/core/Multipart"
 
 // ---------------------------------------------------------------------------
 // AudioSource → Blob (for multipart upload)
@@ -39,6 +42,23 @@ export const audioToBlob: (audio: AudioSource) => Effect.Effect<Blob, AiError.Ai
       decodeBase64ToBytes(a.base64).pipe(Effect.map((bytes) => bytesToBlob(bytes, a.mimeType))),
     ),
     Match.tag("url", () => Effect.fail(urlNotSupported)),
+    Match.exhaustive,
+  )
+
+const imageUrlNotSupported: AiError.AiError = new AiError.InvalidRequest({
+  provider: "openai",
+  param: "images",
+  raw: 'The multipart /v1/images/edits endpoint uploads bytes, so a URL reference cannot be sent. Fetch the URL yourself and pass `{ _tag: "bytes", bytes, mimeType }`.',
+})
+
+/** Same contract as {@link audioToBlob}: inline variants only. */
+export const imageToBlob: (image: ImageSource) => Effect.Effect<Blob, AiError.AiError> =
+  Match.type<ImageSource>().pipe(
+    Match.tag("bytes", (i) => Effect.succeed(bytesToBlob(i.bytes, i.mimeType))),
+    Match.tag("base64", (i) =>
+      decodeBase64ToBytes(i.base64).pipe(Effect.map((bytes) => bytesToBlob(bytes, i.mimeType))),
+    ),
+    Match.tag("url", () => Effect.fail(imageUrlNotSupported)),
     Match.exhaustive,
   )
 
@@ -203,3 +223,11 @@ export const httpStatusError: (status: number, body: string) => AiError.AiError 
 
 export const transportFailure = (cause: unknown): AiError.AiError =>
   new AiError.Unavailable({ provider: "openai", raw: cause })
+
+/** Core's helper, with our transport error. Never pass `FormData` to the client. */
+export const bodyMultipart = (
+  form: FormData,
+): Effect.Effect<
+  (request: HttpClientRequest.HttpClientRequest) => HttpClientRequest.HttpClientRequest,
+  AiError.AiError
+> => Multipart.bodyMultipart(form).pipe(Effect.mapError(transportFailure))

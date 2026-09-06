@@ -10,6 +10,7 @@
       "@effect-uai/chat-completions",
       "@effect-uai/anthropic",
       "@effect-uai/google",
+      "@effect-uai/fal",
       "@effect-uai/mistral",
       "@effect-uai/jina",
       "@effect-uai/openai",

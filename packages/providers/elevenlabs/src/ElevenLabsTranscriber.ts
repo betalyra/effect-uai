@@ -10,7 +10,13 @@ import {
   Transcriber,
   type TranscriberService,
 } from "@effect-uai/core/Transcriber"
-import { audioToBlob, defaultFileName, httpStatusError, transportFailure } from "./codec.js"
+import {
+  audioToBlob,
+  bodyMultipart,
+  defaultFileName,
+  httpStatusError,
+  transportFailure,
+} from "./codec.js"
 import type { ElevenLabsSttModel } from "./models.js"
 import { streamTranscription } from "./realtimeStt.js"
 import { type ElevenLabsRegion, resolveHost } from "./region.js"
@@ -122,10 +128,10 @@ const buildForm = (request: ElevenLabsTranscribeRequest) =>
 const transcribeImpl = (cfg: Config) => (request: ElevenLabsTranscribeRequest) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    const form = yield* buildForm(request)
+    const withBody = yield* Effect.flatMap(buildForm(request), bodyMultipart)
     const httpRequest = HttpClientRequest.post(`${resolveHost(cfg)}/speech-to-text`).pipe(
       HttpClientRequest.setHeader("xi-api-key", Redacted.value(cfg.apiKey)),
-      HttpClientRequest.bodyFormData(form),
+      withBody,
     )
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
     if (response.status >= 400) {

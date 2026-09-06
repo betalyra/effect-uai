@@ -25,15 +25,16 @@ A ✓ links to the usage page for that provider and capability.
 
 ### Models
 
-| Provider       |            LLM             |             Embeddings             |               Speech               |                    Music                     |
-| -------------- | :------------------------: | :--------------------------------: | :--------------------------------: | :------------------------------------------: |
-| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/openai/) |   [✓](/speech/providers/openai/)   |                                              |
-| **Google**     |  [✓](/providers/gemini/)   | [✓](/embeddings/providers/gemini/) |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |
-| **Anthropic**  | [✓](/providers/anthropic/) |                                    |                                    |                                              |
-| **Mistral**    |  [✓](/providers/mistral/)  |                                    |  [✓](/speech/providers/mistral/)   |                                              |
-| **ElevenLabs** |                            |                                    | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |
-| **Jina**       |                            |  [✓](/embeddings/providers/jina/)  |                                    |                                              |
-| **Inworld**    |                            |                                    |  [✓](/speech/providers/inworld/)   |                                              |
+| Provider       |            LLM             |             Embeddings             |                  Images                  |               Speech               |                    Music                     |
+| -------------- | :------------------------: | :--------------------------------: | :--------------------------------------: | :--------------------------------: | :------------------------------------------: |
+| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/openai/) | [✓](/image-generation/providers/openai/) |   [✓](/speech/providers/openai/)   |                                              |
+| **Google**     |  [✓](/providers/gemini/)   | [✓](/embeddings/providers/gemini/) | [✓](/image-generation/providers/google/) |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |
+| **Anthropic**  | [✓](/providers/anthropic/) |                                    |                                          |                                    |                                              |
+| **Mistral**    |  [✓](/providers/mistral/)  |                                    |                                          |  [✓](/speech/providers/mistral/)   |                                              |
+| **fal**        |                            |                                    |  [✓](/image-generation/providers/fal/)   |                                    |                                              |
+| **ElevenLabs** |                            |                                    |                                          | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |
+| **Jina**       |                            |  [✓](/embeddings/providers/jina/)  |                                          |                                    |                                              |
+| **Inworld**    |                            |                                    |                                          |  [✓](/speech/providers/inworld/)   |                                              |
 
 ### Web
 
@@ -71,21 +72,25 @@ picked above rather than replacing one.
 
 `@effect-uai/openai`
 
-GPT models via the Responses API, text embeddings, and speech, all under one
-install. The Responses provider also ships standalone as `@effect-uai/responses`.
+GPT models via the Responses API, text embeddings, images, and speech, all
+under one install. The Responses provider also ships standalone as
+`@effect-uai/responses`.
 
 - Language model: [Responses](/providers/responses/)
 - Embeddings: [OpenAI](/embeddings/providers/openai/)
+- Images: [OpenAI Images](/image-generation/providers/openai/)
 - Speech: [OpenAI](/speech/providers/openai/)
 
 ## Google
 
 `@effect-uai/google`
 
-Gemini models, Gemini embeddings, Gemini speech, and Lyria music.
+Gemini models, Gemini embeddings, Nano Banana images, Gemini speech, and
+Lyria music.
 
 - Language model: [Google Gemini](/providers/gemini/)
 - Embeddings: [Google Gemini](/embeddings/providers/gemini/)
+- Images: [Google Images](/image-generation/providers/google/)
 - Speech: [Google Gemini](/speech/providers/gemini/)
 - Music: [Google Lyria](/music-generation/providers/gemini/)
 
@@ -106,6 +111,17 @@ voice pipeline on one brand.
 Claude models via the Messages API.
 
 - Language model: [Anthropic](/providers/anthropic/)
+
+## fal
+
+`@effect-uai/fal`
+
+Other people's image models behind one key: FLUX.2, Seedream 5, Qwen Image,
+Muse, and the open-weights field, including the sub-second tier. The model
+id here is an endpoint path rather than a model name, and generating and
+editing are separate endpoints.
+
+- Images: [fal](/image-generation/providers/fal/)
 
 ## ElevenLabs
 

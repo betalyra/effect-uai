@@ -17,11 +17,13 @@ export { codeExecutionTool, googleSearchTool, urlContextTool } from "./GeminiToo
 import {
   type ChunkPart,
   type GenerationConfig,
+  type ImageConfig,
   WireChunk,
   accumulatorToTurn,
   buildRequestBody,
   emptyAccumulator,
   hasUrlImageSource,
+  httpStatusError as sharedHttpStatusError,
   ingestChunk,
 } from "./codec.js"
 import { Match } from "effect"
@@ -52,7 +54,24 @@ export type GeminiRequest = Omit<CommonRequest, "model"> & {
    * `generationConfig.thinkingConfig.thinkingBudget`.
    */
   readonly thinkingBudget?: number
+  /**
+   * What the model may answer with. Image models default to
+   * `["TEXT", "IMAGE"]`; set this to ask a non-image model for images, or
+   * to hold an image model to prose.
+   */
+  readonly responseModalities?: ReadonlyArray<"TEXT" | "IMAGE">
+  /** Shape and size of images the model draws. Image models only. */
+  readonly imageConfig?: ImageConfig
 }
+
+/**
+ * Image models answer in prose unless the IMAGE modality is asked for,
+ * which is a silent disappointment rather than an error, so the adapter
+ * asks on their behalf. Detection is Google's naming convention, which
+ * holds across the family and keeps a future id working without an SDK
+ * update; an explicit `responseModalities` always wins.
+ */
+const drawsImages = (model: string): boolean => model.endsWith("-image")
 
 export type GeminiService = {
   /**
@@ -103,7 +122,11 @@ export type Config = {
 // Request body
 // ---------------------------------------------------------------------------
 
+const TEXT_AND_IMAGE: ReadonlyArray<"TEXT" | "IMAGE"> = ["TEXT", "IMAGE"]
+
 const buildGenerationConfig = (request: GeminiRequest): Option.Option<GenerationConfig> => {
+  const modalities =
+    request.responseModalities ?? (drawsImages(request.model) ? TEXT_AND_IMAGE : undefined)
   const cfg: GenerationConfig = {
     ...(request.temperature !== undefined && { temperature: request.temperature }),
     ...(request.maxOutputTokens !== undefined && { maxOutputTokens: request.maxOutputTokens }),
@@ -111,6 +134,8 @@ const buildGenerationConfig = (request: GeminiRequest): Option.Option<Generation
     ...(request.thinkingBudget !== undefined && {
       thinkingConfig: { thinkingBudget: request.thinkingBudget },
     }),
+    ...(modalities !== undefined && { responseModalities: modalities }),
+    ...(request.imageConfig !== undefined && { imageConfig: request.imageConfig }),
     ...(request.structured !== undefined && {
       responseMimeType: "application/json",
       responseJsonSchema: request.structured.schema["~standard"].jsonSchema.input({
@@ -139,25 +164,21 @@ const parseJsonUnknown = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema
 const sseEventToChunk = (ev: SSE.Event) =>
   parseJsonUnknown(ev.data).pipe(
     Effect.mapError((cause) => new JsonParseError({ line: ev.data, cause })),
-    Effect.flatMap(decodeChunk),
+    Effect.flatMap((json) =>
+      // A `SchemaError` alone says nothing about which part shape we failed
+      // to read, and image models add part shapes text-only ones never send.
+      // Carry the line so the mismatch is legible.
+      decodeChunk(json).pipe(
+        Effect.mapError((cause) => new JsonParseError({ line: ev.data.slice(0, 2000), cause })),
+      ),
+    ),
   )
 
 // ---------------------------------------------------------------------------
 // Service implementation
 // ---------------------------------------------------------------------------
 
-const httpStatusError = (status: number, body: string): AiError.AiError => {
-  const provider = "gemini"
-  const raw = body
-  if (status === 429) return new AiError.RateLimited({ provider, raw })
-  if (status === 408 || status === 504) return new AiError.Timeout({ provider, raw })
-  if (status === 401) return new AiError.AuthFailed({ provider, subtype: "auth", raw })
-  if (status === 403) return new AiError.AuthFailed({ provider, subtype: "permission", raw })
-  if (status === 402) return new AiError.AuthFailed({ provider, subtype: "billing", raw })
-  if (status === 413) return new AiError.ContextLengthExceeded({ provider, raw })
-  if (status >= 500) return new AiError.Unavailable({ provider, status, raw })
-  return new AiError.InvalidRequest({ provider, raw })
-}
+const httpStatusError = sharedHttpStatusError("gemini")
 
 const buildNativeStream = (cfg: Config) => {
   const baseUrl = cfg.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta"
@@ -256,6 +277,9 @@ const partToTurnEvents = (
       reasoning: (p): ReadonlyArray<TurnEvent> => [
         TurnEvent.ReasoningDelta({ text: p.text, kind: "trace" }),
       ],
+      // Gemini sends the image whole, so there is no `partialIndex`: the
+      // one event that arrives is the finished picture.
+      image: (p): ReadonlyArray<TurnEvent> => [TurnEvent.ImageOutput({ image: p.source })],
       function_call: (p): ReadonlyArray<TurnEvent> => {
         const call_id = callIdAt(p.name, 0)
         return [

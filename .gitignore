@@ -51,6 +51,10 @@ coverage/
 *.wav
 *.pcm
 
+# Whatever the recipes produced: output/<recipe>/<timestamp>/
+output/
+storyboard-out/
+
 # Nix
 .corepack/
 .direnv/

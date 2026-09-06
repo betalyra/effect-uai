@@ -9,7 +9,13 @@ import {
   Transcriber,
   type TranscriberService,
 } from "@effect-uai/core/Transcriber"
-import { audioToBlob, defaultFileName, httpStatusError, transportFailure } from "./codec.js"
+import {
+  audioToBlob,
+  bodyMultipart,
+  defaultFileName,
+  httpStatusError,
+  transportFailure,
+} from "./codec.js"
 import type { OpenAITranscribeModel } from "./models.js"
 import { type OpenAiRegion, resolveHost } from "./region.js"
 
@@ -157,10 +163,10 @@ export const transcribeImpl =
   ): Effect.Effect<TranscriptResult, AiError.AiError, HttpClient.HttpClient> =>
     Effect.gen(function* () {
       const client = yield* HttpClient.HttpClient
-      const formData = yield* buildFormData(request)
+      const withBody = yield* Effect.flatMap(buildFormData(request), bodyMultipart)
       const httpRequest = HttpClientRequest.post(`${resolveHost(cfg)}/audio/transcriptions`).pipe(
         HttpClientRequest.bearerToken(cfg.apiKey),
-        HttpClientRequest.bodyFormData(formData),
+        withBody,
       )
       const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
       if (response.status >= 400) {

@@ -1,34 +1,129 @@
 ---
 title: Image generation
-description: "Prompt to picture: text-to-image, image edit, and inpainting."
+description: "Prompt to picture: text-to-image and image edit behind one service tag, portable across providers."
 ---
 
-Sometimes the answer is a picture, not a paragraph.
+You need a picture: a product mock, a thumbnail variant, an
+illustration draft, or an edit of an image your agent is already
+holding. You want to write that once and not rewrite it when you
+switch providers.
 
-Product mocks, illustration drafts, thumbnail variants, image edits
-inside an agent's tool loop. They all want the same shape: a prompt
-(plus optionally a reference image and a mask) goes in, one or more
-images come out. Synchronous-ish: a few seconds, occasionally tens.
+That is the `ImageGenerator` tag. A prompt goes in, images come out.
 
-The interaction archetype is one-shot, same as embeddings. Streaming
-intermediate images exists on a few providers but isn't broadly
-supported, so the core abstraction stays simple.
+```ts
+import { Effect } from "effect"
+import { generate } from "@effect-uai/core/ImageGenerator"
 
-## Coming soon
+const program = Effect.gen(function* () {
+  const { images } = yield* generate({
+    prompt: "A lighthouse at dusk, long exposure",
+    model: "gpt-image-2",
+    aspectRatio: "16:9",
+    resolution: "2K",
+  })
+  return images
+})
+```
 
-`@effect-uai/core` will ship an `ImageGenerator` service tag covering
-text-to-image, image edit, and inpainting. Provider candidates:
+Swap the Layer and the same call runs on a different provider.
 
-- **OpenAI**: `gpt-image-1`, `dall-e-3`.
-- **Google**: Imagen 3 / 4 via the Gemini API and Vertex.
-- **Black Forest Labs**: Flux family (`flux-pro`, `flux-dev`).
-- **Stability AI**: Stable Diffusion family.
+## Three calls
 
-The output type reuses the existing `MediaSource` / `Image` domain
-(URL, base64, or bytes) so generated images compose with multimodal
-language models without extra glue.
+- **`generate`** — prompt in, images out.
+- **`edit`** — prompt plus the images you want changed. Separate,
+  because references are required here and meaningless there, and
+  providers treat them as different endpoints.
+- **`streamGeneration`** and **`streamEdit`** — preview frames while
+  the image resolves, for when someone is watching a spinner. Both are
+  gated by the `ImageStreaming` marker, so a provider that cannot
+  preview is a compile error rather than a surprise at runtime.
 
-## Show interest
+## Ask for a shape, not pixels
 
-Open or +1 the
-[image generation tracking issue](https://github.com/betalyra/effect-uai/issues/new?title=Capability%3A+Image+generation&body=I%27m+interested+in+image+generation+support.+Provider%28s%29%3A+%0AText-to-image%2C+edit%2C+inpaint%3A+%0A%0AUse+case%3A+).
+```ts
+readonly aspectRatio?: AspectRatio     // "1:1", "16:9", "21:9", …
+readonly resolution?: ImageResolution  // "1K" | "2K" | "4K"
+```
+
+**Pixels don't port.** One provider takes `"1536x1024"`, the next takes
+`16:9` plus `2K`, and a hardcoded pair silently becomes the wrong crop
+when you switch. Ratio plus tier is what both understand, so adapters
+derive the dimensions for you. Need exact pixels? Set them on that
+provider's typed request and they win.
+
+Not every model accepts every ratio, and the list changes with each
+release, so rather than ship a table that goes stale the adapter sends
+what you asked for and hands you the provider's answer.
+
+## Feed the result into the next turn
+
+```ts
+const { images, usage } = yield* generate({ … })
+const [{ image, watermark }] = images
+```
+
+`image` is an `ImageSource`, **the same type you pass into a
+multimodal language model**, so a picture you just generated goes
+straight into the next turn with no conversion. Adapters hand back the
+bytes the provider sent, with its MIME type, and never re-encode.
+`watermark` is set only when the provider stamped one, and every
+`usage` field is optional since not all providers report.
+
+## Editing
+
+Pass the images you want changed alongside the prompt:
+
+```ts
+const dawn = Effect.gen(function* () {
+  const dusk = yield* generate({ prompt: "A lighthouse at dusk", model: "gpt-image-2" })
+  return yield* edit({
+    prompt: "Make it dawn instead of dusk",
+    model: "gpt-image-2",
+    images: [dusk.images[0]!.image],
+  })
+})
+```
+
+Conditioning on references is also how you keep a character or a
+product consistent across many images: see the
+[storyboard recipe](/recipes/storyboard/).
+
+Masks stay off the portable request, since only inpainting endpoints
+have one; same for quality tiers, output encodings and moderation
+levels. They live on the typed request of providers that support them.
+
+## Previews while it renders
+
+`streamGeneration` emits zero or more `PartialImage` frames, then
+exactly one `Complete`. `Complete` carries the response fields flat, so
+it _is_ an `ImageResponse`: filter for it and pass it on. `streamEdit`
+does the same for an edit, which is what makes a conversational editing
+session feel live rather than frozen.
+
+```ts
+streamGeneration({ prompt, model, partialImages: 2 }).pipe(Stream.filter(isPartialImage))
+```
+
+See the [conversational image edit recipe](/recipes/conversational-image-edit/),
+which draws those frames straight into your terminal.
+
+## When something goes wrong
+
+| Situation                                     | Error                                      |
+| --------------------------------------------- | ------------------------------------------ |
+| Prompt or output blocked by moderation        | `ContentFiltered`                          |
+| Provider returned no image                    | `GenerationFailed`                         |
+| Something the provider structurally cannot do | `Unsupported`, before the request goes out |
+
+Asking for more images than an endpoint returns fails rather than
+degrades: fewer images is a different result, not a smaller one.
+
+## Providers
+
+- [OpenAI](/image-generation/providers/openai/) — `gpt-image-2`,
+  including edits and partial-image streaming.
+- [Google](/image-generation/providers/google/) — Nano Banana 2, Lite
+  and Pro. Faster and cheaper; no streaming.
+- [fal](/image-generation/providers/fal/) — FLUX.2, Seedream 5, Qwen
+  Image and the open-weights field, including the sub-second tier. One
+  key for models you cannot reach directly; no streaming.

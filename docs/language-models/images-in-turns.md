@@ -5,7 +5,7 @@ description: A few models answer with pictures instead of just text. They arrive
 
 Usually you want an image, so you call [`generate`](/image-generation/)
 and get one. Sometimes the picture is part of what the model is
-*saying*: it replies with a sentence and a diagram, and "make it dawn
+_saying_: it replies with a sentence and a diagram, and "make it dawn
 instead" changes that same picture.
 
 Only Google's image models do this today. If you are not using them, you
@@ -16,10 +16,12 @@ want [image generation](/image-generation/) instead.
 No new service. It is the `turn` call you already make:
 
 ```ts
-const turn = yield* gemini.turn({
-  model: "gemini-3.1-flash-image",
-  history: [ask("Draw a lighthouse at dusk")],
-})
+const turn =
+  yield *
+  gemini.turn({
+    model: "gemini-3.1-flash-image",
+    history: [ask("Draw a lighthouse at dusk")],
+  })
 
 assistantImages(turn) // ImageSource[]
 assistantText(turn) // often ""
@@ -37,10 +39,12 @@ picture, words included, and return no `output_text` at all.
 Replay the turn and the model edits what it drew:
 
 ```ts
-const dawn = yield* gemini.turn({
-  model: "gemini-3.1-flash-image",
-  history: [...first.items, ask("The same lighthouse, now at dawn")],
-})
+const dawn =
+  yield *
+  gemini.turn({
+    model: "gemini-3.1-flash-image",
+    history: [...first.items, ask("The same lighthouse, now at dawn")],
+  })
 ```
 
 The adapter puts the image back on the wire as a model-role part, which
@@ -67,10 +71,12 @@ else it is dropped on replay, with a warning saying so.
 To hand the picture to another model, say so explicitly:
 
 ```ts
-const described = yield* claude.turn({
-  model: "claude-sonnet-5",
-  history: [...imagesAsInput(previous.items), ask("What is in this image?")],
-})
+const described =
+  yield *
+  claude.turn({
+    model: "claude-sonnet-5",
+    history: [...imagesAsInput(previous.items), ask("What is in this image?")],
+  })
 ```
 
 `imagesAsInput` adds a user message carrying the same pictures as

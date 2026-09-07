@@ -14,12 +14,12 @@ the generic tag keeps working when you change the backend.
 
 ## Capability matrix
 
-Three tables, split on lines the library itself draws. **Model**
+Four tables, split on lines the library itself draws. **Model**
 capabilities take a `model` id: you pick a model and quality varies by which
 one. **Web** capabilities are backend services you send requests to.
 **Runtime** capabilities are environments your agent acts inside: a sandbox
-it runs code in, a browser it drives. A provider can appear in more than one
-(Jina does).
+it runs code in, a browser it drives. **Messaging** is the one where people
+talk to the agent. A provider can appear in more than one (Jina does).
 
 A ✓ links to the usage page for that provider and capability.
 
@@ -53,6 +53,14 @@ A ✓ links to the usage page for that provider and capability.
 | **Microsandbox**                                   | [✓](/sandboxes/providers/microsandbox/) |                              |
 | **Deno**                                           |     [✓](/sandboxes/providers/deno/)     |                              |
 | **CDP** (Chromium, obscura, hosted browser clouds) |                                         | [✓](/browser/providers/cdp/) |
+
+### Messaging
+
+Where people talk to the agent rather than the agent acting on the world.
+
+| Provider     |              Messenger              |
+| ------------ | :---------------------------------: |
+| **Telegram** | [✓](/messenger/providers/telegram/) |
 
 ### Gateways and protocol adapters
 
@@ -213,3 +221,13 @@ obscura, or a hosted browser cloud's connect URL (Browserbase, Browserless,
 and the like).
 
 - Browser: [Generic CDP](/browser/providers/cdp/)
+
+## Telegram
+
+`@effect-uai/telegram`
+
+Your agent as a Telegram bot: DMs, group mentions and commands in, streamed
+answers, media and reactions out. Long-polls the Bot API over a plain HTTP
+client, no SDK.
+
+- Messenger: [Telegram](/messenger/providers/telegram/)

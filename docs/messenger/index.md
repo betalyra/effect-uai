@@ -1,18 +1,22 @@
 ---
 title: Messenger
-description: "The inbound capability: one event stream from a chat platform, five outbound verbs to answer on it, and an ambient conversation so deep code posts to the right place."
-icon: PiChatCircleDots
+description: "Put your agent where people already talk. One event stream in, five verbs out, and the conversation it answers in is ambient, so every post lands in the right chat."
+icon: PiChatsCircle
 ---
 
-Every other capability is outbound: the agent searches, reads, browses,
-executes. `Messenger` is where the world talks to the agent. One provider
-layer, and the agentic loop you already have lives in a Telegram chat, a
-Discord channel or a Slack thread.
+You have an agent. It runs in a terminal, or behind an HTTP route. The
+people who would use it are in Telegram, Slack or Discord, and they are not
+coming to your terminal. `Messenger` puts the agent in their chat: it reads
+what people say, it types, it streams its answer back, and the loop you
+already wrote does not change.
 
 ## Quickstart
 
+An echo bot, end to end:
+
 ```ts
 import { Effect, Redacted, Stream } from "effect"
+import { NodeHttpClient } from "@effect/platform-node"
 import * as Messenger from "@effect-uai/core/Messenger"
 import { layer as telegramLayer } from "@effect-uai/telegram/Telegram"
 
@@ -36,47 +40,34 @@ await Effect.runPromise(
 )
 ```
 
-The connection opens when the layer is built and closes with the scope.
-There is no `connect` or `disconnect`; the `Layer` is the lifecycle.
+Provide the layer and the bot is connected; close the scope and it is gone.
+There is nothing to start or stop by hand.
 
-## Inbound
+## What arrives
 
-`events` is a `Stream<InboundEvent>`, single-consumer. Four variants:
+`events` is one stream of everything people do:
 
-- **`Message`**: text from a person. `addressed` is true for a DM, a mention
-  of the bot, or a reply to one of its messages; `text` arrives with the
-  bot's own mention stripped.
-- **`Command`**: a slash command (`/search effect streams`) as `name` and the
-  raw `args` string.
-- **`Reaction`**: an emoji added to a message.
-- **`Action`**: a button press or similar, with its `actionId`.
+- **`Message`**: someone wrote something. `text` has the bot's own mention
+  stripped, and `addressed` tells you whether it was meant for the bot: a
+  DM, an `@mention`, or a reply to one of its messages. That flag is what
+  you branch on; everything else is group chatter you can ignore.
+- **`Command`**: `/search effect streams` as `name` and `args`.
+- **`Reaction`**: an emoji on a message.
+- **`Action`**: a button press, with its `actionId`.
 
-Every variant carries `raw`, the untouched platform payload, and a
-`ConversationRef` (`channel`, and a provider-interpreted `thread` where one
-exists). `Messenger.conversationKey(ref)` is the stable string to index
-per-conversation state by.
+Each carries `raw`, the platform's own payload, when you need a field the
+shared shape does not have. Reconnects and acknowledgements happen for you;
+the stream only ends when the connection is gone for good.
 
-Routine reconnects, acknowledgements and callback answering happen inside
-the adapter. The stream fails with `MessengerTransportClosed` only when the
-transport is gone for good.
+## What you can send
 
-## Outbound
+- **`post`** a message, and get back its id.
+- **`edit`** a message you posted.
+- **`react`** to a message with an emoji.
+- **`typing`** shows the indicator for as long as the scope is open.
+- **`stream`** a `Stream<string>` and the reply appears as it is written.
 
-Five verbs, all failing with a `MessengerError`:
-
-- **`post(msg)`** sends a message and returns its `MessageId`. Text past
-  `limits.maxText` goes out as several messages; the id is the last one's.
-- **`edit(ref, next)`** replaces a message you can name.
-- **`react(ref, emoji)`** adds a unicode emoji.
-- **`typing`** turns on the activity indicator and keeps it on until the
-  enclosing scope closes.
-- **`stream(deltas)`** delivers a `Stream<string>` progressively and returns
-  the id of the message it ended up in. How is the adapter's business:
-  native streaming where the platform has it, post-then-edit elsewhere.
-
-`limits` (`maxText`, `maxCaption`) exposes the platform ceilings.
-
-### What a message is
+A message is text, media or the platform's own payload:
 
 ```ts
 Messenger.text("Done.", { replyTo: event.id })
@@ -84,59 +75,56 @@ Messenger.media(Image.imageBytes(png, "image/png"), { caption: "Here you go" })
 Messenger.raw({ method: "sendMessage", params: { chat_id, text, reply_markup } })
 ```
 
-An `Outbound` is a body plus the envelope fields true of any message
-(`replyTo` today). `Text` is **sent verbatim**: the library does not convert
-markup. Each provider page says what its layer expects (Telegram HTML by
-default, Slack markdown), and your system prompt is where the model learns
-it. `Media` takes a core `MediaSource` (URL, base64 or bytes) and routes on
-its MIME type. `Raw` is the escape hatch for buttons, cards and anything the
-verbs do not unify.
+Text goes out **exactly as you wrote it**. Platforms disagree on markup
+(Telegram wants HTML, Slack takes markdown), so the library does not
+convert; your system prompt tells the model which one to write, and each
+provider page says which that is. `raw` is the door to buttons, cards and
+anything else the five verbs do not cover.
 
-## Where does it go
+## Which chat
 
-`post`, `typing` and `stream` target the ambient `CurrentConversation`, a
-context tag with no default. Establish it once at a fiber boundary:
+`post`, `typing` and `stream` do not take a chat id. They target the
+ambient `CurrentConversation`, which you set once where a conversation
+starts:
 
 ```ts
 conversation(inbox).pipe(Messenger.inConversation(event.conversation), Effect.forkScoped)
 ```
 
-Everything below that line, including a tool posting progress from inside
-`Toolkit.run`, lands in that conversation. Posting outside one is a compile
-error, not a runtime surprise. Re-scope to reach another chat:
+Everything under that line, down to a tool posting progress from inside
+`Toolkit.run`, lands in that chat. Forget to set it and the code does not
+compile. To reach another chat, re-scope:
 
 ```ts
-yield* messenger.post(Messenger.text("On it, escalating."))
-yield* messenger.post(Messenger.text(summary)).pipe(Messenger.inConversation(onCallChannel))
+yield * messenger.post(Messenger.text("On it, escalating."))
+yield * messenger.post(Messenger.text(summary)).pipe(Messenger.inConversation(onCall))
 ```
 
-## Streaming a turn
+## Streaming a reply
 
-The [messenger agent](/recipes/messenger-agent/) recipe is the whole shape:
-tap a turn's text deltas into a queue, hand the queue to `stream`, hold
-`typing` in the iteration's scope. Adapters without a native streaming API
-use `Messenger.streamViaEdits`, which coalesces deltas by time and growth,
-never resends unchanged text, waits out `MessengerRateLimited`, and rolls
-over to a new message past `limits.maxText`.
+Hand `stream` the text deltas of a turn and the answer shows up as one
+message that fills in as the model writes. Where the platform has no native
+streaming, the adapter posts once and edits in place, rate limits included,
+and starts a new message if the answer outgrows the platform's limit. The
+[messenger agent](/recipes/messenger-agent/) recipe is the full shape: an
+agentic loop per conversation, typing held for the turn, tools, history.
 
-## Errors
+## When it fails
 
-`MessengerConnectFailed` (layer build), `MessengerTransportClosed` (the
-stream is over), `MessengerRequestFailed` (a verb was rejected, with the
-platform's `reason`), `MessengerRateLimited` (with `retryAfter`), and
-`MessengerUnsupported` (this platform cannot do it). `MessengerError.describe`
-turns any of them into a log line.
+Every verb fails with a `MessengerError`: `RequestFailed` (the platform said
+no, with its reason), `RateLimited` (with how long to wait), `Unsupported`
+(this platform cannot do that), `ConnectFailed` (bad token, at wiring time)
+and `TransportClosed` (the events stream is over).
 
 ## Testing
 
-`@effect-uai/core/testing/MockMessenger` replays a scripted `events` stream
-and records every outbound call. Recipe tests run against it with no network.
+`@effect-uai/core/testing/MockMessenger` replays a scripted event stream and
+records every post, edit and reaction, so a bot's behaviour is a unit test.
 
 ## Providers
 
-- [Telegram](/messenger/providers/telegram/): long-poll `getUpdates`, one
-  HTTP client, no SDK.
+- [Telegram](/messenger/providers/telegram/): DMs, groups, commands,
+  reactions, media. Long-polling, no public URL needed.
 
-Discord (gateway) and Slack (Socket Mode) follow. Webhook-mode transports,
-which WhatsApp requires, are a later phase: v1 is a long-lived process with
-one instance per bot token.
+Discord and Slack are next. All three are long-lived processes with one
+instance per bot token; webhook delivery, which WhatsApp needs, comes later.

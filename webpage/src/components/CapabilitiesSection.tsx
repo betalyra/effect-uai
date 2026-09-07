@@ -4,6 +4,7 @@ import {
   PiArticle,
   PiBrain,
   PiBrowser,
+  PiChatsCircle,
   PiCube,
   PiGraph,
   PiImage,
@@ -85,6 +86,13 @@ const capabilities: ReadonlyArray<Capability> = [
     href: "/browser/",
     Icon: PiBrowser,
   },
+  {
+    title: "Messenger",
+    description:
+      "Put your agent **in the chat**: it listens where people talk and streams answers back.",
+    href: "/messenger/",
+    Icon: PiChatsCircle,
+  },
 ]
 
 const markdownComponents: Components = {
@@ -101,8 +109,8 @@ export default function CapabilitiesSection() {
           Build agents that do more than chat
         </h2>
         <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
-          Your agent can speak, listen, draw, remember, search the web, and run code. Each
-          capability is one small interface, the same whichever provider you pick.
+          Your agent can speak, listen, draw, remember, search the web, run code, and join the chat.
+          Each capability is one small interface, the same whichever provider you pick.
         </p>
       </div>
 

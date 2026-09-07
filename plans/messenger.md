@@ -1,4 +1,10 @@
-# Plan: Messenger capability (Discord / Slack / ... agents)
+# Plan: Messenger capability (Telegram / Discord / Slack agents)
+
+Research reports (raw, per platform) live in
+[research/messenger/](research/messenger/): [telegram.md](research/messenger/telegram.md),
+[discord.md](research/messenger/discord.md), [slack.md](research/messenger/slack.md),
+[whatsapp.md](research/messenger/whatsapp.md). This plan is the summary and the
+decisions. Research date: 2026-09-06.
 
 ## Why
 
@@ -12,8 +18,9 @@ What it does not ship is any way to _reach_ an external actor.
 Messaging is the missing inbound capability. Every existing capability is
 outbound (the agent acts on the world: search, read, browse, execute); this is
 the one where the world talks to the agent. The flagship it unlocks: a
-streaming, tool-using agent that lives in a Discord or Slack channel in a few
-dozen lines of Effect, with the loop, tools, and history it already has.
+streaming, tool-using agent that lives in a Telegram chat, a Discord channel or
+a Slack thread in a few dozen lines of Effect, with the loop, tools, and history
+it already has.
 
 The tag is called `Messenger` (not `Chat`, which collides with
 `effect/unstable/ai/Chat`, the LLM-conversation abstraction, and reads as the
@@ -21,125 +28,237 @@ agent rather than its channel).
 
 Unification is honest here, unlike agent-memory services (which do not reduce
 to a shared interface and were rejected on those grounds). What varies between
-Discord, Slack, and Telegram is plumbing, not product: five outbound verbs and
-one tagged inbound stream cover the shared 80%, and a `raw` escape hatch
-carries the rest without lying about it.
+Telegram, Discord and Slack is plumbing, not product: a handful of outbound
+verbs and one tagged inbound stream cover the shared 80%, and a `raw` escape
+hatch carries the rest without lying about it. The research confirmed this
+with one correction: _progressive delivery_ is now a first-class verb, because
+two of the three platforms grew native streaming APIs and the third needs
+edit-in-place, so "stream" is a shared intent with a per-adapter mechanism.
+
+## What the research settled
+
+### No SDK dependencies, anywhere
+
+| Platform | Inbound transport                               | Public endpoint? | Official TS SDK         | Effect deps needed                    |
+| -------- | ----------------------------------------------- | ---------------- | ----------------------- | ------------------------------------- |
+| Telegram | HTTPS long-poll `getUpdates` (timeout 30-50s)   | no               | none (grammY, telegraf) | `HttpClient`                          |
+| Discord  | Gateway websocket (identify, heartbeat, resume) | no               | none (types only)       | `HttpClient` + `Socket`               |
+| Slack    | Socket Mode websocket (`apps.connections.open`) | no               | optional (`@slack/*`)   | `HttpClient` + `Socket`               |
+| WhatsApp | Webhook only (Cloud API)                        | **yes**          | archived 2023           | `HttpServer` + `HttpClient` (phase 2) |
+
+All three v1 platforms are plain JSON over HTTPS plus (for two of them) one
+websocket. Endpoint counts for a full agent bot: Telegram ~10, Discord ~6 REST
+routes plus the gateway state machine (~250 lines), Slack ~10 methods plus the
+Socket Mode envelope loop (~100 lines). Nothing here justifies a dependency;
+the realtime adapters (`Socket.makeWebSocket`, `closeCodeIsError`, reader fiber
+into `Queue<_, Cause.Done>` ended with `Queue.end`) are the template.
+
+### Progressive delivery differs per platform, so it is a verb
+
+| Platform | Native streaming                                                                    | Fallback                                   | Text limit |
+| -------- | ----------------------------------------------------------------------------------- | ------------------------------------------ | ---------- |
+| Telegram | `sendMessageDraft` (private chats only, ephemeral draft, finish with `sendMessage`) | `sendMessage` + `editMessageText` at ~1s   | 4096       |
+| Discord  | none                                                                                | `POST` + `PATCH` at ~1.2s, 5 edits/5s/chan | 2000       |
+| Slack    | `chat.startStream` / `appendStream` (Tier 4) / `stopStream`, standard markdown      | `chat.postMessage` + `chat.update`         | ~4000      |
+| WhatsApp | none, and **no edit at all**                                                        | send whole chunks                          | 4096       |
+
+The first draft of this plan derived streaming from `post` + `edit` in core.
+That would leave Slack's native stream (with its stop button and feedback
+blocks) and Telegram's draft animation unreachable, and it would be wrong for
+WhatsApp. So `stream` is an adapter verb; core ships the post-then-edit
+strategy as a helper the adapters without native streaming reuse.
+
+### Things that are not uniform and stay out of core
+
+- **Ephemeral messages.** Slack: `chat.postEphemeral`. Telegram: only since Bot
+  API 10.2 and only in groups. Discord: only as an interaction response (flag
+  64), unreachable from a plain message flow. WhatsApp: 1:1 so meaningless.
+  Dropped from v1 core (it was in the first draft); reachable via `raw`.
+- **Buttons / cards.** Discord components (v2), Slack Block Kit, Telegram inline
+  keyboards, WhatsApp reply buttons (max 3). Not unified; `raw` only in v1.
+- **Reactions** are uniform in intent, not in vocabulary: Telegram allows a
+  fixed set of 73 emoji, Slack takes shortcode names (`eyes`), Discord takes
+  URL-encoded unicode. `react` takes unicode; adapters map (Slack) or fail
+  typed with `MessengerUnsupported` (Telegram, off-set emoji).
+- **Formatting.** Model output is markdown. Slack accepts standard markdown
+  (`markdown_text`, both in `postMessage` and the stream methods), Discord's
+  markdown is near-standard, Telegram wants HTML or MarkdownV2 (escaping every
+  punctuation char), WhatsApp has a four-style subset. Core text is markdown;
+  every adapter owns a markdown-to-platform converter. The Telegram one
+  (markdown to HTML: bold, italic, code, pre, links, escaping) is the only
+  non-trivial one and is a named work item.
+
+### Platform-specific constraints the adapters absorb
+
+- **Telegram privacy mode.** With the default BotFather setting a bare
+  `@bot` mention in a group is _not delivered_; only commands, replies to the
+  bot and DMs are. Docs must say: disable privacy mode (`/setprivacy`) or make
+  the bot an admin for mention-to-address UX. Also: one poller per token
+  (`409 Conflict` otherwise), `message_reaction` updates need
+  `allowed_updates` and admin rights.
+- **Discord intents.** A mention-or-DM bot needs no privileged intent:
+  `content` is populated for DMs and messages that mention the bot even
+  without `MESSAGE_CONTENT`. Intents mask for the v1 use case: 46593.
+- **Slack acks.** Every Socket Mode envelope must be acked within 3s or Slack
+  retries (three times, with `retry_attempt` set). The adapter acks on receipt
+  before enqueueing, and dedupes on `event_id`. `app_mention` and
+  `message.channels` both fire for the same message; dedupe on `(channel, ts)`.
+- **Reconnection is the adapter's job.** Slack rotates connections roughly
+  hourly (`disconnect` frames), Discord requires resume-on-close for a fixed
+  set of codes, Telegram just retries the poll. The `events` stream does not
+  fail on a routine reconnect; `MessengerTransportClosed` surfaces only when
+  the reconnect budget is exhausted or the close is fatal (Discord 4004/4013/
+  4014, Slack `link_disabled`, Telegram 401).
+- **Typing.** Telegram's indicator lasts 5s, Discord's 10s, WhatsApp's 25s
+  (and needs the inbound message id), Slack has no typing in channels but has
+  `agents.sessions.setStatus(processing)`. So `typing` is _scoped_: the adapter
+  keeps the indicator alive while the scope is open and clears it on close.
+- **Action events must be answered.** Telegram `callback_query` needs
+  `answerCallbackQuery`, Slack `block_actions` needs the envelope ack, Discord
+  component interactions need a callback within 3s. Adapters auto-answer at
+  the transport level so recipes never see the deadline.
+
+### WhatsApp: phase 2, and a different product
+
+Webhook-only, so it needs a public HTTPS endpoint (tunnel for local dev),
+HMAC verification, and immediate 200 with async processing. No message edits
+means no streaming. 24-hour customer-service window; bot-initiated messages
+outside it require approved templates. Groups only for Official Business
+Accounts. It still fits the `Messenger` tag (`post`, `react`, `typing`,
+`stream` as chunked sends) but its transport is inverted, which is the webhook
+mode work below. Nothing in v1 forecloses it.
 
 ## Scope
 
 **v1 (this plan):**
 
 - Core `Messenger` capability tag: one inbound `Stream<InboundEvent>`, five
-  outbound verbs (`post`, `edit`, `react`, `typing`, `ephemeral`), branded ids.
+  outbound verbs (`post`, `edit`, `react`, `typing`, `stream`), branded ids,
+  markdown text, `raw` escape hatch.
 - Ambient conversation targeting: `CurrentConversation` in `R`, established
   with `inConversation(ref)`.
-- `Turn.toMessages` in core: project the loop's `InteractionEvent` stream onto
-  coalesced, edit-in-place message updates.
-- Official adapter set is four platforms and no more for now: **Discord, Slack,
-  Telegram, WhatsApp**. That is where the users are; everything else (Teams,
-  Google Chat, GitHub, Linear, ...) is out of scope at this stage and not worth
-  the maintenance surface. v1 ships the three that fit a persistent connection,
-  testable from a laptop with no public HTTP endpoint: `@effect-uai/discord`
-  (gateway websocket), `@effect-uai/slack` (Socket Mode), `@effect-uai/telegram`
-  (long-poll `getUpdates`). WhatsApp is webhook-only (Cloud API), so it waits on
-  webhook mode and lands in phase 2 (see deferred).
-- A multi-tenant messaging-agent recipe (mention -> streamed answer, tools,
-  per-thread history). Orchestration is the recipe's, never the library's.
+- Core `streamViaEdits` helper (coalesced post-then-edit with chunking at the
+  platform text limit), reused by adapters without native streaming.
+- Official adapter set stays **Telegram, Discord, Slack, WhatsApp** and stops
+  there. v1 ships the three persistent-connection ones in this order:
+  `@effect-uai/telegram` (long-poll), `@effect-uai/discord` (gateway),
+  `@effect-uai/slack` (Socket Mode). WhatsApp is phase 2.
+- A messaging-agent recipe (addressed message -> streamed answer, tools,
+  per-conversation history). Orchestration is the recipe's, never the
+  library's.
 
 **Deferred (say so in docs, do not build yet):**
 
-- **Webhook mode, now the defined phase 2** (not an indefinite "someday"),
-  because WhatsApp (Cloud API) is webhook-only and Telegram optionally supports
-  webhooks too. HTTP webhooks must answer on the same request within a deadline
-  (Discord interactions: ~3s or defer), inverting the "event stream +
-  fire-and-forget actions" model into "one event, respond inline". That duality
-  is the genuinely hard design problem of the domain, so v1 stays
-  long-lived-process only; webhook mode is the first work after v1 and is what
-  unlocks the WhatsApp adapter.
-- Rich card unification beyond a minimal card (title, text, fields, buttons).
-  Discord embeds, Slack Block Kit, Telegram inline keyboards stay behind the
-  `raw` escape hatch.
-- Non-target platforms (Teams, Google Chat, GitHub, Linear, ...). The adapter
-  contract is deliberately tiny so the community can add these if they want, but
-  we are not shipping or maintaining them. The official set is the four above
-  (Discord, Slack, Telegram, WhatsApp) and stops there for now.
-- Voice channels (that is the Realtime capability's territory).
-- An `ask` helper (post a question, resume the loop on the user's reply). It
-  falls out of `InteractionTool` + pause/resume + the inbound stream, but v1
-  proves the shape in the recipe before core grows API.
-- **Interactive buttons (and approval-over-buttons) are a niche recipe, not v1
-  core.** All four platforms support buttons, but the component models diverge
-  (Discord components, Slack Block Kit, Telegram inline keyboards, WhatsApp
-  reply buttons), so button flows do not unify the way text does. Approval over
-  buttons is just `Approval.fromQueue` fed by `Action` events (decision 4), so
-  it needs no new core, only the per-platform button rendering.
+- **Webhook mode, the defined phase 2.** WhatsApp is webhook-only, Telegram
+  optionally supports webhooks, Discord optionally supports an interactions
+  endpoint. Webhooks invert the model: one HTTP request, answer within a
+  deadline. That duality is the hard design problem of the domain; v1 stays
+  long-lived-process only. Keeping connection lifecycle inside the Layer (no
+  connect/disconnect methods on the service) is what keeps the door open.
+- Ephemeral messages, cards, buttons, and approval-over-buttons (a recipe over
+  `Approval.fromQueue` fed by `Action` events, plus per-platform button
+  rendering).
+- Files and media (`sendDocument`, Discord multipart, Slack two-step upload).
+  Uniform in intent, three different upload dances; wait for a recipe that
+  needs it.
+- An `ask` helper (post a question, resume the loop on the user's reply).
+- Voice channels (Realtime territory), non-target platforms (Teams, Google
+  Chat, GitHub, Linear).
 
 ## Package layout
 
 ```
 packages/core/src/messenger/
-  Messenger.ts         # tag, ids, InboundEvent, Outbound, CurrentConversation, inConversation
-  MessengerError.ts    # tagged errors + describe
-  Messages.ts          # Turn.toMessages projection (exported via Turn-adjacent docs)
-packages/providers/discord/     # v1: gateway websocket
-  src/Gateway.ts       # layer({ token }): Layer<Messenger> over the gateway websocket
-  src/internal/...     # gateway protocol: identify, heartbeat, resume, REST for post/edit
-packages/providers/slack/       # v1: Socket Mode
-  src/SocketMode.ts    # layer({ botToken, appToken }): Layer<Messenger>
-  src/internal/...
-packages/providers/telegram/    # v1: long-poll getUpdates
-  src/LongPoll.ts      # layer({ token }): Layer<Messenger>
-  src/internal/...
-packages/providers/whatsapp/    # phase 2: Cloud API, needs webhook mode
-  src/Webhook.ts       # layer({ ... }): Layer<Messenger>
-  src/internal/...
+  Messenger.ts          # tag, ids, InboundEvent, Outbound, CurrentConversation, inConversation, streamViaEdits
+  MessengerError.ts     # tagged errors + describe
+packages/core/src/testing/
+  MockMessenger.ts      # scripted inbound, recorded outbound
+packages/providers/telegram/     # v1 first: long-poll getUpdates
+  src/Telegram.ts       # provider tag + layer({ token }): Layer<Telegram | Messenger, never, HttpClient>
+  src/internal/api.ts   # envelope decoder, ~10 methods, retry_after
+  src/internal/markdown.ts   # markdown -> Telegram HTML
+  src/internal/events.ts     # Update -> InboundEvent, addressed-to-bot rule
+packages/providers/discord/      # v1 second: gateway websocket
+  src/Discord.ts        # layer({ token, intents? })
+  src/internal/gateway.ts    # hello/identify/heartbeat/resume state machine
+  src/internal/rest.ts       # bucketed REST client
+packages/providers/slack/        # v1 third: Socket Mode
+  src/Slack.ts          # layer({ botToken, appToken })
+  src/internal/socketMode.ts # envelope loop, 3s ack, rolling reconnect
+  src/internal/api.ts        # Web API methods incl. chat.*Stream
+packages/providers/whatsapp/     # phase 2: Cloud API, webhook mode
+recipes/messenger-agent/         # README.md, recipe.ts, app.ts, run.ts, recipe.test.ts
+docs/messenger/                  # index.md + providers/{telegram,discord,slack}.md
 ```
 
-Core carries zero platform logic; adapters carry zero AI logic. The `Messenger`
-tag is the seam.
+Core carries zero platform logic; adapters carry zero AI logic. The
+`Messenger` tag is the seam. Provider packages follow the `exa` layout
+(`tsdown`, subpath exports, core as dev+peer dependency) and debut at the
+current fixed-group version.
 
 ## Key design decisions
 
 ### 1. The service: five verbs + one event stream
 
 ```ts
-type ChannelId = Brand.Branded<string, "ChannelId">
-type MessageId = Brand.Branded<string, "MessageId">
-type UserId = Brand.Branded<string, "UserId">
+export type ChannelId = Brand.Branded<string, "ChannelId">
+export type MessageId = Brand.Branded<string, "MessageId">
+export type UserId = Brand.Branded<string, "UserId">
 
-type ConversationRef = { readonly channel: ChannelId; readonly thread?: string }
-type MessageRef = { readonly conversation: ConversationRef; readonly id: MessageId }
+// `thread` is opaque and provider-interpreted: Slack thread_ts, Telegram
+// forum message_thread_id, unused on Discord (a thread is its own channel).
+export type ConversationRef = { readonly channel: ChannelId; readonly thread?: string }
+export type MessageRef = { readonly conversation: ConversationRef; readonly id: MessageId }
 
-type InboundEvent = Data.TaggedEnum<{
+export type InboundEvent = Data.TaggedEnum<{
   Message: {
     conversation: ConversationRef
     id: MessageId
     author: UserId
-    text: string
-    mention: boolean
+    text: string // mention of the bot stripped
+    addressed: boolean // DM, or mentions the bot, or replies to the bot
+    replyTo?: MessageId
+    raw: unknown
   }
-  Reaction: { conversation: ConversationRef; message: MessageId; emoji: string; author: UserId }
+  Reaction: {
+    conversation: ConversationRef
+    message: MessageId
+    emoji: string
+    author: UserId
+    raw: unknown
+  }
   Command: {
     conversation: ConversationRef
     name: string
-    args: Record<string, string>
+    args: string
     author: UserId
+    raw: unknown
   }
-  Action: { conversation: ConversationRef; actionId: string; value?: string; author: UserId }
+  Action: {
+    conversation: ConversationRef
+    actionId: string
+    value?: string
+    author: UserId
+    raw: unknown
+  }
 }>
 
-type Outbound = string | { text?: string; card?: Card } | { raw: unknown }
+// Text is markdown; adapters convert. `raw` is passed to the platform as-is.
+export type Outbound =
+  string | { readonly text: string; readonly replyTo?: MessageId } | { readonly raw: unknown }
 
 export type MessengerService = {
   readonly events: Stream.Stream<InboundEvent, MessengerError>
   readonly post: (msg: Outbound) => Effect.Effect<MessageId, MessengerError, CurrentConversation>
   readonly edit: (msg: MessageRef, next: Outbound) => Effect.Effect<void, MessengerError>
   readonly react: (msg: MessageRef, emoji: string) => Effect.Effect<void, MessengerError>
-  readonly typing: Effect.Effect<void, MessengerError, CurrentConversation>
-  readonly ephemeral: (
-    user: UserId,
-    msg: Outbound,
-  ) => Effect.Effect<void, MessengerError, CurrentConversation>
+  // Activity indicator, kept alive until the scope closes.
+  readonly typing: Effect.Effect<void, MessengerError, CurrentConversation | Scope.Scope>
+  // Progressive delivery of a text stream; mechanism is the adapter's.
+  readonly stream: <E, R>(
+    text: Stream.Stream<string, E, R>,
+  ) => Effect.Effect<MessageId, MessengerError | E, R | CurrentConversation>
+  readonly limits: { readonly maxText: number }
 }
 
 export class Messenger extends Context.Service<Messenger, MessengerService>()(
@@ -147,12 +266,19 @@ export class Messenger extends Context.Service<Messenger, MessengerService>()(
 ) {}
 ```
 
-Deliberately absent: `stream` (derived: one `post`, then `edit` on a coalesced
-schedule, driven by `Turn.toMessages`), any per-conversation loop, any debounce.
-Five primitive verbs keep a new adapter tractable and keep policy out of
-transport. `edit`/`react` take an explicit `MessageRef` (you can only edit a
-message you can name); the conversation-targeting verbs are ambient (next
-decision).
+Changes from the first draft, all forced by the research: `stream` replaces
+`ephemeral` (streaming is uniform in intent and non-uniform in mechanism;
+ephemeral is neither), `typing` is scoped (three different expiry windows),
+`mention` became `addressed` (the DM / mention / reply-to-bot rule is what
+recipes actually branch on, and it is where Telegram privacy mode and Discord
+intents are absorbed), `Command.args` is a string (Telegram and Slack deliver
+raw text, only Discord has typed options), `raw` is on every event, and
+`limits.maxText` is exposed so recipes can see the platform ceiling. `post`
+splits over-long text at the limit on paragraph boundaries and returns the
+last id; `stream` rolls over to a new message when the buffer exceeds it.
+
+`edit` and `react` take an explicit `MessageRef` (you can only edit a message
+you can name); the conversation-targeting verbs are ambient (next decision).
 
 ### 2. Ambient conversation targeting (`CurrentConversation` in `R`)
 
@@ -168,190 +294,173 @@ export const inConversation =
 ```
 
 The reader pattern, with `RpcClient.CurrentHeaders` / `withHeaders` as
-precedent. The reason it fits messaging specifically: the conversation target
-must reach _deep_ code. A tool's `run` posting "searching..." progress, an
-approval resolver posting buttons, an interaction prompt: all live layers below
-the handler. Ambient context means the recipe wraps each conversation fiber once
-(`inConversation(ref)`) and every nested post lands correctly with no ref
-threading. A `Tag` (no default) rather than a `Reference`: posting outside an
-established conversation is a compile error, which is a safety property.
+precedent. The conversation target must reach _deep_ code: a tool's `run`
+posting progress, an approval resolver posting buttons, an interaction prompt.
+Ambient context means the recipe wraps each conversation fiber once and every
+nested post lands correctly with no ref threading. A `Tag` (no default) rather
+than a `Reference`: posting outside an established conversation is a compile
+error.
 
-Multi-conversation work (proactive broadcast, escalation to an ops channel) is
-re-scoping, not a second API:
+Multi-conversation work (escalation to an ops channel) is re-scoping:
 
 ```ts
 yield * messenger.post("On it, escalating.") // ambient: the user's thread
 yield * inConversation(onCall)(messenger.post(summary)) // re-scoped: the ops channel
 ```
 
-No `postTo` in v1; add it as sugar only if the re-scope reads noisily in real
-recipes.
-
-### 3. `Turn.toMessages`: the output projection (core, adapter-independent)
-
-The sibling of `Turn.toSSE` / `Turn.toJSONL`, and the one piece that belongs in
-core no matter where adapters live, because it frames _model output_:
+### 3. `streamViaEdits`: the shared fallback strategy (core)
 
 ```ts
-// Stream<InteractionEvent> -> Stream<MessageAction>, coalesced for edit-in-place
-Turn.toMessages: (opts?: {
-  every?: Duration.Input        // min interval between edits (platform rate limits)
-  minChars?: number             // or a growth threshold
-  showTools?: boolean           // render tool calls as status lines
-}) => (events: Stream<Turn.InteractionEvent>) => Stream<MessageAction>
-
-type MessageAction = Data.TaggedEnum<{
-  Post:   { msg: Outbound }                    // first content -> create the message
-  Edit:   { msg: Outbound }                    // coalesced deltas -> edit it in place
-  Status: { text: string }                     // tool call -> status line, later edited
-  Settle: { msg: Outbound }                    // final turn -> final content
-}>
+// The post-then-edit strategy for adapters without native streaming.
+// Coalesces deltas by time and growth, skips no-op edits, honours
+// MessengerRateLimited.retryAfter, rolls over past maxText, flushes a final edit.
+export const streamViaEdits: (
+  verbs: { post; edit; limits },
+  options?: { every?: Duration.Input; minChars?: number },
+) => <E, R>(
+  text: Stream.Stream<string, E, R>,
+) => Effect.Effect<MessageId, MessengerError | E, R | CurrentConversation>
 ```
 
-Messaging platforms rate-limit edits and want debounced, batched updates, not
-token-by-token SSE. Debounce/coalesce of a delta stream is exactly the
-library's Stream wheelhouse. A tiny `render` helper in the recipe executes
-`MessageAction`s against `post`/`edit` (tracking the `MessageId` from the first
-`Post`).
+Debounce/coalesce of a delta stream is exactly the library's Stream
+wheelhouse, and it is needed by at least two adapters (Discord always,
+Telegram in groups), so it lives in core. Defaults: 1 second and 40 chars
+(Discord's observed 5-edits-per-5s bucket and Telegram's undocumented edit
+limit both sit around 1/s). Adapters with native streaming (Slack everywhere,
+Telegram in private chats via `sendMessageDraft`) implement `stream` directly
+and may fall back to this helper on a streaming error.
+
+The recipe feeds `stream` with `Turn.textDeltas(streamTurn(...))`, which
+already exists in core. Tool-call status lines ("searching...") are one
+`post` per `ToolCallStart` in the recipe; a `Turn.toMessages` projection with
+`Status`/`Settle` actions (in the first draft) is deferred until the recipe
+shows it is needed. Note: `Turn.toSSE` / `toJSONL` are recipe code, not core,
+so there is no core sibling to mirror.
 
 ### 4. Approval is `Approval.fromQueue`, not a new primitive
 
-There is no `Approval.fromMessenger`. Approve/deny-over-buttons is just
-`Approval.fromQueue` with two thin recipe pieces around it, because the
-verdict-delivery mechanism (a queue keyed by `call_id`, with a timeout) is
-already exactly what `fromQueue` is:
+There is no `Approval.fromMessenger`. Approve/deny-over-buttons is
+`Approval.fromQueue` with two thin recipe pieces around it (post the buttons
+via `raw` when a gate opens; on an `Action` event decode `approve:<id>` /
+`deny:<id>` and offer the verdict). Adding a named wrapper would be a
+provider-specific shortcut over a generic helper. Kept out of v1 because the
+button-rendering half is per-platform and the basic recipe needs no `Action`
+demux: text in, streamed text out.
 
-```ts
-const verdicts = yield * Queue.make<Verdict>()
-const approval = Approval.fromQueue(verdicts, { timeout: "5 minutes" })
-// recipe piece 1: when a gate opens, post the approve/deny buttons to the conversation
-// recipe piece 2: on an `Action` event, decode `approve:<id>` / `deny:<id>`
-//                 and Queue.offer(verdicts, ...)
-```
+### 5. Providers: a `Layer` owning a scoped connection
 
-Adding a named `Approval.fromMessenger` would be a provider-specific wrapper over
-a generic helper we already have. So approval over buttons is a recipe, kept out
-of v1 for two reasons: it needs no new core, and interactive components do not
-unify across platforms anyway (Discord components, Slack Block Kit, Telegram
-inline keyboards, WhatsApp reply buttons), so the button-rendering half is
-per-platform work. Keeping it out of v1 is why the basic recipe (appendix) needs
-no `Action` demux and no second inbox: text in, streamed text out.
+`Telegram.layer({ token })` returns `Layer<Telegram | Messenger, never, HttpClient>`
+(provider tag plus capability tag over one implementation, the `exa` shape).
+Building the layer starts the poll loop (or the websocket) in a forked scoped
+fiber feeding a `Queue<InboundEvent, Cause.Done>`; scope close ends the queue
+with `Queue.end` and tears the connection down. `events` is
+`Stream.fromQueue` and is single-consumer (document it). Tokens are
+`Redacted` end to end. Reconnection, acks, dedupe and callback answering all
+happen inside the adapter (see "constraints the adapters absorb").
 
-### 5. Providers: a `Layer` owning a scoped gateway connection
-
-Exactly the CDP shape: `discord({ token })` returns
-`Layer<Messenger, MessengerError>`; building the layer opens the gateway
-websocket (identify, heartbeat, resume), scope close tears it down. The realtime
-socket learnings apply verbatim: `closeCodeIsError` whitelisting clean close
-codes, reader fiber feeding a `Queue<InboundEvent, Cause.Done>` ended with
-`Queue.end` (never `Queue.shutdown`). Outbound verbs use the platform REST API;
-tokens are `Redacted` end to end.
-
-Discord ships first: pure websocket gateway, no public HTTP endpoint needed, so
-it is the easiest to develop and test end to end. Slack second via Socket Mode,
-Telegram third via long-poll `getUpdates`, all three the same
-persistent-connection shape. WhatsApp is webhook-only and comes in phase 2 with
-webhook mode.
+Telegram ships first: no websocket, no ack deadline, no intents, one HTTP
+client, and a BotFather token takes a minute to get. Discord second (gateway
+state machine, the most transport work, the fastest to test end to end).
+Slack third, and it is the adapter that proves the `stream` verb carries a
+native streaming API (`chat.startStream` with its stop button) and not only
+edit-in-place.
 
 ### 6. Orchestration is a recipe
 
-The library never owns the router. The recipe (docs + runnable) is explicit
-queues and forked fibers, in the house style:
+The library never owns the router. The recipe is explicit queues and forked
+fibers, in the house style:
 
-- A `Ref<HashMap<ChannelId, Queue<InboundEvent, Cause.Done>>>` of inboxes.
-- On first message in a conversation: create the inbox, fork one
+- A `Ref<HashMap<string, Queue<InboundEvent, Cause.Done>>>` of inboxes keyed
+  by conversation.
+- On first addressed message in a conversation: create the inbox, fork one
   agentic-loop fiber wrapped in `inConversation(ref)` (`Effect.forkScoped`).
 - A dispatch loop: `Stream.runForEach(messenger.events, route)`.
-- Inside each fiber: the agentic-loop recipe unchanged (debounce bursts, one
-  batch per clean turn, history as loop state), with `Turn.toMessages` +
-  `render` as the sink, and mid-stream abort wired to a new message arriving or
-  a stop button.
-
-Per-thread durable history (load state on first message, save after each clean
-turn) composes here when a persistence seam exists; the messaging agent is the
-concrete use case that motivates it.
+- Inside each fiber: the agentic-loop recipe unchanged (`drainBurst`, one
+  batch per clean turn, history as loop state), `typing` held for the turn,
+  `stream(Turn.textDeltas(...))` as the sink, mid-stream abort wired to a new
+  message arriving.
 
 ### 7. Errors (`MessengerError.ts`)
 
-Tagged family, `describe`-able, mirroring `BrowserError`:
+`Data.TaggedError` family with a `describe`, mirroring `BrowserError`:
 
-- `MessengerConnectFailed` (gateway/auth failure on layer build or resume).
-- `MessengerTransportClosed` (connection dropped; the events stream fails with
-  it).
+- `MessengerConnectFailed` (auth or handshake failure on layer build; Discord
+  4004/4013/4014, Slack invalid `xapp` token, Telegram 401).
+- `MessengerTransportClosed` (reconnect budget exhausted or fatal close; the
+  `events` stream fails with it).
 - `MessengerRequestFailed` (an outbound verb rejected: permissions, unknown
-  channel, message too long; carries provider `reason` + `raw`).
-- `MessengerRateLimited` (carries `retryAfter: Duration`; adapters surface it
-  typed so recipes can `Effect.retry` deliberately rather than adapters retrying
-  silently).
+  chat, message too long; carries provider `reason` + `raw`).
+- `MessengerRateLimited` (carries `retryAfter: Duration` from Telegram
+  `retry_after`, Discord `retry_after`, Slack `Retry-After`; adapters surface
+  it typed so recipes and `streamViaEdits` retry deliberately).
+- `MessengerUnsupported` (the wired platform cannot do it: off-set reaction
+  emoji on Telegram, `edit` on WhatsApp).
 
 ## Sequencing
 
-1. **Core `Messenger.ts` + `MessengerError.ts`** (tag, ids, events enum, verbs,
-   ambient targeting) + a `MockMessenger` test layer (scripted inbound, recorded
-   outbound).
-2. **`Turn.toMessages`** against existing `Turn.InteractionEvent`s, tested on the
-   mock layer. Pays off independently of any adapter.
-3. **`@effect-uai/discord`**: gateway connect/heartbeat/resume, the five verbs
-   over REST, mention events. End-to-end: mention-triggered streaming reply.
-4. **The multi-tenant recipe** (router + per-conversation agentic loop) in docs,
-   runnable against mock and Discord.
-5. **`@effect-uai/slack`** (Socket Mode) then **`@effect-uai/telegram`**
-   (long-poll), each reusing everything above unchanged; three persistent
-   transports on one `Messenger` tag is the proof the abstraction holds.
-6. Docs section + changesets + skill note.
-7. **Phase 2**: webhook mode, then **`@effect-uai/whatsapp`**; and the
-   approval-over-buttons recipe (`Approval.fromQueue` fed by `Action` events)
-   once per-platform button rendering is done.
+1. **Core `Messenger.ts` + `MessengerError.ts`** (tag, ids, events enum,
+   verbs, ambient targeting, `streamViaEdits`) + `MockMessenger` test layer.
+   `streamViaEdits` is tested on the mock: coalescing, no-op skip, rollover,
+   rate-limit retry, final flush.
+2. **`@effect-uai/telegram`**: `getMe`, long-poll loop with offset ack and
+   `allowed_updates`, `Update` -> `InboundEvent` with the addressed rule,
+   markdown-to-HTML, `sendMessage`/`editMessageText`/`setMessageReaction`/
+   `sendChatAction` keepalive, `stream` = `sendMessageDraft` in private chats
+   and `streamViaEdits` in groups, `answerCallbackQuery` auto-ack. End to end:
+   DM the bot, get a streamed tool-using answer.
+3. **The `messenger-agent` recipe** (router + per-conversation agentic loop),
+   runnable against mock and Telegram, plus `docs/messenger/index.md` and
+   `providers/telegram.md` (with the privacy-mode note).
+4. **`@effect-uai/discord`**: gateway state machine, bucketed REST, mention
+   events without privileged intents, `stream` via `streamViaEdits`.
+5. **`@effect-uai/slack`**: Socket Mode loop with 3s acks and rolling
+   reconnect, `chat.startStream`-backed `stream`, `agents.sessions.setStatus`
+   as `typing`. Three transports on one tag is the proof the abstraction holds.
+6. Changesets (fixed group), skill cheat-sheet row, docs sidebar.
+7. **Phase 2**: webhook mode, then `@effect-uai/whatsapp`; the
+   approval-over-buttons recipe once per-platform button rendering exists.
 
 ## Testing
 
-- `MockMessenger` layer: a scripted `events` stream + a `Ref` log of outbound
-  calls. All bridge and recipe tests run against it; no network.
-- `Turn.toMessages`: delta bursts coalesce per `every`/`minChars`; tool calls
-  produce `Status` then edits; the final turn `Settle`s; empty turns post
-  nothing.
+- `MockMessenger`: a scripted `events` stream + a `Ref` log of outbound calls.
+  All recipe tests run against it; no network.
+- `streamViaEdits`: delta bursts coalesce per `every`/`minChars`; identical
+  content does not edit; rollover past `maxText`; `MessengerRateLimited`
+  is retried after `retryAfter`; the final delta always lands.
+- Telegram `Update` decoding and the addressed rule (private chat, `@bot`
+  entity, `/cmd@bot`, reply to bot) and markdown-to-HTML are pure and unit
+  tested against fixture payloads.
 - Ambient targeting: `expectTypeOf` that `messenger.post` without
-  `inConversation` fails to compile; re-scoping targets the inner conversation.
-- Adapter integration tests behind env-gated tokens (the providers' pattern for
-  live tests).
+  `inConversation` fails to compile.
+- Adapter live tests in `integration-tests/<platform>/` behind env-gated
+  tokens (`describe.skipIf`), the `sandbox-deno` pattern.
 
 ## Risks / open questions
 
-- **Adapter maintenance is the real cost.** Platform APIs churn. Contained by:
-  five-verb contract, a fixed four-platform official set (Discord, Slack,
-  Telegram, WhatsApp) rather than an open-ended list, `raw` escape hatch instead
-  of chasing card dialects, and a documented adapter contract so community
+- **Adapter maintenance is the real cost.** Platform APIs churn (Slack
+  deprecates `assistant.threads.*` in Feb 2027, Discord raised the privileged
+  intent bar in Jun 2026, Telegram ships a Bot API release every few weeks).
+  Contained by the five-verb contract, the fixed four-platform set, `raw`
+  instead of card dialects, and a documented adapter contract so community
   adapters do not become our surface.
-- **Webhook mode pressure.** Serverless users will ask immediately. The docs
-  must state the v1 boundary plainly (persistent process required) and the
-  deferred design must not be foreclosed by v1 choices; keeping the service
-  free of connection-lifecycle methods (the Layer owns it) is what keeps the
-  door open.
-- **Coalescing tuning.** `Turn.toMessages` defaults (interval, growth threshold)
-  need empirical tuning against Discord/Slack edit rate limits; ship
-  conservative defaults and expose the knobs.
-- **Thread semantics differ** (Discord threads vs Slack thread_ts vs Telegram
-  replies). `ConversationRef.thread` is an opaque provider-interpreted string
-  on purpose; verify it carries all three without leaking platform meaning
-  into core.
+- **Markdown conversion quality.** Model output into Telegram HTML is the one
+  place a converter bug is user-visible on every message. Start with the
+  subset the models actually emit (bold, italic, code, pre, links, lists as
+  plain text) and fail soft to plain text on a 400 `can't parse entities`.
+- **Webhook mode pressure.** Serverless users will ask immediately. Docs state
+  the v1 boundary plainly (persistent process, one instance per token).
+- **Coalescing tuning.** Edit rate limits are undocumented on Telegram and
+  community-observed on Discord; ship conservative defaults, expose the knobs,
+  and learn from headers on Discord rather than hard-coding buckets.
+- **Thread semantics.** `ConversationRef.thread` carries Slack `thread_ts` and
+  Telegram forum topics; Telegram reply chains have no thread id and Discord
+  threads are channels. Verify the recipe's per-conversation keying stays
+  sensible on all three before freezing the type.
 
 ## Appendix: what a basic integration looks like
 
-The point of this appendix is the _shape_, not every line: a web-search agent
-that answers when mentioned. It shows how the library pieces (the `Messenger`
-tag, `Turn.toMessages`) and the recipe pieces (the router, the per-conversation
-loop) fit together. Internals that are someone else's recipe (the debounce, the
-exact `streamTurn` signature) are elided with a comment. Approvals and other
-button flows are a separate niche recipe (see decision 4), deliberately left out
-here.
-
-### The three moving parts
-
-1. **A tool** (web search).
-2. **The per-conversation loop**: the agentic-loop recipe, wrapped in
-   `inConversation(ref)`, sinking output through `Turn.toMessages`.
-3. **The router**: fans inbound `Message` events out to one inbox per
-   conversation; **`main`** composes the layers and runs it.
+The point is the _shape_: a web-search agent that answers when addressed.
+Approvals and button flows are a separate recipe (decision 4).
 
 ### 1. The tool
 
@@ -368,77 +477,82 @@ const toolkit = Toolkit.make(searchTool)
 
 ### 2. The per-conversation loop
 
-One fiber per conversation, reading from its own `inbox`. Everything runs inside
-`inConversation(ref)` so `messenger.post` and `messenger.typing` land in this
+One fiber per conversation, reading from its own inbox. Everything runs inside
+`inConversation(ref)` so `post`, `typing` and `stream` land in this
 conversation without threading a ref through `streamTurn` or the tool.
 
 ```ts
 const conversation = (ref: ConversationRef, inbox: Queue.Queue<InboundEvent, Cause.Done>) =>
   Effect.gen(function* () {
     const messenger = yield* Messenger
-    const history = yield* Ref.make<ReadonlyArray<HistoryItem>>([])
+    const lm = yield* LanguageModel
 
-    // the agentic loop: one debounced batch per clean turn
-    yield* Effect.forever(
+    yield* loop((state: State) =>
       Effect.gen(function* () {
-        const batch = yield* drainDebounced(inbox) // take + coalesce typing bursts (agentic-loop recipe)
-        yield* Ref.update(history, appendUserMessages(batch))
-        yield* messenger.typing
+        const incoming = needsUserInput(state) ? yield* drainBurst(inbox, "800 millis") : []
+        const history = [...state.history, ...incoming.map((m) => Items.userText(m.text))]
 
-        // one model turn; the model may call `search`, whose result feeds the next turn
-        const turn = yield* streamTurn({ history: yield* Ref.get(history), toolkit }).pipe(
-          Turn.toMessages({ every: "600 millis" }), // deltas -> coalesced edits
-          renderMessages(messenger), // executes Post/Edit/Settle via messenger.post / messenger.edit
+        return lm.streamTurn({ history, model, tools: toolkit }).pipe(
+          Stream.tap((e) =>
+            e._tag === "ToolCallStart" ? messenger.post(`_${e.name}..._`) : Effect.void,
+          ),
+          Turn.textDeltas,
+          messenger.stream, // native stream or post+edit, the adapter decides
+          Effect.scoped, // releases `typing`
+          Effect.map(/* next(state with turn appended) */),
         )
-        yield* Ref.update(history, appendTurn(turn))
-      }),
-    )
-  }).pipe(inConversation(ref)) // <- the ambient target for every post/typing below this point
+      }).pipe(Effect.provideServiceEffect(/* hold typing for the turn */)),
+    )({ history: [] })
+  }).pipe(inConversation(ref))
 ```
 
-The two things that make this integrate cleanly: `inConversation(ref)` puts the
-target in `R` so deep code (a tool posting progress) needs no ref, and
-`streamTurn` is the ordinary loop primitive, unaware it is speaking to Discord.
+`streamTurn` is the ordinary loop primitive, unaware it is speaking to
+Telegram. The only messenger-specific lines are the status post, `stream` and
+`typing`.
 
 ### 3. The router and `main`
 
 ```ts
 const router = Effect.gen(function* () {
   const messenger = yield* Messenger
-  const inboxes = yield* Ref.make(HashMap.empty<ChannelId, Queue.Queue<InboundEvent, Cause.Done>>())
+  const inboxes = yield* Ref.make(HashMap.empty<string, Queue.Queue<InboundEvent, Cause.Done>>())
 
   const inboxFor = (ref: ConversationRef) =>
     Effect.gen(function* () {
-      const found = HashMap.get(yield* Ref.get(inboxes), ref.channel)
+      const key = `${ref.channel}/${ref.thread ?? ""}`
+      const found = HashMap.get(yield* Ref.get(inboxes), key)
       if (Option.isSome(found)) return found.value
       const inbox = yield* Queue.make<InboundEvent, Cause.Done>()
-      yield* Ref.update(inboxes, HashMap.set(ref.channel, inbox))
-      yield* conversation(ref, inbox).pipe(Effect.forkScoped) // tied to the connection scope
+      yield* Ref.update(inboxes, HashMap.set(key, inbox))
+      yield* conversation(ref, inbox).pipe(Effect.forkScoped)
       return inbox
     })
 
-  // route each mention to its conversation's inbox
   yield* Stream.runForEach(messenger.events, (event) =>
-    event._tag === "Message" && event.mention
+    event._tag === "Message" && event.addressed
       ? Effect.flatMap(inboxFor(event.conversation), (inbox) => Queue.offer(inbox, event))
       : Effect.void,
   )
 })
 
 router.pipe(
-  Effect.scoped, // the discord layer's gateway websocket lives for this scope
-  Effect.provide(discord({ token: Redacted.make(process.env.DISCORD_TOKEN!) })),
+  Effect.scoped,
+  Effect.provide(Telegram.layer({ token: Redacted.make(process.env.TELEGRAM_BOT_TOKEN!) })),
   Effect.provide(OpenAILayer),
-  Effect.provide(WebSearch.layer(/* ... */)),
+  Effect.provide(Exa.layer({ apiKey })),
+  Effect.provide(NodeHttpClient.layerUndici),
   Effect.runFork,
 )
 ```
 
-Swapping Discord for Slack is one line: `Effect.provide(slack({ ... }))`. The
-tool, the loop, the router, and `Turn.toMessages` are all untouched, which is
-the whole claim of the capability made concrete.
+Swapping Telegram for Discord or Slack is one `Effect.provide` line. The
+tool, the loop, the router and the streaming sink are untouched, which is the
+whole claim of the capability made concrete.
 
 ### What the user sees
 
-They @-mention the bot with a question; it starts typing, runs a web search if
-it needs one, then streams its answer into one edited message.
+They message the bot (or mention it in a group with privacy mode off); it
+shows typing, posts a short status line if it runs a search, then streams its
+answer: as an animated draft in a Telegram DM, as one edited message in a
+Telegram group or on Discord, as a native streamed message with a stop button
+on Slack.

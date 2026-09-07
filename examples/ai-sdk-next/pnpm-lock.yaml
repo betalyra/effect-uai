@@ -14,9 +14,15 @@ importers:
       '@effect-uai/ai-sdk':
         specifier: link:../../packages/compat/ai-sdk
         version: link:../../packages/compat/ai-sdk
+      '@effect-uai/anthropic':
+        specifier: link:../../packages/providers/anthropic
+        version: link:../../packages/providers/anthropic
       '@effect-uai/core':
         specifier: link:../../packages/core
         version: link:../../packages/core
+      '@effect-uai/google':
+        specifier: link:../../packages/providers/google
+        version: link:../../packages/providers/google
       '@effect-uai/responses':
         specifier: link:../../packages/providers/responses
         version: link:../../packages/providers/responses

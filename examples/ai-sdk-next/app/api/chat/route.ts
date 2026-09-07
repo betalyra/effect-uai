@@ -24,9 +24,9 @@ import * as ToolEvent from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
-import { make as makeResponses } from "@effect-uai/responses/Responses"
-import { Config, Duration, Effect, Match, Result, Schema, Stream, pipe } from "effect"
+import { Duration, Effect, Match, Result, Schema, Stream, pipe } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/unstable/http"
+import { readProvider } from "../../../lib/model"
 
 // ---------------------------------------------------------------------------
 // Tool: current weather via Open-Meteo (public, no API key).
@@ -184,13 +184,15 @@ const whenAborted = (signal: AbortSignal): Effect.Effect<void> =>
 
 // ---------------------------------------------------------------------------
 
+// The provider comes from the environment (`lib/model.ts`), so the two tiers
+// below are one service and two model ids.
+
 const buildStream = (history: ReadonlyArray<Items.HistoryItem>) =>
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
-    const openai = yield* makeResponses({ apiKey })
+    const { fallback, model, service } = yield* readProvider
     const tiers: ReadonlyArray<Tier> = [
-      { name: "gpt-5.4-mini", model: "gpt-5.4-mini", service: openai },
-      { name: "gpt-5.4", model: "gpt-5.4", service: openai },
+      { name: model, model, service },
+      { name: fallback, model: fallback, service },
     ]
     return conversation(tiers, history)
   })

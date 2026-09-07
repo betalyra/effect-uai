@@ -12,7 +12,9 @@
   "dependencies": {
     "@ai-sdk/react": "^4.0",
     "@effect-uai/ai-sdk": "link:../../packages/compat/ai-sdk",
+    "@effect-uai/anthropic": "link:../../packages/providers/anthropic",
     "@effect-uai/core": "link:../../packages/core",
+    "@effect-uai/google": "link:../../packages/providers/google",
     "@effect-uai/responses": "link:../../packages/providers/responses",
     "@tailwindcss/postcss": "^4",
     "ai": "^7.0",

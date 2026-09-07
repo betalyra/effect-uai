@@ -327,8 +327,8 @@ wheelhouse, and it is needed by at least two adapters (Discord always,
 Telegram in groups), so it lives in core. Defaults: 1 second and 40 chars
 (Discord's observed 5-edits-per-5s bucket and Telegram's undocumented edit
 limit both sit around 1/s). Adapters with native streaming (Slack everywhere,
-Telegram in private chats via `sendMessageDraft`) implement `stream` directly
-and may fall back to this helper on a streaming error.
+later Telegram in private chats via `sendMessageDraft`) implement `stream`
+directly and may fall back to this helper on a streaming error.
 
 The recipe feeds `stream` with `Turn.textDeltas(streamTurn(...))`, which
 already exists in core. Tool-call status lines ("searching...") are one
@@ -405,8 +405,8 @@ fibers, in the house style:
 2. **`@effect-uai/telegram`**: `getMe`, long-poll loop with offset ack and
    `allowed_updates`, `Update` -> `InboundEvent` with the addressed rule,
    markdown-to-HTML, `sendMessage`/`editMessageText`/`setMessageReaction`/
-   `sendChatAction` keepalive, `stream` = `sendMessageDraft` in private chats
-   and `streamViaEdits` in groups, `answerCallbackQuery` auto-ack. End to end:
+   `sendChatAction` keepalive, `stream` = `streamViaEdits` (drafts are a
+   follow-up, see handoff notes), `answerCallbackQuery` auto-ack. End to end:
    DM the bot, get a streamed tool-using answer.
 3. **The `messenger-agent` recipe** (router + per-conversation agentic loop),
    runnable against mock and Telegram, plus `docs/messenger/index.md` and
@@ -553,6 +553,40 @@ whole claim of the capability made concrete.
 
 They message the bot (or mention it in a group with privacy mode off); it
 shows typing, posts a short status line if it runs a search, then streams its
-answer: as an animated draft in a Telegram DM, as one edited message in a
-Telegram group or on Discord, as a native streamed message with a stop button
-on Slack.
+answer: as one edited message on Telegram and Discord, as a native streamed
+message with a stop button on Slack (and, once drafts land, as an animated
+draft in a Telegram DM).
+
+## Implementation notes (handoff)
+
+Decisions pinned after review, so an implementer does not have to re-derive
+them:
+
+1. **Effect v4 (effect-smol) APIs only.** `CurrentConversation` is declared
+   like every other core tag:
+   `class CurrentConversation extends Context.Service<CurrentConversation, ConversationRef>()("@betalyra/effect-uai/Messenger/CurrentConversation") {}`.
+   There is no `Context.Tag` here.
+2. **Telegram `stream` in v1 is `streamViaEdits` everywhere**, private chats
+   included. `sendMessageDraft` (animated drafts in DMs) is a follow-up
+   changeset once the basic flow is live.
+3. **Inbound queue: unbounded, acknowledge first.** Adapters advance the
+   Telegram offset (or ack the Slack envelope) before `Queue.offer`. The
+   platform is never back-pressured by a slow recipe; a recipe that cannot
+   keep up is a recipe bug, and Slack's 3s ack deadline makes backpressure
+   wrong anyway.
+4. **No-op edits are not swallowed.** Telegram rejects an edit with unchanged
+   text (400 "message is not modified"); Discord and Slack accept it. The
+   adapter surfaces it as `MessengerRequestFailed` with the Telegram reason.
+   Uniformity comes from `streamViaEdits`, which never sends unchanged text,
+   not from hiding a platform response. Note the difference in
+   `docs/messenger/providers/telegram.md`.
+5. **Telegram poller requests `allowed_updates`** =
+   `["message", "edited_message", "callback_query", "message_reaction"]` on
+   every `getUpdates` call. Without it Telegram never delivers reactions. The
+   list is sticky on Telegram's side; reactions in groups additionally need
+   the bot to be an admin (doc note).
+6. **Telegram `Command` rule.** A `bot_command` entity at offset 0 becomes
+   `Command { name, args }` with any `@botname` suffix stripped and `args` the
+   remaining text after the command word. Everything else is a `Message`, even
+   though Telegram tags a mid-text `/word` as a `bot_command` entity too.
+   `/start` goes through the same rule; greeting on it is the recipe's job.

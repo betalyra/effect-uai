@@ -114,6 +114,14 @@
       "types": "./dist/language-model/LanguageModel.d.mts",
       "import": "./dist/language-model/LanguageModel.mjs"
     },
+    "./Messenger": {
+      "types": "./dist/messenger/Messenger.d.mts",
+      "import": "./dist/messenger/Messenger.mjs"
+    },
+    "./MessengerError": {
+      "types": "./dist/messenger/MessengerError.d.mts",
+      "import": "./dist/messenger/MessengerError.mjs"
+    },
     "./MusicGenerator": {
       "types": "./dist/music-generator/MusicGenerator.d.mts",
       "import": "./dist/music-generator/MusicGenerator.mjs"
@@ -237,6 +245,10 @@
     "./testing/MockProvider": {
       "types": "./dist/testing/MockProvider.d.mts",
       "import": "./dist/testing/MockProvider.mjs"
+    },
+    "./testing/MockMessenger": {
+      "types": "./dist/testing/MockMessenger.d.mts",
+      "import": "./dist/testing/MockMessenger.mjs"
     },
     "./testing/MockMusicGenerator": {
       "types": "./dist/testing/MockMusicGenerator.d.mts",

@@ -418,6 +418,21 @@ export default defineConfig({
           ],
         },
         {
+          label: "Messenger",
+          items: [
+            { label: "Overview", slug: "messenger" },
+            {
+              label: "Providers",
+              items: [{ label: "Telegram", slug: "messenger/providers/telegram" }],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Messenger agent", slug: "recipes/messenger-agent" }],
+            },
+          ],
+        },
+        {
           label: "Migrations",
           collapsed: true,
           items: [

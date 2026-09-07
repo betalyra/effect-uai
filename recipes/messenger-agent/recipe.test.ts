@@ -4,7 +4,9 @@
  * asked (one history per conversation).
  */
 import { describe, expect, it } from "@effect/vitest"
-import { Array as Arr, type Duration, Effect, Fiber, Queue, Schema, Stream } from "effect"
+import { Array as Arr, type Duration, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect"
+import * as Image from "@effect-uai/core/Image"
+import * as ImageGenerator from "@effect-uai/core/ImageGenerator"
 import * as Items from "@effect-uai/core/Items"
 import {
   ChannelId,
@@ -19,7 +21,7 @@ import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
-import { router } from "./recipe.js"
+import { type Options, imageTool, router } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -33,12 +35,21 @@ const getTime = Tool.make({
   strict: true,
 })
 
-const options = {
+const options: Options = {
   model: "mock",
-  toolkit: Toolkit.make(getTime),
+  toolkit: Toolkit.make(getTime, imageTool("mock-image")),
   system: "Be brief.",
   settle: "20 millis",
-} as const
+}
+
+// Every prompt becomes one URL image, so the post can be traced back to it.
+const drawer = Layer.succeed(ImageGenerator.ImageGenerator, {
+  generate: ({ prompt }) =>
+    Effect.succeed({ images: [{ image: Image.imageUrl(`https://img/${prompt}`) }], usage: {} }),
+  edit: () => Effect.die("unused"),
+  streamGeneration: () => Stream.die("unused"),
+  streamEdit: () => Stream.die("unused"),
+})
 
 const usage = { input_tokens: 5, output_tokens: 5, total_tokens: 10 }
 
@@ -48,10 +59,10 @@ const says = (text: string): Turn.Turn => ({
   items: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }],
 })
 
-const callsTool = (call_id: string, args: unknown): Turn.Turn => ({
+const callsTool = (call_id: string, name: string, args: unknown): Turn.Turn => ({
   stop_reason: "tool_calls",
   usage,
-  items: [{ type: "function_call", call_id, name: "get_time", arguments: JSON.stringify(args) }],
+  items: [{ type: "function_call", call_id, name, arguments: JSON.stringify(args) }],
 })
 
 const chat = (id: string): ConversationRef => ({ channel: ChannelId(id) })
@@ -103,7 +114,12 @@ const run = (
       yield* Queue.offerAll(source, events)
       yield* Effect.sleep(quiet)
       yield* Fiber.interrupt(dispatch)
-    }).pipe(Effect.scoped, Effect.provide(messenger.layer), Effect.provide(provider.layer))
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(messenger.layer),
+      Effect.provide(provider.layer),
+      Effect.provide(drawer),
+    )
 
     const { calls } = yield* messenger.recorder
     const { calls: asked } = yield* provider.recorder
@@ -131,7 +147,7 @@ describe("messenger-agent", () => {
   it.live("posts a status line for a tool call and no message for a tool-only turn", () =>
     Effect.gen(function* () {
       const { calls, asked } = yield* run(
-        [callsTool("c1", { timezone: "Europe/Lisbon" }), says("Noon in Lisbon.")],
+        [callsTool("c1", "get_time", { timezone: "Europe/Lisbon" }), says("Noon in Lisbon.")],
         [said(chat("a"), "time in lisbon?")],
       )
 
@@ -142,6 +158,25 @@ describe("messenger-agent", () => {
       // The second turn carried the tool output and did not wait on the inbox.
       expect(asked).toHaveLength(2)
       expect(asked[1]!.history.some((i) => i.type === "function_call_output")).toBe(true)
+    }),
+  )
+
+  it.live("the image tool posts the picture into the asking conversation", () =>
+    Effect.gen(function* () {
+      const { calls } = yield* run(
+        [callsTool("c1", "generate_image", { prompt: "a cat" }), says("There you go.")],
+        [said(chat("a"), "draw a cat")],
+      )
+
+      const posts = tagged(calls, "Post")
+      const picture = posts.find((p) => p.message.body._tag === "Media")
+      expect(picture?.conversation).toEqual(chat("a"))
+      expect(picture?.message.body).toMatchObject({ media: { url: "https://img/a cat" } })
+      expect(posts.map((p) => bodyOf(p.message))).toEqual([
+        "<i>generate_image…</i>",
+        "",
+        "There you go.",
+      ])
     }),
   )
 

@@ -347,7 +347,7 @@ const recipes: ReadonlyArray<Recipe> = [
   {
     title: "Messenger agent",
     description:
-      "**Ship the agent where people already are.** Mention it in Telegram; it types, searches, and streams the answer into one message.",
+      "**Ship the agent where people already are.** Mention it in Telegram; it types, searches, draws, and streams the answer into one message.",
     href: "/recipes/messenger-agent/",
     Icon: PiChatsCircle,
     category: "messenger",

@@ -17,4 +17,4 @@ Add the `Messenger` capability and the first provider, `@effect-uai/telegram`.
 
 **Telegram** (`@effect-uai/telegram/Telegram`): `layer({ token, parseMode?, pollTimeout?, stream? })` registers `Telegram` and `Messenger` over one long-poll `getUpdates` loop owned by the layer's scope. Plain `HttpClient`, no SDK. The addressed rule (DM, `@bot` mention, reply to the bot), the offset-0 command rule, `answerCallbackQuery` auto-ack, `retry_after` as `MessengerRateLimited`, media over `sendPhoto` / `sendAudio` / `sendVideo` / `sendDocument`, and a plain-text fallback when Telegram cannot parse the markup.
 
-Recipe: `recipes/messenger-agent`, the agentic loop living in a Telegram chat with web search, one fiber per conversation.
+Recipe: `recipes/messenger-agent`, the agentic loop living in a Telegram chat, one fiber per conversation. Web search and image generation are flag-gated tools; the image tool posts the picture into the ambient conversation from inside `Toolkit.run`.

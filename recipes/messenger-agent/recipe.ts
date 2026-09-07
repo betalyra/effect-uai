@@ -22,9 +22,11 @@ import {
   Option,
   Queue,
   Ref,
+  Schema,
   Stream,
   pipe,
 } from "effect"
+import * as ImageGenerator from "@effect-uai/core/ImageGenerator"
 import { drainBurst } from "@effect-uai/core/Inbox"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
@@ -34,14 +36,17 @@ import {
   Messenger,
   conversationKey,
   inConversation,
+  media,
   text,
 } from "@effect-uai/core/Messenger"
+import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import { webSearchTool } from "@effect-uai/core/WebSearchTool"
 
 export type Options = {
   readonly model: string
+  /** Whatever the deployment configured; an absent capability is not offered. */
   readonly toolkit: Toolkit.Toolkit
   /** Seeds every conversation. The place to name the platform's markup. */
   readonly system: string
@@ -52,26 +57,50 @@ export type Options = {
 }
 
 // ---------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------
+
+export const searchTool = webSearchTool({ maxResults: 5 })
+
+/**
+ * Draws with whichever `ImageGenerator` is wired and posts the picture into
+ * the ambient conversation from inside the tool, so the model only hears
+ * that it was sent and never sees the bytes.
+ */
+export const imageTool = (model: string) =>
+  Tool.make({
+    name: "generate_image",
+    description:
+      "Draw a picture from a text prompt and send it to the user. Returns once it is delivered.",
+    inputSchema: Tool.fromEffectSchema(Schema.Struct({ prompt: Schema.String })),
+    strict: true,
+    run: ({ prompt }) =>
+      Effect.gen(function* () {
+        const messenger = yield* Messenger
+        const { images } = yield* ImageGenerator.generate({ prompt, model })
+        yield* Effect.forEach(images, ({ image }) => messenger.post(media(image)))
+        return "Sent."
+      }),
+  })
+
+// ---------------------------------------------------------------------------
 // The demo persona
 // ---------------------------------------------------------------------------
 
-/**
- * Betty: web search as her one tool, Telegram HTML as her markup. The
- * formatting line is the only platform-specific sentence in the prompt.
- */
+/** Betty. The formatting line is the only platform-specific sentence in the prompt. */
 export const betty = {
   system: [
     "You are Betty, a helpful agent built with effect-uai, the Effect library for AI agents.",
     "When someone asks who or what you are, say you are Betty, built with effect-uai, and link",
     '<a href="https://effect-uai.betalyra.com">effect-uai.betalyra.com</a>. Never call yourself a',
     "generic assistant, and never mention Telegram, chats, bots or how you are hosted.",
+    "Use the tools you have when they help: search for current facts, draw when asked for a picture.",
     "Keep answers short and warm.",
     "Format replies as Telegram HTML: <b>, <i>, <code>, <pre>, <a href>. Escape & < > in prose.",
     "Never use markdown asterisks or backticks.",
   ].join(" "),
   greeting: "Hi, I'm <b>Betty</b> 👋",
-  toolkit: Toolkit.make(webSearchTool({ maxResults: 5 })),
-} satisfies Omit<Options, "model">
+} satisfies Pick<Options, "system" | "greeting">
 
 // ---------------------------------------------------------------------------
 // One conversation

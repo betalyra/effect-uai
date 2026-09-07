@@ -60,3 +60,5 @@ storyboard-out/
 .direnv/
 result
 result-*
+# Local scratch notes
+*.local.md

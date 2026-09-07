@@ -25,6 +25,7 @@
     "@effect-uai/recipe-kit": "workspace:*",
     "@effect-uai/responses": "workspace:*",
     "@effect-uai/tavily": "workspace:*",
+    "@effect-uai/telegram": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

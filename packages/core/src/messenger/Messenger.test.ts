@@ -1,5 +1,5 @@
 import { describe, it } from "@effect/vitest"
-import { Array as Arr, Duration, Effect, Result, Stream } from "effect"
+import { Array as Arr, Duration, Effect, Option, Result, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { expect } from "vitest"
 import * as MockMessenger from "../testing/MockMessenger.js"
@@ -107,7 +107,16 @@ describe("streamViaEdits", () => {
       // Cut on the word boundary, not mid-word, and the id is the last message.
       expect(posts(calls)).toEqual(["aaaa bbbb", "cccc dddd"])
       expect(edits(calls)).toEqual([])
-      expect(id).toBe(MessageId("m2"))
+      expect(id).toEqual(Option.some(MessageId("m2")))
+    }),
+  )
+
+  it.effect("posts nothing for a stream with no text", () =>
+    Effect.gen(function* () {
+      const { id, calls } = yield* streamed(["", ""])
+
+      expect(calls).toEqual([])
+      expect(id).toEqual(Option.none())
     }),
   )
 

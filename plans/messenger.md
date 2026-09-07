@@ -590,3 +590,17 @@ them:
    remaining text after the command word. Everything else is a `Message`, even
    though Telegram tags a mid-text `/word` as a `bot_command` entity too.
    `/start` goes through the same rule; greeting on it is the recipe's job.
+
+## Follow-ups
+
+- **Let `loop` bodies use `Scope` without `Stream.unwrap`.** `loop` already
+  runs each body in its own iteration scope (it wraps an `Effect` body in
+  `Stream.unwrap` and pulls it inside `bodyScope`), but `LoopBody`'s effect
+  variant is typed `Effect<Stream, E, R>` with no `Scope`, so a body that
+  acquires `typing` or forks a delivery fiber has to wrap itself in
+  `Stream.unwrap(...)` to keep `Scope` out of the loop's `R`. Widening the
+  type to `Effect<Stream<Step<A, S>, E, R>, E, R | Scope.Scope>` (same for
+  `LoopOverBody`) compiles across core and recipes with no other change and
+  lets the messenger recipe return the `Effect.gen` directly. Verified on
+  2026-09-07, not applied: `Loop` is a public signature and deserves its own
+  changeset and a test that pins the per-iteration release.

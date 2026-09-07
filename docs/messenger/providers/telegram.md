@@ -36,13 +36,13 @@ second poller is refused by Telegram and ends the first one's event stream.
 The layer registers `Messenger` and, for code that wants the bot's own
 `id` and `username`, the typed `Telegram` tag.
 
-| Option        | Default                   | What it does                                            |
-| ------------- | ------------------------- | ------------------------------------------------------- |
-| `token`       | required                  | Bot token, `Redacted`.                                  |
-| `parseMode`   | `"HTML"`                  | Markup for every text. `"plain"` sends none.            |
-| `pollTimeout` | `30 seconds`              | How long each poll waits for something to happen.       |
-| `stream`      | `streamViaEdits` defaults | `every`, `minChars`, `rateLimitRetries`, `placeholder`. |
-| `baseUrl`     | `api.telegram.org`        | For a self-hosted Bot API server.                       |
+| Option        | Default                   | What it does                                      |
+| ------------- | ------------------------- | ------------------------------------------------- |
+| `token`       | required                  | Bot token, `Redacted`.                            |
+| `parseMode`   | `"HTML"`                  | Markup for every text. `"plain"` sends none.      |
+| `pollTimeout` | `30 seconds`              | How long each poll waits for something to happen. |
+| `stream`      | `streamViaEdits` defaults | `every`, `minChars`, `rateLimitRetries`.          |
+| `baseUrl`     | `api.telegram.org`        | For a self-hosted Bot API server.                 |
 
 ## Tell the model to write HTML
 

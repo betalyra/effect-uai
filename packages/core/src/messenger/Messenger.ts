@@ -230,10 +230,17 @@ export type MessengerService = {
     CurrentConversation | Scope.Scope
   >
 
-  /** Progressive delivery of a text stream; the mechanism is the adapter's. */
+  /**
+   * Progressive delivery of a text stream; the mechanism is the adapter's.
+   * The id is the last message posted, `None` when the stream had no text.
+   */
   readonly stream: <E, R>(
     deltas: Stream.Stream<string, E, R>,
-  ) => Effect.Effect<MessageId, MessengerError.MessengerError | E, R | CurrentConversation>
+  ) => Effect.Effect<
+    Option.Option<MessageId>,
+    MessengerError.MessengerError | E,
+    R | CurrentConversation
+  >
 
   readonly limits: MessengerLimits
 }
@@ -275,7 +282,7 @@ export const typing: Effect.Effect<
 export const stream = <E, R>(
   deltas: Stream.Stream<string, E, R>,
 ): Effect.Effect<
-  MessageId,
+  Option.Option<MessageId>,
   MessengerError.MessengerError | E,
   R | Messenger | CurrentConversation
 > => Effect.flatMap(Messenger, (m) => m.stream(deltas))
@@ -322,8 +329,6 @@ export type StreamViaEditsOptions = {
   readonly minChars?: number
   /** How often to honour a `MessengerRateLimited` before giving up. Default 3. */
   readonly rateLimitRetries?: number
-  /** Sent when the stream produced no text at all. Default `"…"`. */
-  readonly placeholder?: string
 }
 
 const isRateLimited = (e: MessengerError.MessengerError): boolean =>
@@ -342,35 +347,26 @@ const honourRetryAfter = (
     ),
   )
 
-/** The message being filled and what it already shows. */
-type Progress = {
-  readonly id: Option.Option<MessageId>
-  /** Text the message shows now. Never resent unchanged. */
-  readonly sent: string
-  /** Text it should show, deltas included. */
-  readonly pending: string
-  readonly lastFlush: number
-}
+/** The message being filled: not on the platform yet, or posted and edited since. */
+type Progress = Data.TaggedEnum<{
+  Draft: { readonly pending: string }
+  Sent: {
+    readonly id: MessageId
+    /** Text the message shows now. Never resent unchanged. */
+    readonly sent: string
+    /** Text it should show, deltas included. */
+    readonly pending: string
+    readonly lastFlush: number
+  }
+}>
 
-const start: Progress = { id: Option.none(), sent: "", pending: "", lastFlush: 0 }
+const Progress = Data.taggedEnum<Progress>()
+
+type Sent = Data.TaggedEnum.Value<Progress, "Sent">
 
 const appended = (s: Progress, delta: string): Progress => ({
   ...s,
   pending: s.pending + delta,
-})
-
-const delivered = (s: Progress, id: MessageId, sent: string): Progress => ({
-  ...s,
-  id: Option.some(id),
-  sent,
-})
-
-// A fresh message: nothing has been sent for it yet.
-const rolledOver = (s: Progress, pending: string): Progress => ({
-  ...s,
-  id: Option.none(),
-  sent: "",
-  pending,
 })
 
 /**
@@ -380,17 +376,21 @@ const rolledOver = (s: Progress, pending: string): Progress => ({
  * message past `limits.maxText`, and always flushes the tail.
  *
  * The first chunk goes out as soon as any text arrives, so the message shows
- * up immediately and fills in from there.
+ * up immediately and fills in from there. A stream that produced no text
+ * posts nothing and yields `None`.
  */
 export const streamViaEdits =
   (verbs: EditableVerbs, options?: StreamViaEditsOptions) =>
   <E, R>(
     deltas: Stream.Stream<string, E, R>,
-  ): Effect.Effect<MessageId, MessengerError.MessengerError | E, R | CurrentConversation> =>
+  ): Effect.Effect<
+    Option.Option<MessageId>,
+    MessengerError.MessengerError | E,
+    R | CurrentConversation
+  > =>
     Effect.gen(function* () {
       const every = Duration.toMillis(options?.every ?? "1 second")
       const minChars = options?.minChars ?? 40
-      const placeholder = options?.placeholder ?? "…"
       const schedule = honourRetryAfter(options?.rateLimitRetries ?? 3)
       const conversation = yield* CurrentConversation
 
@@ -399,67 +399,65 @@ export const streamViaEdits =
       ): Effect.Effect<A, MessengerError.MessengerError, R2> =>
         Effect.retry(effect, { schedule, while: isRateLimited })
 
-      // Post the first chunk, edit from then on, and skip an edit that would
-      // resend what the message already shows.
+      // Post a draft, edit a sent message, and skip an edit that would resend
+      // what the message already shows.
       const deliver = (
         s: Progress,
         body: string,
-      ): Effect.Effect<
-        readonly [MessageId, Progress],
-        MessengerError.MessengerError,
-        CurrentConversation
-      > =>
-        Option.match(s.id, {
-          onNone: () =>
+        now: number,
+      ): Effect.Effect<Sent, MessengerError.MessengerError, CurrentConversation> =>
+        Progress.$match(s, {
+          Draft: ({ pending }) =>
             patiently(verbs.post(text(body))).pipe(
-              Effect.map((id) => [id, delivered(s, id, body)] as const),
+              Effect.map((id) => Progress.Sent({ id, sent: body, pending, lastFlush: now })),
             ),
-          onSome: (id) =>
-            body === s.sent
-              ? Effect.succeed([id, s] as const)
-              : patiently(verbs.edit({ conversation, id }, text(body))).pipe(
-                  Effect.as([id, delivered(s, id, body)] as const),
+          Sent: (sent) =>
+            body === sent.sent
+              ? Effect.succeed(sent)
+              : patiently(verbs.edit({ conversation, id: sent.id }, text(body))).pipe(
+                  Effect.as(Progress.Sent({ ...sent, sent: body, lastFlush: now })),
                 ),
         })
 
       // Anything past the ceiling becomes the next message: finish the current
-      // one at a clean boundary, then start over on the remainder.
+      // one at a clean boundary, then start a draft on the remainder.
       const rollover = (
         s: Progress,
+        now: number,
       ): Effect.Effect<Progress, MessengerError.MessengerError, CurrentConversation> => {
         const [head, rest] = cutAt(s.pending, verbs.limits.maxText)
         return rest.length === 0
           ? Effect.succeed(s)
-          : deliver(s, head).pipe(Effect.flatMap(([, next]) => rollover(rolledOver(next, rest))))
+          : deliver(s, head, now).pipe(
+              Effect.flatMap(() => rollover(Progress.Draft({ pending: rest }), now)),
+            )
       }
 
-      // The first chunk lands on arrival; later ones wait for both gates.
+      // A draft lands on its first text; a sent message waits for both gates.
       const due = (s: Progress, now: number): boolean =>
-        Option.isNone(s.id)
-          ? s.pending.length > 0
-          : now - s.lastFlush >= every && s.pending.length - s.sent.length >= minChars
+        Progress.$match(s, {
+          Draft: ({ pending }) => pending.length > 0,
+          Sent: ({ sent, pending, lastFlush }) =>
+            now - lastFlush >= every && pending.length - sent.length >= minChars,
+        })
 
       const step = (before: Progress, delta: string) =>
-        rollover(appended(before, delta)).pipe(
-          Effect.flatMap((s) =>
-            Effect.flatMap(Clock.currentTimeMillis, (now) =>
-              due(s, now)
-                ? Effect.map(deliver(s, s.pending), ([, flushed]) => ({
-                    ...flushed,
-                    lastFlush: now,
-                  }))
-                : Effect.succeed(s),
-            ),
-          ),
-        )
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis
+          const s = yield* rollover(appended(before, delta), now)
+          if (!due(s, now)) return s
+          return yield* deliver(s, s.pending, now)
+        })
 
-      // The tail always lands, and a turn that produced no text at all still
-      // owes the caller a message id.
-      return yield* Stream.runFoldEffect(deltas, () => start, step).pipe(
-        Effect.flatMap(rollover),
-        Effect.flatMap((s) =>
-          deliver(s, Option.isNone(s.id) && s.pending.length === 0 ? placeholder : s.pending),
-        ),
-        Effect.map(([id]) => id),
+      const folded = yield* Stream.runFoldEffect(
+        deltas,
+        () => Progress.Draft({ pending: "" }),
+        step,
       )
+      const now = yield* Clock.currentTimeMillis
+      const s = yield* rollover(folded, now)
+      // The tail always lands; an empty draft is nothing to send.
+      if (s._tag === "Draft" && s.pending.length === 0) return Option.none()
+      const final = yield* deliver(s, s.pending, now)
+      return Option.some(final.id)
     })

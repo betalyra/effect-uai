@@ -78,7 +78,10 @@ export const limits: MessengerLimits = { maxText: 4096, maxCaption: 1024 }
 const Me = Schema.Struct({ id: Schema.Number, username: Schema.String })
 const Sent = Schema.Struct({ message_id: Schema.Number })
 const Updates = Schema.Array(Events.Update)
-const RawCall = Schema.Struct({ method: Schema.String, params: Schema.optional(Schema.Unknown) })
+const RawCall = Schema.Struct({
+  method: Schema.String,
+  params: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+})
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -302,7 +305,7 @@ export const make = (
               }),
           ),
         )
-        return yield* call(method, (params ?? {}) as Api.Params)
+        return yield* call(method, params)
       })
 
     // The reply lands on the first chunk; the id is the last one's.
@@ -358,11 +361,10 @@ export const make = (
         reaction: [{ type: "emoji", emoji }],
       }).pipe(
         Effect.asVoid,
-        Effect.mapError(requestFailed("react")),
-        Effect.catchIf(
-          (e) => e._tag === "MessengerRequestFailed" && e.reason.includes("REACTION_INVALID"),
-          () => Effect.fail(unsupported("reaction", `${emoji} is not in Telegram's reaction set`)),
+        Effect.catchIf(describes("REACTION_INVALID"), () =>
+          Effect.fail(unsupported("reaction", `${emoji} is not in Telegram's reaction set`)),
         ),
+        Effect.mapError(requestFailed("react")),
       )
 
     // The indicator lasts about five seconds, so it is re-sent every four
@@ -373,7 +375,7 @@ export const make = (
       yield* once.pipe(Effect.mapError(requestFailed("typing")))
       yield* once.pipe(
         Effect.ignore,
-        Effect.repeat(Schedule.spaced("4 seconds")),
+        Effect.schedule(Schedule.spaced("4 seconds")),
         Effect.forkScoped,
       )
     })

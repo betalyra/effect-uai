@@ -1,10 +1,10 @@
 /**
  * A tool-using agent that lives in a chat platform. Two pieces:
  *
- *   - `conversation`: the agentic loop from `recipes/agentic-loop`, with the
- *     messenger as its sink. It waits for input at clean turn boundaries,
- *     holds the typing indicator for the turn, streams the answer into one
- *     message and posts a short status line per tool call.
+ *   - `conversation`: an agentic loop with the messenger as its sink. It
+ *     waits for input at clean turn boundaries, holds the typing indicator
+ *     for the turn, streams the answer into one message and posts a short
+ *     status line per tool call.
  *   - `router`: one fiber per conversation, keyed by `conversationKey`. An
  *     addressed message lands in that conversation's inbox; everything else
  *     is ignored.
@@ -25,6 +25,7 @@ import {
   Stream,
   pipe,
 } from "effect"
+import { drainBurst } from "@effect-uai/core/Inbox"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, next, onTurnComplete } from "@effect-uai/core/Loop"
@@ -37,7 +38,7 @@ import {
 } from "@effect-uai/core/Messenger"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
-import { drainBurst } from "../agentic-loop/recipe.js"
+import { webSearchTool } from "@effect-uai/core/WebSearchTool"
 
 export type Options = {
   readonly model: string
@@ -49,6 +50,28 @@ export type Options = {
   /** Quiet gap that ends a burst of messages. Default 800ms. */
   readonly settle?: Duration.Input
 }
+
+// ---------------------------------------------------------------------------
+// The demo persona
+// ---------------------------------------------------------------------------
+
+/**
+ * Betty: web search as her one tool, Telegram HTML as her markup. The
+ * formatting line is the only platform-specific sentence in the prompt.
+ */
+export const betty = {
+  system: [
+    "You are Betty, a helpful agent built with effect-uai, the Effect library for AI agents.",
+    "When someone asks who or what you are, say you are Betty, built with effect-uai, and link",
+    '<a href="https://effect-uai.betalyra.com">effect-uai.betalyra.com</a>. Never call yourself a',
+    "generic assistant, and never mention Telegram, chats, bots or how you are hosted.",
+    "Keep answers short and warm.",
+    "Format replies as Telegram HTML: <b>, <i>, <code>, <pre>, <a href>. Escape & < > in prose.",
+    "Never use markdown asterisks or backticks.",
+  ].join(" "),
+  greeting: "Hi, I'm <b>Betty</b> 👋",
+  toolkit: Toolkit.make(webSearchTool({ maxResults: 5 })),
+} satisfies Omit<Options, "model">
 
 // ---------------------------------------------------------------------------
 // One conversation
@@ -81,28 +104,22 @@ export const conversation = (inbox: Queue.Queue<string>, options: Options) =>
 
           yield* messenger.typing
           const deltas = yield* Queue.unbounded<string, Cause.Done>()
-          const spoke = yield* Ref.make(false)
           const delivery = yield* Effect.forkScoped(messenger.stream(Stream.fromQueue(deltas)))
 
           return lm.streamTurn({ history, model: options.model, tools: options.toolkit }).pipe(
             Stream.tap((event) =>
               Match.value(event).pipe(
-                Match.tag("TextDelta", ({ text }) =>
-                  Effect.andThen(Ref.set(spoke, true), Queue.offer(deltas, text)),
-                ),
+                Match.tag("TextDelta", ({ text }) => Queue.offer(deltas, text)),
                 Match.tag("ToolCallStart", ({ name }) => messenger.post(text(`<i>${name}…</i>`))),
                 Match.orElse(() => Effect.void),
               ),
             ),
             onTurnComplete((turn) =>
               Effect.gen(function* () {
-                // Decided by what was streamed, not by the assembled turn: a
-                // turn that said nothing gets no message, and one that did
-                // always gets its final edit.
-                const saidSomething = yield* Ref.get(spoke)
-                yield* saidSomething
-                  ? Effect.andThen(Queue.end(deltas), Fiber.join(delivery))
-                  : Fiber.interrupt(delivery)
+                // The final edit lands before the loop moves on; a turn that
+                // said nothing posts nothing.
+                yield* Queue.end(deltas)
+                yield* Fiber.join(delivery)
 
                 const calls = Turn.getToolCalls(turn)
                 return calls.length === 0

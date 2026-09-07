@@ -76,29 +76,21 @@ without changing the model/tool continuation shape.
 
 ## Debounced burst collection
 
-`drainBurst` is the input side. It blocks for the first message, then keeps
-collecting while new messages arrive within `settle` of each other. The window
-resets on every arrival, so a burst of typing becomes one user batch.
+`Inbox.drainBurst` from `@effect-uai/core/Inbox` is the input side. It blocks
+for the first message, then keeps taking while the next one arrives within
+`settle` of the previous. The window resets on every arrival, so a burst of
+typing becomes one user batch, and a lone message followed by silence is
+returned at once.
 
 ```ts
-export const drainBurst = <A>(
-  queue: Queue.Queue<A>,
-  settle: Duration.Input,
-): Effect.Effect<ReadonlyArray<A>> =>
-  Stream.unfold(false, (started) =>
-    started
-      ? Effect.race(
-          Queue.take(queue).pipe(Effect.map((m) => [m, true] as const)),
-          Effect.sleep(settle).pipe(Effect.as(undefined)),
-        )
-      : Queue.take(queue).pipe(Effect.map((m) => [m, true] as const)),
-  ).pipe(Stream.runCollect)
+import { drainBurst } from "@effect-uai/core/Inbox"
+
+const incoming = yield * drainBurst(queue, "150 millis")
 ```
 
-Modeled as `Stream.unfold`, the first step waits indefinitely and subsequent
-steps race the next queue item against the settle window. If sleep wins, the
-in-flight `Queue.take` is interrupted safely: an item is removed only when the
-take succeeds, so late arrivals remain for the next drain.
+Under the hood each wait is `Queue.take` with `Effect.timeoutOption(settle)`.
+An item leaves the queue only when a take succeeds, so a take that loses to the
+window removes nothing and late arrivals stay for the next drain.
 
 ## Termination
 

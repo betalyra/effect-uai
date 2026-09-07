@@ -1,8 +1,8 @@
 /**
  * A long-lived agentic loop driven by a user-message queue. Between
  * turns, the loop checks the queue for new input; messages that arrive
- * close together are coalesced into one batch via a small "settle"
- * debounce (the window resets every time a new message lands).
+ * close together are coalesced into one batch by `Inbox.drainBurst`
+ * (a "settle" debounce whose window resets every time a message lands).
  *
  * Lifecycle of one iteration:
  *
@@ -21,37 +21,13 @@
  *
  * This file exports the building blocks; `app.ts` wires the provider.
  */
-import { Duration, Effect, Queue, Stream, pipe } from "effect"
+import { type Duration, Effect, type Queue, pipe } from "effect"
+import { drainBurst } from "@effect-uai/core/Inbox"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, next, onTurnComplete } from "@effect-uai/core/Loop"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
-
-// ---------------------------------------------------------------------------
-// drainBurst - a Stream-based debouncer. Block on the first message,
-// then keep collecting while the next message arrives within `settle`
-// of the previous one. The window resets on every arrival, so a burst
-// of typing flows together while a single message + long silence ends
-// the burst right away.
-//
-// Modeled as `Stream.unfold` over a seed that flips after the first
-// message: subsequent steps race the next take against the settle
-// window. `runCollect` materializes the burst as an array.
-// ---------------------------------------------------------------------------
-
-export const drainBurst = <A>(
-  queue: Queue.Queue<A>,
-  settle: Duration.Input,
-): Effect.Effect<ReadonlyArray<A>> =>
-  Stream.unfold(false, (started) =>
-    started
-      ? Effect.race(
-          Queue.take(queue).pipe(Effect.map((m) => [m, true] as const)),
-          Effect.sleep(settle).pipe(Effect.as(undefined)),
-        )
-      : Queue.take(queue).pipe(Effect.map((m) => [m, true] as const)),
-  ).pipe(Stream.runCollect)
 
 // ---------------------------------------------------------------------------
 // State

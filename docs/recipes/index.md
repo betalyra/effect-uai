@@ -125,6 +125,6 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Messenger
 
-| Recipe                                       | One-line                                                                                                                     |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| [Messenger agent](/recipes/messenger-agent/) | Put the agent where people already are. Mention it in Telegram; it types, searches, and streams the answer into one message. |
+| Recipe                                       | One-line                                                                                                                            |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [Messenger agent](/recipes/messenger-agent/) | Put the agent where people already are. Mention it in Telegram; it types, searches, draws, and streams the answer into one message. |

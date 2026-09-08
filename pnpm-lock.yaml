@@ -194,6 +194,18 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  packages/providers/discord:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   packages/providers/elevenlabs:
     devDependencies:
       '@effect-uai/core':
@@ -469,6 +481,9 @@ importers:
       '@effect-uai/core':
         specifier: workspace:*
         version: link:../packages/core
+      '@effect-uai/discord':
+        specifier: workspace:*
+        version: link:../packages/providers/discord
       '@effect-uai/elevenlabs':
         specifier: workspace:*
         version: link:../packages/providers/elevenlabs

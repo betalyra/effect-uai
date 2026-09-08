@@ -411,8 +411,10 @@ fibers, in the house style:
 3. **The `messenger-agent` recipe** (router + per-conversation agentic loop),
    runnable against mock and Telegram, plus `docs/messenger/index.md` and
    `providers/telegram.md` (with the privacy-mode note).
-4. **`@effect-uai/discord`**: gateway state machine, bucketed REST, mention
-   events without privileged intents, `stream` via `streamViaEdits`.
+4. **`@effect-uai/discord`**: gateway state machine, REST verbs, mention
+   events without privileged intents, `stream` via `streamViaEdits`. Every
+   decision is pinned in "Discord handoff" below; the protocol facts are in
+   [research/messenger/discord.md](research/messenger/discord.md).
 5. **`@effect-uai/slack`**: Socket Mode loop with 3s acks and rolling
    reconnect, `chat.startStream`-backed `stream`, `agents.sessions.setStatus`
    as `typing`. Three transports on one tag is the proof the abstraction holds.
@@ -591,7 +593,136 @@ them:
    though Telegram tags a mid-text `/word` as a `bot_command` entity too.
    `/start` goes through the same rule; greeting on it is the recipe's job.
 
+## Discord handoff
+
+Steps 1 to 3 shipped on Telegram; this is step 4. Build it against the
+capability exactly as it is: nothing on Discord needs a new field or verb
+(see "What does not map" at the end). Mirror the Telegram package in shape
+and style: `packages/providers/discord/src/Discord.ts` (config, `Discord`
+tag, `make`, `layer`), `src/internal/rest.ts` (the `Api` twin: one `call`,
+one `upload`, `decoded`), `src/internal/gateway.ts` (the websocket session),
+`src/internal/events.ts` (pure dispatch-to-`InboundEvent` mapping, exported
+schemas). Plain `HttpClient` and `Socket`, no discord.js, no
+`discord-api-types`.
+
+1. **Config.** `layer({ token, intents?, stream?, baseUrl? })`. `intents`
+   defaults to `GUILDS | GUILD_MESSAGES | GUILD_MESSAGE_REACTIONS |
+DIRECT_MESSAGES | DIRECT_MESSAGE_REACTIONS` (`1 | 512 | 1024 | 4096 |
+8192`); `MESSAGE_CONTENT` (`32768`) is opt-in, and the doc says a
+   mention-or-DM bot does not need it. `stream` defaults `every` to
+   `"1200 millis"`, under the observed 5-edits-per-5s bucket. REST base
+   `https://discord.com/api/v10`, header `Authorization: Bot <token>` and
+   `User-Agent: DiscordBot (https://effect-uai.betalyra.com, <version>)`.
+   `DiscordService = MessengerService & { bot: { id, username } }`, registered
+   under `Discord` and `Messenger` like Telegram.
+2. **Layer build waits for `READY`.** `GET /users/@me` first (bad token is
+   `MessengerConnectFailed` immediately), then open the gateway and return
+   from `make` only once `READY` arrived. A fatal close before that (4004,
+   4010 to 4014, notably 4014 for a privileged intent not toggled in the
+   portal) is `MessengerConnectFailed` with the close reason, not a
+   `TransportClosed` a second later. `events` starts after `READY`.
+3. **Gateway session.** `GET /gateway/bot` for the URL. On Hello: identify
+   (or resume), then heartbeat every `heartbeat_interval` with the first one
+   jittered; track the last `s`; if no ACK arrives between two heartbeats,
+   close with a non-1000 code and reconnect. Op 1 requests an immediate
+   heartbeat. Store `session_id` and `resume_gateway_url` from `READY`. On
+   close or op 7: resumable codes (4000 to 4003, 4005, 4008) and op 9 with
+   `true` resume on `resume_gateway_url`; 4007, 4009 and op 9 with `false`
+   wait 1 to 5 s and identify fresh; fatal codes end `events` with
+   `MessengerTransportClosed`. Reconnects retry forever on an exponential
+   schedule capped at 60 s. `Socket.makeWebSocket` with `closeCodeIsError:
+(code) => code !== 1000 && code !== 1001 && code !== 1005`; the reader
+   fiber ends the inbox with `Queue.end`. No compression, `encoding=json`.
+4. **`addressed`.** DM (`guild_id` absent), or the bot's id in `mentions`,
+   or `referenced_message.author.id` is the bot. `mention_everyone` and role
+   mentions do not count. Strip `<@id>` and `<@!id>` for the bot from `text`
+   and trim. Messages with `author.bot === true` are dropped entirely, never
+   delivered, so two bots cannot loop. `replyTo` is
+   `referenced_message.id` when present.
+5. **Threads.** A thread is a channel: `ConversationRef.channel` is the
+   thread's channel id and `thread` stays unset. Nothing else changes;
+   `conversationKey` already keys per thread that way.
+6. **No `Command` events in v1.** Discord has no text-command convention;
+   slash commands need REST registration and an interaction response within
+   3 s, both a follow-up. Document that `/start` does not exist here and the
+   recipe starts a conversation on the first DM or mention.
+7. **`Action` from components.** `INTERACTION_CREATE` with `type: 3` becomes
+   `Action { actionId: data.custom_id, value: data.values?.join(",") }`,
+   acknowledged before the offer with `POST /interactions/{id}/{token}/callback`
+   `{ type: 6 }` (deferred update, nothing visible), the twin of Telegram's
+   `answerCallbackQuery`. Other interaction types are ignored in v1.
+8. **`Reaction`.** `MESSAGE_REACTION_ADD` only. `emoji` is `emoji.name` for
+   unicode, `name:id` for custom. Reactions from the bot itself are dropped.
+9. **Text out.** Markdown, verbatim, no parse mode. Every post and edit
+   carries `allowed_mentions: { parse: [] }` so model output cannot ping
+   anyone; `replyTo` becomes `message_reference: { message_id,
+fail_if_not_exists: false }`. `limits = { maxText: 2000, maxCaption: 2000 }`;
+   `post` splits with `splitForLimit`, reply on the first chunk, id of the
+   last, as on Telegram.
+10. **Media out.** `bytes` and `base64` upload as multipart: `files[0]` plus
+    a `payload_json` part with the message fields (caption as `content`).
+    A `url` source with an `image/*` mime is sent as
+    `embeds: [{ image: { url } }]`; any other URL goes as `content`, which
+    Discord unfurls. Editing a media message is `MessengerUnsupported`.
+11. **`react`.** `PUT /channels/{c}/messages/{m}/reactions/{emoji}/@me`,
+    unicode URL-encoded, custom as `name:id`. A 400 "Unknown Emoji" maps to
+    `MessengerUnsupported`.
+12. **`typing`.** `POST /channels/{c}/typing`, first send awaited, then every
+    8 s with `Effect.schedule` until the scope closes.
+13. **`raw`.** Payload `{ method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
+path: string, body?: unknown }` against the API base. For `post`, the
+    response must carry an `id`.
+14. **Rate limits, v1 reactive.** A 429 becomes `MessengerRateLimited` with
+    `retryAfter` from the body's `retry_after` (seconds, float). No client-side
+    bucket tracking yet; `streamViaEdits` and the 1.2 s default absorb the
+    edit bucket. Header-driven buckets are a follow-up.
+15. **Errors.** Any other non-2xx is `MessengerRequestFailed` with Discord's
+    `message` and `code` in `raw`. Gateway close codes are classified by a
+    pure function that is unit tested.
+16. **Tests.** Pure tests for `events.ts` (addressed rule per source, mention
+    stripping, bot authors dropped, thread ref, component action, custom and
+    unicode reactions) and for close-code classification. Live test in
+    `integration-tests/discord` behind `DISCORD_BOT_TOKEN` and
+    `DISCORD_TEST_CHANNEL` (`describe.skipIf`): post, edit, react, typing,
+    and a streamed message. No fake-socket state-machine test unless it
+    asserts something the pure classifier cannot.
+17. **Recipe and docs.** `recipes/messenger-agent/app.ts` gains
+    `--messenger telegram | discord`, selecting the layer and the persona's
+    formatting line (Telegram HTML or markdown); the recipe file does not
+    change. Add `docs/messenger/providers/discord.md` (setup: create app,
+    bot token, invite URL with `bot` scope and the intent toggle, one
+    instance per token), a Discord row in `docs/providers/index.md` and the
+    Messenger overview provider list, the landing-page provider entry, the
+    sidebar, the SKILL row, and the changeset (fixed group, debut at the
+    current version).
+
+**What does not map, and why it does not change the capability.**
+`Command.args` is a string while slash options are typed, and
+`Action.value` is one string while a select returns `values[]`: both are
+lossy only for features deferred to the slash-command follow-up, and `raw`
+carries the full payload meanwhile. Ephemeral replies and "respond to this
+interaction" have no verb; that is the webhook duality parked in phase 2. A
+URL cannot be a Discord attachment; the embed fallback is adapter-internal.
+
 ## Follow-ups
+
+- **Discord slash commands.** Registration (`PUT
+/applications/{app}/guilds/{guild}/commands` for instant propagation) from
+  a `commands` config, `type: 2` interactions as `Command`, and the
+  3 s interaction response, which is where `Command.args` may want to become
+  structured. Depends on deciding how a reply to an interaction relates to
+  `post`.
+- **Discord header-driven rate-limit buckets.** Track `X-RateLimit-Bucket`,
+  `Remaining` and `Reset-After` per route and major parameter, delaying
+  before a 429 instead of after.
+- **Inbound attachments.** A user sending the bot a picture arrives on
+  Telegram and Discord alike as `raw` only. With multimodal models this is
+  the next ask: `Message.media?: ReadonlyArray<MediaSource>`, with Telegram's
+  `getFile` URL and Discord's attachment URL behind it. Generic, not
+  platform-specific; not needed to ship Discord.
+- **Author display name.** Both platforms deliver it and a multi-user chat
+  wants "Alice: …" in history; today it is in `raw`. A `Message.authorName?`
+  is the smallest generic addition.
 
 - **Let `loop` bodies use `Scope` without `Stream.unwrap`.** `loop` already
   runs each body in its own iteration scope (it wraps an `Effect` body in

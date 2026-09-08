@@ -120,6 +120,17 @@ describe("streamViaEdits", () => {
     }),
   )
 
+  // A model opening a tool-calling turn with a newline, which every platform
+  // rejects as an empty message.
+  it.effect("treats whitespace-only deltas as no text at all", () =>
+    Effect.gen(function* () {
+      const { id, calls } = yield* streamed(["\n", "  ", "\n\n"])
+
+      expect(calls).toEqual([])
+      expect(id).toEqual(Option.none())
+    }),
+  )
+
   it.live("waits out a rate limit and re-sends the same edit", () =>
     Effect.gen(function* () {
       const limited = new MessengerRateLimited({

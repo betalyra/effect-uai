@@ -9,6 +9,7 @@ import {
   PiBrowser,
   PiChartLineUp,
   PiChatCircleDots,
+  PiChatsCircle,
   PiClockCounterClockwise,
   PiCube,
   PiCursorClick,
@@ -60,6 +61,7 @@ type Category =
   | "images"
   | "sandboxes"
   | "browser"
+  | "messenger"
 
 interface Recipe {
   readonly title: string
@@ -83,6 +85,7 @@ const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "images",
   "sandboxes",
   "browser",
+  "messenger",
 ]
 
 const CATEGORY_LABEL: Record<Category, string> = {
@@ -98,6 +101,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   images: "Images",
   sandboxes: "Sandboxes",
   browser: "Browser",
+  messenger: "Messenger",
 }
 
 const CATEGORY_ICON: Record<Category, IconType> = {
@@ -113,6 +117,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   images: PiImage,
   sandboxes: PiCube,
   browser: PiBrowser,
+  messenger: PiChatsCircle,
 }
 
 const recipes: ReadonlyArray<Recipe> = [
@@ -338,6 +343,14 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/dashboard-briefing/",
     Icon: PiChartLineUp,
     category: "browser",
+  },
+  {
+    title: "Messenger agent",
+    description:
+      "**Ship the agent where people already are.** Mention it in Telegram; it types, searches, draws, and streams the answer into one message.",
+    href: "/recipes/messenger-agent/",
+    Icon: PiChatsCircle,
+    category: "messenger",
   },
 ]
 

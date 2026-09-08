@@ -25,7 +25,9 @@
       "@effect-uai/firecrawl",
       "@effect-uai/ai-sdk",
       "@effect-uai/mcp",
-      "@effect-uai/retrieval"
+      "@effect-uai/retrieval",
+      "@effect-uai/telegram",
+      "@effect-uai/discord"
     ]
   ],
   "linked": [],

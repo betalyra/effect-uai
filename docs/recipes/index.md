@@ -122,3 +122,9 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | [Agent usability testing](/recipes/browser-usability/) | Give an agent a goal and a URL; it drives the site like a first-time visitor and reports where the UX tripped it up. |
 | [Dashboard briefing](/recipes/dashboard-briefing/)     | Screenshot a dashboard whose charts only exist client-side and decode one vision turn into a typed briefing.         |
+
+## Messenger
+
+| Recipe                                       | One-line                                                                                                                            |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [Messenger agent](/recipes/messenger-agent/) | Put the agent where people already are. Mention it in Telegram; it types, searches, draws, and streams the answer into one message. |

@@ -67,14 +67,59 @@ pnpm build
 
 # from this folder
 cd examples/ai-sdk-next
-cp .env.example .env   # add your OPENAI_API_KEY
+cp .env.example .env   # add your LLM_API_KEY
 pnpm install
 pnpm dev
 ```
 
-Open http://localhost:3000 and chat. Change providers by swapping the one
-`provider` layer in the route handler; change models via the `model` field on
-`streamTurn`.
+Open http://localhost:3000 and chat.
+
+### Choosing a provider
+
+The provider is environment, not code. [`lib/model.ts`](lib/model.ts) is one
+`Match` that returns a `LanguageModelService` plus the two model ids the
+fallback loop steps through:
+
+| Variable             | Default                                         |
+| -------------------- | ----------------------------------------------- |
+| `LLM_PROVIDER`       | `requesty` (or `openai`, `anthropic`, `google`) |
+| `LLM_API_KEY`        | fallback for whichever key the provider wants   |
+| `LLM_MODEL`          | per provider, see below                         |
+| `LLM_FALLBACK_MODEL` | per provider, see below                         |
+| `LLM_BASE_URL`       | the gateway's own endpoint                      |
+
+| Provider    | Primary                      | Fallback                         |
+| ----------- | ---------------------------- | -------------------------------- |
+| `requesty`  | `vertex/gemini-3.8-flash@eu` | `tensorx/deepseek-v4-flash-0731` |
+| `openai`    | `gpt-5.6-terra`              | `gpt-5.6-luna`                   |
+| `anthropic` | `claude-haiku-4-5-20251001`  | `claude-sonnet-4-6`              |
+| `google`    | `gemini-3-flash-preview`     | `gemini-2.5-flash`               |
+
+Requesty and OpenAI are the same wire protocol, so they share the Responses
+adapter and differ only in base URL and key. `LLM_BASE_URL` overrides either,
+which is also how you point at OpenRouter or any other OpenAI-compatible
+gateway.
+
+The app has a tool, so a model that cannot complete a function-call turn fails
+the whole request with `IncompleteTurn`. Not every cheap gateway route can:
+some stream the tool call and then drop the connection before sending
+`response.completed`. Check a new default against the weather tool, not just
+against plain chat.
+
+Each provider reads its own key (`REQUESTY_API_KEY`, `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) and falls back to `LLM_API_KEY`, so one
+variable can drive the whole app.
+
+```sh
+# OpenAI direct
+LLM_PROVIDER=openai
+
+# Claude
+LLM_PROVIDER=anthropic
+```
+
+The two models are the fallback demo: the primary is tried first, and a
+retryable failure advances to the second on the same history.
 
 ### Local-monorepo artifacts
 

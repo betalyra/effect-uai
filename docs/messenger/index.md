@@ -4,11 +4,10 @@ description: "Put your agent where people already talk. One event stream in, fiv
 icon: PiChatsCircle
 ---
 
-You have an agent. It runs in a terminal, or behind an HTTP route. The
-people who would use it are in Telegram, Slack or Discord, and they are not
-coming to your terminal. `Messenger` puts the agent in their chat: it reads
-what people say, it types, it streams its answer back, and the loop you
-already wrote does not change.
+An agent is only useful where its users already are, which is rarely a
+terminal. `Messenger` runs yours as a Telegram or Discord bot: it reads what
+people say, shows typing, and streams the answer back into the chat, with
+the loop, tools and history you already have.
 
 ## Quickstart
 
@@ -126,6 +125,8 @@ records every post, edit and reaction, so a bot's behaviour is a unit test.
 
 - [Telegram](/messenger/providers/telegram/): DMs, groups, commands,
   reactions, media. Long-polling, no public URL needed.
+- [Discord](/messenger/providers/discord/): DMs, channel mentions, threads,
+  buttons, reactions, media. One gateway websocket, no public URL needed.
 
-Discord and Slack are next. All three are long-lived processes with one
-instance per bot token; webhook delivery, which WhatsApp needs, comes later.
+Slack is next. Both of these are long-lived processes with one instance per
+bot token; webhook delivery, which WhatsApp needs, comes later.

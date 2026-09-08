@@ -20,6 +20,14 @@ primitives (one turn, one tool call) and compose the loop yourself.
 OpenAI Responses, Anthropic, Gemini, and any OpenAI-compatible gateway
 normalize to one `TurnEvent` union. State is yours. The loop is yours.
 
+<p align="center">
+  <a href="https://effect-uai.betalyra.com/intro/?play=1&ref=readme">
+    <img src="https://effect-uai.betalyra.com/media/intro/poster.webp" alt="Intro to effect-uai (video, 47 min)" width="640" />
+  </a>
+  <br />
+  <a href="https://effect-uai.betalyra.com/intro/?play=1&ref=readme">&#9654; Watch the 47 minute intro</a>
+</p>
+
 ## Status
 
 While we're in `0.x`, minor releases may include breaking changes.
@@ -163,6 +171,8 @@ shape; both are current, and recipes migrate as they're touched.
 ## Docs / learn
 
 Full docs: <https://effect-uai.betalyra.com>
+
+Prefer video? [Watch the 47 minute intro](https://effect-uai.betalyra.com/intro/?play=1&ref=readme) first.
 
 Recommended reading order:
 

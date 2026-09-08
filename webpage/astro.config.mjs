@@ -424,7 +424,10 @@ export default defineConfig({
             { label: "Overview", slug: "messenger" },
             {
               label: "Providers",
-              items: [{ label: "Telegram", slug: "messenger/providers/telegram" }],
+              items: [
+                { label: "Telegram", slug: "messenger/providers/telegram" },
+                { label: "Discord", slug: "messenger/providers/discord" },
+              ],
             },
             {
               label: "Recipes",

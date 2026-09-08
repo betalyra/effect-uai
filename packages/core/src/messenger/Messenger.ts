@@ -433,10 +433,13 @@ export const streamViaEdits =
             )
       }
 
-      // A draft lands on its first text; a sent message waits for both gates.
+      // A draft lands on its first real text; a sent message waits for both
+      // gates. Blank is not text: a model that opens a tool-calling turn with
+      // a newline would otherwise post it, and platforms reject a message
+      // that is only whitespace.
       const due = (s: Progress, now: number): boolean =>
         Progress.$match(s, {
-          Draft: ({ pending }) => pending.length > 0,
+          Draft: ({ pending }) => pending.trim().length > 0,
           Sent: ({ sent, pending, lastFlush }) =>
             now - lastFlush >= every && pending.length - sent.length >= minChars,
         })
@@ -456,8 +459,8 @@ export const streamViaEdits =
       )
       const now = yield* Clock.currentTimeMillis
       const s = yield* rollover(folded, now)
-      // The tail always lands; an empty draft is nothing to send.
-      if (s._tag === "Draft" && s.pending.length === 0) return Option.none()
+      // The tail always lands; a draft that never held text is nothing to send.
+      if (s._tag === "Draft" && s.pending.trim().length === 0) return Option.none()
       const final = yield* deliver(s, s.pending, now)
       return Option.some(final.id)
     })

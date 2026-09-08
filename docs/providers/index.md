@@ -61,6 +61,7 @@ Where people talk to the agent rather than the agent acting on the world.
 | Provider     |              Messenger              |
 | ------------ | :---------------------------------: |
 | **Telegram** | [✓](/messenger/providers/telegram/) |
+| **Discord**  | [✓](/messenger/providers/discord/)  |
 
 ### Gateways and protocol adapters
 
@@ -231,3 +232,14 @@ answers, media and reactions out. Long-polls the Bot API over a plain HTTP
 client, no SDK.
 
 - Messenger: [Telegram](/messenger/providers/telegram/)
+
+## Discord
+
+`@effect-uai/discord`
+
+Your agent as a Discord bot: DMs, channel mentions, threads and button
+presses in, streamed markdown answers, media and reactions out. Holds one
+gateway websocket and calls the v10 REST API over a plain HTTP client, no
+discord.js.
+
+- Messenger: [Discord](/messenger/providers/discord/)

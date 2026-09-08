@@ -39,6 +39,7 @@ const options: Options = {
   model: "mock",
   toolkit: Toolkit.make(getTime, imageTool("mock-image")),
   system: "Be brief.",
+  status: (name) => `<i>${name}…</i>`,
   settle: "20 millis",
 }
 
@@ -74,6 +75,15 @@ const said = (conversation: ConversationRef, text: string, addressed = true) =>
     author: UserId("u1"),
     text,
     addressed,
+    raw: undefined,
+  })
+
+const reacted = (conversation: ConversationRef, emoji: string) =>
+  InboundEvent.Reaction({
+    conversation,
+    message: MessageId("m1"),
+    emoji,
+    author: UserId("u1"),
     raw: undefined,
   })
 
@@ -177,6 +187,37 @@ describe("messenger-agent", () => {
         "",
         "There you go.",
       ])
+    }),
+  )
+
+  it.live("the react tool reacts to the last message of the burst it answered", () =>
+    Effect.gen(function* () {
+      const { calls } = yield* run(
+        [callsTool("c1", "react", { emoji: "⭐" }), says("Done.")],
+        [said(chat("a"), "star this"), said(chat("a"), "actually this one")],
+      )
+
+      expect(tagged(calls, "React")).toMatchObject([
+        { emoji: "⭐", message: { conversation: chat("a"), id: "in-actually this one" } },
+      ])
+    }),
+  )
+
+  it.live("answers a reaction in a live chat and stays quiet in a cold one", () =>
+    Effect.gen(function* () {
+      const { asked } = yield* run(
+        [says("hello")],
+        [
+          said(chat("a"), "hi"),
+          reacted(chat("a"), "🤔"),
+          // No conversation here, so nothing to answer into.
+          reacted(chat("b"), "👍"),
+        ],
+      )
+
+      // One turn: the reaction lands inside the settle window and joins the
+      // burst. Chat b started nothing, so there is no second history.
+      expect(asked.map((c) => userTexts(c.history))).toEqual([["hi", "[reacted 🤔]"]])
     }),
   )
 

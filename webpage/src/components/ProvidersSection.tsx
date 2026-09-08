@@ -22,6 +22,7 @@ const providers: ReadonlyArray<Provider> = [
   { name: "Deno", href: "/sandboxes/providers/deno/" },
   { name: "CDP", href: "/browser/providers/cdp/" },
   { name: "Telegram", href: "/messenger/providers/telegram/" },
+  { name: "Discord", href: "/messenger/providers/discord/" },
 ]
 
 export default function ProvidersSection() {
@@ -30,7 +31,7 @@ export default function ProvidersSection() {
       <div style={{ marginBottom: "2rem" }} className="flex items-baseline justify-between gap-4">
         <div className="flex flex-col gap-1.5">
           <h2 className="text-3xl font-bold tracking-tight text-foreground">
-            16 providers. Swap anytime.
+            17 providers. Swap anytime.
           </h2>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
             Write against a shared interface and switch providers without touching your agent code.

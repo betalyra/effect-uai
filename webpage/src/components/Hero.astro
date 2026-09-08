@@ -2,7 +2,7 @@
 import { buttonVariants } from "@/components/ui/button"
 import { docsData } from "@/lib/hero-data"
 import { cn } from "@/lib/utils"
-import { PiArrowRight, PiArrowSquareOut } from "react-icons/pi"
+import { PiArrowRight, PiArrowSquareOut, PiPlayFill } from "react-icons/pi"
 import HeroCodePanel from "./HeroCodePanel.astro"
 import logoSvg from "@/assets/effect-uai-logo.svg?raw"
 
@@ -91,6 +91,17 @@ const stats = [
         ))
       }
     </div>
+    <a
+      href="/intro/"
+      class="group inline-flex items-center gap-2 self-center text-sm text-(--sl-color-gray-2) no-underline transition-colors hover:text-(--color-mark) min-[50rem]:self-start"
+    >
+      <span
+        class="flex h-6 w-6 items-center justify-center rounded-full bg-(--color-mark) text-white"
+      >
+        <PiPlayFill className="ml-px h-3 w-3" aria-hidden="true" />
+      </span>
+      <span>Watch the 47 minute intro</span>
+    </a>
   </div>
   <HeroCodePanel />
 </div>

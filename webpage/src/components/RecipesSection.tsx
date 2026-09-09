@@ -5,6 +5,7 @@ import {
   PiArrowsClockwise,
   PiArrowsInLineHorizontal,
   PiArticle,
+  PiAt,
   PiAtom,
   PiBrowser,
   PiChartLineUp,
@@ -349,7 +350,7 @@ const recipes: ReadonlyArray<Recipe> = [
     description:
       "**Ship the agent where people already are.** Mention it in Telegram; it types, searches, draws, and streams the answer into one message.",
     href: "/recipes/messenger-agent/",
-    Icon: PiChatsCircle,
+    Icon: PiAt,
     category: "messenger",
   },
 ]

@@ -2,25 +2,25 @@
 title: Messenger agent
 description: Put the agent where people already are. Mention it in Telegram, Discord or Slack; it types, searches the web, draws pictures, and streams the answer into one message. One loop and one history per conversation.
 source: recipes/messenger-agent
-icon: PiChatsCircle
+icon: PiAt
 ---
 
-**Scenario.** A Telegram, Discord or Slack bot that answers questions with web
-search and draws on request. DM it, or mention it in a group, and it shows
-typing, posts a one-line status per tool call, then streams its answer into
-a single message. Ask for a picture and the picture arrives in the chat
-before the model has said a word. Every chat gets its own loop and its own
-history, and each tool is only there if you configured its provider.
+**Scenario.** You want your agent in the chat your users already have open.
+DM it or mention it, and it shows typing, posts a one-line status per tool
+call, then streams its answer into a single message. Ask for a picture and
+the picture lands in the chat before the model says a word. Every chat gets
+its own loop and its own history, and the same program runs on Telegram,
+Discord or Slack behind a `--messenger` flag.
 
-The [agentic loop](/recipes/agentic-loop/) already does the hard part:
-wait for input at clean turn boundaries, batch bursts, run tools, keep
-history. This recipe swaps its two ends. Instead of stdin, the inbox is fed
-by addressed messages from the chat; instead of stdout, the answer goes back
-as one progressively edited message.
+The [agentic loop](/recipes/agentic-loop/) already does the hard part: wait
+for input at clean turn boundaries, batch bursts, run tools, keep history.
+This recipe swaps its two ends. The inbox is fed by addressed messages from
+the chat instead of stdin, and the answer goes back as one progressively
+edited message instead of stdout.
 
 ## The Design Move
 
-The loop never learns which platform it is talking to. It yields the generic
+The loop never learns which platform it is on. It yields the generic
 `Messenger` tag, and the chat it answers in is ambient:
 
 ```ts
@@ -29,8 +29,8 @@ conversation(inbox, options).pipe(inConversation(ref), Effect.forkScoped)
 
 `inConversation(ref)` is set once, where a conversation's fiber starts.
 Every `post`, `typing` and `stream` below it lands in that chat without a
-chat id threaded through the loop. The image tool is the proof: it runs
-inside `Toolkit.run`, deep under the loop, and posts the picture itself.
+chat id threaded through the loop. The image tool shows what that buys: it
+runs inside `Toolkit.run`, deep under the loop, and posts the picture itself.
 
 ```ts
 run: ({ prompt }) =>
@@ -42,9 +42,8 @@ run: ({ prompt }) =>
   }),
 ```
 
-The model never sees the bytes, only "Sent.", and the tool never sees a
-chat id. `--messenger slack` swaps the provider layer and this file, the
-loop and the router are untouched.
+The model only hears "Sent.", the tool never sees a chat id, and switching
+platforms changes nothing here.
 
 ## Tools are configuration
 
@@ -63,17 +62,14 @@ The toolkit is `Toolkit.fromArray` over the present tools and the layers are
 spread into `Layer.mergeAll`, so a tool and its provider cannot drift apart.
 Leave a flag out and the model is never offered that tool.
 
-`react` is the exception: it needs no provider, but it does need the id of
-this conversation's last message, which a shared toolkit cannot hold. So it
-is built per conversation:
+`react` is built per conversation instead: it needs no provider, but it
+needs the id of this conversation's last message, which a shared toolkit
+cannot hold.
 
 ```ts
 const lastMessage = yield * Ref.make(Option.none<MessageId>())
 const tools = Toolkit.fromArray([...Object.values(options.toolkit), reactTool(lastMessage)])
 ```
-
-`post` and `typing` ride the ambient conversation; `react` names a message
-outright, which is the whole difference.
 
 ## Per turn
 
@@ -86,16 +82,15 @@ const deltas = yield * Queue.unbounded<string, Cause.Done>()
 const delivery = yield * Effect.forkScoped(messenger.stream(Stream.fromQueue(deltas)))
 ```
 
-Text deltas from the turn go into the queue and appear in the chat as the
-model writes; a `ToolCallStart` becomes a short status post. When the turn
-completes, the queue is ended and the delivery joined, so the final edit
-lands before the loop moves on. A turn that only called tools streams no
-text, and `stream` posts nothing for it. When the iteration ends, its scope
-releases the typing indicator.
+Text deltas go into the queue and appear in the chat as the model writes; a
+`ToolCallStart` becomes a short status post. When the turn completes, the
+queue is ended and the delivery joined, so the final edit lands before the
+loop moves on. A turn that only called tools streams no text and posts
+nothing. When the iteration ends, its scope releases the typing indicator.
 
 Input comes from `Inbox.drainBurst`: block for the first message, then keep
-taking while the next arrives within the settle window, so three quick
-lines become one user turn.
+taking while the next arrives within the settle window, so three quick lines
+become one user turn.
 
 ## Router
 
@@ -126,24 +121,22 @@ yield *
   )
 ```
 
-The first addressed message in a chat creates its inbox and forks its loop.
-Unaddressed group chatter never reaches a model. A conversation that dies
-logs its cause; the router and every other chat keep going.
-
-The two lookups are the difference between starting a conversation and
-joining one. `inboxFor` creates the inbox and forks the loop; `openInbox`
-only finds an existing one, so an emoji is a turn in a chat already talking
-and nothing at all in a quiet channel. It arrives as `[reacted 🤔]`, an
-ordinary line of user input, so the loop never learns reactions exist.
+The first addressed message in a chat creates its inbox and forks its loop;
+unaddressed group chatter never reaches a model. `inboxFor` starts a
+conversation, `openInbox` only joins one, so a reaction is a turn in a chat
+already talking and nothing in a quiet channel. It arrives as
+`[reacted 🤔]`, an ordinary line of input, so the loop never learns
+reactions exist. A conversation that dies logs its cause; the router and
+every other chat keep going.
 
 ## Formatting is the prompt's job
 
 Text is sent as written, so the platform's markup is the prompt's business.
-`--messenger` picks both at once: one entry holds the layer and the markup
-it reads, and Betty is built from that.
+`--messenger` picks the layer and the markup together, and the persona's
+formatting sentence, greeting and status line follow the markup:
 
 ```ts
-const platforms: Record<string, Effect.Effect<Wiring, Config.ConfigError>> = {
+const platforms = {
   telegram: Effect.map(Config.redacted("TELEGRAM_BOT_TOKEN"), (token) => ({
     layer: telegramLayer({ token }),
     markup: "html",
@@ -162,62 +155,47 @@ const platforms: Record<string, Effect.Effect<Wiring, Config.ConfigError>> = {
 }
 ```
 
-Only the chosen platform's tokens are read, so running on Discord needs no
-Telegram credentials. The persona's formatting sentence, its greeting and
-the tool status line all follow the markup; the loop and the router do not
-know which platform they are on.
+Only the chosen platform's tokens are read.
 
 ## Run it
 
-On Telegram, create a bot with [@BotFather](https://t.me/BotFather):
+Set the bot up on the platform's page first:
+[Telegram](/messenger/providers/telegram/),
+[Discord](/messenger/providers/discord/) or
+[Slack](/messenger/providers/slack/). Then:
 
 ```sh
+# Telegram
 TELEGRAM_BOT_TOKEN=123:abc OPENAI_API_KEY=... EXA_API_KEY=... FAL_API_KEY=... \
   pnpm tsx recipes/messenger-agent/run.ts --search exa --image fal:fal-ai/flux/schnell
-```
 
-On Discord, create an app in the
-[developer portal](https://discord.com/developers/applications), copy the bot
-token, and invite it with the `bot` scope:
-
-```sh
+# Discord
 DISCORD_BOT_TOKEN=... OPENAI_API_KEY=... EXA_API_KEY=... \
   pnpm tsx recipes/messenger-agent/run.ts --messenger discord --search exa
-```
 
-On Slack, create an app from the manifest on the
-[Slack provider page](/messenger/providers/slack/), which turns Socket Mode on
-and asks for the scopes the five verbs need. It needs two tokens: the app-level
-`xapp-` one that opens the socket, and the `xoxb-` bot token for everything
-else.
-
-```sh
+# Slack
 SLACK_BOT_TOKEN=xoxb-... SLACK_APP_TOKEN=xapp-... OPENAI_API_KEY=... EXA_API_KEY=... \
   pnpm tsx recipes/messenger-agent/run.ts --messenger slack --search exa
 ```
 
 `--model provider:model` and `--base-url` pick the model. `--search exa |
 perplexity | tavily` and `--image provider:model` switch the tools on; both
-are optional. DM the bot and ask it something, or ask it to draw something.
+are optional. DM the bot and ask it something, or ask it to draw.
 
-For group mentions on Telegram, turn privacy mode off in BotFather
-(`/setprivacy`) or make the bot an admin; with it on, Telegram only delivers
-commands, replies and DMs. `/start` is the only command this recipe handles.
-Discord has no commands at all, so a conversation there starts on the first DM
-or mention; on Slack it is the slash command in the manifest.
+What to expect per platform:
 
-On Discord, mention the bot from the `@` autocomplete under **MEMBERS**: the
-identically named role above it is a role ping and does not address it. Add
-`--read-all` for the privileged Message Content intent, which lets a plain
-reply reach the bot without a mention.
-
-On Slack, invite the bot with `/invite @Betty` and mention it. It answers in a
-thread under your mention, and a follow-up inside that thread still has to
-mention it: Slack's payload does not say who opened a thread.
+- **Telegram**: `/start` greets. For group mentions, turn privacy mode off
+  in BotFather or make the bot an admin.
+- **Discord**: no commands; the first DM or mention starts a conversation.
+  Mention the bot from the `@` autocomplete under **MEMBERS**, not the role
+  of the same name. `--read-all` requests the Message Content intent so a
+  plain reply reaches it without a mention.
+- **Slack**: `/start` greets. Mention the bot in a channel and it answers in
+  a thread; inside that thread, mention it again for a follow-up.
 
 `LOG_LEVEL=Debug` logs every inbound event with its conversation and
-`addressed` flag, plus each turn and tool call, which is where to look when a
-chat stays silent.
+`addressed` flag, plus each turn and tool call, which is where to look when
+a chat stays silent.
 
 The full source lives next to this README at
 [`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/messenger-agent/recipe.ts).

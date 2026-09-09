@@ -9,10 +9,12 @@ import {
   type MessengerLimits,
   type MessengerService,
   type Outbound,
+} from "../messenger/Messenger.js"
+import {
   type StreamViaEditsOptions,
   splitForLimit,
   streamViaEdits,
-} from "../messenger/Messenger.js"
+} from "../messenger/MessengerAdapter.js"
 import * as MessengerError from "../messenger/MessengerError.js"
 
 // ---------------------------------------------------------------------------

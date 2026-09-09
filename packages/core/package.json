@@ -118,6 +118,10 @@
       "types": "./dist/messenger/Messenger.d.mts",
       "import": "./dist/messenger/Messenger.mjs"
     },
+    "./MessengerAdapter": {
+      "types": "./dist/messenger/MessengerAdapter.d.mts",
+      "import": "./dist/messenger/MessengerAdapter.mjs"
+    },
     "./MessengerError": {
       "types": "./dist/messenger/MessengerError.d.mts",
       "import": "./dist/messenger/MessengerError.mjs"

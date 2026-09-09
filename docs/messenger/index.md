@@ -1,13 +1,13 @@
 ---
 title: Messenger
-description: "Put your agent where people already talk. One event stream in, five verbs out, and the conversation it answers in is ambient, so every post lands in the right chat."
+description: "Run your agent as a Telegram, Discord or Slack bot. One event stream in, five verbs out, and the chat it answers in is ambient, so every post lands in the right place."
 icon: PiChatsCircle
 ---
 
-An agent is only useful where its users already are, which is rarely a
-terminal. `Messenger` runs yours as a Telegram, Discord or Slack bot: it reads
-what people say, shows typing, and streams the answer back into the chat, with
-the loop, tools and history you already have.
+You have an agent loop. The people who should use it are in Telegram,
+Discord or Slack. `Messenger` connects the two: one stream of what people
+say, five verbs for answering, and a provider layer per platform. Your loop,
+tools and history stay as they are.
 
 ## Quickstart
 
@@ -39,38 +39,39 @@ await Effect.runPromise(
 )
 ```
 
-Provide the layer and the bot is connected; close the scope and it is gone.
-There is nothing to start or stop by hand.
+Providing the layer connects the bot; closing the scope disconnects it.
+Swap the layer for [Discord](/messenger/providers/discord/) or
+[Slack](/messenger/providers/slack/) and the program does not change.
 
 ## What arrives
 
 `events` is one stream of everything people do:
 
-- **`Message`**: someone wrote something. `text` has the bot's own mention
-  stripped, and `addressed` tells you whether it was meant for the bot: a
-  DM, an `@mention`, or a reply to one of its messages. That flag is what
-  you branch on; everything else is group chatter you can ignore.
+- **`Message`**: someone wrote something. `addressed` says whether it was
+  meant for the bot (a DM, an `@mention`, or a reply to one of its messages),
+  and `text` has the bot's own mention stripped. Branch on `addressed`; the
+  rest is group chatter.
 - **`Command`**: `/search effect streams` as `name` and `args`.
 - **`Reaction`**: an emoji on a message.
 - **`Action`**: a button press, with its `actionId`.
 
-Each carries `raw`, the platform's own payload, when you need a field the
-shared shape does not have. Reconnects and acknowledgements happen for you;
-the stream only ends when the connection is gone for good.
+Each carries `raw`, the platform's own payload, for the fields the shared
+shape leaves out. Reconnects and acknowledgements happen for you; the stream
+ends only when the connection is gone for good.
 
 ## What you can send
 
-- **`post`** a message, and get back its id.
+- **`post`** a message and get back its id.
 - **`edit`** a message you posted.
-- **`react`** to a message with an emoji, spelled the way the platform
-  spells it: unicode on Telegram and Discord, a shortcode on Slack. That is
-  also how a `Reaction` event arrives.
+- **`react`** to a message with an emoji in the platform's own spelling:
+  unicode on Telegram and Discord, a shortcode on Slack. `Reaction` events
+  arrive the same way.
 - **`typing`** shows the indicator for as long as the scope is open.
 - **`stream`** a `Stream<string>` and the reply appears as it is written,
-  with `replyTo` on its first message if you pass one. You get the last
-  message's id back, or none if the stream had no text.
+  quoting the message in `replyTo` if you pass one. You get the last
+  message's id back, or none when the stream had no text.
 
-A message is text, media or the platform's own payload:
+A message is text, media, or the platform's own payload:
 
 ```ts
 Messenger.text("Done.", { replyTo: event.id })
@@ -78,25 +79,23 @@ Messenger.media(Image.imageBytes(png, "image/png"), { caption: "Here you go" })
 Messenger.raw({ method: "sendMessage", params: { chat_id, text, reply_markup } })
 ```
 
-Text goes out **exactly as you wrote it**. Platforms disagree on markup
-(Telegram wants HTML, Slack takes markdown), so the library does not
-convert; your system prompt tells the model which one to write, and each
-provider page says which that is. `raw` is the door to buttons, cards and
+Text goes out exactly as you wrote it. Platforms disagree on markup, so
+nothing is converted: your system prompt tells the model which one to write,
+and each provider page says which that is. `raw` reaches buttons, cards and
 anything else the five verbs do not cover.
 
 ## Which chat
 
-`post`, `typing` and `stream` do not take a chat id. They target the
-ambient `CurrentConversation`, which you set once where a conversation
-starts:
+`post`, `typing` and `stream` take no chat id. They target the ambient
+`CurrentConversation`, which you set once where a conversation starts:
 
 ```ts
 conversation(inbox).pipe(Messenger.inConversation(event.conversation), Effect.forkScoped)
 ```
 
-Everything under that line, down to a tool posting progress from inside
-`Toolkit.run`, lands in that chat. Forget to set it and the code does not
-compile. To reach another chat, re-scope:
+Everything under that line lands in that chat, including a tool posting
+progress from inside `Toolkit.run`. Without it the code does not compile. To
+reach another chat, re-scope:
 
 ```ts
 yield * messenger.post(Messenger.text("On it, escalating."))
@@ -106,11 +105,11 @@ yield * messenger.post(Messenger.text(summary)).pipe(Messenger.inConversation(on
 ## Streaming a reply
 
 Hand `stream` the text deltas of a turn and the answer shows up as one
-message that fills in as the model writes. Where the platform has no native
-streaming, the adapter posts once and edits in place, rate limits included,
-and starts a new message if the answer outgrows the platform's limit. The
-[messenger agent](/recipes/messenger-agent/) recipe is the full shape: an
-agentic loop per conversation, typing held for the turn, tools, history.
+message that fills in as the model writes. Where the platform has no
+streaming API, the provider posts once and edits in place, honouring rate
+limits, and starts a new message when the answer outgrows the platform's
+limit. The [messenger agent](/recipes/messenger-agent/) recipe is the full
+shape: one loop per conversation, typing held for the turn, tools, history.
 
 ## When it fails
 
@@ -127,11 +126,11 @@ records every post, edit and reaction, so a bot's behaviour is a unit test.
 ## Providers
 
 - [Telegram](/messenger/providers/telegram/): DMs, groups, commands,
-  reactions, media. Long-polling, no public URL needed.
-- [Discord](/messenger/providers/discord/): DMs, channel mentions, threads,
-  buttons, reactions, media. One gateway websocket, no public URL needed.
+  reactions, media. Long-polling, no public URL.
+- [Discord](/messenger/providers/discord/): DMs, mentions, threads, buttons,
+  reactions, media. One gateway websocket, no public URL.
 - [Slack](/messenger/providers/slack/): DMs, mentions, threads, slash
-  commands, buttons, reactions, files. Socket Mode, no public URL needed.
+  commands, buttons, reactions, files. Socket Mode, no public URL.
 
-Each is a long-lived process with one instance per app; webhook delivery,
-which WhatsApp needs, comes later.
+Each runs as a long-lived process, one instance per bot. Webhook delivery,
+which WhatsApp needs, is not there yet.

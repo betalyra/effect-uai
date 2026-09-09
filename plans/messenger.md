@@ -745,7 +745,10 @@ falls short, the feature is scoped down or handed to the recipe; see
    state: Slack redelivers on a missed ack, and the set exists only to drop
    the redelivery). Standard WebSocket ping/pong keeps the link alive. A
    `disconnect` frame with `refresh_requested` or `warning` opens a new
-   connection via `apps.connections.open` before closing the old one;
+   connection via `apps.connections.open` before closing the old one
+   (built as close-then-reopen with zero backoff instead: overlapping needs
+   two reader fibers on one queue, and Slack's redelivery plus the `event_id`
+   dedupe already cover the sub-second gap);
    `link_disabled` ends `events` with `MessengerTransportClosed`. Any other
    close reconnects on a capped exponential schedule, forever. One
    connection in v1. `Socket.makeWebSocket` with `closeCodeIsError: (code)
@@ -755,9 +758,12 @@ falls short, the feature is scoped down or handed to the recipe; see
    `message` (subtypes `bot_message`, `message_changed`, `message_deleted`,
    `thread_broadcast`, `file_share` dropped; anything with `bot_id`, or
    `user` equal to the bot's user id, dropped so two bots cannot loop).
-   `app_mention` and `message.channels` both fire for one mention: dedupe on
-   `(channel, ts)` within the same envelope batch, preferring the
-   `app_mention`. `reaction_added` becomes `Reaction` with `emoji` as the
+   `app_mention` and `message.channels` both fire for one mention, as two
+   separate frames, so there is no batch to dedupe in and "prefer the
+   `app_mention`" would need memory. Built stateless instead: a channel
+   `message` whose text mentions the bot is dropped (its `app_mention` twin
+   carries it), and an `app_mention` in a `D…` channel is dropped (the DM
+   already arrived as `message.im`). `reaction_added` becomes `Reaction` with `emoji` as the
    shortcode (`eyes`). A `slash_commands` envelope becomes `Command { name:
 command without the slash, args: text }`, the only platform where the
    plan's `Command` maps one to one; the command must exist in the app's
@@ -853,6 +859,20 @@ replies via `response_url` are the interaction duality parked in phase 2.
   with `markdown_text`, using `replyTo` to resolve `recipient_user_id`, plus
   a way to surface `stopped_by_user` to the loop. Replaces `streamViaEdits`
   on Slack once the recipient question is settled.
+- **Slack reactions inside a thread miss their conversation.** Found live on
+  2026-09-09: `reaction_added` carries `item.channel` and `item.ts` but no
+  `thread_ts`, so the adapter mints the reacted message's own `ts` as the
+  thread. A reaction on the bot's reply inside a thread becomes conversation
+  `C…/<reply ts>`, which never matches the thread's `C…/<mention ts>`, and
+  the recipe's router finds no inbox for it. Only a reaction on the thread's
+  opening message lands today. Same fix as the follow-up above:
+  `conversations.replies(channel, ts, limit: 1)` returns the message's
+  `thread_ts`; one call per reaction, no state, no contract change.
+- **Slack live coverage still open.** Verified live: channel mention,
+  threaded reply, mention stripping, `addressed`, thread key, `Reaction`
+  delivery, `typing` failing soft. Not yet exercised against a workspace: DM,
+  `/start`, file upload, the 4000-character rollover, `edit`, outbound
+  `react`, reconnect and refresh, rate limiting.
 
 - **Discord slash commands.** Registration (`PUT
 /applications/{app}/guilds/{guild}/commands` for instant propagation) from

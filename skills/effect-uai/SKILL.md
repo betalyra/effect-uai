@@ -75,9 +75,11 @@ with its own provider layers and recipes in the library below:
 `Transcriber` (file + streaming STT), `SpeechSynthesizer` (finished +
 incremental TTS, multi-speaker dialogue), `MusicGenerator`,
 `ImageGenerator` (`generate` / `edit`, plus marker-gated preview
-streaming), and `Sandbox`
+streaming), `Sandbox`
 (run untrusted code in a microVM: `@effect-uai/microsandbox` local,
-`@effect-uai/deno` hosted).
+`@effect-uai/deno` hosted), and `Messenger` (the agent as a Telegram,
+Discord or Slack bot: one inbound event stream, five outbound verbs, the
+chat it answers in is ambient).
 
 ## Core modules (cheat sheet)
 
@@ -171,6 +173,15 @@ turns the server's tools into an ordinary `Toolkit` you compose and run
 like any other. `Effect.scoped` / `Stream.scoped` / `layer(config)` all
 close the connection; there is no `close()`. HTTP transport needs an
 `HttpClient`, stdio needs a `ChildProcessSpawner`. See `mcp-tools`.
+
+Messenger layers connect on build and disconnect with their scope, so
+they need `Effect.scoped` around the program and an `HttpClient`:
+`telegramLayer({ token })`, `discordLayer({ token, intents? })`,
+`slackLayer({ botToken, appToken, replyIn? })`. Each registers both the
+generic `Messenger` tag and its own typed tag (`Telegram`, `Discord`,
+`Slack`). A refused token is `MessengerConnectFailed` at wiring time. The
+model must be prompted for the platform's markup (Telegram HTML, markdown
+on Discord and Slack); nothing converts.
 
 OpenAI-compatible gateways (OpenRouter, Requesty) are not separate
 providers. Point a protocol adapter at the gateway's `baseUrl`: prefer
@@ -314,6 +325,7 @@ Common scenarios and where to start:
 | Human verdict before sensitive tool calls                            | `tool-call-approval`                                               |
 | Show inner tool work while returning one clean output                | `streaming-tool-output`                                            |
 | Long-lived chat from a debounced input queue                         | `agentic-loop`                                                     |
+| The agent as a Telegram, Discord or Slack bot, one loop per chat     | `messenger-agent`                                                  |
 | Retry rate-limited / transient failures with backoff                 | `model-retry`                                                      |
 | Fall back to another provider on retryable errors                    | `multi-model-fallback`                                             |
 | Cheap model escalates hard questions to a stronger one               | `model-escalation`                                                 |

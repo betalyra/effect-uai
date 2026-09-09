@@ -733,7 +733,7 @@ falls short, the feature is scoped down or handed to the recipe; see
    `replyIn` is `"thread" | "channel"`, default `"thread"` (decision 5).
    `stream` defaults `every` to `"1200 millis"`; `chat.update` is Tier 3.
    Web API base `https://slack.com/api`. `SlackService = MessengerService &
-   { bot: { userId, botId, teamId } }` from `auth.test`, registered under
+{ bot: { userId, botId, teamId } }` from `auth.test`, registered under
    `Slack` and `Messenger`.
 2. **Layer build waits for `hello`.** `auth.test` with the bot token, then
    `apps.connections.open` with the app token, then open the socket and
@@ -749,7 +749,7 @@ falls short, the feature is scoped down or handed to the recipe; see
    `link_disabled` ends `events` with `MessengerTransportClosed`. Any other
    close reconnects on a capped exponential schedule, forever. One
    connection in v1. `Socket.makeWebSocket` with `closeCodeIsError: (code)
-   => code !== 1000 && code !== 1001 && code !== 1005`; the reader fiber
+=> code !== 1000 && code !== 1001 && code !== 1005`; the reader fiber
    ends the inbox with `Queue.end`.
 4. **Inbound events.** From `events_api` envelopes: `app_mention` and
    `message` (subtypes `bot_message`, `message_changed`, `message_deleted`,
@@ -759,7 +759,7 @@ falls short, the feature is scoped down or handed to the recipe; see
    `(channel, ts)` within the same envelope batch, preferring the
    `app_mention`. `reaction_added` becomes `Reaction` with `emoji` as the
    shortcode (`eyes`). A `slash_commands` envelope becomes `Command { name:
-   command without the slash, args: text }`, the only platform where the
+command without the slash, args: text }`, the only platform where the
    plan's `Command` maps one to one; the command must exist in the app's
    manifest. An `interactive` envelope with `block_actions` becomes one
    `Action { actionId: action_id, value }` per action, acked with the envelope
@@ -774,7 +774,7 @@ falls short, the feature is scoped down or handed to the recipe; see
    adapter sends `thread_ts` whenever `CurrentConversation.thread` is set.
 6. **`addressed`.** True for `message.im` and for `app_mention`. Nothing
    else: a thread follow-up without a mention arrives with `addressed:
-   false`, because Slack's payload does not say who posted in that thread
+false`, because Slack's payload does not say who posted in that thread
    and the adapter keeps no memory of it. The doc says so plainly: in a
    thread, mention the bot, as on Discord. The stateless parent lookup that
    would give Slack Telegram's third gesture is a follow-up. The bot's own
@@ -782,7 +782,7 @@ falls short, the feature is scoped down or handed to the recipe; see
 7. **Text out.** `chat.postMessage` and `chat.update` with `markdown_text`
    (standard markdown, verbatim, no converter), `thread_ts` from the
    conversation, and `reply_broadcast` never set. `limits = { maxText: 4000,
-   maxCaption: 4000 }`; `post` splits with `splitForLimit`, id of the last
+maxCaption: 4000 }`; `post` splits with `splitForLimit`, id of the last
    chunk. `replyTo` has no Slack equivalent outside a thread and is ignored
    when the conversation already names the thread. `MessageId` is the
    message `ts`.
@@ -803,7 +803,7 @@ falls short, the feature is scoped down or handed to the recipe; see
     stripped. `invalid_name` maps to `MessengerUnsupported`. No emoji table
     anywhere.
 11. **`typing`.** Best effort. `agents.sessions.setStatus` with `status:
-    "processing"` on acquire and `"active"` on release, `channel_id` and
+"processing"` on acquire and `"active"` on release, `channel_id` and
     `thread_ts` from the conversation. Slack only honours it on its agent
     surfaces, so a rejection is logged at debug level and swallowed; `typing`
     never fails a turn on Slack. The doc names the surfaces where the status

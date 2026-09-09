@@ -1,11 +1,11 @@
 ---
 title: Messenger agent
-description: Put the agent where people already are. Mention it in Telegram or Discord; it types, searches the web, draws pictures, and streams the answer into one message. One loop and one history per conversation.
+description: Put the agent where people already are. Mention it in Telegram, Discord or Slack; it types, searches the web, draws pictures, and streams the answer into one message. One loop and one history per conversation.
 source: recipes/messenger-agent
 icon: PiChatsCircle
 ---
 
-**Scenario.** A Telegram or Discord bot that answers questions with web
+**Scenario.** A Telegram, Discord or Slack bot that answers questions with web
 search and draws on request. DM it, or mention it in a group, and it shows
 typing, posts a one-line status per tool call, then streams its answer into
 a single message. Ask for a picture and the picture arrives in the chat
@@ -43,7 +43,7 @@ run: ({ prompt }) =>
 ```
 
 The model never sees the bytes, only "Sent.", and the tool never sees a
-chat id. `--messenger discord` swaps the provider layer and this file, the
+chat id. `--messenger slack` swaps the provider layer and this file, the
 loop and the router are untouched.
 
 ## Tools are configuration
@@ -152,10 +152,17 @@ const platforms: Record<string, Effect.Effect<Wiring, Config.ConfigError>> = {
     layer: discordLayer({ token }),
     markup: "markdown",
   })),
+  slack: Effect.map(
+    Effect.all({
+      botToken: Config.redacted("SLACK_BOT_TOKEN"),
+      appToken: Config.redacted("SLACK_APP_TOKEN"),
+    }),
+    (tokens) => ({ layer: slackLayer(tokens), markup: "markdown" }),
+  ),
 }
 ```
 
-Only the chosen platform's token is read, so running on Discord needs no
+Only the chosen platform's tokens are read, so running on Discord needs no
 Telegram credentials. The persona's formatting sentence, its greeting and
 the tool status line all follow the markup; the loop and the router do not
 know which platform they are on.
@@ -178,20 +185,35 @@ DISCORD_BOT_TOKEN=... OPENAI_API_KEY=... EXA_API_KEY=... \
   pnpm tsx recipes/messenger-agent/run.ts --messenger discord --search exa
 ```
 
+On Slack, create an app from the manifest on the
+[Slack provider page](/messenger/providers/slack/), which turns Socket Mode on
+and asks for the scopes the five verbs need. It needs two tokens: the app-level
+`xapp-` one that opens the socket, and the `xoxb-` bot token for everything
+else.
+
+```sh
+SLACK_BOT_TOKEN=xoxb-... SLACK_APP_TOKEN=xapp-... OPENAI_API_KEY=... EXA_API_KEY=... \
+  pnpm tsx recipes/messenger-agent/run.ts --messenger slack --search exa
+```
+
 `--model provider:model` and `--base-url` pick the model. `--search exa |
 perplexity | tavily` and `--image provider:model` switch the tools on; both
 are optional. DM the bot and ask it something, or ask it to draw something.
 
 For group mentions on Telegram, turn privacy mode off in BotFather
 (`/setprivacy`) or make the bot an admin; with it on, Telegram only delivers
-commands, replies and DMs. `/start` is the only command this recipe handles,
-and Discord has no commands at all, so a conversation there starts on the
-first DM or mention.
+commands, replies and DMs. `/start` is the only command this recipe handles.
+Discord has no commands at all, so a conversation there starts on the first DM
+or mention; on Slack it is the slash command in the manifest.
 
 On Discord, mention the bot from the `@` autocomplete under **MEMBERS**: the
 identically named role above it is a role ping and does not address it. Add
 `--read-all` for the privileged Message Content intent, which lets a plain
 reply reach the bot without a mention.
+
+On Slack, invite the bot with `/invite @Betty` and mention it. It answers in a
+thread under your mention, and a follow-up inside that thread still has to
+mention it: Slack's payload does not say who opened a thread.
 
 `LOG_LEVEL=Debug` logs every inbound event with its conversation and
 `addressed` flag, plus each turn and tool call, which is where to look when a

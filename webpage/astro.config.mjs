@@ -427,6 +427,7 @@ export default defineConfig({
               items: [
                 { label: "Telegram", slug: "messenger/providers/telegram" },
                 { label: "Discord", slug: "messenger/providers/discord" },
+                { label: "Slack", slug: "messenger/providers/slack" },
               ],
             },
             {

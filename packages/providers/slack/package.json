@@ -1,0 +1,59 @@
+{
+  "name": "@effect-uai/slack",
+  "version": "0.14.0",
+  "description": "Slack provider for @effect-uai/core (Messenger capability over Socket Mode and the Web API).",
+  "keywords": [
+    "agents",
+    "ai",
+    "bot",
+    "effect",
+    "messenger",
+    "slack"
+  ],
+  "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/slack",
+  "bugs": {
+    "url": "https://github.com/betalyra/effect-uai/issues"
+  },
+  "license": "MIT",
+  "author": "Betalyra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betalyra/effect-uai",
+    "directory": "packages/providers/slack"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./Slack": {
+      "types": "./dist/Slack.d.mts",
+      "import": "./dist/Slack.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@effect-uai/core": "workspace:*",
+    "effect": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect-uai/core": "workspace:>=0.14.0 <1",
+    "effect": "catalog:peer"
+  }
+}

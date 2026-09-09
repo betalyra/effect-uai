@@ -27,7 +27,8 @@
       "@effect-uai/mcp",
       "@effect-uai/retrieval",
       "@effect-uai/telegram",
-      "@effect-uai/discord"
+      "@effect-uai/discord",
+      "@effect-uai/slack"
     ]
   ],
   "linked": [],

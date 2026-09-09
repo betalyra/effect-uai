@@ -62,6 +62,7 @@ Where people talk to the agent rather than the agent acting on the world.
 | ------------ | :---------------------------------: |
 | **Telegram** | [✓](/messenger/providers/telegram/) |
 | **Discord**  | [✓](/messenger/providers/discord/)  |
+| **Slack**    |  [✓](/messenger/providers/slack/)   |
 
 ### Gateways and protocol adapters
 
@@ -243,3 +244,13 @@ gateway websocket and calls the v10 REST API over a plain HTTP client, no
 discord.js.
 
 - Messenger: [Discord](/messenger/providers/discord/)
+
+## Slack
+
+`@effect-uai/slack`
+
+Your agent as a Slack bot: mentions, DMs, slash commands and button presses
+in, streamed markdown answers in a thread, files and reactions out. Holds one
+Socket Mode websocket and calls the Web API over a plain HTTP client, no Bolt.
+
+- Messenger: [Slack](/messenger/providers/slack/)

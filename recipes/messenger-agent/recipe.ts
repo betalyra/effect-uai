@@ -143,7 +143,7 @@ const voices: Record<Markup, Voice> = {
     status: (name) => `<i>${name}…</i>`,
   },
   markdown: {
-    system: `${character} Format replies as Discord markdown: **bold**, *italic*, \`code\`, fenced code blocks and bare links. Never use HTML tags.`,
+    system: `${character} Format replies as markdown: **bold**, *italic*, \`code\`, fenced code blocks and bare links. Never use HTML tags.`,
     greeting: "Hi, I'm **Betty** 👋",
     status: (name) => `*${name}…*`,
   },

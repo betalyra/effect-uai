@@ -4,7 +4,7 @@
  *
  *   TELEGRAM_BOT_TOKEN=... OPENAI_API_KEY=... EXA_API_KEY=... \
  *     pnpm tsx recipes/messenger-agent/run.ts \
- *       [--messenger telegram|discord] [--model provider:model] \
+ *       [--messenger telegram|discord|slack] [--model provider:model] \
  *       [--search exa] [--image openai:gpt-image-2] [--read-all]
  *
  * `--search` and `--image` each bring a tool and its layer together: leave
@@ -18,6 +18,7 @@ import * as Toolkit from "@effect-uai/core/Toolkit"
 import type { Messenger } from "@effect-uai/core/Messenger"
 import { type MessengerConnectFailed, describe } from "@effect-uai/core/MessengerError"
 import { Intents, defaultIntents, layer as discordLayer } from "@effect-uai/discord/Discord"
+import { layer as slackLayer } from "@effect-uai/slack/Slack"
 import { layer as telegramLayer } from "@effect-uai/telegram/Telegram"
 import { flagValue } from "@effect-uai/recipe-kit/argv"
 import {
@@ -56,6 +57,14 @@ const platforms: Record<string, (readAll: boolean) => Effect.Effect<Wiring, Conf
       }),
       markup: "markdown",
     })),
+  slack: () =>
+    Effect.map(
+      Effect.all({
+        botToken: Config.redacted("SLACK_BOT_TOKEN"),
+        appToken: Config.redacted("SLACK_APP_TOKEN"),
+      }),
+      (tokens) => ({ layer: slackLayer(tokens), markup: "markdown" }),
+    ),
 }
 
 const wire = (

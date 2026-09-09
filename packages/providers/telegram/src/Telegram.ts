@@ -27,10 +27,12 @@ import {
   type MessengerService,
   type Outbound,
   type OutboundBody,
+} from "@effect-uai/core/Messenger"
+import {
   type StreamViaEditsOptions,
   splitForLimit,
   streamViaEdits,
-} from "@effect-uai/core/Messenger"
+} from "@effect-uai/core/MessengerAdapter"
 import * as MessengerError from "@effect-uai/core/MessengerError"
 import * as Api from "./internal/api.js"
 import * as Events from "./internal/events.js"

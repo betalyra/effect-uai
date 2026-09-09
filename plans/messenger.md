@@ -416,8 +416,11 @@ fibers, in the house style:
    decision is pinned in "Discord handoff" below; the protocol facts are in
    [research/messenger/discord.md](research/messenger/discord.md).
 5. **`@effect-uai/slack`**: Socket Mode loop with 3s acks and rolling
-   reconnect, `chat.startStream`-backed `stream`, `agents.sessions.setStatus`
-   as `typing`. Three transports on one tag is the proof the abstraction holds.
+   reconnect, `stream` via `streamViaEdits` in v1 (the native stream is a
+   follow-up), `agents.sessions.setStatus` as a best-effort `typing`. Three
+   transports on one tag is the proof the abstraction holds. Every decision
+   is pinned in "Slack handoff" below; the protocol facts are in
+   [research/messenger/slack.md](research/messenger/slack.md).
 6. Changesets (fixed group), skill cheat-sheet row, docs sidebar.
 7. **Phase 2**: webhook mode, then `@effect-uai/whatsapp`; the
    approval-over-buttons recipe once per-platform button rendering exists.
@@ -704,7 +707,152 @@ carries the full payload meanwhile. Ephemeral replies and "respond to this
 interaction" have no verb; that is the webhook duality parked in phase 2. A
 URL cannot be a Discord attachment; the embed fallback is adapter-internal.
 
+## Slack handoff
+
+Steps 1 to 4 shipped on Telegram and Discord; this is step 5. Build it
+against the capability exactly as it is (`ThreadId`, `stream(deltas,
+{ replyTo? })`, reactions in the platform's own spelling, and the adapter
+helpers now living in `@effect-uai/core/MessengerAdapter`). Mirror the two
+existing packages in shape and style: `packages/providers/slack/src/Slack.ts`
+(config, `Slack` tag, `make`, `layer`), `src/internal/api.ts` (the Web API
+twin of Telegram's: one `call`, one `upload`, `decoded`),
+`src/internal/socket.ts` (the Socket Mode session), `src/internal/events.ts`
+(pure envelope-to-`InboundEvent` mapping, exported schemas). Plain
+`HttpClient` and `Socket`, no `@slack/*` packages.
+
+**The one rule above all others: the adapter holds no conversation state.**
+Not which threads the bot posted in, not who spoke last, not a cache of
+either. It keeps transport state only (the socket, the pending envelopes)
+and computes every event from the payload in hand. Where Slack's payload
+falls short, the feature is scoped down or handed to the recipe; see
+`addressed` and `stream` below.
+
+1. **Config.** `layer({ botToken, appToken, replyIn?, stream?, baseUrl? })`.
+   Both tokens `Redacted`: `xoxb-` for every Web API call
+   (`Authorization: Bearer`), `xapp-` only for `apps.connections.open`.
+   `replyIn` is `"thread" | "channel"`, default `"thread"` (decision 5).
+   `stream` defaults `every` to `"1200 millis"`; `chat.update` is Tier 3.
+   Web API base `https://slack.com/api`. `SlackService = MessengerService &
+   { bot: { userId, botId, teamId } }` from `auth.test`, registered under
+   `Slack` and `Messenger`.
+2. **Layer build waits for `hello`.** `auth.test` with the bot token, then
+   `apps.connections.open` with the app token, then open the socket and
+   return from `make` only once the `hello` frame arrived. Any of the three
+   failing is `MessengerConnectFailed` with Slack's `error` string.
+3. **Socket Mode session.** Every envelope is acknowledged with
+   `{ envelope_id }` before it is offered to the inbox, inside the 3 s
+   deadline. Dedupe on `event_id` with a small bounded recent-set (transport
+   state: Slack redelivers on a missed ack, and the set exists only to drop
+   the redelivery). Standard WebSocket ping/pong keeps the link alive. A
+   `disconnect` frame with `refresh_requested` or `warning` opens a new
+   connection via `apps.connections.open` before closing the old one;
+   `link_disabled` ends `events` with `MessengerTransportClosed`. Any other
+   close reconnects on a capped exponential schedule, forever. One
+   connection in v1. `Socket.makeWebSocket` with `closeCodeIsError: (code)
+   => code !== 1000 && code !== 1001 && code !== 1005`; the reader fiber
+   ends the inbox with `Queue.end`.
+4. **Inbound events.** From `events_api` envelopes: `app_mention` and
+   `message` (subtypes `bot_message`, `message_changed`, `message_deleted`,
+   `thread_broadcast`, `file_share` dropped; anything with `bot_id`, or
+   `user` equal to the bot's user id, dropped so two bots cannot loop).
+   `app_mention` and `message.channels` both fire for one mention: dedupe on
+   `(channel, ts)` within the same envelope batch, preferring the
+   `app_mention`. `reaction_added` becomes `Reaction` with `emoji` as the
+   shortcode (`eyes`). A `slash_commands` envelope becomes `Command { name:
+   command without the slash, args: text }`, the only platform where the
+   plan's `Command` maps one to one; the command must exist in the app's
+   manifest. An `interactive` envelope with `block_actions` becomes one
+   `Action { actionId: action_id, value }` per action, acked with the envelope
+   like everything else.
+5. **Threads and `ConversationRef`.** `thread` is the `thread_ts`, minted as
+   `ThreadId`. Under `replyIn: "thread"`, a channel message with no
+   `thread_ts` gets `thread = ts`, so the bot answers in a thread under the
+   mention and a follow-up inside that thread maps to the same conversation;
+   a later top-level mention is a new conversation. Under `"channel"`, a
+   top-level message has no `thread` and the bot answers in the channel. A
+   DM (`channel_type: "im"`) never gets a synthetic thread. Outbound, the
+   adapter sends `thread_ts` whenever `CurrentConversation.thread` is set.
+6. **`addressed`.** True for `message.im` and for `app_mention`. Nothing
+   else: a thread follow-up without a mention arrives with `addressed:
+   false`, because Slack's payload does not say who posted in that thread
+   and the adapter keeps no memory of it. The doc says so plainly: in a
+   thread, mention the bot, as on Discord. The stateless parent lookup that
+   would give Slack Telegram's third gesture is a follow-up. The bot's own
+   `<@U…>` mention is stripped from `text` and the result trimmed.
+7. **Text out.** `chat.postMessage` and `chat.update` with `markdown_text`
+   (standard markdown, verbatim, no converter), `thread_ts` from the
+   conversation, and `reply_broadcast` never set. `limits = { maxText: 4000,
+   maxCaption: 4000 }`; `post` splits with `splitForLimit`, id of the last
+   chunk. `replyTo` has no Slack equivalent outside a thread and is ignored
+   when the conversation already names the thread. `MessageId` is the
+   message `ts`.
+8. **`stream`.** `streamViaEdits` in v1. Slack's native `chat.startStream`
+   needs `recipient_user_id` when streaming into a channel, which the ambient
+   conversation does not carry; with `stream(deltas, { replyTo })` the
+   recipient could be resolved from the replied-to message, but that needs
+   either a lookup call or memory, so it is a follow-up, not v1.
+9. **Media.** Bytes and base64: `files.getUploadURLExternal` (`filename`,
+   `length`), raw bytes `POST`ed to `upload_url`, then
+   `files.completeUploadExternal` with `channel_id`, `thread_ts` and the
+   caption as `initial_comment`. The returned `MessageId` is the share's
+   `ts` when Slack reports one, else the file id (documented; such a message
+   cannot be edited anyway). A `url` source goes as the link in
+   `markdown_text`, which Slack unfurls. Editing media is
+   `MessengerUnsupported`.
+10. **`react`.** `reactions.add` with `name` as given, `:eyes:` colons
+    stripped. `invalid_name` maps to `MessengerUnsupported`. No emoji table
+    anywhere.
+11. **`typing`.** Best effort. `agents.sessions.setStatus` with `status:
+    "processing"` on acquire and `"active"` on release, `channel_id` and
+    `thread_ts` from the conversation. Slack only honours it on its agent
+    surfaces, so a rejection is logged at debug level and swallowed; `typing`
+    never fails a turn on Slack. The doc names the surfaces where the status
+    shows.
+12. **`raw`.** Payload `{ method: string, params?: Record<string, unknown> }`
+    as on Telegram, for any Web API method. For `post`, the response must
+    carry a `ts`.
+13. **Rate limits and errors.** HTTP 429 with `Retry-After` is
+    `MessengerRateLimited`. `ok: false` is `MessengerRequestFailed` with
+    Slack's `error` as the reason, the envelope in `raw`.
+14. **Tests.** Pure only, per the rule set after Discord: envelope decoding
+    and the ack shape; `event_id` dedupe; `(channel, ts)` dedupe between
+    `app_mention` and `message`; `addressed` per source; mention stripping;
+    the thread ref under both `replyIn` modes and for DMs; slash command
+    and block action mapping; `disconnect` classification. No live suite;
+    the recipe is the live check.
+15. **Recipe and docs.** `--messenger slack` in
+    `recipes/messenger-agent/app.ts`, markup `"markdown"`, tokens
+    `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`. `docs/messenger/providers/slack.md`
+    with the same section order as the Discord page, and a manifest snippet
+    the user pastes: `settings.socket_mode_enabled`, the bot scopes
+    (`app_mentions:read`, `channels:history`, `groups:history`, `im:history`,
+    `mpim:history`, `chat:write`, `reactions:read`, `reactions:write`,
+    `files:write`), the bot events (`app_mention`, `message.channels`,
+    `message.groups`, `message.im`, `message.mpim`, `reaction_added`), and
+    one slash command for `/start`. Add a Slack row to `docs/providers/index.md`
+    and the Messenger overview provider list, the landing-page provider
+    entry, the sidebar, the SKILL row, `recipes/package.json`, the changeset
+    fixed group, and a changeset (debut at the current version).
+
+**What does not map, and why it does not change the capability.** Slack's
+"reply" is posting in the thread, so `replyTo` collapses into
+`thread_ts` and the third `addressed` gesture is unavailable without a lookup.
+Reactions are shortcodes, which the contract now allows. The native stream
+wants a recipient the conversation does not name, so v1 uses edits. Ephemeral
+replies via `response_url` are the interaction duality parked in phase 2.
+
 ## Follow-ups
+
+- **Slack thread follow-ups without a mention.** For an unaddressed message
+  carrying `thread_ts`, fetch the thread's parent with `conversations.replies`
+  (`limit: 1`) and mark the message addressed when the parent mentioned the
+  bot, which under `replyIn: "thread"` is always the original mention. One
+  call per such message, no state, and it gives Slack Telegram's and
+  Discord's reply-to-bot gesture.
+- **Slack native streaming.** `chat.startStream`, `appendStream`, `stopStream`
+  with `markdown_text`, using `replyTo` to resolve `recipient_user_id`, plus
+  a way to surface `stopped_by_user` to the loop. Replaces `streamViaEdits`
+  on Slack once the recipient question is settled.
 
 - **Discord slash commands.** Registration (`PUT
 /applications/{app}/guilds/{guild}/commands` for instant propagation) from

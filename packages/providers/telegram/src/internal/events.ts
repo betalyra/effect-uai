@@ -4,6 +4,7 @@ import {
   type ConversationRef,
   InboundEvent,
   MessageId,
+  ThreadId,
   UserId,
 } from "@effect-uai/core/Messenger"
 
@@ -108,7 +109,7 @@ const conversation = (at: Placement): ConversationRef => ({
   channel: ChannelId(String(at.chat.id)),
   // Forum topics are threads; reply chains are not (they carry no thread id).
   ...(at.is_topic_message === true &&
-    at.message_thread_id !== undefined && { thread: String(at.message_thread_id) }),
+    at.message_thread_id !== undefined && { thread: ThreadId(String(at.message_thread_id)) }),
 })
 
 const slice = (text: string, entity: Entity): string =>

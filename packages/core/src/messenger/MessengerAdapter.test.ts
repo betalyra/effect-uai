@@ -8,10 +8,10 @@ import {
   type ConversationRef,
   MessageId,
   type Outbound,
-  type StreamViaEditsOptions,
+  type StreamOptions,
   inConversation,
-  splitForLimit,
 } from "./Messenger.js"
+import { type StreamViaEditsOptions, splitForLimit } from "./MessengerAdapter.js"
 import { MessengerRateLimited } from "./MessengerError.js"
 
 const here: ConversationRef = { channel: ChannelId("c1") }
@@ -29,10 +29,14 @@ const edits = (calls: ReadonlyArray<MockMessenger.Call>) =>
   )
 
 /** Run `deltas` through the mock's `stream` and hand back the call log. */
-const streamed = (deltas: ReadonlyArray<string>, script: MockMessenger.MockMessengerScript = {}) =>
+const streamed = (
+  deltas: ReadonlyArray<string>,
+  script: MockMessenger.MockMessengerScript = {},
+  streamOptions?: StreamOptions,
+) =>
   Effect.gen(function* () {
     const { service, recorder } = MockMessenger.make(script)
-    const id = yield* service.stream(Stream.fromIterable(deltas))
+    const id = yield* service.stream(Stream.fromIterable(deltas), streamOptions)
     const { calls } = yield* recorder
     return { id, calls }
   }).pipe(inConversation(here))
@@ -108,6 +112,21 @@ describe("streamViaEdits", () => {
       expect(posts(calls)).toEqual(["aaaa bbbb", "cccc dddd"])
       expect(edits(calls)).toEqual([])
       expect(id).toEqual(Option.some(MessageId("m2")))
+    }),
+  )
+
+  it.effect("quotes the question on the first message only, never on a rollover", () =>
+    Effect.gen(function* () {
+      const { calls } = yield* streamed(
+        ["aaaa bbbb cccc dddd"],
+        { limits: { maxText: 10, maxCaption: 10 } },
+        { replyTo: MessageId("q1") },
+      )
+
+      const replies = Arr.filterMap(calls, (c) =>
+        c._tag === "Post" ? Result.succeed(c.message.replyTo) : Result.failVoid,
+      )
+      expect(replies).toEqual([MessageId("q1"), undefined])
     }),
   )
 

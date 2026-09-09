@@ -62,10 +62,13 @@ the stream only ends when the connection is gone for good.
 
 - **`post`** a message, and get back its id.
 - **`edit`** a message you posted.
-- **`react`** to a message with an emoji.
+- **`react`** to a message with an emoji, spelled the way the platform
+  spells it: unicode on Telegram and Discord, a shortcode on Slack. That is
+  also how a `Reaction` event arrives.
 - **`typing`** shows the indicator for as long as the scope is open.
-- **`stream`** a `Stream<string>` and the reply appears as it is written. You
-  get the last message's id back, or none if the stream had no text.
+- **`stream`** a `Stream<string>` and the reply appears as it is written,
+  with `replyTo` on its first message if you pass one. You get the last
+  message's id back, or none if the stream had no text.
 
 A message is text, media or the platform's own payload:
 

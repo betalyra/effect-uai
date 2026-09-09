@@ -177,85 +177,86 @@ export type Incoming = {
  * conversation's own last message id, which no shared toolkit could hold.
  */
 export const conversation = (inbox: Queue.Queue<Incoming>, options: Options) =>
-  Stream.unwrap(
-    Effect.gen(function* () {
-      const lastMessage = yield* Ref.make(Option.none<MessageId>())
-      const tools = Toolkit.fromArray([...Object.values(options.toolkit), reactTool(lastMessage)])
+  Effect.gen(function* () {
+    const messenger = yield* Messenger
+    const lm = yield* LanguageModel
+    const lastMessage = yield* Ref.make(Option.none<MessageId>())
+    const tools = Toolkit.fromArray([...Object.values(options.toolkit), reactTool(lastMessage)])
+    const statusLine = options.status ?? ((name: string) => `${name}…`)
 
-      return pipe(
-        { history: [Items.systemText(options.system)] } satisfies State,
-        loop((state: State) =>
-          Stream.unwrap(
-            Effect.gen(function* () {
-              const messenger = yield* Messenger
-              const lm = yield* LanguageModel
-
-              // Decoration: a rejected status line must not take the answer
-              // down with it.
-              const status = (name: string) =>
-                messenger
-                  .post(text((options.status ?? ((n) => `${n}…`))(name)))
-                  .pipe(
-                    Effect.catch((e) =>
-                      Effect.logWarning(`status line dropped: ${MessengerError.describe(e)}`),
-                    ),
-                  )
-
-              const incoming = needsUserInput(state)
-                ? yield* drainBurst(inbox, options.settle ?? "800 millis")
-                : []
-              // The last of a burst is what "your message" means to the model;
-              // a tool-continuation turn drains nothing and keeps the previous.
-              yield* Option.match(Arr.last(incoming), {
-                onNone: () => Effect.void,
-                onSome: (m) => Ref.set(lastMessage, Option.some(m.id)),
-              })
-              const history = [...state.history, ...incoming.map((m) => Items.userText(m.text))]
-              yield* Effect.logDebug("turn starting", {
-                drained: incoming.length,
-                history: history.length,
-              })
-
-              yield* messenger.typing
-              const deltas = yield* Queue.unbounded<string, Cause.Done>()
-              const delivery = yield* Effect.forkScoped(messenger.stream(Stream.fromQueue(deltas)))
-
-              return lm.streamTurn({ history, model: options.model, tools }).pipe(
-                Stream.tap((event) =>
-                  Match.value(event).pipe(
-                    Match.tag("TextDelta", ({ text }) => Queue.offer(deltas, text)),
-                    Match.tag("ToolCallStart", ({ name }) =>
-                      Effect.andThen(Effect.logDebug("tool call", { name }), status(name)),
-                    ),
-                    Match.orElse(() => Effect.void),
-                  ),
-                ),
-                onTurnComplete((turn) =>
-                  Effect.gen(function* () {
-                    // The final edit lands before the loop moves on; a turn that
-                    // said nothing posts nothing.
-                    yield* Queue.end(deltas)
-                    yield* Fiber.join(delivery)
-
-                    const calls = Turn.getToolCalls(turn)
-                    yield* Effect.logDebug("turn complete", {
-                      stop: turn.stop_reason,
-                      calls: calls.map((c) => c.name),
-                    })
-                    return calls.length === 0
-                      ? next(Turn.appendToHistory({ history }, turn))
-                      : Toolkit.run(tools, calls).pipe(
-                          Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
-                        )
-                  }),
-                ),
-              )
-            }),
+    // Decoration: a rejected status line must not take the answer down with it.
+    const status = (name: string) =>
+      messenger
+        .post(text(statusLine(name)))
+        .pipe(
+          Effect.catch((e) =>
+            Effect.logWarning(`status line dropped: ${MessengerError.describe(e)}`),
           ),
+        )
+
+    const turns = pipe(
+      { history: [Items.systemText(options.system)] } satisfies State,
+      loop((state: State) =>
+        Stream.unwrap(
+          Effect.gen(function* () {
+            const incoming = needsUserInput(state)
+              ? yield* drainBurst(inbox, options.settle ?? "800 millis")
+              : []
+            // The last of a burst is what "your message" means to the model; a
+            // tool-continuation turn drains nothing and keeps the previous.
+            yield* Ref.update(lastMessage, (previous) =>
+              Option.orElse(
+                Option.map(Arr.last(incoming), (m) => m.id),
+                () => previous,
+              ),
+            )
+            const history = [...state.history, ...incoming.map((m) => Items.userText(m.text))]
+            yield* Effect.logDebug("turn starting", {
+              drained: incoming.length,
+              history: history.length,
+            })
+
+            yield* messenger.typing
+            const deltas = yield* Queue.unbounded<string, Cause.Done>()
+            const delivery = yield* Effect.forkScoped(messenger.stream(Stream.fromQueue(deltas)))
+
+            return lm.streamTurn({ history, model: options.model, tools }).pipe(
+              Stream.tap((event) =>
+                Match.value(event).pipe(
+                  Match.tag("TextDelta", ({ text }) => Queue.offer(deltas, text)),
+                  Match.tag("ToolCallStart", ({ name }) =>
+                    Effect.andThen(Effect.logDebug("tool call", { name }), status(name)),
+                  ),
+                  Match.orElse(() => Effect.void),
+                ),
+              ),
+              onTurnComplete((turn) =>
+                Effect.gen(function* () {
+                  // The final edit lands before the loop moves on; a turn that
+                  // said nothing posts nothing.
+                  yield* Queue.end(deltas)
+                  yield* Fiber.join(delivery)
+
+                  const calls = Turn.getToolCalls(turn)
+                  yield* Effect.logDebug("turn complete", {
+                    stop: turn.stop_reason,
+                    calls: calls.map((c) => c.name),
+                  })
+                  return calls.length === 0
+                    ? next(Turn.appendToHistory({ history }, turn))
+                    : Toolkit.run(tools, calls).pipe(
+                        Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
+                      )
+                }),
+              ),
+            )
+          }),
         ),
-      )
-    }),
-  ).pipe(Stream.runDrain)
+      ),
+    )
+
+    yield* Stream.runDrain(turns)
+  })
 
 // ---------------------------------------------------------------------------
 // Router
@@ -271,31 +272,35 @@ export const router = (options: Options) =>
     const messenger = yield* Messenger
     const inboxes = yield* Ref.make(HashMap.empty<string, Queue.Queue<Incoming>>())
 
-    const inboxFor = (ref: ConversationRef) =>
+    /** The inbox of a conversation already under way, if there is one. */
+    const openInbox = (ref: ConversationRef) =>
+      Effect.map(Ref.get(inboxes), HashMap.get(conversationKey(ref)))
+
+    // Forked, so a conversation that dies must say so: nothing downstream is
+    // joining it and the user would just see silence. The error itself, not
+    // its cause: a tagged error prints as its name alone, and the fields are
+    // the whole story (which verb, why).
+    const open = (ref: ConversationRef) =>
       Effect.gen(function* () {
         const key = conversationKey(ref)
-        const known = HashMap.get(yield* Ref.get(inboxes), key)
-        if (Option.isSome(known)) return known.value
         const inbox = yield* Queue.unbounded<Incoming>()
         yield* Ref.update(inboxes, HashMap.set(key, inbox))
-        // Forked, so a conversation that dies must say so: nothing downstream
-        // is joining it and the user would just see silence.
         yield* conversation(inbox, options).pipe(
           inConversation(ref),
-          // The error itself, not just its cause: a tagged error prints as its
-          // name alone, and the fields are the whole story (which verb, why).
           Effect.tapError((e) => Effect.logError(`conversation ${key} stopped`, { error: e })),
-          Effect.tapCause((cause) =>
-            Effect.logError(`conversation ${key} failed: ${Cause.pretty(cause)}`),
+          Effect.tapDefect((defect) =>
+            Effect.logError(`conversation ${key} crashed: ${Cause.pretty(Cause.die(defect))}`),
           ),
           Effect.forkScoped,
         )
         return inbox
       })
 
-    /** The inbox of a conversation already under way, if there is one. */
-    const openInbox = (ref: ConversationRef) =>
-      Effect.map(Ref.get(inboxes), HashMap.get(conversationKey(ref)))
+    const inboxFor = (ref: ConversationRef) =>
+      Effect.flatMap(
+        openInbox(ref),
+        Option.match({ onNone: () => open(ref), onSome: Effect.succeed }),
+      )
 
     // Every inbound event, addressed or not: the first thing to look at when a
     // platform delivers nothing, or delivers something the router drops.

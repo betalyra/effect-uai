@@ -70,12 +70,21 @@ package that does not exist yet.
 
 4. **Write a changeset for it** so its first CHANGELOG entry is not empty.
 
-5. **Bootstrap publish to claim the name on npm:**
+5. **Bootstrap publish to claim the name on npm.** This goes out at the
+   version currently in `package.json`, which is the one already released
+   (0.14.0 when the messenger packages debuted), not the version the coming
+   release will produce. Do it from `dev` before the release PR, with the
+   package built against the current core:
 
    ```sh
    pnpm --filter @effect-uai/<name> build
    pnpm --filter @effect-uai/<name> publish --access public --no-git-checks --otp <code>
    ```
+
+   The result is a package on npm whose version number matches a core it
+   cannot run against. That is fine; its only job is to make the name exist
+   so step 6 has something to configure. See below for why it is broken and
+   what to do about it afterwards.
 
 6. **Configure trusted publishing for the new package on npmjs.com.**
 

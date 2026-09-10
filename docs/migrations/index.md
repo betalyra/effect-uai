@@ -15,6 +15,13 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.15](/migrations/v0-15/): purely additive. A `Messenger`
+  capability in `@effect-uai/core` (one event stream in, `post` / `edit` /
+  `react` / `typing` / `stream` out, the target chat ambient via
+  `inConversation`) with three providers (`@effect-uai/telegram`,
+  `@effect-uai/discord`, `@effect-uai/slack`), plus `Inbox.drainBurst` for
+  batching a loop's input. 0.14 (the `ImageGenerator` capability) was
+  additive too. No `effect` bump; bump dependencies and run typecheck.
 - [Migrating to 0.13](/migrations/v0-13/): purely additive. Retrieval arrives as
   three core tags (`Reranker`, `Chunker`, `Tokenizer`) plus `@effect-uai/retrieval`
   (four chunkers with source offsets, `Rank.rrf` fusion, and a Hugging Face

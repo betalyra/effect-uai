@@ -1,10 +1,6 @@
 /**
- * Cover the two interesting behaviors:
- *
- *   1. `drainBurst` collects a burst of close-together messages into
- *      one batch and stops on the first quiet gap.
- *   2. `conversation` only checks the queue between cleanly-ended
- *      turns - tool-call turns flow straight into the next iteration.
+ * `conversation` only checks the queue between cleanly-ended turns:
+ * tool-call turns flow straight into the next iteration.
  */
 import { Effect, Fiber, Queue, Schema, Stream } from "effect"
 import { describe, expect, it } from "vitest"
@@ -13,74 +9,7 @@ import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
-import { conversation, drainBurst } from "./recipe.js"
-
-// ---------------------------------------------------------------------------
-// drainBurst
-// ---------------------------------------------------------------------------
-
-describe("drainBurst", () => {
-  it("collects messages that arrive within the settle window", async () => {
-    const program = Effect.gen(function* () {
-      const queue = yield* Queue.unbounded<string>()
-      const collector = yield* Effect.forkChild(drainBurst(queue, "20 millis"))
-
-      yield* Queue.offer(queue, "a")
-      yield* Effect.sleep("5 millis")
-      yield* Queue.offer(queue, "b")
-      yield* Effect.sleep("5 millis")
-      yield* Queue.offer(queue, "c")
-      // Now go quiet - drainBurst should resolve after ~20ms.
-
-      return yield* Fiber.join(collector)
-    })
-
-    const result = await Effect.runPromise(program)
-    expect([...result]).toEqual(["a", "b", "c"])
-  })
-
-  it("blocks for the first message even with a tiny settle window", async () => {
-    const program = Effect.gen(function* () {
-      const queue = yield* Queue.unbounded<string>()
-      const collector = yield* Effect.forkChild(drainBurst(queue, "5 millis"))
-
-      // Sleep for much longer than the settle window before offering
-      // anything. drainBurst should still be parked on the first take.
-      yield* Effect.sleep("50 millis")
-      yield* Queue.offer(queue, "late")
-
-      return yield* Fiber.join(collector)
-    })
-
-    const result = await Effect.runPromise(program)
-    expect([...result]).toEqual(["late"])
-  })
-
-  it("ends on the first quiet gap longer than settle", async () => {
-    const program = Effect.gen(function* () {
-      const queue = yield* Queue.unbounded<string>()
-      const collector = yield* Effect.forkChild(drainBurst(queue, "10 millis"))
-
-      yield* Queue.offer(queue, "first")
-      yield* Effect.sleep("30 millis") // longer than settle - burst ends here
-      yield* Queue.offer(queue, "second")
-
-      const first = yield* Fiber.join(collector)
-
-      // The second message stays on the queue for the next drain.
-      const next = yield* Queue.take(queue)
-      return { first: [...first], next }
-    })
-
-    const result = await Effect.runPromise(program)
-    expect(result.first).toEqual(["first"])
-    expect(result.next).toBe("second")
-  })
-})
-
-// ---------------------------------------------------------------------------
-// conversation
-// ---------------------------------------------------------------------------
+import { conversation } from "./recipe.js"
 
 const GetTimeInput = Schema.Struct({ timezone: Schema.String })
 const getTime = Tool.make({

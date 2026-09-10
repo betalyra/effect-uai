@@ -419,10 +419,30 @@ export default defineConfig({
           ],
         },
         {
+          label: "Messenger",
+          items: [
+            { label: "Overview", slug: "messenger" },
+            {
+              label: "Providers",
+              items: [
+                { label: "Telegram", slug: "messenger/providers/telegram" },
+                { label: "Discord", slug: "messenger/providers/discord" },
+                { label: "Slack", slug: "messenger/providers/slack" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Messenger agent", slug: "recipes/messenger-agent" }],
+            },
+          ],
+        },
+        {
           label: "Migrations",
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.15", slug: "migrations/v0-15" },
             { label: "Migrating to 0.13", slug: "migrations/v0-13" },
             { label: "Migrating to 0.12", slug: "migrations/v0-12" },
             { label: "Migrating to 0.11", slug: "migrations/v0-11" },

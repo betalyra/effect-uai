@@ -41,6 +41,7 @@ import {
   PiStairs,
   PiTable,
   PiTerminalWindow,
+  PiVideoCamera,
   PiWaveform,
   PiWrench,
 } from "react-icons/pi"
@@ -261,6 +262,14 @@ const recipes: ReadonlyArray<Recipe> = [
       "**Talk over it and it stops.** One duplex session carries your voice both ways; tools run beside the conversation.",
     href: "/recipes/realtime-voice-agent/",
     Icon: PiPhoneCall,
+    category: "realtime",
+  },
+  {
+    title: "Camera assistant",
+    description:
+      "**Point at it instead of describing it.** Camera frames ride the same session as your voice, and a provider without video is a compile error.",
+    href: "/recipes/camera-assistant/",
+    Icon: PiVideoCamera,
     category: "realtime",
   },
   {

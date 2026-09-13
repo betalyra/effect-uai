@@ -269,7 +269,10 @@ export default defineConfig({
             {
               label: "Recipes",
               collapsed: true,
-              items: [{ label: "Realtime voice agent", slug: "recipes/realtime-voice-agent" }],
+              items: [
+                { label: "Realtime voice agent", slug: "recipes/realtime-voice-agent" },
+                { label: "Camera assistant", slug: "recipes/camera-assistant" },
+              ],
             },
           ],
         },

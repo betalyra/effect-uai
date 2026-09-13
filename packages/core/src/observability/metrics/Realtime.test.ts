@@ -127,7 +127,8 @@ describe("timeToFirstAudio", () => {
 
   it.effect("reports nothing for a response that never saw its anchor", () =>
     Effect.gen(function* () {
-      // What Gemini emits: audio arrives with no SpeechStopped before it.
+      // A session that reports no end of speech: audio arrives with no
+      // SpeechStopped before it.
       const out = yield* run([started("r1"), audio("r1"), done("r1")], timeToFirstAudio())
 
       expect(samplesOf(out)).toHaveLength(0)
@@ -174,7 +175,7 @@ describe("timeToFirstAudio", () => {
   it.effect("measures from a caller's mark, on a stream with no anchor event", () =>
     Effect.gen(function* () {
       const ref: MarkRef = yield* markRef
-      // Gemini's shape: no SpeechStopped anywhere, the caller stamps instead.
+      // No SpeechStopped anywhere, so the caller stamps the instant instead.
       const out = yield* run(
         [started("r1"), audio("r1"), done("r1")],
         timeToFirstAudio({ from: ref }),

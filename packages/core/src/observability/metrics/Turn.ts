@@ -22,7 +22,11 @@ import {
 import type { Usage } from "../../domain/Items.js"
 import { type Turn, TurnEvent } from "../../domain/Turn.js"
 import { Anchor, segmentDuration, timeToFirst } from "./Meter.js"
-import { type Measurement, type MetricEvent, MetricEventTypeId, makeEvent } from "./MetricEvent.js"
+import { type MetricEvent, MetricEventTypeId, makeEvent } from "./MetricEvent.js"
+import { type TokenTotals, usageTotals } from "./Usage.js"
+
+/** Re-exported so the turn meters keep one import. */
+export type { TokenTotals }
 
 /** Request/turn start to the first content delta. */
 export type TimeToFirstToken = MetricEvent & {
@@ -37,13 +41,6 @@ export type Throughput = MetricEvent & {
   readonly ratePerSecond: number
   readonly unit: "char" | "token" | "event"
   readonly window: Duration.Duration
-}
-
-/** Provider-reported usage at `TurnComplete`, this turn and cumulative. */
-export type TokenTotals = MetricEvent & {
-  readonly _tag: "TokenTotals"
-  readonly usage: Usage
-  readonly cumulative: Usage
 }
 
 /** Per-turn wall times at `TurnComplete`. */
@@ -115,54 +112,6 @@ const isTurnCompleteEvent = (ev: unknown): boolean => tagOf(ev) === "TurnComplet
 const turnOf = (ev: unknown): Turn =>
   (ev as Extract<TurnEvent, { readonly _tag: "TurnComplete" }>).turn
 
-const sumOptional = (a: number | undefined, b: number | undefined): number | undefined =>
-  a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0)
-
-const addUsage = (a: Usage, b: Usage): Usage => {
-  const cached = sumOptional(
-    a.input_tokens_details?.cached_tokens,
-    b.input_tokens_details?.cached_tokens,
-  )
-  const cacheWrite = sumOptional(
-    a.input_tokens_details?.cache_write_tokens,
-    b.input_tokens_details?.cache_write_tokens,
-  )
-  const reasoning = sumOptional(
-    a.output_tokens_details?.reasoning_tokens,
-    b.output_tokens_details?.reasoning_tokens,
-  )
-  return {
-    input_tokens: sumOptional(a.input_tokens, b.input_tokens),
-    output_tokens: sumOptional(a.output_tokens, b.output_tokens),
-    total_tokens: sumOptional(a.total_tokens, b.total_tokens),
-    input_tokens_details:
-      cached === undefined && cacheWrite === undefined
-        ? undefined
-        : {
-            ...(cached !== undefined && { cached_tokens: cached }),
-            ...(cacheWrite !== undefined && { cache_write_tokens: cacheWrite }),
-          },
-    output_tokens_details: reasoning === undefined ? undefined : { reasoning_tokens: reasoning },
-  }
-}
-
-/** Per-turn token counts as incremental counter measurements (present fields only). */
-const usageMeasurements = (usage: Usage): ReadonlyArray<Measurement> => {
-  const pairs: ReadonlyArray<readonly [string, number | undefined]> = [
-    [MetricName.inputTokens, usage.input_tokens],
-    [MetricName.outputTokens, usage.output_tokens],
-    [MetricName.totalTokens, usage.total_tokens],
-    [MetricName.reasoningTokens, usage.output_tokens_details?.reasoning_tokens],
-    [MetricName.cachedInputTokens, usage.input_tokens_details?.cached_tokens],
-    [MetricName.cacheWriteTokens, usage.input_tokens_details?.cache_write_tokens],
-  ]
-  return Arr.filterMap(pairs, ([name, value]) =>
-    value === undefined
-      ? Result.failVoid
-      : Result.succeed<Measurement>({ name, kind: "counter", value }),
-  )
-}
-
 // ---------------------------------------------------------------------------
 // timeToFirstToken
 // ---------------------------------------------------------------------------
@@ -216,35 +165,10 @@ export const timeToCompletion = segmentDuration({
 // tokenTotals
 // ---------------------------------------------------------------------------
 
-const emptyUsage: Usage = {}
-
-type TotalsState = {
-  readonly turnIndex: number
-  readonly cumulative: Usage
-}
-
-export const tokenTotals = <A, E, R>(
-  self: Stream.Stream<A, E, R>,
-): Stream.Stream<A | MetricEvent, E, R> =>
-  self.pipe(
-    Stream.mapAccumEffect(
-      (): TotalsState => ({ turnIndex: 0, cumulative: emptyUsage }),
-      (state, ev) =>
-        Effect.sync(() => {
-          if (!isTurnCompleteEvent(ev)) return [state, [ev]] as const
-          const usage = turnOf(ev).usage
-          const cumulative = addUsage(state.cumulative, usage)
-          const event = makeEvent<Omit<TokenTotals, typeof MetricEventTypeId>>({
-            _tag: "TokenTotals",
-            turnIndex: state.turnIndex,
-            usage,
-            cumulative,
-            measurements: usageMeasurements(usage),
-          })
-          return [{ turnIndex: state.turnIndex + 1, cumulative }, [ev, event]] as const
-        }),
-    ),
-  )
+export const tokenTotals = usageTotals({
+  boundary: isTurnCompleteEvent,
+  usage: (ev) => (isTurnCompleteEvent(ev) ? Option.some(turnOf(ev).usage) : Option.none()),
+})
 
 // ---------------------------------------------------------------------------
 // throughput

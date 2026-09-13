@@ -878,7 +878,12 @@ Presets, one namespace per capability so the API reads like today:
 - `Metrics.Realtime.timeToFirstAudio({ from })`,
   `Metrics.Realtime.responseDuration`, `Metrics.Realtime.usage`,
   `Metrics.Realtime.audioRate({ format })`, `Metrics.Realtime.all`.
-- `Metrics.Transcript.finalLatency({ clock: "wall" | "audio" })`.
+- `Metrics.Transcript.finalLatency`. Shipped without the
+  `clock: "wall" | "audio"` knob: only `speech-started` and
+  `utterance-ended` carry `atSeconds`, and `final` carries none, so the
+  audio-clock variant has no second endpoint to read. It would need
+  either a timestamp on `final` or the last `words[].endSeconds`, which
+  is optional and provider-dependent.
 - `Metrics.Speech.timeToFirstByte`, `Metrics.Speech.realTimeFactor({ format })`.
 - `Metrics.realTimeFactor(effect, durationOf)` for sync calls.
 
@@ -913,8 +918,19 @@ input-side mark.
 | 1c  | `realtime-voice-agent`: `app.ts` stacks the meter on `session.events` and logs a line per sample, and forwards each to the browser as a `metric` status event shown next to the assistant line. Default anchor, so OpenAI reports and Gemini stays silent. `recipe.ts` stays unchanged: the meter is stacked in `app.ts` by whoever composes, which is the point                                                                                                                                                                                                                                                                                                                                                                     | S    | 1b                                                           |
 | 1d  | Live check on both providers, recorded in `plans/research/realtime/latency-notes.md`. **Done 2026-09-13, and it changed 1b and 1c:** see 8.5                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | S    | 1c                                                           |
 
-**Slice 2 (after 1d):** `Metrics.Realtime.usage` and `responseDuration`,
-then the STT and TTS presets and the docs page, in that order.
+**Slice 2, done 2026-09-13:** `Metrics.Realtime.usage`,
+`Metrics.Transcript.finalLatency`, `Metrics.Speech.timeToFirstByte`, and
+the docs for each on the page its capability already has.
+`TranscriptEvent` became a `Data.TaggedEnum` on the way, so its guards
+accept `unknown` and a meter reads it without structural tag sniffing.
+
+`responseDuration` moved to 8.6: it is not the near-free item 8.2
+assumed. The two rate meters, `Metrics.Realtime.audioRate` and
+`Metrics.Speech.realTimeFactor`, moved there too. Both want a metronome
+over a unit function, which is what `throughput` already is; shipping
+them means generalizing it into `Meter.rate` first, the same move 1a
+made for the two timing operators. Writing a second metronome instead
+would rebuild the duplication `Settle` was created to remove.
 
 ### 8.5 What the live check changed (2026-09-13)
 
@@ -960,6 +976,24 @@ writes the `Ref`, and the input side is a `Stream.tap` the caller owns.
 
 Not scheduled. Recorded so it is not re-derived.
 
+- **`Metrics.Realtime.responseDuration`, once it is decided what it
+  means.** 8.2 filed this as near-free, and it is not. `segmentDuration`
+  starts each segment at the previous boundary, so as written it would
+  count the idle time between turns as part of the response. It needs an
+  explicit start, and the obvious candidate is `ResponseStarted`, which
+  8.5 established is minted at the first audio on an adapter whose wire
+  announces no start of generation. Pick the meaning first or it
+  inherits the defect `timeToFirstAudio` just shed.
+- **`Meter.rate`, and the two rate meters that need it.**
+  `Metrics.Realtime.audioRate({ format })` and
+  `Metrics.Speech.realTimeFactor({ format })` both want seconds of audio
+  produced per wall second, which is a metronome over a unit function.
+  `Turn.throughput` is already that metronome, hard-wired to `TurnEvent`
+  deltas. Generalize it into `Meter.rate({ units, boundary, every, unit })`
+  the way 1a generalized the timing operators, then both are presets over
+  it. Audio seconds need a PCM `AudioFormat` (bytes over sample rate,
+  channels and bytes per sample); compressed containers cannot be counted
+  without decoding, so they fall back to bytes per second.
 - **A VAD package.** `onnx-community/silero-vad` is 2.24 MB, MIT, and
   runs under `@huggingface/transformers` (which carries
   `onnxruntime-web`) in both browser and Node; one 30 ms chunk costs

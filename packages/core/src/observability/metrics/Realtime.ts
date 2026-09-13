@@ -9,6 +9,7 @@ import { type Duration, Option, type Stream } from "effect"
 import { RealtimeEvent } from "../../domain/Realtime.js"
 import { Anchor, type MarkRef, timeToFirst } from "./Meter.js"
 import { type MetricEvent, MetricEventTypeId, makeEvent } from "./MetricEvent.js"
+import { usageTotals } from "./Usage.js"
 
 const TIME_TO_FIRST_AUDIO = "effect_uai_response_time_to_first_audio"
 
@@ -19,7 +20,7 @@ const isSpeechStopped = RealtimeEvent.$is("SpeechStopped")
 /**
  * Which instant the clock started at, and so how the number should be read.
  *
- * - `"speech-stop"`: the provider's own end-of-speech event. Excludes its
+ * - `"speech-stop"`: the session's own end-of-speech event. Excludes the
  *   endpointing window, which is configured rather than reported, so the wait
  *   a person felt is roughly this plus that silence duration.
  * - `"mark"`: an instant the caller stamped. Anchored on the acoustic end of
@@ -37,10 +38,11 @@ export type TimeToFirstAudio = MetricEvent & {
 
 export type TimeToFirstAudioOptions = {
   /**
-   * Where the clock starts. Defaults to the provider's `SpeechStopped`, which
-   * only OpenAI emits. Pass a `MarkRef` to supply the instant yourself, from a
-   * push-to-talk release or a voice activity detector over the audio you send;
-   * `Meter.mark` stamps it and each stamp is measured from once.
+   * Where the clock starts. Defaults to `SpeechStopped`, which is sparse: a
+   * session that never emits it never reports. Pass a `MarkRef` to supply the
+   * instant yourself, from a push-to-talk release or a voice activity detector
+   * over the audio you send; `Meter.mark` stamps it and each stamp is measured
+   * from once.
    */
   readonly from?: MarkRef
 }
@@ -49,9 +51,9 @@ export type TimeToFirstAudioOptions = {
  * Elapsed from the anchor to the first `AudioDelta` of each response.
  *
  * A response whose anchor never arrived reports nothing rather than a number
- * measured from the wrong place. On the default anchor that covers Gemini,
- * which emits no `SpeechStopped` at all, as well as typed input and the
- * response that resumes after a tool result.
+ * measured from the wrong place. On the default anchor that covers a session
+ * with no `SpeechStopped` at all, as well as typed input and the response
+ * that resumes after a tool result.
  */
 export const timeToFirstAudio = (options?: TimeToFirstAudioOptions) => {
   const from = options?.from
@@ -80,3 +82,14 @@ export const timeToFirstAudio = (options?: TimeToFirstAudioOptions) => {
       }),
     )
 }
+
+/**
+ * Tokens per response and summed over the session, from the usage a response
+ * reports as it ends. A response that reports none emits nothing rather than a
+ * row of zeroes, and still spends its index.
+ */
+export const usage = usageTotals({
+  boundary: isResponseDone,
+  usage: (ev) =>
+    isResponseDone(ev) && ev.usage !== undefined ? Option.some(ev.usage) : Option.none(),
+})

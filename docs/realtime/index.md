@@ -208,6 +208,24 @@ acoustic end of speech this is the industry's time to first audio byte;
 anchored on a button release it is intent instead. No detector ships with
 the library: the seam is the point, and what you put in it is yours.
 
+## What A Response Cost
+
+`Metrics.Realtime.usage` reports the tokens a response used and the running
+total for the session, from the usage the session reports as a response ends:
+
+```ts
+session.events.pipe(Metrics.Realtime.usage)
+```
+
+Each sample carries `usage` for that response and `cumulative` for every
+response so far, so the latest one is always the session total. A response
+that reports no usage emits nothing rather than a row of zeroes.
+
+The counters are the same `effect_uai_*_tokens` names the language-model
+meters use, so spend adds up across capabilities on one dashboard. Stack it
+with the latency meter and pipe both into
+[`Telemetry.record`](/language-models/metrics/).
+
 ## Testing
 
 `MockRealtimeSession` scripts a session: the events it emits on open, a

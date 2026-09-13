@@ -6,14 +6,19 @@
  * The contract is flat here because every meter and the exporter share it. The
  * meters themselves are namespaced by the event stream they read, since that
  * is what makes a meter specific: `Metrics.Turn.*` reads `TurnEvent`,
- * `Metrics.Realtime.*` reads `RealtimeEvent`, and `Metrics.Meter.*` is the
- * capability-free plumbing both are built from, for writing your own.
+ * `Metrics.Realtime.*` reads `RealtimeEvent`, `Metrics.Transcript.*` reads
+ * `TranscriptEvent` and `Metrics.Speech.*` reads synthesized audio.
+ * `Metrics.Meter.*` is the capability-free plumbing they are built from, for
+ * writing your own, and `Metrics.Usage.*` is the token accounting they share.
  */
 export * from "./metrics/MetricEvent.js"
 
 export * as Meter from "./metrics/Meter.js"
 export * as Realtime from "./metrics/Realtime.js"
+export * as Speech from "./metrics/Speech.js"
+export * as Transcript from "./metrics/Transcript.js"
 export * as Turn from "./metrics/Turn.js"
+export * as Usage from "./metrics/Usage.js"
 
 export {
   /** @deprecated Use `Metrics.Turn.allMetrics`. */

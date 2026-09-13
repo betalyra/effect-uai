@@ -46,6 +46,10 @@
       "types": "./dist/GeminiImageGenerator.d.mts",
       "import": "./dist/GeminiImageGenerator.mjs"
     },
+    "./GeminiLiveSession": {
+      "types": "./dist/GeminiLiveSession.d.mts",
+      "import": "./dist/GeminiLiveSession.mjs"
+    },
     "./GeminiSynthesizer": {
       "types": "./dist/GeminiSynthesizer.d.mts",
       "import": "./dist/GeminiSynthesizer.mjs"

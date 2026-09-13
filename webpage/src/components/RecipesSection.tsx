@@ -7,6 +7,8 @@ import {
   PiArticle,
   PiAt,
   PiAtom,
+  PiPhoneCall,
+  PiPhoneTransfer,
   PiBrowser,
   PiChartLineUp,
   PiChatCircleDots,
@@ -58,6 +60,7 @@ type Category =
   | "webreading"
   | "retrieval"
   | "speech"
+  | "realtime"
   | "music"
   | "images"
   | "sandboxes"
@@ -82,6 +85,7 @@ const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "webreading",
   "retrieval",
   "speech",
+  "realtime",
   "music",
   "images",
   "sandboxes",
@@ -98,6 +102,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   webreading: "Web reading",
   retrieval: "Retrieval",
   speech: "Speech",
+  realtime: "Realtime",
   music: "Music",
   images: "Images",
   sandboxes: "Sandboxes",
@@ -114,6 +119,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   webreading: PiArticle,
   retrieval: PiFunnel,
   speech: PiWaveform,
+  realtime: PiPhoneTransfer,
   music: PiMusicNotes,
   images: PiImage,
   sandboxes: PiCube,
@@ -248,6 +254,14 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/voice-loop/",
     Icon: PiMicrophone,
     category: "speech",
+  },
+  {
+    title: "Realtime voice agent",
+    description:
+      "**Talk over it and it stops.** One duplex session carries your voice both ways; tools run beside the conversation.",
+    href: "/recipes/realtime-voice-agent/",
+    Icon: PiPhoneCall,
+    category: "realtime",
   },
   {
     title: "Radio station",

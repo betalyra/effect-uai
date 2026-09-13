@@ -34,7 +34,7 @@ import * as Transcriber from "@effect-uai/core/Transcriber"
 import type { TranscriptEvent } from "@effect-uai/core/Transcript"
 import * as Turn from "@effect-uai/core/Turn"
 import type * as Duration from "effect/Duration"
-import { settleBurst } from "./streamOps.js"
+import { settleBurst } from "@effect-uai/core/Settle"
 
 // ---------------------------------------------------------------------------
 // Wire shapes & config

@@ -11,12 +11,7 @@ export default function IntroVideoSection() {
         className="flex items-baseline justify-between gap-4"
       >
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-baseline gap-3">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Watch the intro</h2>
-            <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
-              47 min
-            </span>
-          </div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Watch the intro</h2>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
             Why the agent loop should be explicit, and how the primitives fit together, shown in
             code.

@@ -1,4 +1,5 @@
-import type { Duration } from "effect"
+import { type Duration, Effect, Match, Option, Ref, Stream } from "effect"
+import * as Settle from "../streaming/Settle.js"
 
 /**
  * Per-word timing + metadata. `confidence` and `speakerId` are optional
@@ -87,3 +88,54 @@ export const isMetadata = (
 ): e is Extract<TranscriptEvent, { _tag: "metadata" }> => e._tag === "metadata"
 export const isError = (e: TranscriptEvent): e is Extract<TranscriptEvent, { _tag: "error" }> =>
   e._tag === "error"
+
+export type AccumulatePartialsOptions = {
+  /** Silence after the last `partial` before the text so far is committed. */
+  readonly silence?: Duration.Input
+}
+
+const DEFAULT_SILENCE = "700 millis"
+
+const finalOf = (text: string): Option.Option<TranscriptEvent> =>
+  text.trim().length === 0 ? Option.none() : Option.some({ _tag: "final", text: text.trim() })
+
+/**
+ * Join fragment `partial`s into the running hypothesis and commit it as a
+ * `final` after `silence`. For providers that stream token-sized deltas
+ * (OpenAI Realtime) or never segment; piping one that already accumulates
+ * repeats its text.
+ *
+ * Partials are forwarded as they arrive; only the synthetic `final` waits.
+ * A real `final` resets the accumulator, and the stream end flushes it.
+ */
+export const accumulatePartials =
+  (options?: AccumulatePartialsOptions) =>
+  <E, R>(self: Stream.Stream<TranscriptEvent, E, R>): Stream.Stream<TranscriptEvent, E, R> =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const acc = yield* Ref.make("")
+        const flush = Effect.map(Ref.getAndSet(acc, ""), finalOf)
+
+        const rewrite = (event: TranscriptEvent): Effect.Effect<TranscriptEvent> =>
+          Match.value(event).pipe(
+            Match.when({ _tag: "partial" }, (e) =>
+              Effect.map(
+                Ref.updateAndGet(acc, (text) => text + e.text),
+                (text): TranscriptEvent => ({ ...e, text: text.trim() }),
+              ),
+            ),
+            Match.when({ _tag: "final" }, (e) => Effect.as(Ref.set(acc, ""), e as TranscriptEvent)),
+            Match.orElse((e) => Effect.succeed(e as TranscriptEvent)),
+          )
+
+        return self.pipe(
+          Stream.mapEffect(rewrite),
+          Settle.onQuiet(options?.silence ?? DEFAULT_SILENCE, flush),
+          Stream.concat(
+            Stream.unwrap(
+              Effect.map(flush, Option.match({ onNone: () => Stream.empty, onSome: Stream.make })),
+            ),
+          ),
+        )
+      }),
+    )

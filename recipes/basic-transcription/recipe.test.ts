@@ -60,7 +60,7 @@ describe("basic-transcription provider dispatch", () => {
     })
     const rec = await Effect.runPromise(program.pipe(Effect.provide(mock.layer)))
     expect(rec.transcribeCalls.map((c) => c.model)).toEqual([
-      "gpt-4o-transcribe",
+      "gpt-transcribe",
       "scribe_v2",
       "whisper-1",
     ])

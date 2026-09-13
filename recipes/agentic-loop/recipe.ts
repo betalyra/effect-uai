@@ -1,7 +1,7 @@
 /**
  * A long-lived agentic loop driven by a user-message queue. Between
  * turns, the loop checks the queue for new input; messages that arrive
- * close together are coalesced into one batch by `Inbox.drainBurst`
+ * close together are coalesced into one batch by `Settle.drainBurst`
  * (a "settle" debounce whose window resets every time a message lands).
  *
  * Lifecycle of one iteration:
@@ -22,7 +22,7 @@
  * This file exports the building blocks; `app.ts` wires the provider.
  */
 import { type Duration, Effect, type Queue, pipe } from "effect"
-import { drainBurst } from "@effect-uai/core/Inbox"
+import { drainBurst } from "@effect-uai/core/Settle"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, next, onTurnComplete } from "@effect-uai/core/Loop"

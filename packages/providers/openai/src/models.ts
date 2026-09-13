@@ -1,21 +1,46 @@
 /**
- * OpenAI speech-to-text models. `gpt-4o-transcribe` and
- * `gpt-4o-mini-transcribe` are the current GPT-family transcription
- * models; `whisper-1` is the legacy Whisper model.
+ * OpenAI speech-to-text models.
  *
- * Only `whisper-1` supports `verbose_json` (and therefore word/segment
- * timestamps via `timestamp_granularities`).
+ * - `gpt-transcribe`: current sync model (`/audio/transcriptions`), also
+ *   accepted by Realtime transcription sessions.
+ * - `gpt-live-transcribe`: current streaming model (Realtime transcription
+ *   sessions), recommended for `streamTranscriptionFrom`.
+ * - `gpt-realtime-whisper`: streaming Whisper, Realtime sessions only.
+ * - `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `whisper-1`: deprecated
+ *   2026-08-26, shutdown 2027-02-26. Only `whisper-1` supports
+ *   `verbose_json` (word timestamps via `timestamp_granularities`).
  *
  * The `(string & {})` tail keeps autocomplete on the literals while
  * accepting any string, so newly-released models work without an SDK
  * update.
  *
- * Reference: https://platform.openai.com/docs/guides/speech-to-text
+ * Reference: https://developers.openai.com/api/docs/guides/speech-to-text
  */
 export type OpenAITranscribeModel =
+  | "gpt-transcribe"
+  | "gpt-live-transcribe"
+  | "gpt-realtime-whisper"
   | "gpt-4o-transcribe"
   | "gpt-4o-mini-transcribe"
   | "whisper-1"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
+ * OpenAI speech-to-speech models for the Realtime API. `gpt-realtime` and
+ * `gpt-realtime-mini` are deprecated (shutdown 2027-01-20); `gpt-realtime-2`
+ * and `gpt-realtime-1.5` are still served but superseded.
+ *
+ * `gpt-live-1` is a different product on `/v1/live/sessions` and is not
+ * reachable through this adapter.
+ *
+ * Reference: https://developers.openai.com/api/docs/models/gpt-realtime-2.1
+ */
+export type OpenAIRealtimeModel =
+  | "gpt-realtime-2.1"
+  | "gpt-realtime-2.1-mini"
+  | "gpt-realtime-2"
+  | "gpt-realtime-1.5"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
 

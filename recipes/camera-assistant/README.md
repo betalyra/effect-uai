@@ -2,7 +2,7 @@
 title: Camera assistant
 description: Point a camera at something and ask about it. Frames are one more input on the same duplex session as your voice.
 source: recipes/camera-assistant
-icon: PiVideoCamera
+icon: PiScan
 ---
 
 Ask it something, then switch the camera on and point at what you meant.
@@ -28,11 +28,9 @@ yield * RealtimeSession.sendVideoFrame(session, frame)
 ```
 
 So [`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/camera-assistant/recipe.ts)
-only composes against a provider that has video. Handing it an
-audio-only Layer does not fail at runtime when the first frame goes up;
-it fails to compile. That is the whole reason the marker exists, and
-[`recipe.test.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/camera-assistant/recipe.test.ts)
-pins it as a type-level assertion.
+only composes against a provider that has video. Hand it an audio-only
+Layer and it fails to compile, rather than failing at runtime when the
+first frame goes up.
 
 ## Run it
 
@@ -91,8 +89,8 @@ tells the client so the worklets resample. Frames are JPEG, longest side
 the context window and is billed on each following turn, so sending one
 per second continuously is the expensive way to do this. The client
 sends frames only while it hears you, and for a moment after. That gate
-is loudness only: it decides what the model is shown, never when it
-answers, which stays the provider's own turn detection.
+is loudness alone: it decides what the model is shown, never when it
+answers.
 
 **Resolution and compression are set by the composition.**
 [`app.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/camera-assistant/app.ts)
@@ -105,7 +103,9 @@ knobs that make video affordable are still set.
 it hears you and says so with `Interrupted`, which stops playback. There
 is no truncate op on that wire, so unlike the
 [Realtime voice agent](/recipes/realtime-voice-agent/) the recipe cannot
-tell the model how much you actually heard.
+tell the model how much you actually heard. Interrupting also drops any
+tool call still running, which the transcript reports, so talking over a
+slow search means asking for it again.
 
 ## What This Generalizes To
 

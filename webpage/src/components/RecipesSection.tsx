@@ -41,7 +41,7 @@ import {
   PiStairs,
   PiTable,
   PiTerminalWindow,
-  PiVideoCamera,
+  PiScan,
   PiWaveform,
   PiWrench,
 } from "react-icons/pi"
@@ -269,7 +269,7 @@ const recipes: ReadonlyArray<Recipe> = [
     description:
       "**Point at it instead of describing it.** Camera frames ride the same session as your voice, and a provider without video is a compile error.",
     href: "/recipes/camera-assistant/",
-    Icon: PiVideoCamera,
+    Icon: PiScan,
     category: "realtime",
   },
   {

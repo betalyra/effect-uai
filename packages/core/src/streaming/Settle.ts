@@ -14,6 +14,7 @@ import {
   Array as Arr,
   Cause,
   Clock,
+  Deferred,
   Duration,
   Effect,
   Function,
@@ -142,29 +143,45 @@ export const onQuiet: {
       Effect.gen(function* () {
         const settleMs = Duration.toMillis(settle)
         const lastAt = yield* Ref.make(0)
-        const armed = yield* Ref.make(false)
+        // Opened by the first arrival after each emission. An idle stream never
+        // wakes the metronome at all.
+        const gate = yield* Ref.make(yield* Deferred.make<void>())
 
         const source = self.pipe(
           Stream.tap(() =>
-            Effect.flatMap(Clock.currentTimeMillis, (now) =>
-              Effect.andThen(Ref.set(lastAt, now), Ref.set(armed, true)),
-            ),
+            Effect.gen(function* () {
+              // Stamp before opening: the metronome re-reads the stamp after it
+              // swaps the gate, so an arrival that races the swap still counts.
+              const now = yield* Clock.currentTimeMillis
+              yield* Ref.set(lastAt, now)
+              const open = yield* Ref.get(gate)
+              yield* Deferred.succeed(open, undefined)
+            }),
           ),
         )
 
-        // Sleeps out the remaining quiet time rather than polling, so the tick
-        // costs nothing whether the source is busy or idle.
+        const quietFor = Effect.map(
+          Effect.all([Clock.currentTimeMillis, Ref.get(lastAt)]),
+          ([now, last]) => now - last,
+        )
+
+        // Waits for the gate, then sleeps out whatever is left of the window.
+        // Never polls, whether the source is busy or idle.
         const tick = Effect.gen(function* () {
-          if (!(yield* Ref.get(armed))) {
-            yield* Effect.sleep(settle)
-            return Option.none<B>()
-          }
-          const elapsed = (yield* Clock.currentTimeMillis) - (yield* Ref.get(lastAt))
+          yield* Effect.flatMap(Ref.get(gate), Deferred.await)
+          const elapsed = yield* quietFor
           if (elapsed < settleMs) {
             yield* Effect.sleep(Duration.millis(settleMs - elapsed))
             return Option.none<B>()
           }
-          yield* Ref.set(armed, false)
+          const next = yield* Deferred.make<void>()
+          yield* Ref.set(gate, next)
+          // An arrival between the check and the swap opened the old gate, so
+          // carry it over rather than sleeping through the burst it started.
+          if ((yield* quietFor) < settleMs) {
+            yield* Deferred.succeed(next, undefined)
+            return Option.none<B>()
+          }
           return yield* emit
         })
 

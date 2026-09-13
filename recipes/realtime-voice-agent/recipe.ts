@@ -5,9 +5,9 @@
  * the model is doing. Everything else is here in the open, because a realtime
  * conversation has no single right policy. Tools run in their own fibers so
  * the conversation stays live while they work, and those fibers are
- * interrupted when the model abandons the calls. Barge-in tells the model how
- * much of its answer the listener actually heard, so the part they missed
- * leaves the context.
+ * interrupted when the model abandons the calls. When the model reports an
+ * interruption, the browser stops the voice and says how much of the answer
+ * was actually heard, so the part they missed leaves the context.
  *
  * There is no agent wrapper doing this for you. Adding a provider is a Layer
  * swap in `app.ts`; this file does not change.
@@ -28,7 +28,6 @@ export type StatusEvent =
   | { readonly type: "assistant-done"; readonly reason: string }
   | { readonly type: "speech-started" }
   /** Stop the voice now and report how far it got. */
-  | { readonly type: "cut-playback" }
   | { readonly type: "interrupted" }
   | { readonly type: "tool-call"; readonly name: string; readonly arguments: string }
   | { readonly type: "tool-done"; readonly name: string }
@@ -43,14 +42,6 @@ export type AgentConfig = {
   readonly inputFormat: AudioFormat
   readonly outputFormat: AudioFormat
 }
-
-/**
- * What counts as the user actually talking, and so as a reason to stop the
- * assistant mid-sentence. Recognised words are a far better signal than the
- * voice-activity detector, which fires on a cough or a door. Filtering fillers
- * like "um" would go here.
- */
-const isSpeech = (text: string): boolean => text.trim().length > 0
 
 export type AgentIO = {
   readonly mic: Stream.Stream<Uint8Array>
@@ -83,8 +74,9 @@ export const runAgent = <T extends Toolkit.Toolkit>(cfg: AgentConfig, toolkit: T
 
     // The answer the browser is playing, which a reported position belongs to.
     const speaking = yield* Ref.make("")
-    // One cut per utterance, on its first recognised words.
-    const cut = yield* Ref.make(false)
+    // Tool fibers by `call_id`. An entry lives until its result is sent or the
+    // call is cancelled, never to the end of the response: the response that
+    // carries a call routinely finishes while the tool is still working.
     const pending = yield* Ref.make<ReadonlyArray<readonly [string, Fiber.Fiber<void, never>]>>([])
 
     yield* Effect.forkScoped(
@@ -113,20 +105,16 @@ export const runAgent = <T extends Toolkit.Toolkit>(cfg: AgentConfig, toolkit: T
         Match.tag("OutputTranscriptDelta", (e) =>
           io.sendStatus({ type: "assistant-delta", text: e.text }),
         ),
+        // Display only. Transcripts are unordered against the response events,
+        // so they cannot say when an answer stopped being wanted.
         Match.tag("InputTranscript", (e) =>
-          Effect.gen(function* () {
-            yield* io.sendStatus({ type: "user-transcript", text: e.text, final: e.final })
-            // Words, not noise, are what stop the assistant. The utterance's
-            // first ones do it; the rest of it has nothing left to cut.
-            const already = yield* Ref.getAndSet(cut, !e.final)
-            if (!already && isSpeech(e.text)) yield* io.sendStatus({ type: "cut-playback" })
-          }),
+          io.sendStatus({ type: "user-transcript", text: e.text, final: e.final }),
         ),
         // Purely informational: the detector fires on any sound.
         Match.tag("SpeechStarted", () => io.sendStatus({ type: "speech-started" })),
-        // The browser reports where it stopped on its own, through `played`,
-        // because it also cuts playback for an answer the server already
-        // considers finished and so never reports as interrupted.
+        // The one thing that stops playback. It arrives in order, only while a
+        // response is in flight, and the server has cancelled generation by
+        // then. The browser answers it with the position on `played`.
         Match.tag("Interrupted", () => io.sendStatus({ type: "interrupted" })),
         Match.tag("ToolCall", (e) =>
           Effect.gen(function* () {
@@ -135,18 +123,22 @@ export const runAgent = <T extends Toolkit.Toolkit>(cfg: AgentConfig, toolkit: T
               name: e.call.name,
               arguments: e.call.arguments,
             })
+            // Forked, so the conversation stays live while the tool works.
             const fiber = yield* Effect.forkScoped(
               Toolkit.run(toolkit, [e.call]).pipe(
                 Stream.runForEach((toolEvent) =>
                   isOutput(toolEvent)
-                    ? Effect.andThen(
-                        session.send(
+                    ? Effect.gen(function* () {
+                        yield* session.send(
                           RealtimeInput.ToolResult({
                             output: toToolCallOutput(toolEvent.result),
                           }),
-                        ),
-                        io.sendStatus({ type: "tool-done", name: e.call.name }),
-                      )
+                        )
+                        yield* Ref.update(pending, (xs) =>
+                          xs.filter(([id]) => id !== e.call.call_id),
+                        )
+                        yield* io.sendStatus({ type: "tool-done", name: e.call.name })
+                      })
                     : Effect.void,
                 ),
                 // A rejected result is invisible otherwise: the model simply
@@ -169,10 +161,10 @@ export const runAgent = <T extends Toolkit.Toolkit>(cfg: AgentConfig, toolkit: T
           Effect.gen(function* () {
             // The model gave up on these, so stop the work rather than
             // answering a call nobody is waiting for.
-            const running = yield* Ref.getAndUpdate(pending, (xs) =>
+            const doomed = yield* Ref.modify(pending, (xs) => [
+              xs.filter(([id]) => e.callIds.includes(id)),
               xs.filter(([id]) => !e.callIds.includes(id)),
-            )
-            const doomed = running.filter(([id]) => e.callIds.includes(id))
+            ])
             yield* Effect.forEach(doomed, ([, fiber]) => Fiber.interrupt(fiber), {
               discard: true,
             })
@@ -180,10 +172,7 @@ export const runAgent = <T extends Toolkit.Toolkit>(cfg: AgentConfig, toolkit: T
           }),
         ),
         Match.tag("ResponseDone", (e) =>
-          Effect.andThen(
-            Ref.set(pending, []),
-            io.sendStatus({ type: "assistant-done", reason: e.reason }),
-          ),
+          io.sendStatus({ type: "assistant-done", reason: e.reason }),
         ),
         Match.tag("SessionEnding", () => io.sendStatus({ type: "session-ending" })),
         Match.tag("Error", (e) => io.sendStatus({ type: "error", message: e.message })),

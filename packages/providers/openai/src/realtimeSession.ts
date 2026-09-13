@@ -84,8 +84,8 @@ export type OpenAIRealtimeRequest = Omit<CommonSessionRequest, "model" | "resume
   readonly reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh"
   readonly maxOutputTokens?: number | "inf"
   readonly speed?: number
-  /** `["text"]` turns the session into a text-only responder. */
-  readonly outputModalities?: ReadonlyArray<"audio" | "text">
+  /** `"text"` turns the session into a text-only responder. One or the other. */
+  readonly outputModalities?: "audio" | "text"
   readonly transcriptionModel?: string
 }
 
@@ -170,7 +170,7 @@ const sessionUpdateFrame = (
       type: "realtime",
       ...(request.instructions !== undefined && { instructions: request.instructions }),
       ...(request.outputModalities !== undefined && {
-        output_modalities: request.outputModalities,
+        output_modalities: [request.outputModalities],
       }),
       audio: {
         input: {
@@ -330,6 +330,41 @@ const initialState: SessionState = {
   expiresAt: undefined,
 }
 
+/**
+ * Only one response may generate at a time, so a turn asked for while one is
+ * running waits for it. Every transition below is a single `Ref.modify`: the
+ * pump fiber and the caller's `send` both touch this state concurrently.
+ */
+type Turn = "create" | "defer"
+
+const turnFor = (s: SessionState): [Turn, SessionState] =>
+  s.responseId === undefined ? ["create", s] : ["defer", { ...s, resumeWhenIdle: true }]
+
+const requestTurn = (state: Ref.Ref<SessionState>): Effect.Effect<Turn> =>
+  Ref.modify(state, turnFor)
+
+const answerCall = (state: Ref.Ref<SessionState>, callId: string): Effect.Effect<Turn> =>
+  Ref.modify(state, (s) => {
+    const [turn, next] = turnFor(s)
+    return [turn, { ...next, pendingCalls: next.pendingCalls.filter((id) => id !== callId) }]
+  })
+
+const closeResponse = (
+  state: Ref.Ref<SessionState>,
+): Effect.Effect<{ readonly resume: boolean; readonly pendingCalls: ReadonlyArray<string> }> =>
+  Ref.modify(state, (s) => [
+    { resume: s.resumeWhenIdle, pendingCalls: s.pendingCalls },
+    { ...s, responseId: undefined, pendingCalls: [], interrupted: false, resumeWhenIdle: false },
+  ])
+
+/** The response whose playback must stop, or `undefined` if already reported. */
+const beginBargeIn = (state: Ref.Ref<SessionState>): Effect.Effect<string | undefined> =>
+  Ref.modify(state, (s): [string | undefined, SessionState] =>
+    s.responseId !== undefined && !s.interrupted
+      ? [s.responseId, { ...s, interrupted: true }]
+      : [undefined, s],
+  )
+
 const doneReason = (
   response: typeof Response.Type,
 ): "complete" | "interrupted" | "cancelled" | "error" =>
@@ -432,23 +467,16 @@ const toEvents = (
     ),
     Match.when({ type: "response.done" }, (f) =>
       Effect.gen(function* () {
-        const s = yield* Ref.get(state)
         const reason = doneReason(f.response)
         const cancelled = reason === "interrupted" || reason === "cancelled"
-        yield* Ref.set(state, {
-          ...s,
-          responseId: undefined,
-          pendingCalls: [],
-          interrupted: false,
-          resumeWhenIdle: false,
-        })
-        // A tool answered while this response was running never got its turn.
-        if (s.resumeWhenIdle) yield* send(responseCreateFrame)
+        const closed = yield* closeResponse(state)
+        // An input answered while this response was running never got its turn.
+        if (closed.resume) yield* send(responseCreateFrame)
         const usage = usageOf(f.response)
         return [
           // Calls of a cancelled response will never be answered.
-          ...(cancelled && s.pendingCalls.length > 0
-            ? [RealtimeEvent.ToolCallCancelled({ callIds: s.pendingCalls })]
+          ...(cancelled && closed.pendingCalls.length > 0
+            ? [RealtimeEvent.ToolCallCancelled({ callIds: closed.pendingCalls })]
             : []),
           RealtimeEvent.ResponseDone({
             responseId: f.response.id,
@@ -459,17 +487,12 @@ const toEvents = (
       }),
     ),
     Match.when({ type: "input_audio_buffer.speech_started" }, () =>
-      Effect.gen(function* () {
-        const s = yield* Ref.get(state)
-        // Barge-in: the server cancels the response, but the client owns
-        // playback and has to stop it now rather than at `response.done`.
-        const interrupting = s.responseId !== undefined && !s.interrupted
-        if (interrupting) yield* Ref.set(state, { ...s, interrupted: true })
-        return [
-          RealtimeEvent.SpeechStarted(),
-          ...(interrupting ? [RealtimeEvent.Interrupted({ responseId: s.responseId! })] : []),
-        ]
-      }),
+      // Barge-in: the server cancels the response, but the client owns
+      // playback and has to stop it now rather than at `response.done`.
+      Effect.map(beginBargeIn(state), (responseId) => [
+        RealtimeEvent.SpeechStarted(),
+        ...(responseId === undefined ? [] : [RealtimeEvent.Interrupted({ responseId })]),
+      ]),
     ),
     Match.when({ type: "input_audio_buffer.speech_stopped" }, () =>
       Effect.succeed([RealtimeEvent.SpeechStopped()]),
@@ -519,7 +542,13 @@ const handleInput = (
       ),
     ),
     Match.tag("Text", (i) =>
-      Effect.andThen(send(textItemFrame(i.text, i.role ?? "user")), send(responseCreateFrame)),
+      Effect.gen(function* () {
+        yield* send(textItemFrame(i.text, i.role ?? "user"))
+        // `response.create` during an active response is a server error, so
+        // the done handler asks for this turn instead.
+        const turn = yield* requestTurn(state)
+        if (turn === "create") yield* send(responseCreateFrame)
+      }),
     ),
     Match.tag("ToolResult", (i) =>
       Effect.gen(function* () {
@@ -542,18 +571,11 @@ const handleInput = (
             },
           }),
         )
-        yield* Ref.update(state, (cur) => ({
-          ...cur,
-          pendingCalls: cur.pendingCalls.filter((id) => id !== i.output.call_id),
-        }))
-        // The adapter resumes generation, so the caller never sends this. Only
-        // one response may be active at a time, though, and a slow tool often
-        // answers after the user has spoken again, so a result that lands mid
-        // response waits for that one to finish.
-        const current = yield* Ref.get(state)
-        yield* current.responseId === undefined
-          ? send(responseCreateFrame)
-          : Ref.update(state, (cur) => ({ ...cur, resumeWhenIdle: true }))
+        // The adapter resumes generation, so the caller never sends this. A
+        // slow tool often answers after the user has spoken again, so a result
+        // that lands mid response waits for that one to finish.
+        const turn = yield* answerCall(state, i.output.call_id)
+        if (turn === "create") yield* send(responseCreateFrame)
       }),
     ),
     Match.tag("Interrupt", () => send(JSON.stringify({ type: "response.cancel" }))),
@@ -602,6 +624,24 @@ const handleInput = (
 // ---------------------------------------------------------------------------
 // Connection
 // ---------------------------------------------------------------------------
+
+/**
+ * `resume` is a Gemini handle. The typed request omits it, so this only ever
+ * fires for a caller coming through the generic tag, where it would otherwise
+ * be cast away and a session the caller believes it resumed starts blank.
+ */
+export const refuseResume = (
+  request: CommonSessionRequest,
+): Effect.Effect<void, AiError.AiError> =>
+  request.resume === undefined
+    ? Effect.void
+    : Effect.fail(
+        new AiError.Unsupported({
+          provider: PROVIDER,
+          capability: "resume",
+          reason: "OpenAI Realtime has no session resumption. A dropped session starts over.",
+        }),
+      )
 
 /** A query already on `baseUrl`, such as a gateway's API version, is kept. */
 export const buildWsUrl = (cfg: Config, model: string): string => {
@@ -698,10 +738,9 @@ export const openSession =
       yield* session.send(sessionUpdateFrame(request, formats))
       yield* awaitAck(session, state, "session.updated")
 
-      for (const item of request.history ?? []) {
-        const frame = historyItemFrame(item)
-        if (frame !== undefined) yield* session.send(frame)
-      }
+      yield* Effect.forEach(request.history ?? [], (item) => session.send(historyItemFrame(item)), {
+        discard: true,
+      })
 
       const out = yield* Queue.bounded<RealtimeEvent, AiError.AiError | Cause.Done>(128)
 
@@ -714,11 +753,23 @@ export const openSession =
       // ends the stream as an incomplete turn instead.
       const finish = (cause: Cause.Cause<AiError.AiError> | undefined) =>
         Effect.gen(function* () {
-          const inFlight = (yield* Ref.get(state)).responseId
-          if (inFlight !== undefined) {
+          const { expiresAt, responseId } = yield* Ref.get(state)
+          if (responseId !== undefined) {
             return yield* Queue.fail(
               out,
               new AiError.IncompleteTurn({ raw: cause ?? "the socket closed mid response" }),
+            )
+          }
+          const now = yield* Clock.currentTimeMillis
+          // The server drops the socket at the expiry it announced at connect.
+          // Reconnecting works; retrying this session does not.
+          if (expiresAt !== undefined && now >= DateTime.toEpochMillis(expiresAt)) {
+            return yield* Queue.fail(
+              out,
+              new AiError.SessionExpired({
+                provider: PROVIDER,
+                raw: cause ?? "the socket closed at the expiry the server set at connect",
+              }),
             )
           }
           return yield* cause !== undefined && Cause.hasFails(cause)

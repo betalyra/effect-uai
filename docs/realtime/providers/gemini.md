@@ -109,7 +109,9 @@ Match.tag("ResumptionHandle", (e) => Ref.set(lastHandle, e.handle))
 
 Open a new session with `resume: handle` and the conversation continues.
 Everything but `model` may change on the way. Reconnecting is yours; the
-adapter never does it behind your back.
+adapter never does it behind your back. The close that follows `goAway`
+fails the stream with `SessionExpired`, so the cap is one error to match
+on rather than a stream that quietly ends.
 
 Sessions also have a token budget: about 15 minutes of audio, or 2
 minutes with video, before the context window fills. Set

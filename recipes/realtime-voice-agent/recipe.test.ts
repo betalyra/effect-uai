@@ -112,6 +112,44 @@ describe("realtime voice agent", () => {
     }),
   )
 
+  it.live("still interrupts a call the model abandons after its response ended", () =>
+    Effect.gen(function* () {
+      const { status, sent } = yield* run([
+        RealtimeEvent.ResponseStarted({ responseId: "r1" }),
+        RealtimeEvent.ToolCall({ responseId: "r1", call: toolCall }),
+        // The response carrying the call ends while the tool is still running,
+        // which is the ordinary case, not an edge one.
+        RealtimeEvent.ResponseDone({ responseId: "r1", reason: "complete" }),
+        RealtimeEvent.ToolCallCancelled({ callIds: ["call_1"] }),
+      ])
+
+      expect(sentOf(sent, "ToolResult")).toHaveLength(0)
+      expect(status.filter((e) => e.type === "tool-cancelled")).toEqual([
+        { type: "tool-cancelled", count: 1 },
+      ])
+    }),
+  )
+
+  it.live("stops the voice on the interruption, not on the first words heard", () =>
+    Effect.gen(function* () {
+      const { status } = yield* run([
+        RealtimeEvent.ResponseStarted({ responseId: "r1" }),
+        // Recognised words alone say nothing about whether the answer that
+        // just started is still wanted: they are unordered against it.
+        RealtimeEvent.InputTranscript({ text: "actually", final: false }),
+        RealtimeEvent.InputTranscript({ text: "actually wait", final: true }),
+        RealtimeEvent.Interrupted({ responseId: "r1" }),
+      ])
+
+      expect(status.map((e) => e.type)).toEqual([
+        "assistant-started",
+        "user-transcript",
+        "user-transcript",
+        "interrupted",
+      ])
+    }),
+  )
+
   it.live("labels a reported position with the answer that was playing", () =>
     Effect.gen(function* () {
       const { sent } = yield* run(

@@ -142,7 +142,9 @@ back.
 A close never invents a `ResponseDone`. `events` ends when the socket
 closes cleanly, and a close mid-answer fails the stream with
 `IncompleteTurn`, so a dropped connection can never read as a finished
-answer.
+answer. When the close is the session running out, the failure is
+`SessionExpired` instead: a new session will work, retrying this one
+will not.
 
 ## Camera Input Is Gemini Only
 

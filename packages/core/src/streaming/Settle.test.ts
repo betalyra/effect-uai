@@ -247,6 +247,22 @@ describe("onQuiet", () => {
     }),
   )
 
+  it.effect("marks an element that arrives in the same instant as the mark", () =>
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<string, Cause.Done>()
+      const seen = yield* collecting(Stream.fromQueue(queue).pipe(onQuiet("1 second", mark)))
+
+      yield* Queue.offer(queue, "a")
+      // The window expires exactly here, so "b" races the re-arm.
+      yield* TestClock.adjust("1 second")
+      yield* Queue.offer(queue, "b")
+      yield* TestClock.adjust("2 seconds")
+
+      // Losing that race would leave "b" unmarked until something else spoke.
+      expect(yield* Ref.get(seen)).toEqual(["a", "<quiet>", "b", "<quiet>"])
+    }),
+  )
+
   it.effect("keeps the window open while elements keep arriving", () =>
     Effect.gen(function* () {
       const queue = yield* Queue.unbounded<string, Cause.Done>()

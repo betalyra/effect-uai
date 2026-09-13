@@ -28,7 +28,7 @@ import * as Transcriber from "@effect-uai/core/Transcriber"
 export type Provider = "openai" | "elevenlabs" | "inworld"
 
 const fastModelFor = Match.type<Provider>().pipe(
-  Match.when("openai", () => "gpt-4o-transcribe"),
+  Match.when("openai", () => "gpt-transcribe"),
   Match.when("elevenlabs", () => "scribe_v2"),
   Match.when("inworld", () => "inworld/inworld-stt-1"),
   Match.exhaustive,

@@ -88,7 +88,7 @@ queue is ended and the delivery joined, so the final edit lands before the
 loop moves on. A turn that only called tools streams no text and posts
 nothing. When the iteration ends, its scope releases the typing indicator.
 
-Input comes from `Inbox.drainBurst`: block for the first message, then keep
+Input comes from `Settle.drainBurst`: block for the first message, then keep
 taking while the next arrives within the settle window, so three quick lines
 become one user turn.
 

@@ -1,13 +1,14 @@
 /**
- * OpenAI Realtime STT — `wss://api.openai.com/v1/realtime?intent=transcription`.
+ * OpenAI Realtime STT: a `type: "transcription"` session on
+ * `wss://api.openai.com/v1/realtime?intent=transcription` (GA wire, no
+ * `OpenAI-Beta` header).
  *
- * The WS upgrade needs `Authorization: Bearer …` + `OpenAI-Beta: realtime=v1`
- * headers, which the browser `WebSocket` API doesn't allow. This module uses
- * the `ws` peer dep to set them. The `ws` dep is only pulled in transitively
- * via `OpenAIRealtimeTranscriber`; `OpenAITranscriber` (sync) stays free of
- * it.
+ * The WS upgrade needs an `Authorization: Bearer` header, which the browser
+ * `WebSocket` API doesn't allow. This module uses the `ws` peer dep to set
+ * it. The `ws` dep is only pulled in transitively via
+ * `OpenAIRealtimeTranscriber`; `OpenAITranscriber` (sync) stays free of it.
  */
-import { Cause, Effect, Encoding, Match, Queue, Redacted, Schema, Stream } from "effect"
+import { Cause, Effect, Encoding, Match, Option, Queue, Redacted, Schema, Stream } from "effect"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
@@ -25,10 +26,13 @@ export type Config = {
 }
 
 // ---------------------------------------------------------------------------
-// AudioFormat → OpenAI `input_audio_format`
+// AudioFormat -> `session.audio.input.format`
 // ---------------------------------------------------------------------------
 
-type WireFormat = "pcm16" | "g711_ulaw" | "g711_alaw"
+type WireFormat =
+  | { readonly type: "audio/pcm"; readonly rate: 24000 }
+  | { readonly type: "audio/pcmu" }
+  | { readonly type: "audio/pcma" }
 
 const unsupportedFormat = (format: AudioFormat) =>
   new AiError.Unsupported({
@@ -40,13 +44,13 @@ const unsupportedFormat = (format: AudioFormat) =>
 const inputFormatToWire: (format: AudioFormat) => Effect.Effect<WireFormat, AiError.AiError> =
   Match.type<AudioFormat>().pipe(
     Match.when({ container: "raw", encoding: "pcm_s16le", sampleRate: 24000 }, () =>
-      Effect.succeed<WireFormat>("pcm16"),
+      Effect.succeed<WireFormat>({ type: "audio/pcm", rate: 24000 }),
     ),
     Match.when({ container: "raw", encoding: "pcm_mulaw", sampleRate: 8000 }, () =>
-      Effect.succeed<WireFormat>("g711_ulaw"),
+      Effect.succeed<WireFormat>({ type: "audio/pcmu" }),
     ),
     Match.when({ container: "raw", encoding: "pcm_alaw", sampleRate: 8000 }, () =>
-      Effect.succeed<WireFormat>("g711_alaw"),
+      Effect.succeed<WireFormat>({ type: "audio/pcma" }),
     ),
     Match.orElse((f) => Effect.fail(unsupportedFormat(f))),
   )
@@ -57,21 +61,28 @@ const inputFormatToWire: (format: AudioFormat) => Effect.Effect<WireFormat, AiEr
 
 const wsBaseUrl = (cfg: Config) => resolveHost(cfg).replace(/^http/, "ws")
 
+// Without `intent` (or `model`) the GA server closes with `missing_model` (verified 2026-09-12).
 const buildWsUrl = (cfg: Config) => `${wsBaseUrl(cfg)}/realtime?intent=transcription`
 
 const sessionUpdateFrame = (wireFormat: WireFormat, request: CommonStreamTranscribeRequest) =>
   JSON.stringify({
-    type: "transcription_session.update",
+    type: "session.update",
     session: {
-      input_audio_format: wireFormat,
-      input_audio_transcription: {
-        model: request.model,
-        ...(request.language !== undefined && { language: request.language }),
-        ...(request.prompt !== undefined && { prompt: request.prompt }),
+      type: "transcription",
+      audio: {
+        input: {
+          format: wireFormat,
+          transcription: {
+            model: request.model,
+            ...(request.language !== undefined && { language: request.language }),
+            ...(request.prompt !== undefined && { prompt: request.prompt }),
+          },
+          // Server VAD is what commits a turn, and a committed turn is what the
+          // server transcribes into a `final`. Models without turn detection
+          // reject the field, so those need `vadEvents: false`.
+          ...(request.vadEvents !== false && { turn_detection: { type: "server_vad" } }),
+        },
       },
-      // VAD on by default — emits `speech_started` / `speech_stopped` events.
-      // Caller opts out via `vadEvents: false`.
-      ...(request.vadEvents !== false && { turn_detection: { type: "server_vad" } }),
     },
   })
 
@@ -82,7 +93,7 @@ const encodeAudioFrame = (bytes: Uint8Array) =>
   })
 
 // ---------------------------------------------------------------------------
-// Wire schemas (server → client)
+// Wire schemas (server -> client)
 // ---------------------------------------------------------------------------
 
 const RealtimeError = Schema.Struct({
@@ -92,8 +103,8 @@ const RealtimeError = Schema.Struct({
 })
 
 const ServerEvent = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("transcription_session.created") }),
-  Schema.Struct({ type: Schema.Literal("transcription_session.updated") }),
+  Schema.Struct({ type: Schema.Literal("session.created") }),
+  Schema.Struct({ type: Schema.Literal("session.updated") }),
   Schema.Struct({
     type: Schema.Literal("conversation.item.input_audio_transcription.delta"),
     delta: Schema.String,
@@ -116,13 +127,8 @@ const decodeServerEvent = Schema.decodeUnknownEffect(ServerEvent)
 
 export const wireToEvent: (msg: typeof ServerEvent.Type) => TranscriptEvent | undefined =
   Match.type<typeof ServerEvent.Type>().pipe(
-    // session.created / .updated are connection handshake acks — no
-    // user-visible event.
-    Match.whenOr(
-      { type: "transcription_session.created" },
-      { type: "transcription_session.updated" },
-      () => undefined,
-    ),
+    // Handshake acks, no user-visible event.
+    Match.whenOr({ type: "session.created" }, { type: "session.updated" }, () => undefined),
     Match.when(
       { type: "conversation.item.input_audio_transcription.delta" },
       (m): TranscriptEvent => ({ _tag: "partial", text: m.delta }),
@@ -147,18 +153,24 @@ export const wireToEvent: (msg: typeof ServerEvent.Type) => TranscriptEvent | un
     Match.exhaustive,
   )
 
-const handleServerMessage = (queue: Queue.Queue<TranscriptEvent, Cause.Done>) => (raw: string) =>
+/** One raw text frame to at most one event; unknown or malformed frames yield `undefined`. */
+export const frameToEvent = (raw: string): Effect.Effect<TranscriptEvent | undefined> =>
   Effect.gen(function* () {
     const json = yield* JSONL.parseSafe(raw)
-    if (json === undefined) return
+    if (json === undefined) return undefined
+    yield* Effect.logDebug("[openai realtime stt] frame", { frame: json })
     const decoded = yield* decodeServerEvent(json).pipe(Effect.option)
-    if (decoded._tag === "None") return
-    const event = wireToEvent(decoded.value)
+    return Option.match(decoded, { onNone: () => undefined, onSome: wireToEvent })
+  })
+
+const handleServerMessage = (queue: Queue.Queue<TranscriptEvent, Cause.Done>) => (raw: string) =>
+  Effect.gen(function* () {
+    const event = yield* frameToEvent(raw)
     if (event !== undefined) yield* Queue.offer(queue, event)
   })
 
 // ---------------------------------------------------------------------------
-// Stream<Uint8Array> → Stream<TranscriptEvent>
+// Stream<Uint8Array> -> Stream<TranscriptEvent>
 // ---------------------------------------------------------------------------
 
 // Single contained cast: `@types/ws` declares its WebSocket class extending
@@ -169,10 +181,7 @@ const authedWsConstructor =
   (cfg: Config): Socket.WebSocketConstructor["Service"] =>
   (url) =>
     new WSWebSocket(url, undefined, {
-      headers: {
-        Authorization: `Bearer ${Redacted.value(cfg.apiKey)}`,
-        "OpenAI-Beta": "realtime=v1",
-      },
+      headers: { Authorization: `Bearer ${Redacted.value(cfg.apiKey)}` },
     }) as unknown as globalThis.WebSocket
 
 export const streamTranscription =
@@ -183,7 +192,7 @@ export const streamTranscription =
   ): Stream.Stream<TranscriptEvent, AiError.AiError | E, R> =>
     Stream.unwrap(
       Effect.gen(function* () {
-        // OpenAI Realtime has no keyterm field — only the prose `prompt`.
+        // OpenAI Realtime has no keyterm field, only the prose `prompt`.
         yield* Capabilities.warnDroppedWhen(request.biasingTerms, {
           provider: "openai",
           capability: "biasing",
@@ -192,8 +201,7 @@ export const streamTranscription =
         })
         const wireFormat = yield* inputFormatToWire(request.inputFormat)
         const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg), {
-          // Effect's Socket treats all close codes as errors by default —
-          // whitelist standard clean-close codes (1000 / 1001 / 1005).
+          // Effect's Socket treats every close code as an error by default.
           closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
         }).pipe(Effect.provideService(Socket.WebSocketConstructor, authedWsConstructor(cfg)))
         const queue = yield* Queue.bounded<TranscriptEvent, Cause.Done>(64)
@@ -206,9 +214,8 @@ export const streamTranscription =
           yield* Stream.runForEach(audioIn, (bytes) => write(encodeAudioFrame(bytes)))
         }).pipe(Effect.ignore, Effect.forkScoped)
 
-        // `Queue.end` flushes pending events then fails the next take with
-        // `Done` — clean stream end. `Queue.shutdown` would CLEAR queued
-        // items and interrupt pending takes (wrong for graceful teardown).
+        // `Queue.end` flushes pending events then ends the stream cleanly;
+        // `Queue.shutdown` would drop queued items.
         yield* socket
           .runString(handleServerMessage(queue))
           .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)

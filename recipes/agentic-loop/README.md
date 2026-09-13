@@ -76,14 +76,14 @@ without changing the model/tool continuation shape.
 
 ## Debounced burst collection
 
-`Inbox.drainBurst` from `@effect-uai/core/Inbox` is the input side. It blocks
+`Settle.drainBurst` from `@effect-uai/core/Settle` is the input side. It blocks
 for the first message, then keeps taking while the next one arrives within
 `settle` of the previous. The window resets on every arrival, so a burst of
 typing becomes one user batch, and a lone message followed by silence is
 returned at once.
 
 ```ts
-import { drainBurst } from "@effect-uai/core/Inbox"
+import { drainBurst } from "@effect-uai/core/Settle"
 
 const incoming = yield * drainBurst(queue, "150 millis")
 ```

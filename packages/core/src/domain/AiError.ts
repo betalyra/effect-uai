@@ -100,6 +100,15 @@ export class Unsupported extends Data.TaggedError("Unsupported")<{
   reason?: string
 }> {}
 
+/**
+ * A long-lived session hit the provider's lifetime cap. Distinct from
+ * `Unavailable`: reconnecting works, retrying the same session does not.
+ */
+export class SessionExpired extends Data.TaggedError("SessionExpired")<{
+  provider: string
+  raw?: unknown
+}> {}
+
 export type AiError =
   | RateLimited
   | Unavailable
@@ -112,6 +121,7 @@ export type AiError =
   | IncompleteTurn
   | GenerationFailed
   | Unsupported
+  | SessionExpired
 
 const withReason = (base: string, reason: string | undefined): string =>
   reason === undefined ? base : `${base}: ${reason}`
@@ -136,5 +146,6 @@ export const describe: (e: AiError) => string = Match.type<AiError>().pipe(
     IncompleteTurn: () => "the provider stream ended without completing",
     GenerationFailed: (e) => e.message ?? `${e.provider} failed mid-generation`,
     Unsupported: (e) => withReason(`${e.provider} does not support ${e.capability}`, e.reason),
+    SessionExpired: (e) => `the ${e.provider} session reached its lifetime limit`,
   }),
 )

@@ -56,13 +56,16 @@ const mainLayer = openai.pipe(Layer.provide(FetchHttpClient.layer))
 
 ### STT
 
-| Model                    | Sync | Streaming                   | Notes                                            |
-| ------------------------ | ---- | --------------------------- | ------------------------------------------------ |
-| `gpt-4o-transcribe`      | ✓    | ✓ (`?intent=transcription`) | Plain text only                                  |
-| `gpt-4o-mini-transcribe` | ✓    | ✓                           | Plain text only, cheaper                         |
-| `whisper-1`              | ✓    | none                        | **Only model supporting `wordTimestamps: true`** |
+| Model                    | Sync | Streaming | Notes                                                                 |
+| ------------------------ | ---- | --------- | --------------------------------------------------------------------- |
+| `gpt-transcribe`         | ✓    | ✓         | Current sync model; plain text only                                   |
+| `gpt-live-transcribe`    | none | ✓         | Current streaming model; plain text only                              |
+| `gpt-realtime-whisper`   | none | ✓         | Streaming Whisper                                                     |
+| `gpt-4o-transcribe`      | ✓    | ✓         | Deprecated, shutdown 2027-02-26                                       |
+| `gpt-4o-mini-transcribe` | ✓    | ✓         | Deprecated, shutdown 2027-02-26                                       |
+| `whisper-1`              | ✓    | none      | Deprecated, shutdown 2027-02-26; **only model with `wordTimestamps`** |
 
-`wordTimestamps: true` requires `whisper-1`. Passing it to a GPT-4o
+`wordTimestamps: true` requires `whisper-1`. Passing it to another
 model surfaces the provider's wire rejection (HTTP 400) rather than a
 pre-send error. `diarization` is narrowed off `OpenAITranscribeRequest`
 (OpenAI's transcription endpoint has none).
@@ -114,18 +117,26 @@ the legacy `tts-1` family.
 
 ## Wire / auth notes
 
-**Realtime STT** uses
-`wss://api.openai.com/v1/realtime?intent=transcription` and requires
-two upgrade headers: `Authorization: Bearer …` and
-`OpenAI-Beta: realtime=v1`. Browser `WebSocket` can't set headers, so
-`OpenAIRealtimeTranscriber` uses the `ws` peer dep to construct the
-socket with those headers. That's why this transcriber lives at a
-separate subpath. Use it from Node / Bun; for browser deployments,
+**Realtime STT** opens `wss://api.openai.com/v1/realtime?intent=transcription`
+and sends a `session.update` with `type: "transcription"` (the GA wire; the old
+`OpenAI-Beta: realtime=v1` header was shut down 2026-05-12). The
+upgrade needs an `Authorization: Bearer …` header, which browser
+`WebSocket` can't set, so `OpenAIRealtimeTranscriber` uses the `ws`
+peer dep to construct the socket. That's why this transcriber lives at
+a separate subpath. Use it from Node / Bun; for browser deployments,
 proxy through a server.
 
 Realtime expects PCM s16le at **24 kHz** (not 16 like most other
 providers). Set `inputFormat` accordingly on the streaming request,
 or the upstream rejects the audio.
+
+`vadEvents` maps to `audio.input.turn_detection` and is on unless you
+pass `false`. It is what makes the server commit each turn, and a
+committed turn is what produces the `final` transcript alongside the
+`speech-started` / `utterance-ended` boundaries. A model that
+transcribes continuously instead of segmenting rejects the field with
+`invalid_value`; pass `vadEvents: false` there and expect `partial`
+events only, since nothing commits the audio buffer.
 
 **Output formats** for TTS: `mp3`, `opus`, `aac`, `flac`, `wav`, `pcm`.
 `pcm` is 24 kHz mono s16le, suitable for direct `AudioWorklet`

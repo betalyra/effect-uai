@@ -28,6 +28,7 @@ import { layer as firecrawlReadLayer } from "@effect-uai/firecrawl/FirecrawlRead
 import { layer as geminiLayer } from "@effect-uai/google/Gemini"
 import { layer as geminiEmbeddingLayer } from "@effect-uai/google/GeminiEmbedding"
 import { layer as geminiImageLayer } from "@effect-uai/google/GeminiImageGenerator"
+import { layer as geminiLiveSessionLayer } from "@effect-uai/google/GeminiLiveSession"
 import { layer as geminiSynthLayer } from "@effect-uai/google/GeminiSynthesizer"
 import { layer as googleResearchLayer } from "@effect-uai/google/GoogleDeepResearch"
 import { layer as lyriaLayer } from "@effect-uai/google/LyriaGenerator"
@@ -43,6 +44,7 @@ import { layer as mistralRealtimeTranscribeLayer } from "@effect-uai/mistral/Mis
 import { layer as mistralSynthLayer } from "@effect-uai/mistral/MistralSynthesizer"
 import { layer as mistralTranscribeLayer } from "@effect-uai/mistral/MistralTranscriber"
 import { layer as openaiImageLayer } from "@effect-uai/openai/OpenAIImageGenerator"
+import { layer as openaiRealtimeSessionLayer } from "@effect-uai/openai/OpenAIRealtimeSession"
 import { layer as openaiRealtimeTranscribeLayer } from "@effect-uai/openai/OpenAIRealtimeTranscriber"
 import { layer as openaiSynthLayer } from "@effect-uai/openai/OpenAISynthesizer"
 import { layer as openaiTranscribeLayer } from "@effect-uai/openai/OpenAITranscriber"
@@ -65,6 +67,7 @@ import type {
   SpeechSynthesizer,
   TtsIncrementalText,
 } from "@effect-uai/core/SpeechSynthesizer"
+import type { RealtimeSession } from "@effect-uai/core/RealtimeSession"
 import type { SttStreaming, Transcriber } from "@effect-uai/core/Transcriber"
 import type { WebRead } from "@effect-uai/core/WebRead"
 import type { WebSearch } from "@effect-uai/core/WebSearch"
@@ -409,6 +412,28 @@ const streamingTranscribeEntries: Record<string, Entry<StreamingTranscribeLayer>
     apiKey: key("MISTRAL_API_KEY"),
   },
 }
+
+/**
+ * A duplex speech-to-speech session. Its own registry: a realtime provider is
+ * one socket that replaces a whole STT plus LLM plus TTS stack, so it shares
+ * nothing with the entries above.
+ */
+const realtimeSessionEntries: Record<string, Entry<Layer.Layer<RealtimeSession>>> = {
+  openai: {
+    layer: (apiKey, baseUrl) => openaiRealtimeSessionLayer({ apiKey, ...at(baseUrl) }),
+    apiKey: key("OPENAI_API_KEY"),
+  },
+  google: {
+    layer: (apiKey, baseUrl) => geminiLiveSessionLayer({ apiKey, ...at(baseUrl) }),
+    apiKey: key("GOOGLE_API_KEY"),
+  },
+}
+
+export const realtimeSessionLayer = (
+  spec: ModelSpec,
+  baseUrl?: string,
+): Layer.Layer<RealtimeSession, Config.ConfigError | UnknownProvider> =>
+  Layer.unwrap(registry(spec, baseUrl, realtimeSessionEntries))
 
 export const streamingTranscriberLayer = (
   spec: ModelSpec,

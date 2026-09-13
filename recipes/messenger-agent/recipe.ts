@@ -28,7 +28,7 @@ import {
   pipe,
 } from "effect"
 import * as ImageGenerator from "@effect-uai/core/ImageGenerator"
-import { drainBurst } from "@effect-uai/core/Inbox"
+import { drainBurst } from "@effect-uai/core/Settle"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, next, onTurnComplete } from "@effect-uai/core/Loop"

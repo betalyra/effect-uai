@@ -1,11 +1,11 @@
 /**
  * Realtime variant of `OpenAITranscriber`. Wires `streamTranscriptionFrom`
- * to `wss://api.openai.com/v1/realtime?intent=transcription` and registers
- * the `SttStreaming` capability marker, so calls compile against this Layer
- * alone (unlike the sync-only `OpenAITranscriber` Layer).
+ * to a `type: "transcription"` session on
+ * `wss://api.openai.com/v1/realtime?intent=transcription` and registers the `SttStreaming` capability marker, so calls compile
+ * against this Layer alone (unlike the sync-only `OpenAITranscriber` Layer).
  *
- * Pulls in `ws` (peer dep) transitively via `./realtimeStt.js`. Node/Bun only
- * — the browser `WebSocket` API can't set the `Authorization` header that
+ * Pulls in `ws` (peer dep) transitively via `./realtimeStt.js`. Node/Bun only:
+ * the browser `WebSocket` API can't set the `Authorization` header that
  * OpenAI requires on the WS upgrade.
  */
 import { Effect, Layer } from "effect"

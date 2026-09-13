@@ -317,7 +317,8 @@ const parsedJsonObject =
     )
 
 const parsedArgs = parsedJsonObject(() => ({}))
-const parsedResponse = parsedJsonObject((raw) => ({ output: raw }))
+/** A `ToolCallOutput.output` string as the object `functionResponse` wants. */
+export const parsedResponse = parsedJsonObject((raw) => ({ output: raw }))
 
 /**
  * `ToolCallOutput` only carries `call_id`; Gemini's `functionResponse`
@@ -460,7 +461,7 @@ const sanitizeSchema = (schema: unknown): unknown => {
   )
 }
 
-const toolDescriptorsToTools = (
+export const toolDescriptorsToTools = (
   tools: ReadonlyArray<ToolDescriptor>,
 ): ReadonlyArray<RequestTool> =>
   tools.length === 0

@@ -84,6 +84,19 @@ export type GeminiTtsModel =
   | (string & {})
 
 /**
+ * Live API models, for `BidiGenerateContent` speech-to-speech sessions. Every
+ * current one is native audio: output is audio only, and text comes from
+ * output transcription. The Live API is still preview on the Gemini API.
+ *
+ * Reference: https://ai.google.dev/gemini-api/docs/live-api
+ */
+export type GeminiLiveModel =
+  | "gemini-3.1-flash-live-preview"
+  | "gemini-2.5-flash-native-audio-preview-12-2025"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
  * 30 prebuilt voice names for Gemini TTS. No custom-voice / cloning path
  * is exposed on this surface, so the tail is stock-only (no
  * `(string & {})` escape).

@@ -26,7 +26,7 @@ const result =
   yield *
   transcribe({
     audio: { _tag: "bytes", bytes: audioBytes, mimeType: "audio/mpeg" },
-    model: "gpt-4o-transcribe",
+    model: "gpt-transcribe",
     language: "en",
   })
 // result.text   : string
@@ -50,10 +50,10 @@ The recipe includes two paths:
 Gemini's transcription is prompt-driven and text-only, so the runner
 skips the timestamp variant on any provider but `openai`.
 
-| Provider | Fast model          | Timestamp path |
-| -------- | ------------------- | -------------- |
-| `openai` | `gpt-4o-transcribe` | `whisper-1`    |
-| `gemini` | `gemini-2.5-flash`  | not supported  |
+| Provider | Fast model         | Timestamp path |
+| -------- | ------------------ | -------------- |
+| `openai` | `gpt-transcribe`   | `whisper-1`    |
+| `gemini` | `gemini-2.5-flash` | not supported  |
 
 ## Run it
 

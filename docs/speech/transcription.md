@@ -73,7 +73,7 @@ const program = Effect.gen(function* () {
   const file = yield* readFile("meeting.mp3")
   return yield* transcribe({
     audio: { _tag: "bytes", bytes: file, mimeType: "audio/mpeg" },
-    model: "gpt-4o-transcribe",
+    model: "gpt-transcribe",
     language: "en",
   })
 })
@@ -93,8 +93,8 @@ type TranscriptResult = {
 
 `words` only appears when `wordTimestamps: true` was requested **and**
 the provider+model combination supports it. Today that means
-OpenAI `whisper-1` only. `gpt-4o-transcribe` and `gpt-4o-mini-transcribe`
-return text-only. Passing `wordTimestamps: true` to a model that doesn't
+OpenAI `whisper-1` only (deprecated, shutdown 2027-02-26). `gpt-transcribe`
+and `gpt-live-transcribe` return text-only. Passing `wordTimestamps: true` to a model that doesn't
 support it surfaces the provider's wire rejection.
 
 ## Streaming: `streamTranscriptionFrom`
@@ -127,6 +127,15 @@ the output stream finalizes. You do not manage the scope by hand.
 
 `partial` updates are speculative. `final` is the committed text you
 usually append to a transcript, send to search, or feed to an LLM.
+
+Providers disagree on what a `partial` carries. Most send the whole
+utterance so far; OpenAI Realtime sends token-sized deltas (`" Hi"`,
+`","`, `" how"`), and a model that transcribes continuously rather than
+segmenting never sends a `final` at all. For those, pipe the stream
+through `Transcript.accumulatePartials()`, which joins the deltas into a
+running hypothesis and commits it as a `final` once the speaker goes
+quiet. Partials still flow as they arrive. Do not apply it to a provider
+that already accumulates, or its text repeats.
 
 ```ts
 type TranscriptEvent =

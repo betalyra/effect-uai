@@ -2,23 +2,20 @@ import { describe, it } from "@effect/vitest"
 import { Array as Arr, Duration, Effect, Fiber, Option, Stream } from "effect"
 import * as TestClock from "effect/testing/TestClock"
 import { expect } from "vitest"
-import type { Usage } from "../domain/Items.js"
-import { TurnEvent } from "../domain/Turn.js"
+import type { Usage } from "../../domain/Items.js"
+import { TurnEvent } from "../../domain/Turn.js"
+import { type MetricEvent, isMetricEvent, makeEvent, metricEvents } from "./MetricEvent.js"
 import {
-  type MetricEvent,
   type Throughput,
   type TimeToCompletion,
   type TimeToFirstToken,
   type TokenTotals,
   computeThroughputTick,
-  isMetricEvent,
-  makeEvent,
-  metricEvents,
   throughput,
   timeToCompletion,
   timeToFirstToken,
   tokenTotals,
-} from "./Metrics.js"
+} from "./Turn.js"
 
 const turnComplete = (usage: Usage): TurnEvent =>
   TurnEvent.TurnComplete({ turn: { items: [], usage, stop_reason: "stop" } })

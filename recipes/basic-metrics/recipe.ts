@@ -8,7 +8,7 @@
  * `recipe.ts` is the runtime-agnostic core: it builds the metered stream
  * against the generic `LanguageModel` tag, so the provider (here Gemini
  * Flash) is chosen by the Layer in `app.ts`. The meters are plain stream
- * operators stacked onto `streamTurn` via `Metrics.allMetrics`; nothing about
+ * operators stacked onto `streamTurn` via `Metrics.Turn.allMetrics`; nothing about
  * the generation changes when you add or drop a meter, and the story text is
  * never buffered for measurement.
  *
@@ -61,7 +61,7 @@ export const fantasyStory = (
     history: [Items.systemText(SYSTEM_PROMPT), Items.userText(cfg.prompt)],
     maxOutputTokens: cfg.maxOutputTokens,
   }).pipe(
-    Metrics.allMetrics({
+    Metrics.Turn.allMetrics({
       throughput: { every: "1 second", unit: "token", tokenizer: estimateTokens },
     }),
   )

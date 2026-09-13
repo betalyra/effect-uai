@@ -79,6 +79,13 @@ and talk. Things worth trying:
   a second or two, which is a long silence in a conversation, so you
   hear it say a few words, go quiet, then come back with the answer.
   The call and its arguments appear in the transcript.
+- **Watch the latency.** Each answer carries the milliseconds it took to
+  start speaking, next to the assistant line and in the server log,
+  counted from the moment OpenAI decided you had stopped talking. Add
+  your configured `silence_duration_ms` (500 ms by default) to get the
+  wait you actually felt: the endpointing window is invisible from the
+  server side. Gemini announces no end of speech, so it shows nothing
+  here unless you mark the instant yourself.
 - **Type instead.** The text box reaches the same session, so you can
   mix typing and talking in one conversation.
 - **Ask how it works.** The assistant is called Betty, and the

@@ -11,12 +11,12 @@ at their own cadence, and leave everything else untouched.
 
 ## Attach the meters
 
-`Metrics.allMetrics` stacks all four built-ins onto a turn:
+`Metrics.Turn.allMetrics` stacks all four built-ins onto a turn:
 
 ```ts
 import * as Metrics from "@effect-uai/core/Metrics"
 
-const metered = LanguageModel.streamTurn(request).pipe(Metrics.allMetrics())
+const metered = LanguageModel.streamTurn(request).pipe(Metrics.Turn.allMetrics())
 ```
 
 Now your stream carries two kinds of element: the model's `TurnEvent`s (the
@@ -38,8 +38,11 @@ The four samples and the fields you read off them:
 | `tokenTotals`      | when the turn finishes | `usage`, `cumulative`             |
 | `timeToCompletion` | when the turn finishes | `duration`, `generation`          |
 
-The built-in meters read `TurnEvent`, so they measure language-model turns.
-The event/export machinery below is general - it records anything you emit.
+Meters are namespaced by the events they read, because that is what makes a
+meter specific: `Metrics.Turn.*` reads `TurnEvent`, and
+[`Metrics.Realtime.*`](/realtime/) reads a speech-to-speech session's events.
+The event and export machinery is shared and flat, so `isMetricEvent`,
+`makeEvent` and `Telemetry.record` handle anything you emit.
 
 ## Measure only what you need
 
@@ -47,14 +50,14 @@ The meters are independent operators; pipe just the ones you want instead of
 `allMetrics`:
 
 ```ts
-LanguageModel.streamTurn(request).pipe(Metrics.timeToFirstToken(), Metrics.tokenTotals)
+LanguageModel.streamTurn(request).pipe(Metrics.Turn.timeToFirstToken(), Metrics.Turn.tokenTotals)
 ```
 
 `throughput` reports a live rate. It counts characters by default (exact on
 every provider); for tokens, hand it a tokenizer, or estimate:
 
 ```ts
-Metrics.throughput({
+Metrics.Turn.throughput({
   every: "1 second",
   unit: "token",
   tokenizer: (event) =>
@@ -78,8 +81,8 @@ Scope follows where you attach. The same meter gives you per-generation
 numbers on a single turn and whole-run numbers on a loop:
 
 ```ts
-LanguageModel.streamTurn(request).pipe(Metrics.tokenTotals) // this generation
-Loop.loop(initial, body).pipe(Metrics.tokenTotals) // the whole loop
+LanguageModel.streamTurn(request).pipe(Metrics.Turn.tokenTotals) // this generation
+Loop.loop(initial, body).pipe(Metrics.Turn.tokenTotals) // the whole loop
 ```
 
 `tokenTotals` emits both this turn's `usage` and the `cumulative` total across
@@ -116,6 +119,28 @@ Metrics.makeEvent({
   measurements: [{ name: "tool_latency", kind: "timer", value: Duration.millis(elapsed) }],
 })
 ```
+
+## Write your own meter
+
+Every latency meter is the same shape: a boundary that ends a segment, an
+anchor the clock starts at, and a predicate it stops on. `Metrics.Meter` is
+that plumbing with no knowledge of any capability, and the built-ins are it
+plus predicates:
+
+```ts
+Metrics.Meter.timeToFirst({
+  anchor: Metrics.Meter.Anchor.Element({ matches: isMyStart }),
+  first: (ev) => (isMyEnd(ev) ? Option.some(ev) : Option.none()),
+  boundary: isMySegmentEnd,
+  event: ({ elapsed, segmentIndex }) => Metrics.makeEvent({ ... }),
+})
+```
+
+`Anchor` covers the four ways a clock starts: `Request` (stream
+initialization), `FirstEvent`, `Element` (the most recent matching element),
+and `Mark` (an instant you stamped with `Metrics.Meter.mark`, for a start the
+measured stream cannot see). A segment whose anchor never arrived reports
+nothing rather than a number measured from the wrong place.
 
 ## See it run
 

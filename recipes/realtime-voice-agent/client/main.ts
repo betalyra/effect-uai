@@ -22,6 +22,13 @@ type StatusEvent =
   | { readonly type: "tool-cancelled"; readonly count: number }
   | { readonly type: "session-ending" }
   | { readonly type: "error"; readonly message: string }
+  /** A latency the server measured on this answer. */
+  | {
+      readonly type: "metric"
+      readonly label: string
+      readonly ms: number
+      readonly response: number
+    }
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -58,7 +65,7 @@ const followBottom = (): void => {
 // ---------------------------------------------------------------------------
 
 /** `raw` is the text as received, so trimming for display never loses it. */
-type Block = { readonly text: HTMLSpanElement; raw: string }
+type Block = { readonly el: HTMLDivElement; readonly text: HTMLSpanElement; raw: string }
 
 let currentUser: Block | undefined
 let currentAssistant: Block | undefined
@@ -74,7 +81,29 @@ const makeBlock = (role: "user" | "assistant" | "tool"): Block => {
   el.appendChild(text)
   conversationEl.appendChild(el)
   followBottom()
-  return { text, raw: "" }
+  return { el, text, raw: "" }
+}
+
+/**
+ * Latencies for the answer being spoken. The first one usually arrives before
+ * the first transcript delta, so there is no block to hang it on yet; they are
+ * held here and flushed when the answer's block appears.
+ */
+let pendingMetrics: ReadonlyArray<string> = []
+
+const addBadge = (block: Block, label: string): void => {
+  const badge = document.createElement("span")
+  badge.className = "metric"
+  badge.textContent = label
+  block.el.appendChild(badge)
+}
+
+const showMetric = (label: string): void => {
+  if (currentAssistant === undefined) {
+    pendingMetrics = [...pendingMetrics, label]
+    return
+  }
+  addBadge(currentAssistant, label)
 }
 
 const note = (role: "tool", message: string): void => {
@@ -98,8 +127,11 @@ const showUser = (text: string, final: boolean): void => {
 
 const appendAssistant = (text: string): void => {
   if (!currentAssistant) {
-    currentAssistant = makeBlock("assistant")
-    currentAssistant.text.classList.add("partial")
+    const block = makeBlock("assistant")
+    block.text.classList.add("partial")
+    pendingMetrics.forEach((label) => addBadge(block, label))
+    pendingMetrics = []
+    currentAssistant = block
   }
   currentAssistant.raw += text
   currentAssistant.text.textContent = currentAssistant.raw.trim()
@@ -120,6 +152,8 @@ const handleStatus = (event: StatusEvent): void => {
       // Each answer is counted on its own, since the position is reported
       // against one assistant item.
       playedMs = 0
+      // A badge nobody claimed belonged to an answer that never wrote a line.
+      pendingMetrics = []
       active?.playbackNode.port.postMessage({ type: "reset" })
       break
     case "assistant-delta":
@@ -153,6 +187,9 @@ const handleStatus = (event: StatusEvent): void => {
       break
     case "error":
       setStatus(event.message, true)
+      break
+    case "metric":
+      showMetric(`${event.label} ${event.ms}ms`)
       break
   }
 }

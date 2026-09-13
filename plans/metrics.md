@@ -782,3 +782,209 @@ defer reducer helper).
 ```
 
 ```
+
+## 8. Speech and realtime metrics (2026-09-13, proposal)
+
+Status: proposal, not started. Follow-up to the realtime capability
+([realtime.md](realtime.md)). Nothing here changes the language-model
+meters' public API.
+
+### 8.1 What already generalizes
+
+`Metrics.ts` is mostly capability-agnostic: the `MetricEvent` brand, the
+`measurements` array, `Telemetry.record` (dispatches on measurement
+`kind`, never on the event tag), the throughput accumulator and
+metronome, and `metricEvents`. What is turn-specific is three
+predicates hard-coded to `TurnEvent` tags (`contentDeltaKind`,
+`outputDelta`, `isTurnCompleteEvent`), the `turnIndex` field name, and
+the `effect_uai_turn_*` metric names.
+
+Every latency meter we have or want is one pattern: a segment boundary
+(turn, response, utterance), an anchor (request start or a specific
+event), and a "first" predicate. Throughput is a unit function plus the
+same boundary. So the shared plumbing becomes generic operators
+parameterised by predicates, and each capability ships presets over
+them. The user-facing API stays per capability; only internals move.
+
+### 8.2 Which metrics, and whether they are worth shipping
+
+Legend: **ship** = first pass; **later** = real but wait for a consumer;
+**skip** = not worth a meter (explain in docs instead).
+
+| Capability       | Metric                                      | What it tells the user                                                                                                                                                    | Anchor and boundary                                                                                                                              | Verdict                                                                                   |
+| ---------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Realtime session | Time to first audio                         | How long the model takes to start speaking once it decided the user finished. The number vendors quote; compares models and `thinkingLevel` / `reasoning.effort` settings | `ResponseStarted` to first `AudioDelta`; boundary `ResponseDone`                                                                                 | **ship**                                                                                  |
+| Realtime session | Turn latency (end of speech to first audio) | What the user actually waits, including the VAD silence window. The difference to the row above is the endpointing cost, which is the knob people tune                    | `SpeechStopped` to first `AudioDelta`; boundary `ResponseDone`. OpenAI only; Gemini emits no `SpeechStopped`, so the meter reports nothing there | **ship**, documented as provider-dependent                                                |
+| Realtime session | Benchmark latency (manual turn)             | Deterministic model-plus-network latency with no VAD in the way. The only number comparable across providers in a headless run                                            | `ActivityEnd` sent to first `AudioDelta`. Needs an input-side mark                                                                               | **ship** together with the `mark` helper; this is the benchmark harness                   |
+| Realtime session | Response usage                              | Tokens per response and cumulative, straight from `ResponseDone.usage`. Cost visibility on a per-turn-billed API                                                          | `ResponseDone`; reuses `tokenTotals` with a different boundary predicate                                                                         | **ship** (near free)                                                                      |
+| Realtime session | Response duration                           | Wall time per response and how much of it was generation                                                                                                                  | `ResponseStarted` to `ResponseDone`                                                                                                              | **ship** (near free, `timeToCompletion` preset)                                           |
+| Realtime session | Audio output rate                           | Seconds of audio produced per wall second. Above 1 means the model outruns playback, which is why truncate bookkeeping exists; below 1 means the voice will stutter       | bytes per `AudioDelta` over `outputFormat` (PCM only)                                                                                            | **later**: diagnostic, no recipe needs it yet                                             |
+| Realtime session | Tool round trip                             | Time from a tool call to the model speaking again after the result, split into tool execution and resume latency                                                          | `ToolCall` to `ToolResult` sent (input mark) to next first `AudioDelta`                                                                          | **later**: useful for the approval recipe, needs two marks                                |
+| Realtime session | Barge-in latency                            | Speech start to playback cut                                                                                                                                              | Client side only (browser worklet); not observable in our process                                                                                | **skip** as a meter; explain in the docs                                                  |
+| Streaming STT    | Finalisation latency                        | How long after the user stops talking the committed transcript arrives. The number that decides how a voice-loop pipeline feels                                           | `utterance-ended` to `final`; boundary `final`. `atSeconds` also gives the server's own audio clock for a wall-clock-free variant                | **ship**                                                                                  |
+| Streaming STT    | First partial latency                       | How quickly captions start moving                                                                                                                                         | first audio frame sent (input mark) to first `partial`                                                                                           | **later**: cosmetic; needs a mark                                                         |
+| Streaming STT    | Partial rate                                | Partials per second, a proxy for caption smoothness                                                                                                                       | `throughput` with unit `event`                                                                                                                   | **skip**: `throughput({ unit: "event" })` already does it once the predicate is pluggable |
+| Sync STT         | Real-time factor                            | Wall time divided by audio duration. Below 1 is faster than real time; the standard batch-transcription number                                                            | `Effect.timed` over `transcribe`, `TranscriptResult.duration`                                                                                    | **ship** as a one-line helper, no stream meter                                            |
+| Streaming TTS    | Time to first byte                          | How long before the voice starts; the only TTS latency users notice                                                                                                       | request start to first `AudioChunk`; boundary stream end                                                                                         | **ship**                                                                                  |
+| Streaming TTS    | Real-time factor                            | Seconds of audio per wall second; below 1 means playback will starve                                                                                                      | bytes over `outputFormat`, PCM only, else bytes per second                                                                                       | **ship** with the realtime audio-rate code (same unit function)                           |
+| Incremental TTS  | Text to audio lag                           | How far behind the model's text the voice runs in a voice-loop pipeline                                                                                                   | text delta sent (input mark) to next `AudioChunk`                                                                                                | **later**: needs a mark and a consumer; the voice-loop recipe could show it               |
+| Music, image     | anything                                    |                                                                                                                                                                           |                                                                                                                                                  | **skip**: one-shot calls, `Effect.timed` suffices                                         |
+
+First pass, in other words: three realtime latencies plus usage and
+duration, STT finalisation latency, TTS time to first byte and
+real-time factor, one `Effect.timed` helper for sync calls, and the
+`mark` helper. Everything marked later waits for a recipe that shows
+it.
+
+### 8.3 Design
+
+Generic operators (internal names, exported for custom meters):
+
+```ts
+type Segmenter<A> = {
+  /** Ends a segment; the next element starts a new one. */
+  readonly boundary: (a: A) => boolean
+}
+
+/** Elapsed from an anchor to the first element matching `first`, once per segment. */
+timeToFirst<A>(options: {
+  readonly anchor: "request" | ((a: A) => boolean) | Ref.Ref<Option<number>>
+  readonly first: (a: A) => boolean
+  readonly boundary: (a: A) => boolean
+  readonly event: (elapsed: Duration, segmentIndex: number) => MetricEvent
+})
+
+/** Segment wall time and generation window. */
+segmentDuration<A>(options: { first; boundary; event })
+
+/** Units per second on a metronome; `units` replaces today's `unitCount`. */
+rate<A>(options: { units: (a: A) => Effect<number>; boundary; every; unit; ... })
+
+/** Provider usage per segment and cumulative. */
+usageTotals<A>(options: { usage: (a: A) => Option<Usage>; boundary })
+```
+
+Input-side anchors: `Metrics.mark(ref, predicate)` taps a stream (or
+wraps a `send` function) and writes `Clock.currentTimeMillis` into a
+`Ref<Option<number>>` when the predicate matches. The output-side meter
+takes that `Ref` as `anchor`. The recipe wires both ends; nothing
+crosses the session boundary implicitly.
+
+Presets, one namespace per capability so the API reads like today:
+
+- `Metrics.timeToFirstToken`, `throughput`, `tokenTotals`,
+  `timeToCompletion`, `allMetrics`: unchanged signatures, now built on
+  the generic operators.
+- `Metrics.Realtime.timeToFirstAudio({ from })`,
+  `Metrics.Realtime.responseDuration`, `Metrics.Realtime.usage`,
+  `Metrics.Realtime.audioRate({ format })`, `Metrics.Realtime.all`.
+- `Metrics.Transcript.finalLatency({ clock: "wall" | "audio" })`.
+- `Metrics.Speech.timeToFirstByte`, `Metrics.Speech.realTimeFactor({ format })`.
+- `Metrics.realTimeFactor(effect, durationOf)` for sync calls.
+
+Event types: `TimeToFirstAudio`, `FinalLatency`, `TimeToFirstByte`,
+`AudioRate`, `RealTimeFactor`; `Throughput.unit` widens with
+`"audio-second" | "byte"`. `turnIndex` stays as the field name for
+compatibility but is documented as "segment index".
+
+Metric names: `effect_uai_response_time_to_first_audio`,
+`effect_uai_response_duration`, `effect_uai_transcript_final_latency`,
+`effect_uai_speech_ttfb`, `effect_uai_audio_seconds_per_second`,
+`effect_uai_real_time_factor`. Token counters reuse the existing names.
+
+Caveats to document: all wall clock in our process, so browser and
+network on the client side are excluded; audio seconds need a PCM
+`AudioFormat`, compressed formats fall back to bytes; the
+speech-stop anchor is provider-dependent.
+
+### 8.4 Plan
+
+Decided 2026-09-13: ship slice 1 first and try it live on both
+providers through `realtime-voice-agent` before anything else in this
+section is built. Slice 1 is deliberately the two metrics that need no
+input-side mark.
+
+**Slice 1: time to first audio and turn latency**
+
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Size | Depends on                                                   |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------ |
+| 1a  | Refactor `Metrics.ts` internals onto generic `timeToFirst` and `segmentDuration` operators (predicate-parameterised anchor, first, boundary). `timeToFirstToken`, `timeToCompletion`, `allMetrics` keep their signatures and behaviour; existing tests and `basic-metrics` unchanged. `throughput` and `tokenTotals` are not touched in this slice                                                                                                                                                                                                                                                                                                                                                                                   | M    | realtime review fixes (realtime.md R1 to R7) landed on `dev` |
+| 1b  | `Metrics.Realtime.timeToFirstAudio({ from })` emitting `TimeToFirstAudio { elapsed, anchor, turnIndex }` with measurement `effect_uai_response_time_to_first_audio` carrying `attributes: { anchor }`. Boundary is `ResponseDone`, the clock stops at the first `AudioDelta`. One metric: the anchor is the only setting, and it travels on the sample so two anchors never average together. Default `Anchor.Element(isSpeechStopped)`; `Anchor.Mark(ref)` reads a mark the caller wrote on the input side. A response whose anchor never arrived reports nothing. Tests against scripted `RealtimeEvent` streams from `MockRealtimeSession`, including the no-anchor case, the mark case, a stale mark, and two responses in a row | M    | 1a                                                           |
+| 1c  | `realtime-voice-agent`: `app.ts` stacks the meter on `session.events` and logs a line per sample, and forwards each to the browser as a `metric` status event shown next to the assistant line. Default anchor, so OpenAI reports and Gemini stays silent. `recipe.ts` stays unchanged: the meter is stacked in `app.ts` by whoever composes, which is the point                                                                                                                                                                                                                                                                                                                                                                     | S    | 1b                                                           |
+| 1d  | Live check on both providers, recorded in `plans/research/realtime/latency-notes.md`. **Done 2026-09-13, and it changed 1b and 1c:** see 8.5                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | S    | 1c                                                           |
+
+**Slice 2 (after 1d):** `Metrics.Realtime.usage` and `responseDuration`,
+then the STT and TTS presets and the docs page, in that order.
+
+### 8.5 What the live check changed (2026-09-13)
+
+1d ran on both providers and disproved the premise slice 1 was built on.
+Full trace in
+[latency-notes.md](research/realtime/latency-notes.md); the short version
+and its consequences:
+
+- **The two anchors slice 1 picked are not two anchors.** On OpenAI
+  `response.created` lands about 2 ms after
+  `input_audio_buffer.speech_stopped`, because the server opens the
+  response the moment it commits the input buffer. Measured 778/780 ms
+  and 810/812 ms on consecutive turns.
+- **`ResponseStarted` is worthless as an anchor on Gemini.** Gemini Live
+  has no "response created" frame, so the adapter mints the event on the
+  first event of a turn, which for an audio-out session is the first
+  `AudioDelta` itself. The meter therefore reports `0 ms`, always.
+- **No provider event can fix this.** Checked against the Live API
+  reference: `activityStart` / `activityEnd` are client-to-server only,
+  `waitingForInput` signals idleness, and `interactionStatus` ships
+  alongside `turnComplete`. With automatic VAD, Gemini announces nothing
+  between the user falling silent and the first audio chunk.
+- **Neither anchor measures what a person waits**, on any provider. The
+  endpointing window sits _before_ both: it is part of deciding when
+  `speech_stopped` fires at all. Defaults are 500 ms on OpenAI and about
+  800 ms on Gemini, so the felt latency is roughly the reported number
+  plus the configured silence. Both values are knobs the caller sets, so
+  the docs can say exactly that rather than hand-waving.
+
+So the shape changed from two presets to **one metric whose only setting
+is where the clock starts**, the same way `throughput` has one metric and
+`unit` decides how it counts. The anchor rides on the sample and on the
+measurement's `attributes`, so a dashboard can split or group but never
+silently average two meanings.
+
+The industry metric (TTFAB) anchors on the _acoustic_ end of speech,
+found by running a detector over the audio rather than by trusting a
+platform's own timestamps. We ship the seam for that (`Anchor.Mark` plus
+`Metrics.mark`) and no detector: push-to-talk, a VAD, or anything else
+writes the `Ref`, and the input side is a `Stream.tap` the caller owns.
+
+### 8.6 Annex: future work this opened
+
+Not scheduled. Recorded so it is not re-derived.
+
+- **A VAD package.** `onnx-community/silero-vad` is 2.24 MB, MIT, and
+  runs under `@huggingface/transformers` (which carries
+  `onnxruntime-web`) in both browser and Node; one 30 ms chunk costs
+  under 1 ms on a single CPU thread, and it takes 8 or 16 kHz. It is a
+  stateful RNN, so the glue carries hidden state between chunks rather
+  than being a `pipeline()` one-liner. This belongs in its own
+  `@effect-uai/vad` package with `@huggingface/transformers` as an
+  optional peer dependency, mirroring
+  [`HuggingFaceTokenizer`](../packages/retrieval/src/HuggingFaceTokenizer.ts).
+  Its own package rather than an optional peer of an existing one,
+  because an ONNX runtime with WASM binaries has no business anywhere
+  near a package installed for something else.
+- **A dependency-free detector, if one is ever wanted.** Moattar and
+  Homayounpour, "A simple but efficient real-time voice activity
+  detection algorithm" (EUSIPCO 2009): short-term energy, spectral
+  flatness and the most dominant frequency, with adaptive thresholds.
+  Roughly 150 lines including a small FFT.
+- **Energy alone is not worth shipping.** Short-term energy with or
+  without zero-crossing rate is documented in the VAD survey literature
+  as producing heavy clipping and insertion error and a low share of
+  correct classifications. It would hand out confident, wrong
+  timestamps, which is worse than reporting nothing. If a worked example
+  is ever wanted it belongs in a recipe, not in core, and named for what
+  it is.
+- **`waitingForInput` and `interactionStatus`** are Gemini
+  `serverContent` fields the adapter does not map. Neither is a
+  start-of-turn signal, so neither is worth mapping for latency; noted in
+  case something else ever wants them.

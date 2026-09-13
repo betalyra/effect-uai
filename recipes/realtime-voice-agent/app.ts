@@ -12,6 +12,7 @@ import {
   Cause,
   Channel,
   DateTime,
+  Duration,
   Effect,
   FileSystem,
   Layer,
@@ -27,6 +28,9 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as HttpRouter from "effect/unstable/http/HttpRouter"
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
+import * as Metrics from "@effect-uai/core/Metrics"
+import type { RealtimeEvent } from "@effect-uai/core/Realtime"
+import { RealtimeSession, type RealtimeSessionService } from "@effect-uai/core/RealtimeSession"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import { webSearchTool } from "@effect-uai/core/WebSearchTool"
@@ -233,6 +237,50 @@ const POSITION_FRAME = 0x02
 
 const decoder = new TextDecoder()
 
+// ---------------------------------------------------------------------------
+// Latency meters. Plain stream operators stacked on the session's events here,
+// where the composition happens: `recipe.ts` neither knows nor cares. Wrapping
+// the tag rather than the recipe keeps the handle's type intact, so the
+// samples leave through `sink` instead of down a stream the recipe would have
+// to widen for.
+// ---------------------------------------------------------------------------
+
+type Sample = { readonly label: string; readonly ms: number; readonly response: number }
+
+/**
+ * The anchor decides what the number means, so it is the label. `speech-stop`
+ * excludes the provider's own endpointing window, which is configured rather
+ * than reported: the wait a person felt is roughly this plus that silence.
+ */
+const sampleOf = (event: Metrics.Realtime.TimeToFirstAudio): Sample => ({
+  label: event.anchor,
+  ms: Math.round(Duration.toMillis(event.elapsed)),
+  response: event.turnIndex,
+})
+
+const meteredSession = (sink: (sample: Sample) => Effect.Effect<void>) =>
+  Layer.effect(
+    RealtimeSession,
+    Effect.map(RealtimeSession, (inner): RealtimeSessionService => ({
+      open: (request) =>
+        Effect.map(inner.open(request), (handle) => ({
+          ...handle,
+          events: handle.events.pipe(
+            // Default anchor, so this reports on OpenAI and stays silent on
+            // Gemini, which announces no end of speech. To measure there, mark
+            // the instant yourself on the way in and pass the ref as `from`.
+            Metrics.Realtime.timeToFirstAudio(),
+            Stream.tap((event) =>
+              Metrics.isMetricEvent(event)
+                ? sink(sampleOf(event as Metrics.Realtime.TimeToFirstAudio))
+                : Effect.void,
+            ),
+            Stream.filter((event): event is RealtimeEvent => !Metrics.isMetricEvent(event)),
+          ),
+        })),
+    })),
+  )
+
 const wsHandler = (cfg: AgentConfig) =>
   Effect.gen(function* () {
     yield* Effect.logInfo("[ws] browser connected")
@@ -242,6 +290,16 @@ const wsHandler = (cfg: AgentConfig) =>
     const playedQueue = yield* Queue.unbounded<number, Cause.Done<void>>()
     const outQueue = yield* Queue.unbounded<string | Uint8Array, Cause.Done<void>>()
 
+    // The meters ride the same wire as the status events, so the page can show
+    // a latency next to the answer it belongs to.
+    const sendSample = (sample: Sample) =>
+      Effect.andThen(
+        Effect.logInfo(
+          `[metrics] time-to-first-audio ${sample.ms}ms from ${sample.label} (response ${sample.response})`,
+        ),
+        Effect.asVoid(Queue.offer(outQueue, JSON.stringify({ type: "metric", ...sample }))),
+      )
+
     yield* runAgent(cfg, toolkit, {
       mic: Stream.fromQueue(micQueue),
       typed: Stream.fromQueue(typedQueue),
@@ -250,6 +308,7 @@ const wsHandler = (cfg: AgentConfig) =>
         Effect.asVoid(Queue.offer(outQueue, JSON.stringify(event))),
       sendAudio: (bytes) => Effect.asVoid(Queue.offer(outQueue, bytes)),
     }).pipe(
+      Effect.provide(meteredSession(sendSample)),
       Effect.scoped,
       Effect.tapCause((cause) =>
         Cause.hasInterruptsOnly(cause)

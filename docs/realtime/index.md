@@ -154,6 +154,60 @@ rather than a common promise. `sendVideoFrame` requires
 a camera at an OpenAI-only Layer is a compile error rather than a
 surprise at runtime.
 
+## How Long It Took To Answer
+
+`Metrics.Realtime.timeToFirstAudio` is an ordinary stream operator: stack
+it on `session.events` and each response gets one sample carrying how long
+it took to start speaking, with everything else passing through.
+
+```ts
+import * as Metrics from "@effect-uai/core/Metrics"
+
+session.events.pipe(
+  Metrics.Realtime.timeToFirstAudio(),
+  Stream.runForEach((event) =>
+    Metrics.isMetricEvent(event) ? logSample(event) : handleEvent(event),
+  ),
+)
+```
+
+The clock stops at the first `AudioDelta`. Where it **starts** is the only
+setting, and it decides what the number means, so it rides along on the
+sample and on the measurement's `attributes`: two anchors can be split or
+grouped on a dashboard, never silently averaged.
+
+By default it starts at `SpeechStopped`, the provider's own end-of-speech
+event. Two things to know before you read that number:
+
+- **Only OpenAI emits it.** Gemini Live announces nothing between you
+  falling silent and the first audio chunk, so the meter reports nothing
+  there rather than a zero. The same silence covers typed input and the
+  response that resumes after a tool result, on either provider.
+- **It excludes the endpointing window.** The provider waits out a silence
+  before deciding you are done, and that wait is configured rather than
+  reported (`silenceDurationMs`, 500 ms by default on OpenAI, around 800 ms
+  on Gemini). The wait a person actually felt is roughly the reported
+  number plus that silence.
+
+For a start the session's own events cannot show, stamp it yourself on the
+way in:
+
+```ts
+const ref = yield * Metrics.Meter.markRef
+
+// wherever you know the turn ended: a push-to-talk release, or a voice
+// activity detector over the audio you are sending
+yield * Metrics.Meter.mark(ref)
+
+session.events.pipe(Metrics.Realtime.timeToFirstAudio({ from: ref }))
+```
+
+Each mark is measured from once, so a response with no fresh mark reports
+nothing rather than counting from the turn before it. Anchored on the
+acoustic end of speech this is the industry's time to first audio byte;
+anchored on a button release it is intent instead. No detector ships with
+the library: the seam is the point, and what you put in it is yours.
+
 ## Testing
 
 `MockRealtimeSession` scripts a session: the events it emits on open, a

@@ -188,6 +188,31 @@ VAD events (`speech-started`, `utterance-ended`) require
 provider issues can arrive as `_tag: "error"` events; fatal failures
 still use the Stream error channel.
 
+## How Long The Final Took
+
+`Metrics.Transcript.finalLatency` measures from `utterance-ended` to the
+`final` that commits it, once per utterance. That pause is what a pipeline
+waits through before it can act on what was said, so it is the number that
+decides how a voice loop feels:
+
+```ts
+import * as Metrics from "@effect-uai/core/Metrics"
+
+Transcriber.streamTranscriptionFrom(micFrames, request).pipe(
+  Metrics.Transcript.finalLatency,
+  Stream.runForEach((event) => (Metrics.isMetricEvent(event) ? logSample(event) : render(event))),
+)
+```
+
+It is an ordinary stream operator, so the transcript events pass through
+untouched. The clock is wall clock in this process: the network from the
+audio source counts, the speaker's own microphone does not.
+
+`utterance-ended` is sparse, and needs `vadEvents: true` where the provider
+supports it at all. An utterance whose `utterance-ended` never arrived
+reports nothing rather than a number measured from the wrong place, so a
+transcriber that does not emit it stays silent here.
+
 ## Next step
 
 - [Voice loop](/recipes/voice-loop/): live mic → LLM → TTS, the

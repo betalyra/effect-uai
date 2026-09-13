@@ -1,4 +1,4 @@
-import { type Duration, Effect, Match, Option, Ref, Stream } from "effect"
+import { Data, type Duration, Effect, Match, Option, Ref, Stream } from "effect"
 import * as Settle from "../streaming/Settle.js"
 
 /**
@@ -46,48 +46,42 @@ export type TranscriptResult = {
  * - `error`: non-fatal provider error mid-stream. Fatal errors surface
  *   on the `Stream`'s error channel as `AiError.AiError`.
  */
-export type TranscriptEvent =
-  | {
-      readonly _tag: "partial"
-      readonly text: string
-      readonly words?: ReadonlyArray<WordTimestamp>
-      readonly stability?: number
-    }
-  | {
-      readonly _tag: "final"
-      readonly text: string
-      readonly words?: ReadonlyArray<WordTimestamp>
-      readonly languageCode?: string
-    }
-  | { readonly _tag: "speech-started"; readonly atSeconds: number }
-  | { readonly _tag: "utterance-ended"; readonly atSeconds: number }
-  | {
-      readonly _tag: "audio-event"
-      readonly label: string
-      readonly startSeconds: number
-      readonly endSeconds: number
-    }
-  | { readonly _tag: "metadata"; readonly raw: unknown }
-  | { readonly _tag: "error"; readonly code?: string; readonly message: string }
+export type TranscriptEvent = Data.TaggedEnum<{
+  partial: {
+    readonly text: string
+    readonly words?: ReadonlyArray<WordTimestamp>
+    readonly stability?: number
+  }
+  final: {
+    readonly text: string
+    readonly words?: ReadonlyArray<WordTimestamp>
+    readonly languageCode?: string
+  }
+  "speech-started": { readonly atSeconds: number }
+  "utterance-ended": { readonly atSeconds: number }
+  "audio-event": {
+    readonly label: string
+    readonly startSeconds: number
+    readonly endSeconds: number
+  }
+  metadata: { readonly raw: unknown }
+  error: { readonly code?: string; readonly message: string }
+}>
 
-export const isPartial = (e: TranscriptEvent): e is Extract<TranscriptEvent, { _tag: "partial" }> =>
-  e._tag === "partial"
-export const isFinal = (e: TranscriptEvent): e is Extract<TranscriptEvent, { _tag: "final" }> =>
-  e._tag === "final"
-export const isSpeechStarted = (
-  e: TranscriptEvent,
-): e is Extract<TranscriptEvent, { _tag: "speech-started" }> => e._tag === "speech-started"
-export const isUtteranceEnded = (
-  e: TranscriptEvent,
-): e is Extract<TranscriptEvent, { _tag: "utterance-ended" }> => e._tag === "utterance-ended"
-export const isAudioEvent = (
-  e: TranscriptEvent,
-): e is Extract<TranscriptEvent, { _tag: "audio-event" }> => e._tag === "audio-event"
-export const isMetadata = (
-  e: TranscriptEvent,
-): e is Extract<TranscriptEvent, { _tag: "metadata" }> => e._tag === "metadata"
-export const isError = (e: TranscriptEvent): e is Extract<TranscriptEvent, { _tag: "error" }> =>
-  e._tag === "error"
+export const TranscriptEvent = Data.taggedEnum<TranscriptEvent>()
+
+/**
+ * `TranscriptEvent.$is(tag)` is the same guard and takes `unknown`, which is
+ * what a stream operator scanning a mixed stream needs. These stay for the
+ * call sites that read better named.
+ */
+export const isPartial = TranscriptEvent.$is("partial")
+export const isFinal = TranscriptEvent.$is("final")
+export const isSpeechStarted = TranscriptEvent.$is("speech-started")
+export const isUtteranceEnded = TranscriptEvent.$is("utterance-ended")
+export const isAudioEvent = TranscriptEvent.$is("audio-event")
+export const isMetadata = TranscriptEvent.$is("metadata")
+export const isError = TranscriptEvent.$is("error")
 
 export type AccumulatePartialsOptions = {
   /** Silence after the last `partial` before the text so far is committed. */

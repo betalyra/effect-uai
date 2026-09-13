@@ -1,0 +1,359 @@
+/**
+ * Metrics for a language-model turn: the presets over `TurnEvent`.
+ *
+ * A segment here is one turn, delimited by `TurnComplete`, so the same meter
+ * reports per generation on `streamTurn` and per loop on a loop's output
+ * stream. Attach the timing meters at `streamTurn` scope, where the stream
+ * initializes once per request.
+ */
+import {
+  Array as Arr,
+  Clock,
+  Duration,
+  Effect,
+  Match,
+  Option,
+  Predicate,
+  Ref,
+  Result,
+  Schedule,
+  Stream,
+} from "effect"
+import type { Usage } from "../../domain/Items.js"
+import { type Turn, TurnEvent } from "../../domain/Turn.js"
+import { Anchor, segmentDuration, timeToFirst } from "./Meter.js"
+import { type MetricEvent, MetricEventTypeId, makeEvent } from "./MetricEvent.js"
+import { type TokenTotals, usageTotals } from "./Usage.js"
+
+/** Re-exported so the turn meters keep one import. */
+export type { TokenTotals }
+
+/** Request/turn start to the first content delta. */
+export type TimeToFirstToken = MetricEvent & {
+  readonly _tag: "TimeToFirstToken"
+  readonly elapsed: Duration.Duration
+  readonly kind: "text" | "reasoning"
+}
+
+/** A live output rate, emitted on the metronome cadence. */
+export type Throughput = MetricEvent & {
+  readonly _tag: "Throughput"
+  readonly ratePerSecond: number
+  readonly unit: "char" | "token" | "event"
+  readonly window: Duration.Duration
+}
+
+/** Per-turn wall times at `TurnComplete`. */
+export type TimeToCompletion = MetricEvent & {
+  readonly _tag: "TimeToCompletion"
+  readonly duration: Duration.Duration
+  readonly generation: Duration.Duration
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+const MetricName = {
+  ttft: "effect_uai_turn_ttft",
+  duration: "effect_uai_turn_duration",
+  generation: "effect_uai_turn_generation",
+  inputTokens: "effect_uai_input_tokens",
+  outputTokens: "effect_uai_output_tokens",
+  totalTokens: "effect_uai_total_tokens",
+  reasoningTokens: "effect_uai_reasoning_tokens",
+  cachedInputTokens: "effect_uai_cached_input_tokens",
+  cacheWriteTokens: "effect_uai_cache_write_tokens",
+} as const
+
+/** Read a structural `_tag` off any value without narrowing to a closed union. */
+const tagOf = (u: unknown): string | undefined =>
+  Predicate.hasProperty(u, "_tag") && Predicate.isString(u._tag) ? u._tag : undefined
+
+const contentDeltaKind = (ev: unknown): Option.Option<"text" | "reasoning"> => {
+  const t = tagOf(ev)
+  return t === "TextDelta"
+    ? Option.some("text")
+    : t === "ReasoningDelta"
+      ? Option.some("reasoning")
+      : Option.none()
+}
+
+const isTextDelta = TurnEvent.$is("TextDelta")
+const isReasoningDelta = TurnEvent.$is("ReasoningDelta")
+const isRefusalDelta = TurnEvent.$is("RefusalDelta")
+const isToolCallArgsDelta = TurnEvent.$is("ToolCallArgsDelta")
+
+/** A delta carrying generated output, whatever the model was producing. */
+export type OutputDelta = Extract<
+  TurnEvent,
+  { readonly _tag: "TextDelta" | "ReasoningDelta" | "RefusalDelta" | "ToolCallArgsDelta" }
+>
+
+/**
+ * Narrow to a delta that contributes to the model's output stream. Tool-call
+ * arguments count: an agent turn can be almost entirely `ToolCallArgsDelta`,
+ * and measuring only prose reports a near-zero rate for it.
+ *
+ * The single place the output-delta tag list lives: the throughput
+ * accumulator and `unitCount` both read it. Distinct from `contentDeltaKind`,
+ * which answers a narrower question for first-token latency.
+ */
+const outputDelta = (ev: unknown): Option.Option<OutputDelta> =>
+  isTextDelta(ev) || isReasoningDelta(ev) || isRefusalDelta(ev) || isToolCallArgsDelta(ev)
+    ? Option.some(ev)
+    : Option.none()
+
+const outputTextOf = (delta: OutputDelta): string =>
+  isToolCallArgsDelta(delta) ? delta.delta : delta.text
+
+const isTurnCompleteEvent = (ev: unknown): boolean => tagOf(ev) === "TurnComplete"
+
+const turnOf = (ev: unknown): Turn =>
+  (ev as Extract<TurnEvent, { readonly _tag: "TurnComplete" }>).turn
+
+// ---------------------------------------------------------------------------
+// timeToFirstToken
+// ---------------------------------------------------------------------------
+
+export type TimeToFirstTokenOptions = {
+  /**
+   * Where the clock starts. `"request"` (default) anchors at stream
+   * initialization, i.e. when the provider request fires, so the measurement
+   * includes connection + prefill. `"first-event"` anchors at the first
+   * emitted event, isolating decode latency.
+   */
+  readonly from?: "request" | "first-event"
+}
+
+export const timeToFirstToken = (options?: TimeToFirstTokenOptions) =>
+  timeToFirst<"text" | "reasoning">({
+    anchor: (options?.from ?? "request") === "request" ? Anchor.Request() : Anchor.FirstEvent(),
+    first: contentDeltaKind,
+    boundary: isTurnCompleteEvent,
+    event: ({ elapsed, match, segmentIndex }) =>
+      makeEvent<Omit<TimeToFirstToken, typeof MetricEventTypeId>>({
+        _tag: "TimeToFirstToken",
+        turnIndex: segmentIndex,
+        elapsed,
+        kind: match,
+        measurements: [{ name: MetricName.ttft, kind: "timer", value: elapsed }],
+      }),
+  })
+
+// ---------------------------------------------------------------------------
+// timeToCompletion
+// ---------------------------------------------------------------------------
+
+export const timeToCompletion = segmentDuration({
+  first: (ev) => Option.isSome(contentDeltaKind(ev)),
+  boundary: isTurnCompleteEvent,
+  event: ({ duration, generation, segmentIndex }) =>
+    makeEvent<Omit<TimeToCompletion, typeof MetricEventTypeId>>({
+      _tag: "TimeToCompletion",
+      turnIndex: segmentIndex,
+      duration,
+      generation,
+      measurements: [
+        { name: MetricName.duration, kind: "timer", value: duration },
+        { name: MetricName.generation, kind: "timer", value: generation },
+      ],
+    }),
+})
+
+// ---------------------------------------------------------------------------
+// tokenTotals
+// ---------------------------------------------------------------------------
+
+export const tokenTotals = usageTotals({
+  boundary: isTurnCompleteEvent,
+  usage: (ev) => (isTurnCompleteEvent(ev) ? Option.some(turnOf(ev).usage) : Option.none()),
+})
+
+// ---------------------------------------------------------------------------
+// throughput
+// ---------------------------------------------------------------------------
+
+export type ThroughputOptions = {
+  /** Tick interval. Default `"1 second"`. */
+  readonly every?: Duration.Input
+  /** What a "unit" is. Default `"char"` (exact and chunking-independent). */
+  readonly unit?: "char" | "token" | "event"
+  /**
+   * Token counter for `unit: "token"`. Called only for deltas that carry
+   * generated output. Absent => approximate 1 per such delta.
+   */
+  readonly tokenizer?: (event: OutputDelta) => Effect.Effect<number>
+  /** Rate definition. Default `"windowed"` (current speed, no cold-start bias). */
+  readonly mode?: "windowed" | "cumulative"
+  /** EWMA smoothing. Omitted => off; `"default"` => a sensible factor. */
+  readonly smooth?: "default" | number
+}
+
+/**
+ * The throughput accumulator. Mutated by the source per content delta and read
+ * by the metronome per tick.
+ *
+ * @internal
+ */
+export type RateState = {
+  readonly units: number
+  readonly lastUnits: number
+  readonly lastMillis: number
+  readonly firstMillis: Option.Option<number>
+  readonly smoothed: Option.Option<number>
+  readonly turnIndex: number
+}
+
+const initRateState: RateState = {
+  units: 0,
+  lastUnits: 0,
+  lastMillis: 0,
+  firstMillis: Option.none(),
+  smoothed: Option.none(),
+  turnIndex: 0,
+}
+
+const resolveSmooth = (smooth: ThroughputOptions["smooth"]): number | undefined =>
+  smooth === undefined ? undefined : smooth === "default" ? 0.3 : smooth
+
+/**
+ * Pure per-tick rate computation. Returns `None` before the first token, else
+ * the rate, the window it was measured over, and the next accumulator state.
+ * Separated from the metronome so the rate math is unit-testable without time.
+ *
+ * @internal
+ */
+export const computeThroughputTick = (
+  state: RateState,
+  now: number,
+  mode: "windowed" | "cumulative",
+  smooth: number | undefined,
+): Option.Option<{
+  readonly rate: number
+  readonly window: Duration.Duration
+  readonly next: RateState
+}> =>
+  Option.map(state.firstMillis, (first) => {
+    const windowMs = mode === "windowed" ? now - state.lastMillis : now - first
+    const deltaUnits = mode === "windowed" ? state.units - state.lastUnits : state.units
+    const instant = windowMs > 0 ? (deltaUnits / windowMs) * 1000 : 0
+    const rate =
+      smooth === undefined
+        ? instant
+        : Option.match(state.smoothed, {
+            onNone: () => instant,
+            onSome: (prev) => smooth * instant + (1 - smooth) * prev,
+          })
+    return {
+      rate,
+      window: Duration.millis(windowMs),
+      next: { ...state, lastUnits: state.units, lastMillis: now, smoothed: Option.some(rate) },
+    }
+  })
+
+const addUnits = (state: RateState, n: number, now: number): RateState =>
+  Option.isNone(state.firstMillis)
+    ? { ...state, units: n, lastUnits: 0, lastMillis: now, firstMillis: Option.some(now) }
+    : { ...state, units: state.units + n }
+
+const resetTurn = (state: RateState): RateState => ({
+  ...initRateState,
+  turnIndex: state.turnIndex + 1,
+})
+
+const unitCount = (
+  ev: unknown,
+  unit: "char" | "token" | "event",
+  tokenizer: ThroughputOptions["tokenizer"],
+): Effect.Effect<number> => {
+  const output = outputDelta(ev)
+  if (Option.isNone(output)) return Effect.succeed(0)
+  const delta = output.value
+  return Match.value(unit).pipe(
+    Match.when("char", () => Effect.succeed([...outputTextOf(delta)].length)),
+    Match.when("event", () => Effect.succeed(1)),
+    Match.when("token", () => (tokenizer === undefined ? Effect.succeed(1) : tokenizer(delta))),
+    Match.exhaustive,
+  )
+}
+
+const throughputName = (unit: "char" | "token" | "event"): string =>
+  `effect_uai_output_${unit}s_per_second`
+
+export const throughput =
+  (options?: ThroughputOptions) =>
+  <A, E, R>(self: Stream.Stream<A, E, R>): Stream.Stream<A | MetricEvent, E, R> => {
+    const unit = options?.unit ?? "char"
+    const mode = options?.mode ?? "windowed"
+    const every = options?.every ?? Duration.seconds(1)
+    const smooth = resolveSmooth(options?.smooth)
+    const tokenizer = options?.tokenizer
+    const name = throughputName(unit)
+
+    return Stream.unwrap(
+      Effect.map(Ref.make(initRateState), (ref) => {
+        const source = self.pipe(
+          Stream.tap((ev) =>
+            isTurnCompleteEvent(ev)
+              ? Ref.update(ref, resetTurn)
+              : Option.isSome(outputDelta(ev))
+                ? Effect.flatMap(Clock.currentTimeMillis, (now) =>
+                    Effect.flatMap(unitCount(ev, unit, tokenizer), (n) =>
+                      Ref.update(ref, (state) => addUnits(state, n, now)),
+                    ),
+                  )
+                : Effect.void,
+          ),
+        )
+        const metronome: Stream.Stream<MetricEvent> = Stream.fromSchedule(
+          Schedule.spaced(every),
+        ).pipe(
+          Stream.mapEffect(() =>
+            Effect.flatMap(Clock.currentTimeMillis, (now) =>
+              Ref.modify(ref, (state) =>
+                Option.match(computeThroughputTick(state, now, mode, smooth), {
+                  onNone: () => [Option.none<MetricEvent>(), state] as const,
+                  onSome: ({ next, rate, window }) =>
+                    [
+                      Option.some<MetricEvent>(
+                        makeEvent<Omit<Throughput, typeof MetricEventTypeId>>({
+                          _tag: "Throughput",
+                          turnIndex: state.turnIndex,
+                          ratePerSecond: rate,
+                          unit,
+                          window,
+                          measurements: [{ name, kind: "histogram", value: rate }],
+                        }),
+                      ),
+                      next,
+                    ] as const,
+                }),
+              ),
+            ),
+          ),
+          Stream.filterMap((o) => (Option.isSome(o) ? Result.succeed(o.value) : Result.failVoid)),
+        )
+        return source.pipe(Stream.merge(metronome, { haltStrategy: "left" }))
+      }),
+    )
+  }
+
+// ---------------------------------------------------------------------------
+// allMetrics
+// ---------------------------------------------------------------------------
+
+export type AllMetricsOptions = {
+  readonly timeToFirstToken?: TimeToFirstTokenOptions
+  readonly throughput?: ThroughputOptions
+}
+
+export const allMetrics =
+  (options?: AllMetricsOptions) =>
+  <A, E, R>(self: Stream.Stream<A, E, R>): Stream.Stream<A | MetricEvent, E, R> =>
+    self.pipe(
+      timeToFirstToken(options?.timeToFirstToken),
+      throughput(options?.throughput),
+      tokenTotals,
+      timeToCompletion,
+    )

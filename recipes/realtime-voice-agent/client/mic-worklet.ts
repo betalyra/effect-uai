@@ -4,7 +4,7 @@
  * `port.postMessage`. The browser usually runs the AudioContext at its
  * native rate (44.1 / 48 kHz); we accept the actual `sourceRate` via
  * `processorOptions` and resample to `targetRate` with a simple averaging
- * decimator — good enough for STT.
+ * decimator, good enough for STT.
  */
 class MicWorklet extends AudioWorkletProcessor {
   private readonly sourceRate: number

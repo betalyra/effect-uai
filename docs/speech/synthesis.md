@@ -167,6 +167,26 @@ into an `AudioWorklet` ring buffer (lowest-latency browser path). Pass
 `container: "mp3"` for "drop into an `<audio>` tag" simplicity at the
 cost of a few extra ms of decode.
 
+## How Long Before The Voice Starts
+
+`Metrics.Speech.timeToFirstByte` measures from the request to the first
+`AudioChunk`, once per synthesis:
+
+```ts
+import * as Metrics from "@effect-uai/core/Metrics"
+
+SpeechSynthesizer.streamSynthesis(request).pipe(Metrics.Speech.timeToFirstByte)
+```
+
+The clock starts when the stream initializes, which is when the provider
+request fires, so connection and prefill are both in the number. It is the
+only synthesis latency a listener notices: everything after the first chunk
+hides behind playback, as long as audio keeps arriving faster than it is
+heard.
+
+One sample per stream. An incremental synthesis fed by a long-lived text
+stream reports when its voice started, not once per utterance.
+
 ## Next step
 
 - [Voice loop](/recipes/voice-loop/): `streamSynthesisFrom` plugged

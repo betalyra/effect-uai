@@ -24,10 +24,10 @@ import { fantasyStory } from "./recipe.js"
 // ---------------------------------------------------------------------------
 
 type Sample =
-  | Metrics.TimeToFirstToken
-  | Metrics.Throughput
-  | Metrics.TokenTotals
-  | Metrics.TimeToCompletion
+  | Metrics.Turn.TimeToFirstToken
+  | Metrics.Turn.Throughput
+  | Metrics.Turn.TokenTotals
+  | Metrics.Turn.TimeToCompletion
 
 const fmt = (d: Duration.Duration): string => {
   const ms = Duration.toMillis(d)

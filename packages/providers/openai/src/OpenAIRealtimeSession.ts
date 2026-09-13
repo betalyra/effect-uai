@@ -17,7 +17,12 @@ import {
   type RealtimeSessionHandle,
   type RealtimeSessionService,
 } from "@effect-uai/core/RealtimeSession"
-import { type Config, type OpenAIRealtimeRequest, openSession } from "./realtimeSession.js"
+import {
+  type Config,
+  type OpenAIRealtimeRequest,
+  openSession,
+  refuseResume,
+} from "./realtimeSession.js"
 
 export type { Config, OpenAIRealtimeRequest } from "./realtimeSession.js"
 
@@ -38,6 +43,7 @@ export const layer = (cfg: Config): Layer.Layer<OpenAIRealtimeSession | Realtime
   Layer.mergeAll(
     Layer.succeed(OpenAIRealtimeSession, make(cfg)),
     Layer.succeed(RealtimeSession, {
-      open: (request: CommonSessionRequest) => make(cfg).open(request as OpenAIRealtimeRequest),
+      open: (request: CommonSessionRequest) =>
+        Effect.andThen(refuseResume(request), make(cfg).open(request as OpenAIRealtimeRequest)),
     } satisfies RealtimeSessionService),
   )

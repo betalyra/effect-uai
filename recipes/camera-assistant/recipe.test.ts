@@ -120,6 +120,35 @@ describe("camera assistant", () => {
     }),
   )
 
+  it.live("still interrupts a call the model abandons after the turn ended", () =>
+    Effect.gen(function* () {
+      const { status, sent } = yield* run(
+        [],
+        [
+          RealtimeEvent.ResponseStarted({ responseId: "turn_1" }),
+          RealtimeEvent.ToolCall({
+            responseId: "turn_1",
+            call: {
+              type: "function_call",
+              call_id: "fc_1",
+              name: "web_search",
+              arguments: '{"query":"what is this"}',
+              providerData: undefined,
+            },
+          }),
+          // Gemini ends the turn before it cancels the call it just made.
+          RealtimeEvent.ResponseDone({ responseId: "turn_1", reason: "interrupted" }),
+          RealtimeEvent.ToolCallCancelled({ callIds: ["fc_1"] }),
+        ],
+      )
+
+      expect(sentOf(sent, "ToolResult")).toHaveLength(0)
+      expect(status.filter((e) => e.type === "tool-cancelled")).toEqual([
+        { type: "tool-cancelled", count: 1 },
+      ])
+    }),
+  )
+
   it("needs a provider with video, so an audio-only session leaves the marker unmet", () => {
     const io = {
       mic: Stream.empty,

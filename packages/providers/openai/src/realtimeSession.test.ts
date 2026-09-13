@@ -1,10 +1,11 @@
 import { describe, it } from "@effect/vitest"
-import { Effect, Encoding, Fiber, Redacted, Stream } from "effect"
+import { Effect, Encoding, Fiber, Match, Redacted, Stream } from "effect"
 import { expect } from "vitest"
 import type { RealtimeEvent } from "@effect-uai/core/Realtime"
 import { RealtimeInput } from "@effect-uai/core/Realtime"
-import type { RealtimeSessionHandle } from "@effect-uai/core/RealtimeSession"
+import { RealtimeSession, type RealtimeSessionHandle } from "@effect-uai/core/RealtimeSession"
 import * as FakeWebSocket from "@effect-uai/core/testing/FakeWebSocket"
+import { layer } from "./OpenAIRealtimeSession.js"
 import { type OpenAIRealtimeRequest, openSession } from "./realtimeSession.js"
 
 const pcm = { container: "raw", encoding: "pcm_s16le", sampleRate: 24000, channels: 1 } as const
@@ -168,6 +169,29 @@ describe("OpenAI realtime session responses", () => {
     }).pipe(Effect.scoped),
   )
 
+  it.live("reads a close at the announced expiry as a session that ran out", () =>
+    Effect.gen(function* () {
+      // The server sets the expiry at connect and drops the socket when it
+      // passes, with no frame to say why.
+      const expired = yield* FakeWebSocket.make({
+        greeting: [
+          { type: "session.created", session: { id: "sess_1", expires_at: 1_600_000_000 } },
+        ],
+        reply: (frame) =>
+          Effect.succeed(
+            (frame as { type?: string }).type === "session.update"
+              ? [{ type: "session.updated" }]
+              : [],
+          ),
+      })
+      const exit = yield* transcript(expired, () => Effect.void)
+
+      // Distinct from a clean end: reconnecting works, retrying does not.
+      expect(exit._tag).toBe("Failure")
+      expect(JSON.stringify(exit)).toContain("SessionExpired")
+    }).pipe(Effect.scoped),
+  )
+
   it.live("ends the stream as an incomplete turn when a response is still running", () =>
     Effect.gen(function* () {
       const server = yield* openai
@@ -275,6 +299,51 @@ describe("OpenAI realtime session tools", () => {
     }).pipe(Effect.scoped),
   )
 
+  it.live("asks for exactly one turn when the response ends as the result is sent", () =>
+    Effect.gen(function* () {
+      // The response ends on the pump fiber while `send` is still running, so
+      // whichever side sees the other's write first, the turn is asked for once.
+      const server = yield* FakeWebSocket.make({
+        greeting: [{ type: "session.created", session: { id: "sess_1" } }],
+        reply: (frame) =>
+          Effect.succeed(
+            Match.value(frame as { type?: string; item?: { type?: string } }).pipe(
+              Match.when({ type: "session.update" }, () => [{ type: "session.updated" }]),
+              Match.when({ item: { type: "function_call_output" } }, () => [
+                { type: "response.done", response: { id: "resp_1", status: "completed" } },
+              ]),
+              Match.orElse(() => []),
+            ),
+          ),
+      })
+
+      yield* transcript(server, (handle) =>
+        Effect.gen(function* () {
+          yield* server.push({ type: "response.created", response: { id: "resp_1" } })
+          yield* server.push({
+            type: "response.output_item.added",
+            response_id: "resp_1",
+            item: { id: "call_item", type: "function_call", call_id: "call_1", name: "get_time" },
+          })
+          yield* tick
+          yield* handle.send(
+            RealtimeInput.ToolResult({
+              output: {
+                type: "function_call_output",
+                call_id: "call_1",
+                output: "{}",
+                providerData: undefined,
+              },
+            }),
+          )
+        }),
+      )
+
+      const sent = yield* server.sent
+      expect(sent.filter((f: any) => f.type === "response.create")).toHaveLength(1)
+    }).pipe(Effect.scoped),
+  )
+
   it.live("rejects a result for a call this session never made", () =>
     Effect.gen(function* () {
       const server = yield* openai
@@ -330,6 +399,49 @@ describe("OpenAI realtime session inputs", () => {
         content_index: 0,
         audio_end_ms: 1235,
       })
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("holds a typed message's turn until the active response is done", () =>
+    Effect.gen(function* () {
+      const server = yield* openai
+      yield* transcript(server, (handle) =>
+        Effect.gen(function* () {
+          yield* server.push({ type: "response.created", response: { id: "resp_1" } })
+          yield* tick
+          yield* handle.send(RealtimeInput.Text({ text: "and in Lisbon?" }))
+          yield* tick
+
+          const midway = yield* server.sent
+          // The item is created right away; only the turn waits.
+          expect(midway.some((f: any) => f.item?.type === "message")).toBe(true)
+          expect(midway.filter((f: any) => f.type === "response.create")).toHaveLength(0)
+
+          yield* server.push({
+            type: "response.done",
+            response: { id: "resp_1", status: "completed" },
+          })
+        }),
+      )
+
+      const sent = yield* server.sent
+      expect(sent.filter((f: any) => f.type === "response.create")).toHaveLength(1)
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("refuses a resumption handle rather than opening a blank session", () =>
+    Effect.gen(function* () {
+      const server = yield* openai
+      const session = yield* RealtimeSession.pipe(
+        Effect.provide(layer({ ...cfg, webSocket: server.connect })),
+      )
+      // `resume` is a Gemini handle. The generic tag is where it can reach this
+      // provider at all, since the typed request has no such field.
+      const failure = yield* Effect.exit(session.open({ ...request, resume: "handle-from-gemini" }))
+
+      expect(failure._tag).toBe("Failure")
+      expect(JSON.stringify(failure)).toContain("Unsupported")
+      expect(yield* server.sent).toHaveLength(0)
     }).pipe(Effect.scoped),
   )
 

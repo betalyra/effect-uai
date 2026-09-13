@@ -422,3 +422,145 @@ image items inside a session, translation session types
 - Step 4: whether the played-ms estimate from the server-side pacing is
   good enough for `conversation.item.truncate`, or the worklet's
   reported position is needed. Try the estimate first.
+
+## Review fixes (2026-09-13)
+
+Findings from the code review of the shipped steps 1 through 8, on
+`dev` at `34c1e97`. Each item is one focused change; do them in order,
+one commit each, tests green after each. Line references are at that
+commit.
+
+Decisions already taken for this pass: keep the OpenAI `resumeWhenIdle`
+deferral (it is what the wire needs) but make it race-free and apply it
+to `Text` as well; keep the `Inbox` to `Settle` rename; add no new
+`RealtimeInput` variants.
+
+### R1. Race-free state in the OpenAI adapter
+
+`packages/providers/openai/src/realtimeSession.ts`. `handleInput`
+(`ToolResult`, around lines 524-557) and `toEvents` (`response.done`,
+around lines 433-459, and `speech_started`, around lines 461-472) each
+do `Ref.get` and then a separate `Ref.set` or `Ref.update` on the shared
+`SessionState`. The pump fiber and the caller's `send` run concurrently,
+so a `response.done` processed between the two steps of a tool result
+loses the `resumeWhenIdle` flag and the model never resumes; the
+done handler's whole-state `Ref.set` also clobbers a concurrent
+`pendingCalls` update.
+
+- Replace every get-then-write with one `Ref.modify` that returns the
+  side effect to run (for example `"create" | "defer" | "none"`) and
+  perform it after the modify. No whole-state `Ref.set` from a stale
+  snapshot anywhere in the file.
+- Apply the same deferral to `Text` (lines 521-523): a text item sent
+  while a response is active must not send `response.create`
+  immediately; it sets the same flag and the done handler triggers the
+  turn. Today it produces a server error event.
+- Test with `FakeWebSocket`: a tool result whose `response.done` is
+  pushed between the `function_call_output` frame and the state write
+  still yields exactly one `response.create`; a `Text` during an active
+  response yields no `response.create` until `response.done`.
+
+### R2. Cut playback on `Interrupted` only
+
+`recipes/realtime-voice-agent/recipe.ts` lines 47-53 and 116-123, plus
+the `cut-playback` status and its client handler in `client/main.ts`.
+Input transcripts are unordered on Gemini and often land after
+`response.created` on OpenAI, so keying the cut on the first recognised
+words can flush the answer that just started and truncate it at
+roughly 0 ms. The adapter already emits `Interrupted` in order and only
+while a response is in flight, and the server has cancelled generation
+by then regardless of what triggered its detector.
+
+- Remove `isSpeech`, the `cut` ref, and the `cut-playback` status
+  variant. The `Interrupted` arm is the only thing that stops playback
+  and reports the position.
+- `InputTranscript` becomes display only.
+- Update the README paragraph about barge-in and the recipe test that
+  asserts the cut.
+
+### R3. Tool fibers live until answered or cancelled
+
+Both `recipe.ts` files clear `pending` on `ResponseDone`. On OpenAI the
+response that carries a function call completes right after the call
+is emitted, so the fiber table is emptied while the tool still runs and
+a later `ToolCallCancelled` finds nothing; on Gemini `turnComplete` can
+land before `toolCallCancellation`, with the same effect, and the
+recipe then answers a cancelled call.
+
+- Remove an entry when its result has been sent (inside the forked
+  fiber, after `session.send`) or when it is cancelled. Never on
+  `ResponseDone`.
+- Keep the table keyed by `call_id`; `Ref.modify` here as well.
+- Test: a `ToolCallCancelled` arriving after `ResponseDone` interrupts
+  the running tool fiber and no `ToolResult` is sent.
+
+### R4. Honour the common-request contract on both adapters
+
+- OpenAI: `request.resume` is dropped silently because the layer casts
+  and `OpenAIRealtimeRequest` omits the field. `open` must fail
+  `Unsupported` when `resume` is set, as `CommonSessionRequest`
+  documents.
+- Gemini: `historyFrame` filters out non-message items (tool calls and
+  outputs) without a word. Emit `Capabilities.warnDropped` once per
+  dropped item kind.
+- Fix `outputModalities` on `OpenAIRealtimeRequest` to the wire's
+  actual shape, `"audio" | "text"` (one value), and send `[value]`.
+- Delete the dead `frame !== undefined` check in the history loop.
+- Guard the position frame in `recipes/realtime-voice-agent/app.ts`
+  (`Number(...)` may be `NaN`): drop the frame unless it parses to a
+  finite non-negative number.
+
+### R5. Dead error variant
+
+`AiError.SessionExpired` is raised by no adapter. Either raise it where
+it belongs (OpenAI: when the server closes the socket after
+`expires_at` and no response is in flight; Gemini: when the socket
+closes after `goAway` was seen) or remove it and its changeset line.
+Prefer raising it, with a `FakeWebSocket` test per adapter.
+
+### R6. Key hygiene on socket open failures
+
+The Gemini key rides on the WebSocket URL by design. `WebSocketSession.toAiError`
+wraps the `SocketError` as `raw`, and the recipes print causes with
+`Cause.pretty`. Check what `SocketOpenError.cause` contains for the
+global `WebSocket` on Node 22, Bun and Deno when the upgrade is
+rejected; if the URL appears anywhere in it, strip the query from
+`raw` before wrapping (a small `redactUrl` in `WebSocketSession.ts`)
+and add a test that the key is absent from `describe` and from the
+`raw` field.
+
+### R7. Simplifications
+
+- ~~Shrink the demo tools in `recipes/realtime-voice-agent/app.ts` to
+  `get_current_time` and `web_search`; delete the Open-Meteo weather
+  tool and the WMO table.~~ **Declined 2026-09-13.** The weather tool
+  stays: it is the one demo tool that goes to a network nobody needs a
+  key for.
+- ~~Extract the identical `ToolCall` / `ToolCallCancelled` arms shared
+  by the two recipes into one exported helper next to the voice
+  agent.~~ **Declined 2026-09-13.** A helper in
+  `recipes/realtime-voice-agent/` makes `camera-assistant` depend on
+  another recipe, which nothing in `recipes/` does. `recipes/_shared/`
+  is imported only from `app.ts` files, never from a `recipe.ts`, and
+  moving these arms there takes the forked fibers and the cancellation
+  out of the file people open to read. Core is ruled out by the first
+  principle above. The duplication stays.
+- `Settle.onQuiet` polls every `settle` while idle although its comment
+  claims otherwise. Arm the metronome with a `Deferred` (or a
+  `PubSub` tick) on the first arrival so an idle stream costs nothing,
+  and fix the comment. Keep the existing `Settle.test.ts` green.
+
+### R8. Live checks to record
+
+Not code changes, but run once and note the outcome in
+`plans/research/realtime/gemini-live-wire.md` and
+`openai-realtime-wire.md`: Gemini `history` seeding with
+`turnComplete: true` (does it trigger a model turn or not), and the
+camera assistant against the live API.
+
+- History seeding: **done 2026-09-13.** It does not trigger a turn. A
+  session seeded with two turns and then left alone emitted nothing for
+  15 seconds, so `turnComplete: false` is not needed. Recorded in
+  `gemini-live-wire.md` §11.
+- Camera assistant against the live API: **open.** Needs a browser and
+  a camera.

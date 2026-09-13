@@ -221,7 +221,9 @@ Server frame: optional `usageMetadata` plus exactly one of:
 - Session and connection are different lifetimes: 10 min WS vs 15 min token budget vs unlimited with compression; design the adapter around resumption from day one.
 - `sessionResumptionUpdate` can carry `resumable: false` with empty `newHandle`; never overwrite a stored handle with an empty one.
 - `clientContent` always interrupts generation; `realtimeInput` never does on its own (VAD does).
+- Seeding `history` sends `clientContent { turnComplete: true }`, which is also how a client asks for an answer, but it does **not** make the model take a turn. Measured 2026-09-13 against `gemini-3.1-flash-live-preview`: a session opened with two seeded turns and then left alone emitted no events at all for 15 seconds. So the seed primes the conversation only, and `turnComplete: false` is not needed.
 - `goAway.timeLeft` is a proto Duration string (`"60s"`-style), not a number.
+- The key rides on the socket URL here, and a rejected upgrade can put that URL in the error. Measured 2026-09-13 against a local server answering `403` to the upgrade, key in the query: **Bun 1.3.14 leaks it** (`ErrorEvent.message` is `WebSocket connection to '<full url>' failed: Connection ended`); **Node 24.16 does not** (`message` is `""`, the undici stack carries no URL); **Deno does not** (`NetworkError: failed to connect to WebSocket: Invalid status code: 403`). On all three, `message` is a **prototype getter**, not an own property, so `Object.keys` and any structural schema decode see nothing, and `String(event)` is `"[object ErrorEvent]"`. Only Deno names the status, so an upgrade rejected with 401/403 is detectable there alone.
 - Ephemeral-token endpoint version disagreement (`v1beta` docs vs `v1alpha` SDK/example).
 - Rate limits for Live are not published for the Gemini API; expect TPM-based throttling and 429s rather than a concurrent-session error.
 

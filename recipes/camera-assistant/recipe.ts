@@ -73,6 +73,9 @@ export const runAssistant = <T extends Toolkit.Toolkit>(
     })
 
     const seen = yield* Ref.make(0)
+    // Tool fibers by `call_id`. An entry lives until its result is sent or the
+    // call is cancelled, never to the end of the response: the turn that
+    // carries a call routinely finishes while the tool is still working.
     const pending = yield* Ref.make<ReadonlyArray<readonly [string, Fiber.Fiber<void, never>]>>([])
 
     yield* Effect.forkScoped(
@@ -118,14 +121,17 @@ export const runAssistant = <T extends Toolkit.Toolkit>(
               Toolkit.run(toolkit, [e.call]).pipe(
                 Stream.runForEach((toolEvent) =>
                   isOutput(toolEvent)
-                    ? Effect.andThen(
-                        session.send(
+                    ? Effect.gen(function* () {
+                        yield* session.send(
                           RealtimeInput.ToolResult({
                             output: toToolCallOutput(toolEvent.result),
                           }),
-                        ),
-                        io.sendStatus({ type: "tool-done", name: e.call.name }),
-                      )
+                        )
+                        yield* Ref.update(pending, (xs) =>
+                          xs.filter(([id]) => id !== e.call.call_id),
+                        )
+                        yield* io.sendStatus({ type: "tool-done", name: e.call.name })
+                      })
                     : Effect.void,
                 ),
                 // A rejected result is invisible otherwise: the model simply
@@ -148,19 +154,16 @@ export const runAssistant = <T extends Toolkit.Toolkit>(
           Effect.gen(function* () {
             // The model gave up on these, so stop the work rather than
             // answering a call nobody is waiting for.
-            const running = yield* Ref.getAndUpdate(pending, (xs) =>
+            const doomed = yield* Ref.modify(pending, (xs) => [
+              xs.filter(([id]) => e.callIds.includes(id)),
               xs.filter(([id]) => !e.callIds.includes(id)),
-            )
-            const doomed = running.filter(([id]) => e.callIds.includes(id))
+            ])
             yield* Effect.forEach(doomed, ([, fiber]) => Fiber.interrupt(fiber), { discard: true })
             yield* io.sendStatus({ type: "tool-cancelled", count: doomed.length })
           }),
         ),
         Match.tag("ResponseDone", (e) =>
-          Effect.andThen(
-            Ref.set(pending, []),
-            io.sendStatus({ type: "assistant-done", reason: e.reason }),
-          ),
+          io.sendStatus({ type: "assistant-done", reason: e.reason }),
         ),
         Match.tag("SessionEnding", () => io.sendStatus({ type: "session-ending" })),
         Match.tag("Error", (e) => io.sendStatus({ type: "error", message: e.message })),

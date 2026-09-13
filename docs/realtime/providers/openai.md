@@ -79,7 +79,7 @@ Yield the typed `OpenAIRealtimeSession` tag to reach these; the generic
 `speed` slows or speeds the voice. `reasoningEffort` and
 `maxOutputTokens` behave as they do elsewhere. `truncation` decides what
 happens as the conversation outgrows the context window, and
-`outputModalities: ["text"]` turns the session into a text-only
+`outputModalities: "text"` turns the session into a text-only
 responder. `transcriptionModel` picks the model that transcribes your
 speech, defaulting to `gpt-live-transcribe`.
 
@@ -90,8 +90,9 @@ response being cancelled, then its `ResponseDone`. Unanswered tool calls
 of that response arrive as `ToolCallCancelled`.
 
 `SpeechStarted` is the voice detector firing, so a cough or a door sets
-it off. If you stop playback there, expect false stops; keying on the
-first `InputTranscript` of the utterance waits for actual words.
+it off. Stop playback on `Interrupted` instead: it comes only once the
+server has actually abandoned the answer. Transcripts are no better as a
+trigger, since they land late and out of order against the response.
 
 Send `PlaybackPosition` with the milliseconds your client actually
 played and the unheard tail is trimmed from the conversation. That works
@@ -101,8 +102,12 @@ generating long before the speakers catch up.
 ## Session Limits
 
 The server sets an expiry at connect and `SessionEnding` arrives a
-minute before it. There is no resumption on this provider, so continuing
-means a new session with your own history.
+minute before it. The close that follows fails the stream with
+`SessionExpired` rather than ending it, so the cap is not mistaken for
+the conversation being over. There is no resumption on this provider, so continuing
+means a new session with your own history. `resume` is refused with
+`Unsupported` rather than ignored, so a handle from elsewhere cannot
+quietly open a blank session.
 
 ## See also
 

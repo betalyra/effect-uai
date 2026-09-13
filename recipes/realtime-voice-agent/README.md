@@ -100,7 +100,7 @@ with `--search`). `PORT` optional (defaults to 3000).
    ↕
 [Bun server]  RealtimeSession.open → send(Audio) / events
               ToolCall → forked fiber → send(ToolResult)
-              InputTranscript → "cut-playback" → send(PlaybackPosition)
+              Interrupted → "interrupted" → send(PlaybackPosition)
    ↕
 [Browser]  playback worklet (audio) + transcript (status JSON)
 ```
@@ -113,13 +113,14 @@ match.
 
 ## Four Things Worth Knowing
 
-**Barge-in is words, not noise.** The voice-activity detector fires on
-a cough or a door, so the recipe does not stop the voice on
-`SpeechStarted`. It waits for the first recognised words of your
-utterance, in `InputTranscript`, and only then tells the browser to cut
-playback. Swapping in a stricter rule, dropping "um" and other fillers,
-is the one-line `isSpeech` predicate in
-[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/realtime-voice-agent/recipe.ts).
+**The model decides when it has been interrupted.** The
+voice-activity detector fires on a cough or a door, so `SpeechStarted`
+is informational here and does not stop the voice. `Interrupted` does:
+it arrives only once the server has actually abandoned the answer, and
+it arrives in order with the rest of that response. Transcripts are not
+a substitute. They are unordered against the response events on Gemini
+and routinely late on OpenAI, so cutting on the first recognised words
+can flush an answer that has only just started.
 
 **Only the browser knows what was heard.** The model generates several
 times faster than real time, so when you interrupt, the server has

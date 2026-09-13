@@ -16,7 +16,6 @@ type StatusEvent =
   | { readonly type: "assistant-delta"; readonly text: string }
   | { readonly type: "assistant-done"; readonly reason: string }
   | { readonly type: "speech-started" }
-  | { readonly type: "cut-playback" }
   | { readonly type: "interrupted" }
   | { readonly type: "tool-call"; readonly name: string; readonly arguments: string }
   | { readonly type: "tool-done"; readonly name: string }
@@ -134,13 +133,9 @@ const handleStatus = (event: StatusEvent): void => {
     case "speech-started":
       setStatus("hearing you…")
       break
-    case "cut-playback":
-      // When to stop the voice is the server's call, not ours: it is the one
-      // that can tell recognised words from a cough. We stop and report how
-      // far the audio actually got.
-      cutPlayback()
-      break
     case "interrupted":
+      // The model has abandoned this answer. Stop the voice and report how far
+      // the audio actually got, so the unheard part leaves its context.
       cutPlayback()
       finishAssistant()
       break

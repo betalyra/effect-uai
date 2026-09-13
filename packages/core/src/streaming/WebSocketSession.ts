@@ -6,7 +6,17 @@
  * frame. The stream-shaped adapters (realtime STT and TTS) still carry their
  * own copies of this.
  */
-import { Cause, type Duration, Effect, Match, Option, Queue, Schema, type Scope } from "effect"
+import {
+  Cause,
+  type Duration,
+  Effect,
+  Match,
+  Option,
+  Predicate,
+  Queue,
+  Schema,
+  type Scope,
+} from "effect"
 import * as Socket from "effect/unstable/socket/Socket"
 import * as AiError from "../domain/AiError.js"
 import * as JSONL from "./JSONL.js"
@@ -27,31 +37,53 @@ export type OpenOptions<A, I> = {
   readonly capacity?: number
 }
 
+/**
+ * The cause of a failed open is a DOM `ErrorEvent`, not an `Error`, and its
+ * `message` is a prototype getter, so a structural decode does not see it.
+ */
 const describeCause = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause)
+  Predicate.hasProperty(cause, "message") && Predicate.isString(cause.message)
+    ? cause.message
+    : String(cause)
+
+/**
+ * Some wires authenticate with a key in the query string, and some runtimes
+ * name the socket URL in their open error (Bun does). Everything taken off a
+ * socket error goes through this.
+ */
+export const redactUrl = (text: string): string =>
+  text.replace(/(\b(?:wss?|https?):\/\/[^\s"']*?)\?[^\s"']*/gi, "$1?<redacted>")
+
+const detailOf = Match.type<Socket.SocketError["reason"]>().pipe(
+  Match.tag("SocketCloseError", (reason) => reason.message),
+  Match.orElse((reason) => describeCause(reason.cause)),
+)
+
+/** Never the `SocketError` itself: callers print `raw` with `Cause.pretty`. */
+const rawOf = (error: Socket.SocketError): string =>
+  redactUrl(`${error.reason._tag}: ${detailOf(error.reason)}`)
 
 /** A rejected WS upgrade surfaces only as prose, so the status is read from it. */
 const isAuthRejection = (text: string): boolean => /\b40[13]\b/.test(text)
 
 export const toAiError =
   (provider: string) =>
-  (error: Socket.SocketError): AiError.AiError =>
-    Match.value(error.reason).pipe(
+  (error: Socket.SocketError): AiError.AiError => {
+    const raw = rawOf(error)
+    return Match.value(error.reason).pipe(
       Match.tag("SocketOpenError", (reason) =>
         Match.value(reason.kind).pipe(
-          Match.when(
-            "Timeout",
-            (): AiError.AiError => new AiError.Timeout({ provider, raw: error }),
-          ),
+          Match.when("Timeout", (): AiError.AiError => new AiError.Timeout({ provider, raw })),
           Match.orElse((): AiError.AiError =>
             isAuthRejection(describeCause(reason.cause))
-              ? new AiError.AuthFailed({ provider, subtype: "auth", raw: error })
-              : new AiError.Unavailable({ provider, raw: error }),
+              ? new AiError.AuthFailed({ provider, subtype: "auth", raw })
+              : new AiError.Unavailable({ provider, raw }),
           ),
         ),
       ),
-      Match.orElse((): AiError.AiError => new AiError.Unavailable({ provider, raw: error })),
+      Match.orElse((): AiError.AiError => new AiError.Unavailable({ provider, raw })),
     )
+  }
 
 /**
  * Connect for the lifetime of the surrounding `Scope`. The reader runs in a

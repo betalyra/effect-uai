@@ -228,18 +228,39 @@ const messageText = (item: HistoryItem): string =>
         )
         .join("")
 
-/** Text-only seed, which is all `history` promises across providers. */
-const historyFrame = (history: ReadonlyArray<HistoryItem>): string =>
-  JSON.stringify({
-    clientContent: {
-      turns: history
-        .filter((item) => messageText(item).length > 0)
-        .map((item) => ({
-          role: item.type === "message" && item.role === "assistant" ? "model" : "user",
-          parts: [{ text: messageText(item) }],
-        })),
-      turnComplete: true,
-    },
+/**
+ * Text-only seed, which is all `history` promises across providers. Anything
+ * with no text of its own, a tool call or its output, has no place in the seed
+ * and is reported once per kind rather than vanishing.
+ */
+const historyFrame = (
+  history: ReadonlyArray<HistoryItem>,
+): Effect.Effect<string, AiError.AiError> =>
+  Effect.gen(function* () {
+    const kinds = new Set(history.filter((i) => messageText(i).length === 0).map((i) => i.type))
+    yield* Effect.forEach(
+      kinds,
+      (kind) =>
+        Capabilities.warnDropped({
+          provider: PROVIDER,
+          capability: "history",
+          field: "history",
+          value: kind,
+          reason: `Gemini Live seeds a session with text turns only, so \`${kind}\` items are left out.`,
+        }),
+      { discard: true },
+    )
+    return JSON.stringify({
+      clientContent: {
+        turns: history
+          .filter((item) => messageText(item).length > 0)
+          .map((item) => ({
+            role: item.type === "message" && item.role === "assistant" ? "model" : "user",
+            parts: [{ text: messageText(item) }],
+          })),
+        turnComplete: true,
+      },
+    })
   })
 
 // ---------------------------------------------------------------------------
@@ -317,6 +338,8 @@ type SessionState = {
   readonly callNames: Readonly<Record<string, string>>
   /** Latest `usageMetadata`, reported with the turn it lands in. */
   readonly usage: Usage | undefined
+  /** The server has announced the close, so the next one is the lifetime cap. */
+  readonly goingAway: boolean
 }
 
 const initialState: SessionState = {
@@ -324,6 +347,7 @@ const initialState: SessionState = {
   turns: 0,
   callNames: {},
   usage: undefined,
+  goingAway: false,
 }
 
 /**
@@ -492,6 +516,7 @@ const toEvents = (
     if (callIds.length > 0) return [RealtimeEvent.ToolCallCancelled({ callIds })]
     if (frame.goAway !== undefined) {
       const timeLeft = parseTimeLeft(frame.goAway.timeLeft)
+      yield* Ref.update(state, (s) => ({ ...s, goingAway: true }))
       return [RealtimeEvent.SessionEnding({ ...(timeLeft !== undefined && { timeLeft }) })]
     }
     // An unresumable update carries an empty handle; it must not replace one.
@@ -697,7 +722,10 @@ export const openSession =
       yield* awaitSetupComplete(session)
 
       const history = request.history ?? []
-      if (history.length > 0) yield* session.send(historyFrame(history))
+      if (history.length > 0) {
+        const seed = yield* historyFrame(history)
+        yield* session.send(seed)
+      }
 
       const state = yield* Ref.make(initialState)
       const out = yield* Queue.bounded<RealtimeEvent, AiError.AiError | Cause.Done>(128)
@@ -711,11 +739,22 @@ export const openSession =
       // ends the stream as an incomplete turn instead.
       const finish = (cause: Cause.Cause<AiError.AiError> | undefined) =>
         Effect.gen(function* () {
-          const inFlight = (yield* Ref.get(state)).responseId
-          if (inFlight !== undefined) {
+          const { goingAway, responseId } = yield* Ref.get(state)
+          if (responseId !== undefined) {
             return yield* Queue.fail(
               out,
               new AiError.IncompleteTurn({ raw: cause ?? "the socket closed mid turn" }),
+            )
+          }
+          // `goAway` was the server announcing this close, so the session hit
+          // its cap. Reconnecting works; retrying this session does not.
+          if (goingAway) {
+            return yield* Queue.fail(
+              out,
+              new AiError.SessionExpired({
+                provider: PROVIDER,
+                raw: cause ?? "the socket closed after the server announced it was going away",
+              }),
             )
           }
           return yield* cause !== undefined && Cause.hasFails(cause)

@@ -1,5 +1,5 @@
 import { describe, it } from "@effect/vitest"
-import { Duration, Effect, Encoding, Fiber, Redacted, Stream } from "effect"
+import { Duration, Effect, Encoding, Fiber, Logger, Redacted, Ref, Stream } from "effect"
 import { expect } from "vitest"
 import type { RealtimeEvent } from "@effect-uai/core/Realtime"
 import { RealtimeInput } from "@effect-uai/core/Realtime"
@@ -26,6 +26,10 @@ const gemini = FakeWebSocket.make({
 /** Let the socket's own turn and the adapter's fibers run. */
 const tick = Effect.sleep("5 millis")
 
+/**
+ * Events are recorded as they arrive rather than collected at the end, so a
+ * run that ends in a failure still says what the caller saw before it.
+ */
 const transcript = (
   server: FakeWebSocket.FakeWebSocketServer,
   script: (handle: RealtimeSessionHandle) => Effect.Effect<void, unknown>,
@@ -33,17 +37,18 @@ const transcript = (
 ) =>
   Effect.gen(function* () {
     const handle = yield* openSession({ ...cfg, webSocket: server.connect })(request)
-    const collector = yield* Effect.forkChild(Effect.exit(Stream.runCollect(handle.events)))
+    const seen = yield* Ref.make<ReadonlyArray<RealtimeEvent>>([])
+    const collector = yield* Effect.forkChild(
+      Effect.exit(Stream.runForEach(handle.events, (e) => Ref.update(seen, (xs) => [...xs, e]))),
+    )
     yield* script(handle)
     yield* tick
     yield* server.close(options?.closeCode ?? 1000)
-    return yield* Fiber.join(collector)
+    const exit = yield* Fiber.join(collector)
+    return { exit, events: yield* Ref.get(seen) }
   })
 
 const tags = (events: ReadonlyArray<RealtimeEvent>) => events.map((e) => e._tag)
-
-const eventsOf = (exit: { _tag: string; value?: unknown }): ReadonlyArray<RealtimeEvent> =>
-  exit._tag === "Success" ? (exit.value as ReadonlyArray<RealtimeEvent>) : []
 
 const audioPart = (bytes: ReadonlyArray<number>) => ({
   inlineData: {
@@ -56,7 +61,7 @@ describe("Gemini live session turns", () => {
   it.live("mints one turn id for a whole answer, and reports its usage at the end", () =>
     Effect.gen(function* () {
       const server = yield* gemini
-      const exit = yield* transcript(server, () =>
+      const { events } = yield* transcript(server, () =>
         Effect.gen(function* () {
           // 3.1 packs several parts, and their transcription, into one message.
           yield* server.push({
@@ -73,7 +78,6 @@ describe("Gemini live session turns", () => {
         }),
       )
 
-      const events = eventsOf(exit)
       // The thought part is the model reasoning, not something to speak.
       expect(tags(events)).toEqual([
         "ResponseStarted",
@@ -95,7 +99,7 @@ describe("Gemini live session turns", () => {
   it.live("ends an interrupted turn once, and numbers the next one after it", () =>
     Effect.gen(function* () {
       const server = yield* gemini
-      const exit = yield* transcript(server, () =>
+      const { events } = yield* transcript(server, () =>
         Effect.gen(function* () {
           yield* server.push({ serverContent: { modelTurn: { parts: [audioPart([1])] } } })
           yield* server.push({ serverContent: { interrupted: true } })
@@ -107,7 +111,6 @@ describe("Gemini live session turns", () => {
         }),
       )
 
-      const events = eventsOf(exit)
       expect(tags(events)).toEqual([
         "ResponseStarted",
         "AudioDelta",
@@ -127,7 +130,7 @@ describe("Gemini live session turns", () => {
   it.live("marks the user's words interim until the utterance is transcribed", () =>
     Effect.gen(function* () {
       const server = yield* gemini
-      const exit = yield* transcript(server, () =>
+      const { events } = yield* transcript(server, () =>
         Effect.gen(function* () {
           yield* server.push({ serverContent: { interimInputTranscription: { text: "weather" } } })
           yield* server.push({
@@ -137,7 +140,7 @@ describe("Gemini live session turns", () => {
       )
 
       // A transcript belongs to no turn, so none is started for it.
-      expect(eventsOf(exit)).toEqual([
+      expect(events).toEqual([
         { _tag: "InputTranscript", text: "weather", final: false },
         { _tag: "InputTranscript", text: "weather in Lisbon", final: true },
       ])
@@ -147,7 +150,7 @@ describe("Gemini live session turns", () => {
   it.live("ends the stream as an incomplete turn when a turn is still running", () =>
     Effect.gen(function* () {
       const server = yield* gemini
-      const exit = yield* transcript(server, () =>
+      const { exit } = yield* transcript(server, () =>
         server.push({ serverContent: { modelTurn: { parts: [audioPart([1])] } } }),
       )
 
@@ -177,7 +180,7 @@ describe("Gemini live session tools", () => {
   it.live("answers a call with the name the server gave it", () =>
     Effect.gen(function* () {
       const server = yield* gemini
-      const exit = yield* transcript(server, (handle) =>
+      const { events } = yield* transcript(server, (handle) =>
         Effect.gen(function* () {
           yield* server.push({
             toolCall: {
@@ -199,7 +202,7 @@ describe("Gemini live session tools", () => {
         }),
       )
 
-      const call = eventsOf(exit).find((e) => e._tag === "ToolCall")
+      const call = events.find((e) => e._tag === "ToolCall")
       expect(call?._tag === "ToolCall" && call.call.arguments).toBe('{"city":"Lisbon"}')
       // A call arrives with no turn open, so it gets one of its own.
       expect(call?._tag === "ToolCall" && call.responseId).toBe("turn_1")
@@ -241,7 +244,7 @@ describe("Gemini live session lifetime", () => {
   it.live("keeps only a resumable handle, and reads the closing warning as a duration", () =>
     Effect.gen(function* () {
       const server = yield* gemini
-      const exit = yield* transcript(server, () =>
+      const { events, exit } = yield* transcript(server, () =>
         Effect.gen(function* () {
           // Sent while a tool runs: no handle, and the stored one must stand.
           yield* server.push({ sessionResumptionUpdate: { newHandle: "", resumable: false } })
@@ -250,13 +253,88 @@ describe("Gemini live session lifetime", () => {
         }),
       )
 
-      const events = eventsOf(exit)
       expect(tags(events)).toEqual(["ResumptionHandle", "SessionEnding"])
       const handle = events[0]
       expect(handle?._tag === "ResumptionHandle" && handle.handle).toBe("h1")
       const ending = events[1]
       // A proto duration string, not a number.
       expect(ending?._tag === "SessionEnding" && ending.timeLeft).toEqual(Duration.seconds(60))
+      // The close `goAway` announced is the lifetime cap, not a clean end, so
+      // a caller can tell "reconnect" from "we are done here".
+      expect(JSON.stringify(exit)).toContain("SessionExpired")
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("ends cleanly when the close was not announced", () =>
+    Effect.gen(function* () {
+      const server = yield* gemini
+      const { exit } = yield* transcript(server, () =>
+        server.push({ serverContent: { turnComplete: true } }),
+      )
+
+      expect(exit._tag).toBe("Success")
+    }).pipe(Effect.scoped),
+  )
+})
+
+/** The `CapabilityWarning` payloads a run produced, in order. */
+const warningCollector = () => {
+  const seen: Array<{ readonly field: string; readonly value?: unknown }> = []
+  const logger = Logger.make((options) => {
+    const [label, warning] = options.message as ReadonlyArray<any>
+    if (label === "Capability dropped") seen.push(warning)
+  })
+  return { seen, layer: Logger.layer([logger]) }
+}
+
+const userText = (text: string) =>
+  ({
+    type: "message",
+    role: "user",
+    content: [{ type: "input_text", text, providerData: undefined }],
+    providerData: undefined,
+  }) as const
+
+const call = (id: string) =>
+  ({
+    type: "function_call",
+    call_id: id,
+    name: "get_time",
+    arguments: "{}",
+    providerData: undefined,
+  }) as const
+
+describe("Gemini live session history", () => {
+  it.live("names each kind of item the text-only seed cannot carry, once", () =>
+    Effect.gen(function* () {
+      const server = yield* gemini
+      const warnings = warningCollector()
+
+      yield* openSession({ ...cfg, webSocket: server.connect })({
+        ...request,
+        history: [
+          userText("what time is it"),
+          call("fc_1"),
+          call("fc_2"),
+          {
+            type: "function_call_output",
+            call_id: "fc_1",
+            output: '{"now":"12:00"}',
+            providerData: undefined,
+          },
+        ],
+      }).pipe(Effect.provide(warnings.layer))
+      yield* tick
+
+      // Two calls, one kind: a long tool history is not a wall of warnings.
+      expect(warnings.seen.map((w) => w.value)).toEqual(["function_call", "function_call_output"])
+      expect(warnings.seen.every((w) => w.field === "history")).toBe(true)
+
+      const sent = yield* server.sent
+      const seed = sent.find((f: any) => f.clientContent !== undefined) as any
+      expect(seed.clientContent.turns).toEqual([
+        { role: "user", parts: [{ text: "what time is it" }] },
+      ])
     }).pipe(Effect.scoped),
   )
 })

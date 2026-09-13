@@ -266,9 +266,14 @@ const wsHandler = (cfg: AgentConfig) =>
         Match.when(TEXT_FRAME, () =>
           Effect.asVoid(Queue.offer(typedQueue, decoder.decode(buf.subarray(1)))),
         ),
-        Match.when(POSITION_FRAME, () =>
-          Effect.asVoid(Queue.offer(playedQueue, Number(decoder.decode(buf.subarray(1))))),
-        ),
+        Match.when(POSITION_FRAME, () => {
+          // A truncate is sent from this, so a garbled frame is dropped rather
+          // than cutting the answer at `NaN` milliseconds.
+          const playedMs = Number(decoder.decode(buf.subarray(1)))
+          return Number.isFinite(playedMs) && playedMs >= 0
+            ? Effect.asVoid(Queue.offer(playedQueue, playedMs))
+            : Effect.void
+        }),
         // An empty or unknown frame is not worth killing the connection over.
         Match.orElse(() => Effect.void),
       )

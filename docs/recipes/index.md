@@ -98,9 +98,10 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Realtime
 
-| Recipe                                                 | One-line                                                                                                |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| [Realtime voice agent](/recipes/realtime-voice-agent/) | One duplex session instead of a pipeline; talk over it and it stops, tools run beside the conversation. |
+| Recipe                                                 | One-line                                                                                                  |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| [Realtime voice agent](/recipes/realtime-voice-agent/) | One duplex session instead of a pipeline; talk over it and it stops, tools run beside the conversation.   |
+| [Camera assistant](/recipes/camera-assistant/)         | Point a camera at something and ask about it; frames ride the same session, gated by a capability marker. |
 
 ## Music
 

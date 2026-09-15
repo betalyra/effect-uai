@@ -12,10 +12,9 @@ the provider that takes camera frames on the same session as the audio.
 pnpm add @effect-uai/core @effect-uai/google effect
 ```
 
-No peer dependency and no header auth, so this runs on Node, Bun and
-Deno. It would run in a browser too, but the key rides in the URL and
-ephemeral tokens are not implemented here, so keep the session on a
-server.
+No peer dependency, so this runs on Node, Bun and Deno. Keep the
+session on a server: the API key goes in the socket URL, and ephemeral
+tokens are not supported yet.
 
 ## Layer
 
@@ -94,21 +93,18 @@ Yield the typed `GeminiLiveSession` tag to reach these; the generic
 
 ## When A Tool Result Gets Spoken
 
-`gemini-3.8-live` keeps generating while your tool runs, so a result can
-land while the model is still talking. `toolScheduling` says what happens
-then, and defaults to `"when-idle"`:
+`gemini-3.8-live` keeps talking while your tool runs, so a result can
+land mid-sentence. `toolScheduling` says what happens then:
 
-|               | Effect                                                  |
-| ------------- | ------------------------------------------------------- |
-| `"when-idle"` | The current utterance finishes, then the result follows |
-| `"interrupt"` | The model stops mid-sentence to report it               |
-| `"silent"`    | Filed as context, never announced                       |
+|               | Effect                                                   |
+| ------------- | -------------------------------------------------------- |
+| `"when-idle"` | The current sentence finishes, then the result is spoken |
+| `"interrupt"` | The model stops mid-sentence to report it                |
+| `"silent"`    | Added to the context, never announced                    |
 
-The default matters more than it sounds. Agents are usually told to say a
-few words before a slow call so the caller is not left in silence, and
-the server's own default is to interrupt, which cuts off exactly those
-words as the answer arrives. On a model that blocks during a tool call
-there is nothing to schedule around and the setting does nothing.
+The default is `"when-idle"`, so an agent that says "let me look that
+up" gets to finish saying it. Older models pause during a tool call, and
+the setting has no effect there.
 
 ## Grounding
 

@@ -4,14 +4,14 @@ Mistral provider for [`@effect-uai/core`](https://www.npmjs.com/package/@effect-
 
 One package, the whole Mistral surface:
 
-- **`Mistral`** — the `LanguageModel` contract against Mistral's
+- **`Mistral`**: the `LanguageModel` contract against Mistral's
   chat-completions API, with SSE streaming, function calling, and
   `json_schema` structured output.
-- **`MistralTranscriber`** — batch speech-to-text (Voxtral) via
+- **`MistralTranscriber`**: batch speech-to-text (Voxtral) via
   `/v1/audio/transcriptions`.
-- **`MistralRealtimeTranscriber`** — live speech-to-text over the
+- **`MistralRealtimeTranscriber`**: live speech-to-text over the
   Voxtral Realtime WebSocket (registers the `SttStreaming` capability).
-- **`MistralSynthesizer`** — Voxtral text-to-speech, including streaming
+- **`MistralSynthesizer`**: Voxtral text-to-speech, including streaming
   output and zero-shot voice cloning via a reference clip.
 
 ## Install
@@ -57,7 +57,7 @@ import { layer as synthesizer } from "@effect-uai/mistral/MistralSynthesizer"
 ```
 
 For batch (non-streaming) transcription, import
-`@effect-uai/mistral/MistralTranscriber` instead — it omits the `ws`
+`@effect-uai/mistral/MistralTranscriber` instead, which omits the `ws`
 dependency.
 
 ## Notes

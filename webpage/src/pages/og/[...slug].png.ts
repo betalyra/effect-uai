@@ -5,7 +5,7 @@ import { createOgImage } from "@/lib/og-image"
 const SITE_TITLE = "effect-uai"
 const SITE_TAGLINE = "Low-level primitives for AI agents in Effect."
 
-const stubPagePattern = /^(reranking|realtime|image-generation|video-generation)(\/|$)/
+const stubPagePattern = /^video-generation(\/|$)/
 
 type Entry = Awaited<ReturnType<typeof getCollection>>[number]
 

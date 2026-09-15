@@ -1,8 +1,8 @@
 # @effect-uai/fal
 
-fal provider for [`@effect-uai/core`](https://www.npmjs.com/package/@effect-uai/core).
+Fal provider for [`@effect-uai/core`](https://www.npmjs.com/package/@effect-uai/core).
 
-Implements the `ImageGenerator` contract against fal's synchronous
+Implements the `ImageGenerator` contract against Fal's synchronous
 endpoints, which is how you reach FLUX, Seedream, Qwen Image and the
 rest of the open-weights field behind one key.
 
@@ -36,7 +36,7 @@ the generic `ImageGenerator` tag.
 
 ## The model id is an endpoint
 
-On fal the model selects the URL, and generating and editing are
+On Fal the model selects the URL, and generating and editing are
 separate endpoints of the same family:
 
 ```ts

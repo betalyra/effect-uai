@@ -7,18 +7,19 @@ icon: PiScan
 
 Ask it something, then switch the camera on and point at what you meant.
 
-This recipe is the voice agent with a second input. The same session that
-carries your voice carries JPEG stills, so "what am I looking at" is one
-conversation rather than a snapshot pipeline bolted to a chat.
+This recipe is the [Realtime voice agent](/recipes/realtime-voice-agent/)
+with a camera. Frames go over the same session as your voice, so "what
+am I looking at" is part of the conversation, not a separate photo
+upload.
 
 **Scenario.** The thing you are asking about is in front of you and
 awkward to describe: a label, a part, a screen, a plant. Talking is
-faster than typing, and a photo is faster than either.
+faster than typing, and showing is faster than either.
 
 ## The Shape
 
-Video is not part of the common session surface, because not every
-provider has it. Sending a frame asks for a capability marker:
+Only Gemini Live takes video, so sending a frame needs the
+`RealtimeVideoInput` marker that its Layer provides:
 
 ```ts
 import * as RealtimeSession from "@effect-uai/core/RealtimeSession"
@@ -27,10 +28,8 @@ yield * RealtimeSession.sendVideoFrame(session, frame)
 //       ^ requires RealtimeVideoInput in R
 ```
 
-So [`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/camera-assistant/recipe.ts)
-only composes against a provider that has video. Hand it an audio-only
-Layer and it fails to compile, rather than failing at runtime when the
-first frame goes up.
+Hand [`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/camera-assistant/recipe.ts)
+an audio-only Layer and it does not compile.
 
 ## Run it
 
@@ -86,33 +85,28 @@ tells the client so the worklets resample. Frames are JPEG, longest side
 ## Three Things Worth Knowing
 
 **Frames cost money for the rest of the session.** Every frame stays in
-the context window and is billed on each following turn, so sending one
-per second continuously is the expensive way to do this. The client
-sends frames only while it hears you, and for a moment after. That gate
-is loudness alone: it decides what the model is shown, never when it
-answers.
+the conversation and is billed again on each following turn, so
+streaming one a second all the time is the expensive way to do this.
+The client sends frames only while you are talking, and for a moment
+after.
 
-**Resolution and compression are set by the composition.**
+**Two settings keep a long session affordable.**
 [`app.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/camera-assistant/app.ts)
-wraps the provider's typed tag to fill in `mediaResolution: "low"` (64
-tokens a frame rather than 256) and a context-compression trigger, then
-registers the generic tag. `recipe.ts` never names a vendor, and the
-knobs that make video affordable are still set.
+sets `mediaResolution: "low"`, a quarter of the tokens per frame, and
+`contextCompression`, so the conversation does not fill up. Both are
+Gemini options, set once where the Layer is built.
 
-**Barge-in is the provider's here.** Gemini cancels its own answer when
-it hears you and says so with `Interrupted`, which stops playback. There
-is no truncate op on that wire, so unlike the
-[Realtime voice agent](/recipes/realtime-voice-agent/) the recipe cannot
-tell the model how much you actually heard. Interrupting also drops any
-tool call still running, which the transcript reports, so talking over a
-slow search means asking for it again.
+**Interrupting drops a running search.** Talk over the model while it
+is looking something up and it abandons the call; the transcript says
+so, and you ask again. Unlike on OpenAI, the part of an answer you did
+not hear stays in the conversation, since Gemini cannot trim it.
 
 ## What This Generalizes To
 
 Any assistant whose subject is in front of the user rather than in the
 conversation: field work, repair, shelf checks, accessibility. For the
-audio-only version of the same session, and for barge-in you control,
-see [Realtime voice agent](/recipes/realtime-voice-agent/).
+audio-only version, see
+[Realtime voice agent](/recipes/realtime-voice-agent/).
 
 The full source lives next to this README at
 [`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/camera-assistant/recipe.ts).

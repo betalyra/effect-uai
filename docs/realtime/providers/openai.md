@@ -3,8 +3,9 @@ title: OpenAI Realtime
 description: Speech-to-speech over one WebSocket, with server VAD, tools and truncation.
 ---
 
-Use this when you want a voice agent that interrupts cleanly and forgets
-the part of its answer nobody heard.
+The default provider for a voice agent: audio only, with the cleanest
+interruption handling, since it can forget the part of an answer nobody
+heard.
 
 ## Install
 
@@ -12,8 +13,8 @@ the part of its answer nobody heard.
 pnpm add @effect-uai/core @effect-uai/openai effect ws
 ```
 
-`ws` is a peer dependency: the upgrade needs an `Authorization` header,
-which the browser `WebSocket` API cannot set. Node and Bun only.
+`ws` is a peer dependency, so this runs on Node and Bun. From a browser,
+go through your own server.
 
 ## Layer
 
@@ -33,9 +34,8 @@ const openai = Layer.unwrap(
 )
 ```
 
-No `RealtimeVideoInput`: this provider takes still images as
-conversation items but has no video input, so `sendVideoFrame` against
-this Layer alone is a compile error.
+No video: `sendVideoFrame` does not compile against this Layer. For a
+camera, use [Gemini Live](/realtime/providers/gemini/).
 
 ## Models
 
@@ -85,29 +85,27 @@ speech, defaulting to `gpt-live-transcribe`.
 
 ## Barge-In
 
-Speech is reported as `SpeechStarted`, then `Interrupted` for the
-response being cancelled, then its `ResponseDone`. Unanswered tool calls
-of that response arrive as `ToolCallCancelled`.
+When the user starts talking you get `SpeechStarted`. If the model
+decides that was an interruption, `Interrupted` follows, then the
+cancelled response's `ResponseDone`, and any tool calls it was still
+waiting on arrive as `ToolCallCancelled`.
 
-`SpeechStarted` is the voice detector firing, so a cough or a door sets
-it off. Stop playback on `Interrupted` instead: it comes only once the
-server has actually abandoned the answer. Transcripts are no better as a
-trigger, since they land late and out of order against the response.
+Stop playback on `Interrupted`, not `SpeechStarted`: the detector also
+fires on a cough or a door, and only `Interrupted` means the answer was
+actually abandoned.
 
-Send `PlaybackPosition` with the milliseconds your client actually
-played and the unheard tail is trimmed from the conversation. That works
-even after `ResponseDone`, which is the common case: the model finishes
+Send `PlaybackPosition` with the milliseconds your client played and
+the unheard tail is trimmed from the conversation. This works after
+`ResponseDone` too, which is the usual case, since the model finishes
 generating long before the speakers catch up.
 
 ## Session Limits
 
-The server sets an expiry at connect and `SessionEnding` arrives a
-minute before it. The close that follows fails the stream with
-`SessionExpired` rather than ending it, so the cap is not mistaken for
-the conversation being over. There is no resumption on this provider, so continuing
-means a new session with your own history. `resume` is refused with
-`Unsupported` rather than ignored, so a handle from elsewhere cannot
-quietly open a blank session.
+Sessions have a fixed lifetime set at connect. `SessionEnding` arrives
+a minute before it, and the close that follows fails the stream with
+`SessionExpired`. There is no resumption: to continue, open a new
+session and replay your own history. Passing `resume` fails
+`Unsupported`.
 
 ## See also
 

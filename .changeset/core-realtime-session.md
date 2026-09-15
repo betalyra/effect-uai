@@ -2,7 +2,7 @@
 "@effect-uai/core": minor
 ---
 
-Add the `RealtimeSession` capability: types, service tag, video marker and a scripted mock. No provider adapter yet, so nothing works end to end until the next release.
+Add the `RealtimeSession` capability: types, service tag, video marker and a scripted mock. Two adapters ship alongside it, `@effect-uai/openai/OpenAIRealtimeSession` and `@effect-uai/google/GeminiLiveSession`.
 
 A realtime session is one long-lived duplex connection the server drives, which is why it is its own primitive rather than a mode of `Loop`. `RealtimeSession.open(request)` returns `{ send, events }` scoped to the connection; closing the scope closes the socket.
 

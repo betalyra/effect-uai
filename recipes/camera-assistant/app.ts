@@ -68,7 +68,7 @@ const PCM = (sampleRate: 16000 | 24000) =>
   ({ container: "raw", encoding: "pcm_s16le", sampleRate, channels: 1 }) as const
 
 const cfg: AssistantConfig = {
-  model: "gemini-3.1-flash-live-preview",
+  model: "gemini-3.8-live",
   instructions: INSTRUCTIONS,
   voiceId: "Kore",
   inputFormat: PCM(16000),

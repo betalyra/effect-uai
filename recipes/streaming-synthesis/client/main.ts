@@ -5,6 +5,10 @@
  * `AudioWorkletNode` for gap-free playback.
  */
 
+// A module, not a script: every recipe's client declares `$` and `setStatus`,
+// and as scripts they would all share one global scope.
+export {}
+
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
   if (el === null) throw new Error(`#${id} missing`)

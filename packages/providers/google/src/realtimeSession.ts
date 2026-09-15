@@ -67,6 +67,15 @@ export type GeminiLiveRequest = Omit<CommonSessionRequest, "model"> & {
   }
   /** `"none"` turns barge-in off. Defaults to interrupting. */
   readonly activityHandling?: "interrupt" | "none"
+  /**
+   * When a tool result reaches the model, for the models that keep generating
+   * while a tool runs. Defaults to `"when-idle"`: the server's own default is
+   * to interrupt, which cuts off whatever the model was saying while it
+   * waited, including the "let me look that up" it just spoke. `"interrupt"`
+   * is right when the result cannot wait, `"silent"` when it is context the
+   * model should have rather than something to announce.
+   */
+  readonly toolScheduling?: "when-idle" | "interrupt" | "silent"
   readonly turnCoverage?: "activity" | "all" | "audioActivityAndAllVideo"
   /** 3.1 only. Higher levels delay the first audio. */
   readonly thinkingLevel?: "minimal" | "low" | "medium" | "high"
@@ -560,10 +569,25 @@ const videoPart = (
     Match.exhaustive,
   )
 
+/** Wire spelling of `toolScheduling`. */
+type ToolScheduling = "WHEN_IDLE" | "INTERRUPT" | "SILENT"
+
+const schedulingOf = (request: GeminiLiveRequest): ToolScheduling =>
+  Match.value(request.toolScheduling ?? "when-idle").pipe(
+    Match.when("when-idle", () => "WHEN_IDLE" as const),
+    Match.when("interrupt", () => "INTERRUPT" as const),
+    Match.when("silent", () => "SILENT" as const),
+    Match.exhaustive,
+  )
+
 const handleInput = (
   send: (frame: string) => Effect.Effect<void, AiError.AiError>,
   state: Ref.Ref<SessionState>,
-  options: { readonly manual: boolean; readonly rate: number },
+  options: {
+    readonly manual: boolean
+    readonly rate: number
+    readonly scheduling: ToolScheduling
+  },
   input: RealtimeInput,
 ): Effect.Effect<void, AiError.AiError> =>
   Match.value(input).pipe(
@@ -601,12 +625,19 @@ const handleInput = (
             }),
           )
         }
-        // Answering resumes generation on its own; there is no turn to ask for.
+        // Answering resumes generation on its own; there is no turn to ask
+        // for. `scheduling` says when, and matters on a model that kept
+        // generating while the tool ran.
         yield* send(
           JSON.stringify({
             toolResponse: {
               functionResponses: [
-                { id: i.output.call_id, name, response: parsedResponse(i.output.output) },
+                {
+                  id: i.output.call_id,
+                  name,
+                  response: parsedResponse(i.output.output),
+                  scheduling: options.scheduling,
+                },
               ],
             },
           }),
@@ -707,6 +738,7 @@ export const openSession =
         )
       }
       const rate = yield* inputRate(request.inputFormat)
+      const scheduling = schedulingOf(request)
       yield* checkOutputFormat(request.outputFormat)
 
       const session = yield* WebSocketSession.open({
@@ -769,7 +801,7 @@ export const openSession =
 
       const manual = request.turnDetection === "manual"
       return {
-        send: (input) => handleInput(session.send, state, { manual, rate }, input),
+        send: (input) => handleInput(session.send, state, { manual, rate, scheduling }, input),
         events: Stream.fromQueue(out),
       }
     })

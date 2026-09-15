@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/slack",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Slack provider for @effect-uai/core (Messenger capability over Socket Mode and the Web API).",
   "keywords": [
     "agents",

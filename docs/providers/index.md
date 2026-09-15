@@ -31,7 +31,7 @@ A ✓ links to the usage page for that provider and capability.
 | **Google**     |  [✓](/providers/gemini/)   | [✓](/embeddings/providers/gemini/) | [✓](/image-generation/providers/google/) |   [✓](/speech/providers/gemini/)   | [✓](/realtime/providers/gemini/) |   [✓](/music-generation/providers/gemini/)   |
 | **Anthropic**  | [✓](/providers/anthropic/) |                                    |                                          |                                    |                                  |                                              |
 | **Mistral**    |  [✓](/providers/mistral/)  |                                    |                                          |  [✓](/speech/providers/mistral/)   |                                  |                                              |
-| **fal**        |                            |                                    |  [✓](/image-generation/providers/fal/)   |                                    |                                  |                                              |
+| **Fal**        |                            |                                    |  [✓](/image-generation/providers/fal/)   |                                    |                                  |                                              |
 | **ElevenLabs** |                            |                                    |                                          | [✓](/speech/providers/elevenlabs/) |                                  | [✓](/music-generation/providers/elevenlabs/) |
 | **Jina**       |                            |  [✓](/embeddings/providers/jina/)  |                                          |                                    |                                  |                                              |
 | **Inworld**    |                            |                                    |                                          |  [✓](/speech/providers/inworld/)   |                                  |                                              |
@@ -134,7 +134,7 @@ Claude models via the Messages API.
 
 - Language model: [Anthropic](/providers/anthropic/)
 
-## fal
+## Fal
 
 `@effect-uai/fal`
 
@@ -143,7 +143,7 @@ Muse, and the open-weights field, including the sub-second tier. The model
 id here is an endpoint path rather than a model name, and generating and
 editing are separate endpoints.
 
-- Images: [fal](/image-generation/providers/fal/)
+- Images: [Fal](/image-generation/providers/fal/)
 
 ## ElevenLabs
 

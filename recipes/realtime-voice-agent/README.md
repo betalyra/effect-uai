@@ -7,17 +7,15 @@ icon: PiPhoneCall
 
 Talk over the assistant and it stops, mid-word, because it heard you.
 
-This recipe opens one WebSocket to a speech-to-speech model. Your voice
-goes up as raw audio and its voice comes back the same way, with no
-transcription step in between and no language model in the middle. The
-model owns turn-taking: it decides when you finished a sentence and
-when you cut it off.
+This recipe is a voice assistant on a speech-to-speech model. Your
+voice goes to the model as audio and its voice comes back as audio, and
+the model handles the conversation itself: when you finished a
+sentence, when you cut it off, when to call a tool.
 
-**Scenario.** You want the lowest-latency voice agent you can build,
-and you are willing to give up the pipeline's control over each stage
-to get it. If you would rather keep that control, or want to mix
-providers, [Voice loop](/recipes/voice-loop/) composes the same job out
-of speech-to-text, a language model and text-to-speech.
+**Scenario.** A voice assistant with the lowest latency and the most
+natural turn-taking. If you would rather pick separate speech-to-text,
+language and text-to-speech models and see the text in between,
+[Voice loop](/recipes/voice-loop/) builds the same assistant that way.
 
 ## The Shape
 
@@ -47,11 +45,11 @@ yield *
 yield * Stream.runForEach(session.events, handleEvent)
 ```
 
-Everything after that is policy, and policy is what
-[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/realtime-voice-agent/recipe.ts)
-is. There is no agent wrapper: no hidden queue, no automatic tool
-runner, no reconnect. The file is short enough to read in one sitting,
-and that is the point.
+Everything else, playback, tools and interruptions, is a `Match` over
+the events in
+[`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/realtime-voice-agent/recipe.ts).
+There is no agent wrapper, so the whole loop is one short file you can
+read and change.
 
 ## Run it
 
@@ -113,63 +111,44 @@ match.
 
 ## Four Things Worth Knowing
 
-**The model decides when it has been interrupted.** The
-voice-activity detector fires on a cough or a door, so `SpeechStarted`
-is informational here and does not stop the voice. `Interrupted` does:
-it arrives only once the server has actually abandoned the answer, and
-it arrives in order with the rest of that response. Transcripts are not
-a substitute. They are unordered against the response events on Gemini
-and routinely late on OpenAI, so cutting on the first recognised words
-can flush an answer that has only just started.
+**The model decides when it has been interrupted.** `SpeechStarted`
+only means the microphone picked something up, and a cough sets it off,
+so the recipe shows it but keeps playing. `Interrupted` means the model
+has dropped its answer, and that is what stops the voice.
 
-**Only the browser knows what was heard.** The model generates several
-times faster than real time, so when you interrupt, the server has
-usually finished an answer the speakers are seconds behind on. The
-playback worklet reports its true position when it flushes, and the
-recipe sends that as `PlaybackPosition` so the unheard tail leaves the
-model's memory of what it said. A server-side byte count would get this
-wrong, and it stays right even for an answer the server already
-considers complete.
+**Only the browser knows what was heard.** The model finishes
+generating long before the speakers catch up, so when you interrupt it,
+it remembers a whole answer you heard half of. The playback worklet
+reports how far it got, and the recipe sends that as `PlaybackPosition`
+so the unheard part leaves the conversation.
 
 **Echo cancellation is not optional.** The model listens while it
 speaks, so without it the assistant hears itself through your speakers
 and interrupts itself in a loop. The client asks for it in
 `getUserMedia`.
 
-**Tools run beside the conversation.** Each call is forked, so the
-session keeps flowing while a tool works. That matters most for web
-search, which is slow enough that a blocking design would leave dead
-air. If the model abandons a call, which happens whenever you interrupt
-it mid-call, the recipe interrupts that fiber rather than answering a
-question nobody is waiting for.
+**Tools run beside the conversation.** Each call runs in its own fiber,
+so the assistant keeps talking while a web search works. If you
+interrupt it mid-call, the model drops the call and the recipe stops
+the fiber.
 
 ## Provider Fit
 
-Both providers run the same `recipe.ts`. What changes is the preset in
-`app.ts`: the model, the voice and the sample rates, which the client
-reads back from `/config`.
+Both providers run the same `recipe.ts`. `app.ts` picks the model, the
+voice and the sample rates, and the client reads those from `/config`.
 
-Gemini differs in ways you can hear:
+What you will notice on Gemini:
 
-- **No speech-started event.** Gemini reports what you said, not that
-  you started making noise, so the cut fires on the first recognised
-  words. That is what this recipe keys on anyway.
-- **No truncate.** OpenAI can be told how much of an answer you heard
-  and forgets the rest; Gemini has no such op, so on a barge-in the
-  unheard tail stays in its context. The recipe still reports the
-  position and the adapter logs that it dropped it.
-- **The socket ends after about ten minutes**, whatever you do. A
-  `SessionEnding` event arrives first, and every session asks for a
-  resumption handle, which surfaces as `ResumptionHandle` events for a
-  caller that wants to reconnect. Reconnecting is not this recipe's
-  job, and there is no automatic reconnect in the adapter.
-- **Audio out only.** The assistant transcript you see is the model's
-  own output transcription, not a text modality.
-
-Video input is not part of the common surface. Sending camera frames
-requires the `RealtimeVideoInput` capability marker, which the Gemini
-Layer registers and the OpenAI one does not, so `sendVideoFrame`
-against OpenAI is a compile error rather than a runtime surprise.
+- **No `SpeechStarted`.** The transcript still shows the interruption;
+  the "speech started" marker just never appears.
+- **Nothing is trimmed after an interruption.** Gemini cannot be told
+  how much you heard, so the unheard part of an answer stays in the
+  conversation.
+- **Sessions end after about ten minutes.** `SessionEnding` arrives
+  first and `ResumptionHandle` events let a caller reconnect. This
+  recipe does not; the page shows the session as ended.
+- **Camera input.** Only Gemini takes video. [Camera assistant](/recipes/camera-assistant/)
+  is this recipe with the camera added.
 
 ## What This Generalizes To
 

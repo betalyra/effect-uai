@@ -32,9 +32,9 @@ const mainLayer = images.pipe(Layer.provide(FetchHttpClient.layer))
 
 One implementation, two tags:
 
-- **`GeminiImageGenerator`** — the typed tag. Yield this for
+- **`GeminiImageGenerator`**: the typed tag. Yield this for
   `imageSize`, `thinkingLevel`, and search grounding.
-- **`ImageGenerator`** — the generic tag. Yield this in
+- **`ImageGenerator`**: the generic tag. Yield this in
   provider-portable code.
 
 **No `ImageStreaming`.** The image arrives whole, so `streamGeneration`

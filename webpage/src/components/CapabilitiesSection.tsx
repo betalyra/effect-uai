@@ -48,7 +48,7 @@ const capabilities: ReadonlyArray<Capability> = [
   {
     title: "Realtime",
     description:
-      "One **duplex session** for voice: the model hears you, and stops when you talk over it.",
+      "**Talk to the model live.** It hears you, sees your camera, stops when you talk over it, and calls tools mid-call.",
     href: "/realtime/",
     Icon: PiPhoneTransfer,
   },

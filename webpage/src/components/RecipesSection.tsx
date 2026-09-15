@@ -259,7 +259,7 @@ const recipes: ReadonlyArray<Recipe> = [
   {
     title: "Realtime voice agent",
     description:
-      "**Talk over it and it stops.** One duplex session carries your voice both ways; tools run beside the conversation.",
+      "**Talk over it and it stops.** A voice assistant on a realtime model; web search runs while it keeps talking.",
     href: "/recipes/realtime-voice-agent/",
     Icon: PiPhoneCall,
     category: "realtime",
@@ -267,7 +267,7 @@ const recipes: ReadonlyArray<Recipe> = [
   {
     title: "Camera assistant",
     description:
-      "**Point at it instead of describing it.** Camera frames ride the same session as your voice, and a provider without video is a compile error.",
+      "**Point at it instead of describing it.** The voice agent with a camera; frames go over the same session as your voice.",
     href: "/recipes/camera-assistant/",
     Icon: PiScan,
     category: "realtime",

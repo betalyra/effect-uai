@@ -29,11 +29,11 @@ Swap the Layer and the same call runs on a different provider.
 
 ## Three calls
 
-- **`generate`** — prompt in, images out.
-- **`edit`** — prompt plus the images you want changed. Separate,
+- **`generate`**: prompt in, images out.
+- **`edit`**: prompt plus the images you want changed. Separate,
   because references are required here and meaningless there, and
   providers treat them as different endpoints.
-- **`streamGeneration`** and **`streamEdit`** — preview frames while
+- **`streamGeneration`** and **`streamEdit`**: preview frames while
   the image resolves, for when someone is watching a spinner. Both are
   gated by the `ImageStreaming` marker, so a provider that cannot
   preview is a compile error rather than a surprise at runtime.
@@ -120,10 +120,10 @@ degrades: fewer images is a different result, not a smaller one.
 
 ## Providers
 
-- [OpenAI](/image-generation/providers/openai/) — `gpt-image-2`,
+- [OpenAI](/image-generation/providers/openai/): `gpt-image-2`,
   including edits and partial-image streaming.
-- [Google](/image-generation/providers/google/) — Nano Banana 2, Lite
+- [Google](/image-generation/providers/google/): Nano Banana 2, Lite
   and Pro. Faster and cheaper; no streaming.
-- [fal](/image-generation/providers/fal/) — FLUX.2, Seedream 5, Qwen
+- [Fal](/image-generation/providers/fal/): FLUX.2, Seedream 5, Qwen
   Image and the open-weights field, including the sub-second tier. One
   key for models you cannot reach directly; no streaming.

@@ -4,25 +4,25 @@ description: "One duplex session for voice: the model hears you, decides when yo
 icon: PiPhoneTransfer
 ---
 
-Realtime work starts from one user problem: "let me talk to the model
-and talk over it." One socket carries your voice up and its voice back,
-with no transcription step in between.
+Realtime models hold a live conversation: you stream your microphone,
+and your camera where the model takes it, and the model streams its
+voice back as it listens. It notices when you start talking, stops when
+you interrupt it, and calls tools without leaving the call. Today that
+is voice in and voice out, with video as an extra input on Gemini;
+`RealtimeSession` is the service for these models, and the same session
+carries whatever inputs and outputs the next ones stream.
 
 ## Start With The User Flow
 
-- **Talk to an agent, interrupt it mid-sentence**: use
+- **A voice assistant**: use
   [Realtime voice agent](/recipes/realtime-voice-agent/).
-- **Talk to an agent, but keep control of each stage**: use
-  [Voice loop](/recipes/voice-loop/). The composed STT → LLM → TTS
-  pipeline lets you mix providers and see the text between them.
-- **Point a camera at something and ask about it**: a session takes
-  video frames, on Gemini only.
-- **Read audio into text, nothing else**: you want
-  [Speech](/speech/), not a session.
-
-Pick the pipeline unless you need model-native barge-in, tool calls
-inside continuous audio, or one connection's worth of latency instead
-of three. The pipeline is easier to reason about and runs anywhere.
+- **A voice assistant that can see**: use
+  [Camera assistant](/recipes/camera-assistant/). Camera frames go
+  over the same session, on Gemini only.
+- **A voice assistant built from separate STT, LLM and TTS models**:
+  use [Voice loop](/recipes/voice-loop/). You choose each provider and
+  see the text in between, at the cost of more latency.
+- **Only transcription or only synthesis**: see [Speech](/speech/).
 
 ## Opening A Session
 
@@ -55,7 +55,8 @@ const program = Effect.gen(function* () {
 
 Provider choice is wiring, as everywhere else: `OpenAIRealtimeSession`
 and `GeminiLiveSession` each register their own typed tag and the
-generic `RealtimeSession`.
+generic `RealtimeSession`. The generic tag takes the options both
+providers share; the typed tag adds that provider's own.
 
 ## Answering Events
 
@@ -75,18 +76,14 @@ const handleEvent = Match.type<RealtimeEvent>().pipe(
 )
 ```
 
-Both unions carry only what OpenAI Realtime and Gemini Live do
-natively. VAD thresholds, truncation, thinking, grounding and noise
-reduction are typed on each provider's own request.
-
-Audio is forwarded as it arrives, unpaced and unbuffered, so send at
-real time.
+Audio is forwarded as it arrives, without buffering, so send it at the
+pace you record it.
 
 ## Running Tools Without Dead Air
 
-Fork the tool, or the conversation stops while it works. Web search is
-where you hear this: two seconds of silence is a long time in a
-conversation.
+Run tools in their own fiber so the conversation keeps going while
+they work. A web search takes a second or two, and that is a long
+silence on a call.
 
 ```ts
 Match.tag("ToolCall", (e) =>
@@ -102,72 +99,59 @@ Match.tag("ToolCall", (e) =>
 )
 ```
 
-The adapter asks for the follow-up turn once your result is in, so you
-never send a "generate now" frame yourself. When the model abandons
-calls, which happens whenever you interrupt it mid-call, they arrive as
-`ToolCallCancelled`: interrupt those fibers rather than answering a
-question nobody is waiting for.
+The model speaks the result as soon as it arrives; you do not ask for a
+turn. If the user interrupts while a tool is still running, the model
+drops the call and you get `ToolCallCancelled`: interrupt that fiber.
 
-## "I Talked Over It And It Kept Going"
+## Interruptions
 
-Two different things have to happen, and only one is the model's.
+When the user talks over the model, it cancels its own answer and you
+get `Interrupted` before that response's `ResponseDone`. Stop playback
+there.
 
-The model cancels its own response when it decides you interrupted, and
-you get `Interrupted` before that response's `ResponseDone`. Stop
-playback there.
-
-But the model generates several times faster than real time, so it has
-usually finished an answer your speakers are seconds behind on. It
-believes it said all of it. Tell it what was actually heard:
+The model has usually generated well past what the speakers have
+played, and it remembers the whole answer as said. Tell it how far
+playback got:
 
 ```ts
 yield * session.send(RealtimeInput.PlaybackPosition({ responseId, playedMs }))
 ```
 
-The unheard tail then leaves the conversation. Only the client can
-measure `playedMs`; a server-side byte count is wrong by exactly the
-buffer it cannot see. On Gemini this is dropped with a warning, because
-there is no truncate op on that wire.
+The unheard part then leaves the conversation. Only your client knows
+`playedMs`. Gemini has no way to trim, so there it is dropped with a
+warning.
 
 ## Sessions End On Their Own
 
-`SessionEnding` warns you before the server closes: OpenAI ahead of its
-session limit, Gemini about a minute before its ten-minute socket ends.
-Gemini also emits `ResumptionHandle`, which you pass back as
-`request.resume` to continue the conversation on a fresh session.
+`SessionEnding` warns you before the server closes the session: OpenAI
+ahead of its session limit, Gemini about a minute before its ten-minute
+socket ends. Gemini also emits `ResumptionHandle`, which you pass back
+as `request.resume` to continue the conversation on a new session.
+Reconnecting is your code's job; no adapter does it for you.
 
-Reconnecting is yours, deliberately. No adapter does it behind your
-back.
-
-A close never invents a `ResponseDone`. `events` ends when the socket
-closes cleanly, and a close mid-answer fails the stream with
-`IncompleteTurn`, so a dropped connection can never read as a finished
-answer. When the close is the session running out, the failure is
-`SessionExpired` instead: a new session will work, retrying this one
-will not.
+`events` ends when the socket closes cleanly. A close mid-answer fails
+the stream with `IncompleteTurn`, and a close because the session ran
+out fails it with `SessionExpired`, so a dropped connection never looks
+like a finished answer.
 
 ## Camera Input Is Gemini Only
 
-OpenAI Realtime has no video input, so this is a capability marker
-rather than a common promise. `sendVideoFrame` requires
-`RealtimeVideoInput`, which only the Gemini Layer provides, so pointing
-a camera at an OpenAI-only Layer is a compile error rather than a
-surprise at runtime.
+`sendVideoFrame` needs the `RealtimeVideoInput` marker, which only the
+Gemini Layer provides. Sending frames on an OpenAI Layer is a compile
+error.
 
 ## Testing
 
-`MockRealtimeSession` scripts a session: the events it emits on open, a
-function from each input to its answers, and a record of every `send`.
-`layer` ships the video marker, `layerAudioOnly` does not.
-
-Writing an adapter instead? `FakeWebSocket` is an in-memory socket you
-provide in place of `Socket.WebSocketConstructor`, and you play the
-server with `push`, `reply` and `close`.
+`@effect-uai/core/testing/MockRealtimeSession` scripts a session: the
+events it emits on open, a function from each input to its answers, and
+a record of every `send`. `layer` ships the video marker,
+`layerAudioOnly` does not.
 
 ## See Also
 
-- [Realtime voice agent](/recipes/realtime-voice-agent/): all of the
-  above wired by hand, in a browser.
+- [Realtime voice agent](/recipes/realtime-voice-agent/) and
+  [Camera assistant](/recipes/camera-assistant/): the full loop, in a
+  browser.
 - [OpenAI Realtime](/realtime/providers/openai/),
   [Gemini Live](/realtime/providers/gemini/).
 - [Compatible endpoints](/realtime/gateways/): OpenAI-shaped gateways

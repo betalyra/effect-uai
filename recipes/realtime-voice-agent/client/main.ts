@@ -10,6 +10,10 @@
  * interrupted, so barge-in is the server telling us to flush playback.
  */
 
+// A module, not a script: every recipe's client declares `$`, `setStatus` and
+// a `StatusEvent`, and as scripts they would all share one global scope.
+export {}
+
 type StatusEvent =
   | { readonly type: "user-transcript"; readonly text: string; readonly final: boolean }
   | { readonly type: "assistant-started" }
@@ -46,11 +50,29 @@ const setStatus = (text: string, error = false): void => {
  */
 const NEAR_BOTTOM_PX = 120
 
+const distanceFromBottom = (): number =>
+  document.documentElement.scrollHeight - window.scrollY - window.innerHeight
+
+/**
+ * Whether to keep following, decided by the reader's own scrolling rather than
+ * measured when a delta lands. Deltas arrive faster than a scroll settles, so
+ * measuring at append time reads a position still in motion, concludes the
+ * reader has scrolled away, and stops following mid-answer.
+ */
+let following = true
+
+window.addEventListener(
+  "scroll",
+  () => {
+    following = distanceFromBottom() <= NEAR_BOTTOM_PX
+  },
+  { passive: true },
+)
+
+// Jumps rather than animates: a smooth scroll is still travelling when the
+// next delta arrives, so it never catches up with a live transcript.
 const followBottom = (): void => {
-  const height = document.documentElement.scrollHeight
-  if (height - window.scrollY - window.innerHeight <= NEAR_BOTTOM_PX) {
-    window.scrollTo({ top: height, behavior: "smooth" })
-  }
+  if (following) window.scrollTo({ top: document.documentElement.scrollHeight })
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +102,7 @@ const makeBlock = (role: "user" | "assistant" | "tool"): Block => {
 const note = (role: "tool", message: string): void => {
   const block = makeBlock(role)
   block.text.textContent = message
+  followBottom()
 }
 
 /**

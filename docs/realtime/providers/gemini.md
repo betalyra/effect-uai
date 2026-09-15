@@ -37,12 +37,14 @@ const gemini = Layer.unwrap(
 
 ## Models
 
-| Model                                           | Notes                                     |
-| ----------------------------------------------- | ----------------------------------------- |
-| `gemini-3.1-flash-live-preview`                 | Recommended; thinking via `thinkingLevel` |
-| `gemini-2.5-flash-native-audio-preview-12-2025` | Proactive audio and affective dialog      |
+| Model                                           | Notes                                        |
+| ----------------------------------------------- | -------------------------------------------- |
+| `gemini-3.8-live`                               | Recommended; the default for a voice agent   |
+| `gemini-3.8-live-extended-thinking`             | Reasons in the background, at a latency cost |
+| `gemini-3.1-flash-live-preview`                 | Previous generation; `thinkingLevel`         |
+| `gemini-2.5-flash-native-audio-preview-12-2025` | Proactive audio and affective dialog         |
 
-Both are native audio: output is audio, and the assistant transcript you
+All are native audio: output is audio, and the assistant transcript you
 see is the model's own output transcription rather than a text modality.
 Send mono `pcm_s16le` at any rate (16 kHz is what the model works in);
 output is fixed at 24 kHz.
@@ -74,7 +76,7 @@ them only while the user is speaking, or set `turnCoverage: "activity"`.
 const session =
   yield *
   GeminiLiveSession.open({
-    model: "gemini-3.1-flash-live-preview",
+    model: "gemini-3.8-live",
     voiceId: "Kore",
     inputFormat: pcm16k,
     outputFormat: pcm24k,
@@ -89,6 +91,24 @@ gives you the boundaries through `ActivityStart` and `ActivityEnd`.
 
 Yield the typed `GeminiLiveSession` tag to reach these; the generic
 `RealtimeSession` tag takes the common request only.
+
+## When A Tool Result Gets Spoken
+
+`gemini-3.8-live` keeps generating while your tool runs, so a result can
+land while the model is still talking. `toolScheduling` says what happens
+then, and defaults to `"when-idle"`:
+
+|               | Effect                                                  |
+| ------------- | ------------------------------------------------------- |
+| `"when-idle"` | The current utterance finishes, then the result follows |
+| `"interrupt"` | The model stops mid-sentence to report it               |
+| `"silent"`    | Filed as context, never announced                       |
+
+The default matters more than it sounds. Agents are usually told to say a
+few words before a slow call so the caller is not left in silence, and
+the server's own default is to interrupt, which cuts off exactly those
+words as the answer arrives. On a model that blocks during a tool call
+there is nothing to schedule around and the setting does nothing.
 
 ## Grounding
 

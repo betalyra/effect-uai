@@ -7,6 +7,10 @@
  * APIs. Effect lives entirely on the server in this recipe.
  */
 
+// A module, not a script: every recipe's client declares `$` and `setStatus`,
+// and as scripts they would all share one global scope.
+export {}
+
 type TranscriptEvent =
   | { readonly _tag: "partial"; readonly text: string }
   | { readonly _tag: "final"; readonly text: string }

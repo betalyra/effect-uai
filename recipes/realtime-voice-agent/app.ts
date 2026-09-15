@@ -192,7 +192,12 @@ const readFlags = Effect.gen(function* () {
 })
 
 const pcm = (sampleRate: AgentConfig["inputFormat"]["sampleRate"]) =>
-  ({ container: "raw", encoding: "pcm_s16le", sampleRate, channels: 1 }) as const
+  ({
+    container: "raw",
+    encoding: "pcm_s16le",
+    sampleRate,
+    channels: 1,
+  }) as const
 
 /**
  * Each provider fixes its own rates: Gemini listens at 16 kHz and speaks at
@@ -209,7 +214,7 @@ const configFor = (provider: Provider): AgentConfig =>
       outputFormat: pcm(24000),
     })),
     Match.when("google", () => ({
-      model: "gemini-3.1-flash-live-preview",
+      model: "gemini-3.8-live",
       instructions: INSTRUCTIONS,
       voiceId: "Kore",
       inputFormat: pcm(16000),
@@ -305,7 +310,9 @@ const wsHandler = (cfg: AgentConfig) =>
 // ---------------------------------------------------------------------------
 
 const js = (body: string) =>
-  HttpServerResponse.text(body, { contentType: "application/javascript; charset=utf-8" })
+  HttpServerResponse.text(body, {
+    contentType: "application/javascript; charset=utf-8",
+  })
 
 type Assets = {
   readonly cfg: AgentConfig
@@ -357,7 +364,15 @@ export const main = Effect.gen(function* () {
 
   // @effect-diagnostics-next-line effect/returnEffectInGen:off
   return Layer.launch(
-    HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs, micWorkletJs, playbackWorkletJs })),
+    HttpRouter.serve(
+      routesLayer({
+        cfg,
+        indexHtml,
+        clientJs,
+        micWorkletJs,
+        playbackWorkletJs,
+      }),
+    ),
   ).pipe(
     Effect.provide(
       Layer.mergeAll(

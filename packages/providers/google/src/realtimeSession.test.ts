@@ -33,10 +33,12 @@ const tick = Effect.sleep("5 millis")
 const transcript = (
   server: FakeWebSocket.FakeWebSocketServer,
   script: (handle: RealtimeSessionHandle) => Effect.Effect<void, unknown>,
-  options?: { readonly closeCode?: number },
+  options?: { readonly closeCode?: number; readonly request?: GeminiLiveRequest },
 ) =>
   Effect.gen(function* () {
-    const handle = yield* openSession({ ...cfg, webSocket: server.connect })(request)
+    const handle = yield* openSession({ ...cfg, webSocket: server.connect })(
+      options?.request ?? request,
+    )
     const seen = yield* Ref.make<ReadonlyArray<RealtimeEvent>>([])
     const collector = yield* Effect.forkChild(
       Effect.exit(Stream.runForEach(handle.events, (e) => Ref.update(seen, (xs) => [...xs, e]))),
@@ -210,9 +212,47 @@ describe("Gemini live session tools", () => {
       const sent = yield* server.sent
       const response = sent.find((f: any) => f.toolResponse !== undefined) as any
       // The name comes from the call, and the payload has to be an object.
+      // `WHEN_IDLE` by default: a model that kept talking while the tool ran
+      // finishes the sentence rather than cutting itself off to report.
       expect(response.toolResponse.functionResponses).toEqual([
-        { id: "fc_1", name: "get_weather", response: { celsius: 32 } },
+        {
+          id: "fc_1",
+          name: "get_weather",
+          response: { celsius: 32 },
+          scheduling: "WHEN_IDLE",
+        },
       ])
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("reports a result at once when the caller asks it to interrupt", () =>
+    Effect.gen(function* () {
+      const server = yield* gemini
+      yield* transcript(
+        server,
+        (handle) =>
+          Effect.gen(function* () {
+            yield* server.push({
+              toolCall: { functionCalls: [{ id: "fc_1", name: "get_weather", args: {} }] },
+            })
+            yield* tick
+            yield* handle.send(
+              RealtimeInput.ToolResult({
+                output: {
+                  type: "function_call_output",
+                  call_id: "fc_1",
+                  output: "{}",
+                  providerData: undefined,
+                },
+              }),
+            )
+          }),
+        { request: { ...request, toolScheduling: "interrupt" } },
+      )
+
+      const sent = yield* server.sent
+      const response = sent.find((f: any) => f.toolResponse !== undefined) as any
+      expect(response.toolResponse.functionResponses[0].scheduling).toBe("INTERRUPT")
     }).pipe(Effect.scoped),
   )
 

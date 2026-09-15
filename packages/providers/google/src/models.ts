@@ -86,11 +86,17 @@ export type GeminiTtsModel =
 /**
  * Live API models, for `BidiGenerateContent` speech-to-speech sessions. Every
  * current one is native audio: output is audio only, and text comes from
- * output transcription. The Live API is still preview on the Gemini API.
+ * output transcription.
+ *
+ * `gemini-3.8-live` is the default for a voice agent. Its
+ * `-extended-thinking` sibling reasons in the background during a live
+ * exchange, which costs the latency a voice turn is most sensitive to.
  *
  * Reference: https://ai.google.dev/gemini-api/docs/live-api
  */
 export type GeminiLiveModel =
+  | "gemini-3.8-live"
+  | "gemini-3.8-live-extended-thinking"
   | "gemini-3.1-flash-live-preview"
   | "gemini-2.5-flash-native-audio-preview-12-2025"
   // eslint-disable-next-line @typescript-eslint/ban-types

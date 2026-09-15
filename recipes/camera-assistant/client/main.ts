@@ -24,6 +24,10 @@ type StatusEvent =
   | { readonly type: "session-ending" }
   | { readonly type: "error"; readonly message: string }
 
+// A module, not a script: every recipe's client declares `$`, `setStatus` and
+// a `StatusEvent`, and as scripts they would all share one global scope.
+export {}
+
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
   if (el === null) throw new Error(`#${id} missing`)
@@ -52,14 +56,39 @@ const setStatus = (text: string, error = false): void => {
  */
 const NEAR_BOTTOM_PX = 120
 
+/** Whichever element actually scrolls right now, or `null` for the page. */
+const scroller = (): HTMLElement | null =>
+  conversationEl.scrollHeight > conversationEl.clientHeight + 1 ? conversationEl : null
+
+const distanceFromBottom = (): number => {
+  const el = scroller()
+  return el === null
+    ? document.documentElement.scrollHeight - window.scrollY - window.innerHeight
+    : el.scrollHeight - el.scrollTop - el.clientHeight
+}
+
+/**
+ * Whether to keep following, decided by the reader's own scrolling rather than
+ * measured when a delta lands. Deltas arrive faster than a scroll settles, so
+ * measuring at append time reads a position still in motion, concludes the
+ * reader has scrolled away, and stops following mid-answer.
+ */
+let following = true
+
+const trackFollowing = (): void => {
+  following = distanceFromBottom() <= NEAR_BOTTOM_PX
+}
+
+conversationEl.addEventListener("scroll", trackFollowing, { passive: true })
+window.addEventListener("scroll", trackFollowing, { passive: true })
+
+// Jumps rather than animates: a smooth scroll is still travelling when the
+// next delta arrives, so it never catches up with a live transcript.
 const followBottom = (): void => {
-  const inner = conversationEl.scrollHeight > conversationEl.clientHeight + 1
-  const [height, top, view] = inner
-    ? [conversationEl.scrollHeight, conversationEl.scrollTop, conversationEl.clientHeight]
-    : [document.documentElement.scrollHeight, window.scrollY, window.innerHeight]
-  if (height - top - view > NEAR_BOTTOM_PX) return
-  if (inner) conversationEl.scrollTo({ top: height, behavior: "smooth" })
-  else window.scrollTo({ top: height, behavior: "smooth" })
+  if (!following) return
+  const el = scroller()
+  if (el === null) window.scrollTo({ top: document.documentElement.scrollHeight })
+  else el.scrollTop = el.scrollHeight
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +165,7 @@ const handleStatus = (event: StatusEvent): void => {
       break
     case "tool-call":
       makeBlock("tool").text.textContent = `${event.name}(${event.arguments})`
+      followBottom()
       break
     case "tool-done":
       setStatus("speaking…")
@@ -143,6 +173,7 @@ const handleStatus = (event: StatusEvent): void => {
     case "tool-cancelled":
       if (event.count > 0) {
         makeBlock("tool").text.textContent = `${event.count} call(s) abandoned`
+        followBottom()
       }
       break
     case "session-ending":

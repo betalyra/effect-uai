@@ -134,5 +134,6 @@ Or start with one primitive in isolation:
 
 - [Transcription](/speech/transcription/): STT in depth.
 - [Synthesis](/speech/synthesis/): TTS in depth.
-- [Realtime](/realtime/): duplex voice / video sessions (planned).
+- [Realtime](/realtime/): speech-to-speech models, one session for
+  voice and camera.
 - [Voice loop recipe](/recipes/voice-loop/): the flagship composition.

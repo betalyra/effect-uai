@@ -16,7 +16,7 @@ describe("OpenAITranscriber capability guards (runtime)", () => {
     const program = OpenAITranscriber.OpenAITranscriber.use((t) =>
       Stream.runDrain(
         t.streamTranscriptionFrom(Stream.fromIterable<Uint8Array>([new Uint8Array([0])]), {
-          model: "gpt-4o-transcribe",
+          model: "gpt-live-transcribe",
           inputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 16000 },
         }),
       ),
@@ -35,7 +35,7 @@ describe("OpenAITranscriber Layer (compile-time)", () => {
     const audio: Stream.Stream<Uint8Array> = Stream.fromIterable([new Uint8Array([0])])
     const events = audio.pipe(
       Transcriber.streamTranscriptionFrom({
-        model: "gpt-4o-transcribe",
+        model: "gpt-live-transcribe",
         inputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 16000 },
       }),
     )

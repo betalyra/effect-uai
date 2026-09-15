@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>effect-uai · camera assistant</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        max-width: 1100px;
+        margin: 1.5rem auto;
+        padding: 0 1.5rem;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin-bottom: 0.5rem;
+      }
+      p.lede {
+        max-width: 60ch;
+      }
+      button {
+        font: inherit;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        border: 1px solid currentColor;
+        background: transparent;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #status,
+      #frames {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85em;
+        opacity: 0.7;
+      }
+
+      /* The view stays on screen while the transcript grows: beside it when
+         there is room, stuck to the top of the page when there is not. */
+      #layout {
+        display: grid;
+        gap: 1.5rem;
+      }
+      @media (min-width: 900px) {
+        #layout {
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          align-items: start;
+        }
+        #stage {
+          position: sticky;
+          top: 1.5rem;
+        }
+        /* The transcript scrolls inside the column, so the composer stays put
+           without leaving the flow. */
+        #chat {
+          position: sticky;
+          top: 1.5rem;
+          display: flex;
+          flex-direction: column;
+          height: calc(100vh - 3rem);
+        }
+        #conversation {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+        }
+      }
+      @media (max-width: 899px) {
+        #stage {
+          position: sticky;
+          top: 0;
+          z-index: 1;
+          padding: 0.5rem 0;
+          background: Canvas;
+        }
+      }
+
+      #viewport {
+        position: relative;
+        aspect-ratio: 4 / 3;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #111;
+      }
+      #preview {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      #viewport::after {
+        content: "camera off";
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85em;
+        color: #888;
+      }
+      #viewport.live::after {
+        content: none;
+      }
+      #controls {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin: 0.75rem 0;
+      }
+      /* Pinned to the bottom of whatever scrolls: the column when there is
+         one, the page when there is not. */
+      #composer {
+        position: sticky;
+        bottom: 0;
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.75rem 0;
+        background: Canvas;
+        order: 2;
+      }
+      /* Room for the last message to clear the composer. */
+      #conversation {
+        padding-bottom: 1.5rem;
+      }
+      #text {
+        font: inherit;
+        flex: 1;
+        min-width: 0;
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+        background: transparent;
+        color: inherit;
+      }
+      .transcript {
+        margin: 0.75rem 0;
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+      }
+      .transcript .role {
+        font-weight: 600;
+        opacity: 0.6;
+        font-size: 0.85em;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.15rem;
+      }
+      .transcript.user {
+        background: color-mix(in srgb, currentColor 8%, transparent);
+      }
+      .transcript.assistant {
+        background: color-mix(in srgb, currentColor 4%, transparent);
+      }
+      .transcript.tool {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85em;
+        opacity: 0.7;
+      }
+      .partial {
+        opacity: 0.55;
+        font-style: italic;
+      }
+      .err {
+        color: #c0392b;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>camera assistant · effect-uai</h1>
+    <p class="lede">
+      Click <strong>Start</strong>, allow the microphone, and talk. Switch the camera on when you
+      want it to see something and off when you do not; the preview is what it is shown. Frames go
+      up while you speak, at most one a second.
+    </p>
+    <div id="layout">
+      <div id="stage">
+        <div id="viewport"><video id="preview" muted playsinline></video></div>
+        <div id="controls">
+          <button id="toggle">Start</button>
+          <button id="camera" disabled>Camera on</button>
+          <span id="status">idle</span>
+          <span id="frames"></span>
+        </div>
+      </div>
+      <div id="chat">
+        <div id="conversation"></div>
+        <form id="composer">
+          <input id="text" type="text" placeholder="or type a message…" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>

@@ -8,6 +8,10 @@
  * on the server in this recipe.
  */
 
+// A module, not a script: every recipe's client declares `$`, `setStatus` and
+// a `StatusEvent`, and as scripts they would all share one global scope.
+export {}
+
 type StatusEvent =
   | { readonly type: "user-partial"; readonly text: string }
   | { readonly type: "user-final"; readonly text: string }

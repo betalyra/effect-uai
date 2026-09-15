@@ -101,7 +101,8 @@ directly for one-shot calls.
 autocomplete on known IDs but can pass any string for models the SDK
 hasn't been updated for yet.
 
-Known IDs (as of April 2026): `gemini-3.1-pro-preview`,
+Known IDs (as of September 2026): `gemini-3.8-flash`, `gemini-3.8-live`,
+`gemini-3.8-live-extended-thinking`, `gemini-3.1-pro-preview`,
 `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`,
 `gemini-3.1-flash-live-preview`, `gemini-3.1-flash-tts-preview`,
 `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`.

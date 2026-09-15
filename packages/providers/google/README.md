@@ -2,8 +2,17 @@
 
 Google Gemini provider for [`@effect-uai/core`](https://www.npmjs.com/package/@effect-uai/core).
 
-Implements the `LanguageModel` contract against Google's Gemini API
-with SSE streaming.
+One key reaches the whole Gemini family, each at its own subpath:
+
+- **`@effect-uai/google`** (`Gemini`): the `LanguageModel` contract over
+  Gemini's API with SSE streaming.
+- **`@effect-uai/google/GeminiLiveSession`**: `RealtimeSession` over
+  Gemini Live, a live voice conversation that also takes camera frames.
+- **`@effect-uai/google/GeminiEmbedding`**, **`GeminiSynthesizer`**,
+  **`GeminiImageGenerator`**, **`LyriaGenerator`**: embeddings, speech,
+  Nano Banana images and Lyria music.
+- **`@effect-uai/google/GoogleDeepResearch`**: long-running research to
+  a cited report.
 
 ## Install
 

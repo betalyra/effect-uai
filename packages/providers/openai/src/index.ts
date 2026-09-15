@@ -1,5 +1,6 @@
 export * as OpenAITranscriber from "./OpenAITranscriber.js"
 export * as OpenAISynthesizer from "./OpenAISynthesizer.js"
+export * as OpenAIRealtimeSession from "./OpenAIRealtimeSession.js"
 export * as OpenAIImageGenerator from "./OpenAIImageGenerator.js"
 export * as codec from "./codec.js"
 export * from "./models.js"

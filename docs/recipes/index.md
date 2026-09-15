@@ -96,6 +96,13 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Streaming synthesis](/recipes/streaming-synthesis/)         | Type text → audio plays as the first chunk arrives; incremental text-in over WS.                    |
 | [Voice loop](/recipes/voice-loop/)                           | Full STT → LLM → TTS pipeline with stop-word interrupt and follow-up queueing; one fiber per turn.  |
 
+## Realtime
+
+| Recipe                                                 | One-line                                                                                                  |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| [Realtime voice agent](/recipes/realtime-voice-agent/) | One duplex session instead of a pipeline; talk over it and it stops, tools run beside the conversation.   |
+| [Camera assistant](/recipes/camera-assistant/)         | Point a camera at something and ask about it; frames ride the same session, gated by a capability marker. |
+
 ## Music
 
 | Recipe                                                     | One-line                                                                                                                                               |

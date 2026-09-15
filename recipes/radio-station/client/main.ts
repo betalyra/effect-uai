@@ -19,6 +19,10 @@
  *     drained, so the position is accurate.
  */
 
+// A module, not a script: every recipe's client declares `$` and `setStatus`,
+// and as scripts they would all share one global scope.
+export {}
+
 type ServerEvent =
   | { readonly type: "station-info"; readonly brief: string; readonly total: number }
   | { readonly type: "track-planned"; readonly index: number; readonly title: string }

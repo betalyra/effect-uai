@@ -3,6 +3,7 @@ import {
   PiArrowRight,
   PiArticle,
   PiBrain,
+  PiPhoneTransfer,
   PiBrowser,
   PiChatsCircle,
   PiCube,
@@ -43,6 +44,13 @@ const capabilities: ReadonlyArray<Capability> = [
     description: "**Transcribe** audio and **synthesize** speech, batch or live, for voice agents.",
     href: "/speech/",
     Icon: PiWaveform,
+  },
+  {
+    title: "Realtime",
+    description:
+      "**Talk to the model live.** It hears you, sees your camera, stops when you talk over it, and calls tools mid-call.",
+    href: "/realtime/",
+    Icon: PiPhoneTransfer,
   },
   {
     title: "Music generation",

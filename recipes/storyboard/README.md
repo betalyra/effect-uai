@@ -87,10 +87,10 @@ stage    draw each scene, empty           concurrent
 }
 ```
 
-- **`style`** — the medium: ink, shading, palette. Never a place.
-- **`sheets`** — one per thing that recurs, props included. Name what a
+- **`style`**: the medium (ink, shading, palette). Never a place.
+- **`sheets`**: one per thing that recurs, props included. Name what a
   reader can spot, and say how big it is in words.
-- **`beats`** — what happens, one per panel. Camera and action only;
+- **`beats`**: what happens, one per panel. Camera and action only;
   appearance belongs to the sheets.
 
 Point `--story` at your own file. Nothing else changes.

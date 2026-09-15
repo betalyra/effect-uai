@@ -7,6 +7,8 @@ import {
   PiArticle,
   PiAt,
   PiAtom,
+  PiPhoneCall,
+  PiPhoneTransfer,
   PiBrowser,
   PiChartLineUp,
   PiChatCircleDots,
@@ -39,6 +41,7 @@ import {
   PiStairs,
   PiTable,
   PiTerminalWindow,
+  PiScan,
   PiWaveform,
   PiWrench,
 } from "react-icons/pi"
@@ -58,6 +61,7 @@ type Category =
   | "webreading"
   | "retrieval"
   | "speech"
+  | "realtime"
   | "music"
   | "images"
   | "sandboxes"
@@ -82,6 +86,7 @@ const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "webreading",
   "retrieval",
   "speech",
+  "realtime",
   "music",
   "images",
   "sandboxes",
@@ -98,6 +103,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   webreading: "Web reading",
   retrieval: "Retrieval",
   speech: "Speech",
+  realtime: "Realtime",
   music: "Music",
   images: "Images",
   sandboxes: "Sandboxes",
@@ -114,6 +120,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   webreading: PiArticle,
   retrieval: PiFunnel,
   speech: PiWaveform,
+  realtime: PiPhoneTransfer,
   music: PiMusicNotes,
   images: PiImage,
   sandboxes: PiCube,
@@ -248,6 +255,22 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/voice-loop/",
     Icon: PiMicrophone,
     category: "speech",
+  },
+  {
+    title: "Realtime voice agent",
+    description:
+      "**Talk over it and it stops.** A voice assistant on a realtime model; web search runs while it keeps talking.",
+    href: "/recipes/realtime-voice-agent/",
+    Icon: PiPhoneCall,
+    category: "realtime",
+  },
+  {
+    title: "Camera assistant",
+    description:
+      "**Point at it instead of describing it.** The voice agent with a camera; frames go over the same session as your voice.",
+    href: "/recipes/camera-assistant/",
+    Icon: PiScan,
+    category: "realtime",
   },
   {
     title: "Radio station",

@@ -84,6 +84,14 @@ OpenAI Realtime and ElevenLabs both work here. Gemini's transcription
 is sync-only, so it belongs in [Basic transcription](/recipes/basic-transcription/),
 not this recipe.
 
+Two per-provider facts sit in `providerConfig` next to the model and
+sample rate. `vadEvents` asks the server to find turn boundaries, which
+is what commits a turn into a `final`; a model that transcribes
+continuously rejects it and then only ever emits partials.
+`joinPartials` pipes the stream through
+`Transcript.accumulatePartials()` for providers that stream token-sized
+deltas instead of the whole utterance so far, which is what OpenAI does.
+
 ## What This Generalizes To
 
 Live transcription is usually the first half of a larger flow. Pipe

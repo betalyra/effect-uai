@@ -15,6 +15,14 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.16](/migrations/v0-16/): one rename.
+  `@effect-uai/core/Inbox` becomes `@effect-uai/core/Settle`, keeping
+  `drainBurst` as it was and adding `settleBurst` (the same batching over a
+  stream) and `onQuiet` (pass elements through, emit once arrivals stop).
+  Change the import path and go. Additive: the `Realtime` capability, a live
+  voice (and on Gemini, camera) conversation with OpenAI Realtime and Gemini
+  Live as providers, with two recipes. `OpenAIRealtimeTranscriber` moves to
+  OpenAI's GA wire, which needs no code change.
 - [Migrating to 0.15](/migrations/v0-15/): purely additive. A `Messenger`
   capability in `@effect-uai/core` (one event stream in, `post` / `edit` /
   `react` / `typing` / `stream` out, the target chat ambient via

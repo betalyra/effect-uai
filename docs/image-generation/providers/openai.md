@@ -32,12 +32,12 @@ const mainLayer = images.pipe(Layer.provide(FetchHttpClient.layer))
 
 One implementation, three tags:
 
-- **`OpenAIImageGenerator`** — the typed tag. Yield this for the full
+- **`OpenAIImageGenerator`**: the typed tag. Yield this for the full
   provider surface: exact `size`, `quality`, `background`, `outputFormat`,
   `outputCompression`, `moderation`, and a `mask` for inpainting.
-- **`ImageGenerator`** — the generic tag. Yield this in provider-portable
+- **`ImageGenerator`**: the generic tag. Yield this in provider-portable
   code.
-- **`ImageStreaming`** — the capability marker gating `streamGeneration`.
+- **`ImageStreaming`**: the capability marker gating `streamGeneration`.
 
 `baseUrl` and `region` work as on the other OpenAI adapters, so the same
 Layer reaches any OpenAI-compatible endpoint.

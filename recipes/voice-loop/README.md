@@ -54,7 +54,7 @@ assistant is answering waits its turn instead of racing the current
 answer.
 
 Realtime STT can split one human sentence into multiple finals around a
-short pause. The local `settleBurst` helper waits briefly before
+short pause. The `Settle.settleBurst` helper waits briefly before
 starting the LLM, so "what about Paris ... in winter?" is treated as
 one user turn.
 

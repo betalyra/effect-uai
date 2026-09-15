@@ -25,16 +25,21 @@ A ✓ links to the usage page for that provider and capability.
 
 ### Models
 
-| Provider       |            LLM             |             Embeddings             |                  Images                  |               Speech               |                    Music                     |
-| -------------- | :------------------------: | :--------------------------------: | :--------------------------------------: | :--------------------------------: | :------------------------------------------: |
-| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/openai/) | [✓](/image-generation/providers/openai/) |   [✓](/speech/providers/openai/)   |                                              |
-| **Google**     |  [✓](/providers/gemini/)   | [✓](/embeddings/providers/gemini/) | [✓](/image-generation/providers/google/) |   [✓](/speech/providers/gemini/)   |   [✓](/music-generation/providers/gemini/)   |
-| **Anthropic**  | [✓](/providers/anthropic/) |                                    |                                          |                                    |                                              |
-| **Mistral**    |  [✓](/providers/mistral/)  |                                    |                                          |  [✓](/speech/providers/mistral/)   |                                              |
-| **fal**        |                            |                                    |  [✓](/image-generation/providers/fal/)   |                                    |                                              |
-| **ElevenLabs** |                            |                                    |                                          | [✓](/speech/providers/elevenlabs/) | [✓](/music-generation/providers/elevenlabs/) |
-| **Jina**       |                            |  [✓](/embeddings/providers/jina/)  |                                          |                                    |                                              |
-| **Inworld**    |                            |                                    |                                          |  [✓](/speech/providers/inworld/)   |                                              |
+| Provider       |            LLM             |             Embeddings             |                  Images                  |               Speech               |             Realtime             |                    Music                     |
+| -------------- | :------------------------: | :--------------------------------: | :--------------------------------------: | :--------------------------------: | :------------------------------: | :------------------------------------------: |
+| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/openai/) | [✓](/image-generation/providers/openai/) |   [✓](/speech/providers/openai/)   | [✓](/realtime/providers/openai/) |                                              |
+| **Google**     |  [✓](/providers/gemini/)   | [✓](/embeddings/providers/gemini/) | [✓](/image-generation/providers/google/) |   [✓](/speech/providers/gemini/)   | [✓](/realtime/providers/gemini/) |   [✓](/music-generation/providers/gemini/)   |
+| **Anthropic**  | [✓](/providers/anthropic/) |                                    |                                          |                                    |                                  |                                              |
+| **Mistral**    |  [✓](/providers/mistral/)  |                                    |                                          |  [✓](/speech/providers/mistral/)   |                                  |                                              |
+| **Fal**        |                            |                                    |  [✓](/image-generation/providers/fal/)   |                                    |                                  |                                              |
+| **ElevenLabs** |                            |                                    |                                          | [✓](/speech/providers/elevenlabs/) |                                  | [✓](/music-generation/providers/elevenlabs/) |
+| **Jina**       |                            |  [✓](/embeddings/providers/jina/)  |                                          |                                    |                                  |                                              |
+| **Inworld**    |                            |                                    |                                          |  [✓](/speech/providers/inworld/)   |                                  |                                              |
+
+**Speech** is one direction at a time: audio to text, or text to audio.
+**Realtime** is the duplex session where both run at once over one socket
+and the model decides whose turn it is. Only Google takes camera frames on
+that session.
 
 ### Web
 
@@ -73,6 +78,10 @@ legacy [Chat Completions](/providers/openai-compatible/) base
 (`@effect-uai/chat-completions`), are named for the wire protocol, not a vendor,
 so they point at any conforming endpoint via `baseUrl`.
 
+Realtime has its own set of those, since several vendors speak the OpenAI
+Realtime protocol on their own host: see
+[compatible endpoints](/realtime/gateways/).
+
 [MCP](/language-models/mcp/) is a third kind of not-a-provider: a server there
 supplies _tools_, not a capability. `@effect-uai/mcp` connects to any of them
 and hands the loop a `Toolkit`, so it composes with whichever provider you
@@ -82,26 +91,29 @@ picked above rather than replacing one.
 
 `@effect-uai/openai`
 
-GPT models via the Responses API, text embeddings, images, and speech, all
-under one install. The Responses provider also ships standalone as
-`@effect-uai/responses`.
+GPT models via the Responses API, text embeddings, images, speech, and
+realtime sessions, all under one install. The Responses provider also ships
+standalone as `@effect-uai/responses`.
 
 - Language model: [Responses](/providers/responses/)
 - Embeddings: [OpenAI](/embeddings/providers/openai/)
 - Images: [OpenAI Images](/image-generation/providers/openai/)
 - Speech: [OpenAI](/speech/providers/openai/)
+- Realtime: [OpenAI Realtime](/realtime/providers/openai/)
 
 ## Google
 
 `@effect-uai/google`
 
-Gemini models, Gemini embeddings, Nano Banana images, Gemini speech, and
-Lyria music.
+Gemini models, Gemini embeddings, Nano Banana images, Gemini speech, Gemini
+Live sessions, and Lyria music.
 
 - Language model: [Google Gemini](/providers/gemini/)
 - Embeddings: [Google Gemini](/embeddings/providers/gemini/)
 - Images: [Google Images](/image-generation/providers/google/)
 - Speech: [Google Gemini](/speech/providers/gemini/)
+- Realtime: [Gemini Live](/realtime/providers/gemini/), the only one that
+  takes camera frames
 - Music: [Google Lyria](/music-generation/providers/gemini/)
 
 ## Mistral
@@ -122,7 +134,7 @@ Claude models via the Messages API.
 
 - Language model: [Anthropic](/providers/anthropic/)
 
-## fal
+## Fal
 
 `@effect-uai/fal`
 
@@ -131,7 +143,7 @@ Muse, and the open-weights field, including the sub-second tier. The model
 id here is an endpoint path rather than a model name, and generating and
 editing are separate endpoints.
 
-- Images: [fal](/image-generation/providers/fal/)
+- Images: [Fal](/image-generation/providers/fal/)
 
 ## ElevenLabs
 

@@ -6,7 +6,7 @@ import sitemap from "@astrojs/sitemap"
 import starlightLlmsTxt from "starlight-llms-txt"
 import tailwindcss from "@tailwindcss/vite"
 
-const stubPagePattern = /\/(realtime|video-generation)\/$/
+const stubPagePattern = /\/video-generation\/$/
 
 const isVercelProduction = process.env.VERCEL_ENV === "production"
 
@@ -67,7 +67,7 @@ export default defineConfig({
           description:
             "Low-level Effect-TS primitives for building AI agents: streaming agent loops, tool calling, structured output, multi-provider (OpenAI, Anthropic, Google Gemini), embeddings, and speech.",
           rawContent: true,
-          exclude: ["realtime", "video-generation"],
+          exclude: ["video-generation"],
         }),
       ],
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
@@ -197,7 +197,7 @@ export default defineConfig({
               items: [
                 { label: "OpenAI", slug: "image-generation/providers/openai" },
                 { label: "Google", slug: "image-generation/providers/google" },
-                { label: "fal", slug: "image-generation/providers/fal" },
+                { label: "Fal", slug: "image-generation/providers/fal" },
               ],
             },
             {
@@ -250,6 +250,28 @@ export default defineConfig({
                   slug: "recipes/streaming-synthesis",
                 },
                 { label: "Voice loop", slug: "recipes/voice-loop" },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Realtime",
+          items: [
+            { label: "Overview", slug: "realtime" },
+            {
+              label: "Providers",
+              items: [
+                { label: "OpenAI", slug: "realtime/providers/openai" },
+                { label: "Google", slug: "realtime/providers/gemini" },
+                { label: "Compatible endpoints", slug: "realtime/gateways" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Realtime voice agent", slug: "recipes/realtime-voice-agent" },
+                { label: "Camera assistant", slug: "recipes/camera-assistant" },
               ],
             },
           ],
@@ -442,6 +464,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.16", slug: "migrations/v0-16" },
             { label: "Migrating to 0.15", slug: "migrations/v0-15" },
             { label: "Migrating to 0.13", slug: "migrations/v0-13" },
             { label: "Migrating to 0.12", slug: "migrations/v0-12" },
@@ -460,11 +483,6 @@ export default defineConfig({
           label: "Coming soon",
           collapsed: true,
           items: [
-            {
-              label: "Realtime",
-              slug: "realtime",
-              badge: { text: "Soon", variant: "note" },
-            },
             {
               label: "Video generation",
               slug: "video-generation",

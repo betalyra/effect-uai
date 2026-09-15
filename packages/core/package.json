@@ -90,6 +90,14 @@
       "types": "./dist/domain/Music.d.mts",
       "import": "./dist/domain/Music.mjs"
     },
+    "./Realtime": {
+      "types": "./dist/domain/Realtime.d.mts",
+      "import": "./dist/domain/Realtime.mjs"
+    },
+    "./RealtimeSession": {
+      "types": "./dist/realtime/RealtimeSession.d.mts",
+      "import": "./dist/realtime/RealtimeSession.mjs"
+    },
     "./Transcript": {
       "types": "./dist/domain/Transcript.d.mts",
       "import": "./dist/domain/Transcript.mjs"
@@ -178,9 +186,13 @@
       "types": "./dist/web-search/WebSearchTool.d.mts",
       "import": "./dist/web-search/WebSearchTool.mjs"
     },
-    "./Inbox": {
-      "types": "./dist/inbox/Inbox.d.mts",
-      "import": "./dist/inbox/Inbox.mjs"
+    "./WebSocketSession": {
+      "types": "./dist/streaming/WebSocketSession.d.mts",
+      "import": "./dist/streaming/WebSocketSession.mjs"
+    },
+    "./Settle": {
+      "types": "./dist/streaming/Settle.d.mts",
+      "import": "./dist/streaming/Settle.mjs"
     },
     "./Loop": {
       "types": "./dist/loop/Loop.d.mts",
@@ -269,6 +281,14 @@
     "./testing/MockSandbox": {
       "types": "./dist/testing/MockSandbox.d.mts",
       "import": "./dist/testing/MockSandbox.mjs"
+    },
+    "./testing/FakeWebSocket": {
+      "types": "./dist/testing/FakeWebSocket.d.mts",
+      "import": "./dist/testing/FakeWebSocket.mjs"
+    },
+    "./testing/MockRealtimeSession": {
+      "types": "./dist/testing/MockRealtimeSession.d.mts",
+      "import": "./dist/testing/MockRealtimeSession.mjs"
     },
     "./testing/MockTranscriber": {
       "types": "./dist/testing/MockTranscriber.d.mts",

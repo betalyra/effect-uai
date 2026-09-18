@@ -1090,27 +1090,52 @@ applied. No `MockDecisionModel`, see §4.6.
 **Done when:** `pnpm typecheck` and `pnpm test` pass, and the helpers are
 tested against hand-computed values.
 
-### Step 2. The provider package
+### Step 2. The provider package. CODE DONE, live call outstanding
 
-- `packages/providers/typesafe-ai/` on the standard template (§7.1, name
-  still open): `package.json` at the current fixed-group version,
-  `tsconfig.json`, `tsdown.config.ts`, `README.md`, `LICENSE`.
-- `src/models.ts`: `JevModel = "jev-latest" | "jev-preview" | "jev-1.13.0" |
-(string & {})`.
-- `src/Jev.ts`: `JevDecideRequest` narrowing `model`, the `Jev` tag
-  (`"@betalyra/effect-uai/providers/typesafe-ai/Jev"`), `Config
-{ apiKey: Redacted.Redacted; baseUrl?: string }`, `Schema.Struct` wire
-  codecs, the §7.2 mapping, the house status table, `make` + `layer`
-  registering both `Jev` and `DecisionModel`.
-- `src/Jev.test.ts`: codec round-trip through the real
-  `Schema.decodeUnknownEffect` path, and `assertKinds` behaviour on the
-  generic tag. No HTTP.
-- Registration: `.changeset/config.json` `fixed` group, the six
-  `RELEASING.md:46-96` steps, and `recipes/package.json` dependency.
+Built as `@effect-uai/typesafe-ai` (name decision in §7.1 taken):
+`src/models.ts` (`JevModel`), `src/Jev.ts` (the `Jev` tag, `JevDecideRequest`
+narrowing `model`, `Schema.Struct` wire codecs, the house status table,
+`make` + `layer` registering both `Jev` and `DecisionModel`), `src/index.ts`,
+`README.md`, `LICENSE`, `tsconfig.json`, `tsdown.config.ts`. Registered in
+`.changeset/config.json`'s `fixed` group and in `recipes/package.json`.
 
-**Done when:** one live call against the real API returns a decoded response,
-and the answers to §7.3 (`model` vs `selectedModels`) and §9.2 (our
-`confidence` vs theirs) are recorded in this file.
+No tests: the recipe in Step 3 is the verification, so a unit test here would
+only restate the codec.
+
+Two implementation notes worth keeping:
+
+- **`JevAnswerFor` is an intersection, not a per-kind branch.**
+  `Decision.AnswerFor<D> & ReportedConfidence<D>` where `ReportedConfidence`
+  resolves to `unknown` for `Probability`. Branching per kind compiles but
+  makes `JevAnswers<D>` unassignable to `Answers<D>`, because TypeScript
+  cannot see one deferred conditional as a subtype of another. An
+  intersection is always assignable to its members, so the generic
+  registration forwards with **no cast**.
+- **Rubric probabilities are read positionally against the rubric we sent.**
+  The wire returns `probabilities` keyed by level index as a string; a
+  missing index is a decode failure rather than a hole in the tuple, and
+  `legend` comes from the request rather than the response so the indices are
+  aligned by construction.
+
+Checks: `pnpm -r typecheck` clean across all 31 projects, `pnpm build` clean,
+full suite 641 tests green.
+
+**Still outstanding, needs a key:** one live call, and with it the answers to
+§7.3 (`model` vs `selectedModels`) and §9.2 (our `confidence` versus Jev's),
+written back into this file.
+
+### Step 2 remainder. The live call
+
+Not done, needs a key. Run the Step 3 recipe under `op run` against the real
+API and record in this file:
+
+- whether the request field is `model` or `selectedModels` (§7.3);
+- Jev's reported `confidence` next to `Decision.confidence` on the same
+  answer, which settles §9.2;
+- whether `bearerToken` + `POST /v1/systemone` is accepted as written.
+
+The six `RELEASING.md:46-96` steps for a new npm package are also outstanding
+and are release work, not build work.
 
 ### Step 3. Recipe and docs
 

@@ -1,5 +1,47 @@
 # @effect-uai/core
 
+## 0.16.0
+
+### Minor Changes
+
+- c3fbf04: Add the `RealtimeSession` capability: types, service tag, video marker and a scripted mock. Two adapters ship alongside it, `@effect-uai/openai/OpenAIRealtimeSession` and `@effect-uai/google/GeminiLiveSession`.
+
+  A realtime session is one long-lived duplex connection the server drives, which is why it is its own primitive rather than a mode of `Loop`. `RealtimeSession.open(request)` returns `{ send, events }` scoped to the connection; closing the scope closes the socket.
+
+  - `@effect-uai/core/Realtime` holds `RealtimeInput` (audio, text, tool result, interrupt, video frame, activity boundaries, playback position), `RealtimeEvent` (response boundaries, audio and transcript deltas, input transcripts, speech boundaries, tool calls and cancellations, interruptions, resumption handles, session end, non-fatal errors) and `CommonSessionRequest`. Both unions carry only what OpenAI Realtime and Gemini Live do natively; VAD knobs, truncation, thinking, grounding and noise reduction stay provider-typed.
+  - `@effect-uai/core/RealtimeSession` holds the `RealtimeSession` tag, the `RealtimeVideoInput` capability marker, the `open` helper, `sendVideoFrame` (which requires the marker, so video against an audio-only provider is a compile error) and the `audioDeltas` / `toolCalls` filters.
+  - `@effect-uai/core/testing/MockRealtimeSession` scripts a session from an opening event list and a function from each input to its answer, recording every `send`. `layer` ships the video marker, `layerAudioOnly` does not.
+  - `AiError` gains `SessionExpired { provider, raw? }` for a session that hit the provider's lifetime cap, where reconnecting works but retrying does not.
+
+  Tool execution, playback, barge-in bookkeeping and reconnection are deliberately left to the caller. There is no agent wrapper, no hidden queue and no automatic reconnect.
+
+- c3fbf04: Replace `@effect-uai/core/Inbox` with `@effect-uai/core/Settle`, the one home for acting on a pause in a stream of arrivals.
+
+  `drainBurst` moves across unchanged in name and signature, so call sites only swap the import path. `Inbox` held nothing else, and the same resetting-window idea had grown three implementations: this one over a queue, a copy inside the voice-loop recipe over a stream, and the metronome inside `Metrics.throughput`.
+
+  - `settleBurst(stream, settle, options?)` is `drainBurst` over a stream, one array per burst. Previously recipe-local. A failing source now fails the stream instead of arriving as a clean end, and the internal buffer is bounded (64 by default, `options.capacity` to change it) so a slow consumer suspends the source rather than growing memory.
+  - `onQuiet(stream, settle, emit)` passes every element through the moment it arrives and emits whatever `emit` yields once nothing has arrived for `settle`, at most once per quiet period. For live output that wants a boundary marker rather than batching. The first arrival after each emission arms it, so a stream that is idle, or has already been marked quiet, schedules nothing at all.
+  - `drainBurst` now returns the batch in hand when the queue ends mid-burst, rather than failing and losing it. Interrupts and real failures still propagate.
+
+  Built on `onQuiet`, `Transcript.accumulatePartials(options?)` joins fragment `partial`s into the running hypothesis and commits it as a `final` after a silence. OpenAI Realtime streams token-sized deltas (`" Hi"`, `","`, `" how"`) where most providers send the whole utterance so far, and a model that transcribes continuously never sends a `final` at all. Partials are forwarded as they arrive, so captions stay live; a provider's own `final` resets the accumulator; the stream end flushes it. Do not pipe a provider that already accumulates through it.
+
+  **Migration.** `import { drainBurst } from "@effect-uai/core/Inbox"` becomes `import { drainBurst } from "@effect-uai/core/Settle"`, and `Inbox.drainBurst` becomes `Settle.drainBurst` on the namespace import. See the [0.16 migration guide](https://effect-uai.betalyra.com/migrations/v0-16/).
+
+- c3fbf04: Add `@effect-uai/openai/OpenAIRealtimeSession`, the first `RealtimeSession` provider.
+
+  `layer({ apiKey, baseUrl?, region?, headers?, webSocket? })` registers the typed `OpenAIRealtimeSession` tag and the generic `RealtimeSession` tag over one WebSocket on `wss://api.openai.com/v1/realtime?model=`. No `RealtimeVideoInput` marker: OpenAI Realtime takes still images as conversation items but has no video input, so `sendVideoFrame` against this layer alone is a compile error rather than a runtime failure.
+
+  - `open` connects, waits for `session.created`, sends `session.update` and waits for `session.updated` before it succeeds, so a session that the server rejects fails at wiring time rather than as a stream that dies a moment later. Closing the scope closes the socket, and `send` afterwards fails `Unavailable`.
+  - A close never synthesizes a `ResponseDone`. A close while a response is generating ends the stream with `IncompleteTurn`; a close at or past the expiry the server announced at connect ends it with `SessionExpired`, so a caller can tell "open a new session" from "we are done here"; any other clean close simply ends it.
+  - Barge-in surfaces as `SpeechStarted` then `Interrupted`, before the cancelled `ResponseDone`, and unanswered calls of that response arrive as `ToolCallCancelled`. `PlaybackPosition` truncates the assistant item at what the listener actually heard. That item outlives its response on purpose: the model generates far faster than real time, so a position usually arrives for an answer the server already finished, and forgetting the item at `response.done` would drop the truncate that matters most.
+  - Answering a tool resumes generation, but only one response may be active at a time, so a result that lands while the model is already speaking waits for that response to finish before its turn is asked for. A slow tool routinely answers after the user has spoken again, and without the wait the result would sit unread in the conversation. A typed `Text` sent mid response waits the same way, instead of drawing a server error.
+  - A tool call is named from the item that announced it, since the arguments frame carries no name. Answering with a `ToolResult` writes the `function_call_output` and asks for the follow-up turn, so the caller never sends `response.create`. A result for a call this session never made fails `InvalidRequest`.
+  - `OpenAIRealtimeRequest` narrows `model` to `gpt-realtime-2.1` and friends and adds the provider-shaped knobs: `turnDetectionConfig` (server or semantic VAD), `noiseReduction`, `truncation`, `reasoningEffort`, `maxOutputTokens`, `speed`, `outputModalities` (`"audio"` or `"text"`, one of the two) and `transcriptionModel`. `resume` is a Gemini handle and this wire has none, so a request carrying one fails `Unsupported` instead of opening a session the caller thinks it resumed. `baseUrl`, `headers` and `webSocket` are what make a compatible gateway or a proxied socket reachable, and a query already on `baseUrl` survives onto the socket URL, which is what a gateway pinning an API version there needs.
+
+  In `@effect-uai/core`, two supporting pieces: `@effect-uai/core/WebSocketSession` is one JSON-over-WebSocket session (connect, decoded frames off a queue, write frames back) with `SocketError` mapped to `AiError`, and `@effect-uai/core/testing/FakeWebSocket` is an in-memory socket for testing adapters without a server, where the scripted server is a forked fiber and `reply` is a real Effect. The seven older stream-shaped adapters still carry their own copies of the connect logic.
+
+  The mapped error carries a redacted description rather than the socket error itself. A wire that authenticates with a key in the query string, plus a runtime that names the socket URL in its open failure (Bun does), would otherwise print that key wherever a cause is printed. Reading the failure text off the event rather than off an `Error` also means a rejected upgrade is recognised as `AuthFailed` on the runtimes that report the status at all.
+
 ## 0.15.0
 
 ### Minor Changes

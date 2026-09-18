@@ -179,7 +179,7 @@ projecting deliberately is worth doing.
 
 ## See also
 
-- [Decision triage](/recipes/decision-triage/): five questions on a support
+- [Ticket triage](/recipes/ticket-triage/): five questions on a support
   ticket, then a routing rule that knows when to ask a human.
 - [TypeSafe AI](/decisions/providers/typesafe-ai/): the provider, its models,
   and what its own confidence field adds.

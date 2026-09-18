@@ -433,6 +433,18 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  packages/providers/typesafe-ai:
+    devDependencies:
+      '@effect-uai/core':
+        specifier: workspace:*
+        version: link:../../core
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   packages/recipe-kit:
     dependencies:
       '@effect-uai/core':
@@ -544,6 +556,9 @@ importers:
       '@effect-uai/telegram':
         specifier: workspace:*
         version: link:../packages/providers/telegram
+      '@effect-uai/typesafe-ai':
+        specifier: workspace:*
+        version: link:../packages/providers/typesafe-ai
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111

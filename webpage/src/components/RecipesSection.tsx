@@ -327,10 +327,10 @@ const recipes: ReadonlyArray<Recipe> = [
     category: "retrieval",
   },
   {
-    title: "Decision triage",
+    title: "Ticket triage",
     description:
       "**Route the ticket before you spend on it.** Five typed questions, one call, and a rule that knows when to ask a human.",
-    href: "/recipes/decision-triage/",
+    href: "/recipes/ticket-triage/",
     Icon: PiSignpost,
     category: "decisions",
   },

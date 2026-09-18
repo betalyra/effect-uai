@@ -1,7 +1,7 @@
 ---
-title: Decision triage
+title: Ticket triage
 description: Route, prioritise and flag an inbound support ticket with five typed questions in one call, then decide in code how sure you need to be.
-source: recipes/decision-triage
+source: recipes/ticket-triage
 icon: PiSignpost
 ---
 
@@ -16,12 +16,12 @@ can see how sure the model was before you act on it.
 ## Run it
 
 ```sh
-TYPESAFE_AI_API_KEY=... pnpm tsx recipes/decision-triage/run.ts
+TYPESAFE_AI_API_KEY=... pnpm tsx recipes/ticket-triage/run.ts
 ```
 
 ```sh
 # your own tickets, no rebuild
-... run.ts --tickets recipes/decision-triage/tickets.json
+... run.ts --tickets recipes/ticket-triage/tickets.json
 
 # pin a version
 ... run.ts --model typesafe:jev-1.13.0

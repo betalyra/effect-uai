@@ -1126,7 +1126,7 @@ written back into this file.
 
 ### Step 2 remainder. The live call. DONE, §9.2 still open
 
-Ran `decision-triage` against the real API, 3 tickets, 5 decisions each.
+Ran `ticket-triage` (then named `decision-triage`) against the real API, 3 tickets, 5 decisions each.
 
 **§7.3 answered.** The request field is **`model`**. `bearerToken` +
 `POST /v1/systemone` is accepted exactly as written, and the response decoded

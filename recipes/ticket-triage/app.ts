@@ -1,5 +1,5 @@
 /**
- * Composition for the decision-triage recipe: `--model provider:model`
+ * Composition for the ticket-triage recipe: `--model provider:model`
  * resolved to a Layer by `_shared/model.ts`, `--tickets` swaps in your own
  * scenarios. The triage itself never names a provider.
  */
@@ -60,7 +60,7 @@ export const main = Effect.gen(function* () {
   )
   const tickets = yield* readTickets(flagValue("tickets", argv))
 
-  yield* Effect.logInfo(`decision-triage (${spec.provider} ${spec.model})`)
+  yield* Effect.logInfo(`ticket-triage (${spec.provider} ${spec.model})`)
   yield* Effect.logInfo(
     dim(`${Object.keys(triage.decisions).length} decisions per ticket, ${tickets.length} tickets`),
   )

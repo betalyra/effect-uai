@@ -88,9 +88,9 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Decisions
 
-| Recipe                                       | One-line                                                                                                                                           |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Decision triage](/recipes/decision-triage/) | Route, prioritise and flag a support ticket with five typed questions in one call, then gate on the numbers that mean the same at any label count. |
+| Recipe                                   | One-line                                                                                                                                           |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Ticket triage](/recipes/ticket-triage/) | Route, prioritise and flag a support ticket with five typed questions in one call, then gate on the numbers that mean the same at any label count. |
 
 ## Speech
 

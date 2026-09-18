@@ -350,7 +350,7 @@ Common scenarios and where to start:
 | Top results are related but do not answer; re-score a shortlist      | `retrieve-and-rerank`                                              |
 | Keyword and vector retrieval fused, as a tool the agent re-calls     | `agentic-search` (extras)                                          |
 | Chunks lose their referents; situate each one at index time          | `contextual-retrieval` (extras)                                    |
-| Route / prioritise / flag an input with typed questions, no prose    | `decision-triage`                                                  |
+| Route / prioritise / flag an input with typed questions, no prose    | `ticket-triage`                                                    |
 | Transcribe finished audio, or live mic captions                      | `basic-transcription`, `streaming-transcription`                   |
 | Text to audio file, or incremental LLM deltas to TTS                 | `basic-speech-synthesis`, `streaming-synthesis`                    |
 | Voice assistant: live STT to LLM to streaming TTS                    | `voice-loop`                                                       |

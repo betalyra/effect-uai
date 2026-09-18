@@ -39,6 +39,7 @@ export default defineConfig({
     "/concepts/metrics": "/language-models/metrics",
     "/embeddings/providers/responses": "/embeddings/providers/openai",
     "/recipes/hybrid-rag": "/recipes/agentic-search",
+    "/recipes/decision-triage": "/recipes/ticket-triage",
   },
   vite: {
     plugins: [tailwindcss()],
@@ -366,7 +367,7 @@ export default defineConfig({
             {
               label: "Recipes",
               collapsed: true,
-              items: [{ label: "Decision triage", slug: "recipes/decision-triage" }],
+              items: [{ label: "Ticket triage", slug: "recipes/ticket-triage" }],
             },
           ],
         },

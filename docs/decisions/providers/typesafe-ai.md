@@ -133,7 +133,7 @@ See [gate on the right number](/decisions/#gate-on-the-right-number).
 ## About the scores
 
 Probabilities sum to 1 within floating-point error and are comparable within
-one answer. Two of three sample tickets in the [triage recipe](/recipes/decision-triage/)
+one answer. Two of three sample tickets in the [triage recipe](/recipes/ticket-triage/)
 came back with one label at exactly 1.00, so expect saturation at the top of
 the range. Repeat runs on identical input move in the second decimal.
 
@@ -167,5 +167,5 @@ asked for it is `AiError.GenerationFailed`.
 
 - [Decision models](/decisions/): the cross-provider concept and how to read
   an answer.
-- [Decision triage](/recipes/decision-triage/): five questions on a support
+- [Ticket triage](/recipes/ticket-triage/): five questions on a support
   ticket, routed in code.

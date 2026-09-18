@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/typesafe-ai",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "TypeSafe AI provider for @effect-uai/core (Jev System One decision model).",
   "keywords": [
     "ai",

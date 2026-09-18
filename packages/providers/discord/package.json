@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/discord",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "Discord provider for @effect-uai/core (Messenger capability over the gateway and REST API).",
   "keywords": [
     "agents",

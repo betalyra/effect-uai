@@ -37,7 +37,9 @@ import {
   PiImagesSquare,
   PiRadio,
   PiRanking,
+  PiScales,
   PiShieldCheck,
+  PiSignpost,
   PiStairs,
   PiTable,
   PiTerminalWindow,
@@ -60,6 +62,7 @@ type Category =
   | "websearch"
   | "webreading"
   | "retrieval"
+  | "decisions"
   | "speech"
   | "realtime"
   | "music"
@@ -85,6 +88,7 @@ const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "websearch",
   "webreading",
   "retrieval",
+  "decisions",
   "speech",
   "realtime",
   "music",
@@ -102,6 +106,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   websearch: "Web search",
   webreading: "Web reading",
   retrieval: "Retrieval",
+  decisions: "Decisions",
   speech: "Speech",
   realtime: "Realtime",
   music: "Music",
@@ -119,6 +124,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   websearch: PiMagnifyingGlass,
   webreading: PiArticle,
   retrieval: PiFunnel,
+  decisions: PiScales,
   speech: PiWaveform,
   realtime: PiPhoneTransfer,
   music: PiMusicNotes,
@@ -321,6 +327,14 @@ const recipes: ReadonlyArray<Recipe> = [
     category: "retrieval",
   },
   {
+    title: "Decision triage",
+    description:
+      "**Route the ticket before you spend on it.** Five typed questions, one call, and a rule that knows when to ask a human.",
+    href: "/recipes/decision-triage/",
+    Icon: PiSignpost,
+    category: "decisions",
+  },
+  {
     title: "Run, fix, repeat",
     description:
       "**Let the model run its own code.** It writes Python; the sandbox runs it; tracebacks feed back into the next turn until the answer's right.",
@@ -426,7 +440,7 @@ export default function RecipesSection() {
           <div className="flex items-baseline gap-3">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Recipes</h2>
             <span className="font-mono text-[0.7rem] tracking-widest text-(--color-mark) uppercase">
-              40 and counting
+              41 and counting
             </span>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">

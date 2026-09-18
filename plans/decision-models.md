@@ -1124,17 +1124,57 @@ full suite 641 tests green.
 §7.3 (`model` vs `selectedModels`) and §9.2 (our `confidence` versus Jev's),
 written back into this file.
 
-### Step 2 remainder. The live call
+### Step 2 remainder. The live call. DONE, §9.2 still open
 
-Not done, needs a key. Run the Step 3 recipe under `op run` against the real
-API and record in this file:
+Ran `decision-triage` against the real API, 3 tickets, 5 decisions each.
 
-- whether the request field is `model` or `selectedModels` (§7.3);
-- Jev's reported `confidence` next to `Decision.confidence` on the same
-  answer, which settles §9.2;
-- whether `bearerToken` + `POST /v1/systemone` is accepted as written.
+**§7.3 answered.** The request field is **`model`**. `bearerToken` +
+`POST /v1/systemone` is accepted exactly as written, and the response decoded
+without adjustment. The `selectedModels` in `primitives/score.md` is a stale
+doc; the SDK types were right.
 
-The six `RELEASING.md:46-96` steps for a new npm package are also outstanding
+**Measured, for the docs:** 566 to 575 input tokens for 5 decisions over a
+short ticket, so the questions dominate a small input. About $0.000024 per
+call. Cold call 690ms, warm calls 220ms and 270ms.
+
+**A finding that changed the recipe.** On a four-label classify the model
+returned `account 0.74 / billing 0.13 / other 0.13 / technical 0.00`, which
+normalized entropy scores at **0.46**. A `confidence < 0.6` gate therefore
+escalated a decisive answer. Normalized entropy moves with label count: a
+threshold that reads as reasonable on two labels demands roughly 0.85 top
+mass on four. `Probability.confidence`'s own docstring already warned about
+this and the recipe ignored it. The gates now read top probability and
+`margin`, both length-stable, and the README documents why with these
+numbers. **This belongs on the capability's docs page too**, since it is the
+single easiest way to misuse the API.
+
+**Saturation, relevant to §9.3.** Two of three tickets came back with exactly
+`1.00 / 0.00 / 0.00 / 0.00`. Distributions saturate, so entropy-confidence
+hits exactly 1 and any calibration claim at the top of the range is
+untestable from the output alone. Worth keeping in mind before the docs
+repeat the vendor's calibration framing.
+
+**Run-to-run drift on identical input.** Two runs of the same three tickets
+gave `account 0.74` then `0.75`, and rubric expected values `2.93` then
+`2.99`, `0.59` then `0.52`. Small, and consistent with the vendor's own
+reported ~0.0102 mean probability stddev across repeats, but it means **a
+threshold sitting on a boundary will flip between runs**, so the docs should
+say to leave headroom rather than tune to three decimals.
+
+**Tie order is wire order, not ours.** Among saturated zeros the printed
+ranking reordered between runs, because `ranked` keeps first-seen order and
+first-seen is whatever key order the response arrived in. `ranked`'s doc
+comment says "ties keep first-seen order", which is accurate but easy to
+misread as stable. Callers must not depend on tie order; worth a line in the
+docs page.
+
+**§9.2 is still open.** The recipe yields the generic `DecisionModel` tag, so
+Jev's own `confidence` never surfaced. Answering it needs one run that yields
+the `Jev` tag and prints `answers.department.confidence` beside
+`Decision.confidence(answers.department)`. Deliberately not added to the
+recipe, which has to stay provider-agnostic; do it as a one-off.
+
+The six `RELEASING.md:46-96` steps for a new npm package remain outstanding
 and are release work, not build work.
 
 ### Step 3. Recipe and docs

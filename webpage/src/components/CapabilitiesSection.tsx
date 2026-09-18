@@ -11,6 +11,7 @@ import {
   PiImage,
   PiMagnifyingGlass,
   PiMusicNotes,
+  PiScales,
   PiStack,
   PiWaveform,
 } from "react-icons/pi"
@@ -69,6 +70,13 @@ const capabilities: ReadonlyArray<Capability> = [
     description: "Cut fifty candidates down to the **five worth putting in the prompt**.",
     href: "/reranking/",
     Icon: PiStack,
+  },
+  {
+    title: "Decision models",
+    description:
+      "Ask **typed questions** about an input and get a **probability per answer**, all in one call.",
+    href: "/decisions/",
+    Icon: PiScales,
   },
   {
     title: "Web search",

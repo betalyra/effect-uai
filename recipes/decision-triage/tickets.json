@@ -1,0 +1,22 @@
+[
+  {
+    "subject": "API returning 500s since the deploy",
+    "body": "Every POST to /v1/orders has failed for the last 40 minutes. Our checkout is down and we are losing sales by the minute.",
+    "plan": "enterprise"
+  },
+  {
+    "subject": "Can I get a seat added",
+    "body": "We hired someone last week, can you add a seat to our plan? No rush.",
+    "plan": "pro"
+  },
+  {
+    "subject": "Invoice is wrong and the dashboard is broken",
+    "body": "The February invoice charges for 12 seats but we have 9. Also the usage chart has not loaded since Tuesday.",
+    "plan": "pro"
+  },
+  {
+    "subject": "hello",
+    "body": "hi",
+    "plan": "free"
+  }
+]

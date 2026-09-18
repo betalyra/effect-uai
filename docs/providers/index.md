@@ -25,21 +25,23 @@ A ✓ links to the usage page for that provider and capability.
 
 ### Models
 
-| Provider       |            LLM             |             Embeddings             |                  Images                  |               Speech               |             Realtime             |                    Music                     |
-| -------------- | :------------------------: | :--------------------------------: | :--------------------------------------: | :--------------------------------: | :------------------------------: | :------------------------------------------: |
-| **OpenAI**     | [✓](/providers/responses/) | [✓](/embeddings/providers/openai/) | [✓](/image-generation/providers/openai/) |   [✓](/speech/providers/openai/)   | [✓](/realtime/providers/openai/) |                                              |
-| **Google**     |  [✓](/providers/gemini/)   | [✓](/embeddings/providers/gemini/) | [✓](/image-generation/providers/google/) |   [✓](/speech/providers/gemini/)   | [✓](/realtime/providers/gemini/) |   [✓](/music-generation/providers/gemini/)   |
-| **Anthropic**  | [✓](/providers/anthropic/) |                                    |                                          |                                    |                                  |                                              |
-| **Mistral**    |  [✓](/providers/mistral/)  |                                    |                                          |  [✓](/speech/providers/mistral/)   |                                  |                                              |
-| **Fal**        |                            |                                    |  [✓](/image-generation/providers/fal/)   |                                    |                                  |                                              |
-| **ElevenLabs** |                            |                                    |                                          | [✓](/speech/providers/elevenlabs/) |                                  | [✓](/music-generation/providers/elevenlabs/) |
-| **Jina**       |                            |  [✓](/embeddings/providers/jina/)  |                                          |                                    |                                  |                                              |
-| **Inworld**    |                            |                                    |                                          |  [✓](/speech/providers/inworld/)   |                                  |                                              |
+| Provider        |            LLM             |             Embeddings             |                  Images                  |               Speech               |             Realtime             |                    Music                     |               Decisions                |
+| --------------- | :------------------------: | :--------------------------------: | :--------------------------------------: | :--------------------------------: | :------------------------------: | :------------------------------------------: | :------------------------------------: |
+| **OpenAI**      | [✓](/providers/responses/) | [✓](/embeddings/providers/openai/) | [✓](/image-generation/providers/openai/) |   [✓](/speech/providers/openai/)   | [✓](/realtime/providers/openai/) |                                              |                                        |
+| **Google**      |  [✓](/providers/gemini/)   | [✓](/embeddings/providers/gemini/) | [✓](/image-generation/providers/google/) |   [✓](/speech/providers/gemini/)   | [✓](/realtime/providers/gemini/) |   [✓](/music-generation/providers/gemini/)   |                                        |
+| **Anthropic**   | [✓](/providers/anthropic/) |                                    |                                          |                                    |                                  |                                              |                                        |
+| **Mistral**     |  [✓](/providers/mistral/)  |                                    |                                          |  [✓](/speech/providers/mistral/)   |                                  |                                              |                                        |
+| **Fal**         |                            |                                    |  [✓](/image-generation/providers/fal/)   |                                    |                                  |                                              |                                        |
+| **ElevenLabs**  |                            |                                    |                                          | [✓](/speech/providers/elevenlabs/) |                                  | [✓](/music-generation/providers/elevenlabs/) |                                        |
+| **Jina**        |                            |  [✓](/embeddings/providers/jina/)  |                                          |                                    |                                  |                                              |                                        |
+| **Inworld**     |                            |                                    |                                          |  [✓](/speech/providers/inworld/)   |                                  |                                              |                                        |
+| **TypeSafe AI** |                            |                                    |                                          |                                    |                                  |                                              | [✓](/decisions/providers/typesafe-ai/) |
 
 **Speech** is one direction at a time: audio to text, or text to audio.
 **Realtime** is the duplex session where both run at once over one socket
 and the model decides whose turn it is. Only Google takes camera frames on
-that session.
+that session. **Decisions** is the one model column that returns no text:
+typed questions in, a probability per answer out.
 
 ### Web
 
@@ -171,6 +173,16 @@ Reader for turning URLs into clean markdown.
 Text-to-speech.
 
 - Speech: [Inworld](/speech/providers/inworld/)
+
+## TypeSafe AI
+
+`@effect-uai/typesafe-ai`
+
+Jev, a decision model: classify, rate and probability questions about one
+input, answered with probabilities in a single call instead of generated
+text.
+
+- Decisions: [TypeSafe AI](/decisions/providers/typesafe-ai/)
 
 ## Exa
 

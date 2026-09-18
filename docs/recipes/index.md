@@ -86,6 +86,12 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Agentic search](/recipes/agentic-search/)             | Give an agent search that catches exact names and paraphrases both, and let it search again when the first try misses. No server.                             |
 | [Contextual retrieval](/recipes/contextual-retrieval/) | Chunks that say "he" and "that house" never match a question naming either. Write one line of context per chunk at indexing time, and measure the difference. |
 
+## Decisions
+
+| Recipe                                       | One-line                                                                                                                                           |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Decision triage](/recipes/decision-triage/) | Route, prioritise and flag a support ticket with five typed questions in one call, then gate on the numbers that mean the same at any label count. |
+
 ## Speech
 
 | Recipe                                                       | One-line                                                                                            |

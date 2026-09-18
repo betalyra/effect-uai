@@ -15,6 +15,12 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.17](/migrations/v0-17/): purely additive. A
+  `DecisionModel` capability in `@effect-uai/core` (typed `classify` /
+  `rate` / `probability` questions about one input, a probability
+  distribution per answer, one call) with `@effect-uai/typesafe-ai` as its
+  first provider, plus a decision triage recipe. Experimental. No `effect`
+  bump; bump dependencies and run typecheck.
 - [Migrating to 0.16](/migrations/v0-16/): one rename.
   `@effect-uai/core/Inbox` becomes `@effect-uai/core/Settle`, keeping
   `drainBurst` as it was and adding `settleBurst` (the same batching over a

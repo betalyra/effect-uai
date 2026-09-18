@@ -106,6 +106,14 @@
       "types": "./dist/domain/Turn.d.mts",
       "import": "./dist/domain/Turn.mjs"
     },
+    "./Decision": {
+      "types": "./dist/decision-model/Decision.d.mts",
+      "import": "./dist/decision-model/Decision.mjs"
+    },
+    "./DecisionModel": {
+      "types": "./dist/decision-model/DecisionModel.d.mts",
+      "import": "./dist/decision-model/DecisionModel.mjs"
+    },
     "./Embedding": {
       "types": "./dist/embedding-model/Embedding.d.mts",
       "import": "./dist/embedding-model/Embedding.mjs"
@@ -201,6 +209,10 @@
     "./Retry": {
       "types": "./dist/retry/Retry.d.mts",
       "import": "./dist/retry/Retry.mjs"
+    },
+    "./Probability": {
+      "types": "./dist/math/Probability.d.mts",
+      "import": "./dist/math/Probability.mjs"
     },
     "./Vector": {
       "types": "./dist/math/Vector.d.mts",

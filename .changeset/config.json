@@ -36,10 +36,7 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "@effect-uai/recipes",
-    "@effect-uai/recipe-kit"
-  ],
+  "ignore": ["@effect-uai/recipes", "@effect-uai/recipe-kit"],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
   }

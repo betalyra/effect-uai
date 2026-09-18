@@ -55,7 +55,9 @@ import { layer as openaiResearchLayer } from "@effect-uai/responses/OpenAIDeepRe
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { layer as tavilyReadLayer } from "@effect-uai/tavily/TavilyRead"
 import { layer as tavilySearchLayer } from "@effect-uai/tavily/TavilySearch"
+import { type Jev, layer as jevLayer } from "@effect-uai/typesafe-ai/Jev"
 import type { Browser } from "@effect-uai/core/Browser"
+import type { DecisionModel } from "@effect-uai/core/DecisionModel"
 import type { DeepResearch } from "@effect-uai/core/DeepResearch"
 import type { EmbeddingModel } from "@effect-uai/core/EmbeddingModel"
 import type { ImageGenerator, ImageStreaming } from "@effect-uai/core/ImageGenerator"
@@ -524,6 +526,25 @@ export const rerankerLayer = (
   baseUrl?: string,
 ): Layer.Layer<Reranker, Config.ConfigError | UnknownProvider, HttpClient.HttpClient> =>
   Layer.unwrap(registry(spec, baseUrl, rerankEntries))
+
+// ---------------------------------------------------------------------------
+// Decisions
+// ---------------------------------------------------------------------------
+
+type DecisionLayer = Layer.Layer<DecisionModel | Jev, never, HttpClient.HttpClient>
+
+const decisionEntries: Record<string, Entry<DecisionLayer>> = {
+  typesafe: {
+    layer: (apiKey, baseUrl) => jevLayer({ apiKey, ...at(baseUrl) }),
+    apiKey: key("TYPESAFE_AI_API_KEY"),
+  },
+}
+
+export const decisionModelLayer = (
+  spec: ModelSpec,
+  baseUrl?: string,
+): Layer.Layer<DecisionModel | Jev, Config.ConfigError | UnknownProvider, HttpClient.HttpClient> =>
+  Layer.unwrap(registry(spec, baseUrl, decisionEntries))
 
 // ---------------------------------------------------------------------------
 // Deep research

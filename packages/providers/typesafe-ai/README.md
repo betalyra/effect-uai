@@ -22,7 +22,7 @@ import { layer as jevLayer } from "@effect-uai/typesafe-ai/Jev"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("TYPESAFE_API_KEY")
+    const apiKey = yield* Config.redacted("TYPESAFE_AI_API_KEY")
     return jevLayer({ apiKey })
   }),
 )
@@ -68,9 +68,8 @@ const program = Effect.gen(function* () {
   answers.urgent.probability // number
   answers.severity.legend[Decision.topLevel(answers.severity)] // "Degraded"
 
-  return Decision.confidence(answers.department) < 0.6
-    ? "escalate"
-    : Decision.winner(answers.department)
+  const leader = Decision.ranked(answers.department)[0]
+  return leader === undefined || leader.probability < 0.5 ? "escalate" : leader.label
 })
 ```
 
@@ -96,7 +95,10 @@ Probabilities sum to 1 within floating-point error and are comparable within
 one answer. Jev's own `confidence` is available on the `Jev` tag; it is not on
 the common answer because its formula is undocumented and it is absent on
 `probability` decisions. `Decision.confidence` and `Decision.margin` are
-computed from the distribution, documented, and defined for every kind.
+computed from the distribution, documented, and defined for every kind. Gate
+on the top probability and `margin`, not on `confidence`: normalised entropy
+shrinks as the label count grows, so a threshold tuned on two labels quietly
+demands far more mass on four.
 
 Known weak spots per the vendor's own jaggedness notes: counting and
 arithmetic, date ordering, multi-hop reasoning, and rubric scores are weakly
@@ -124,4 +126,5 @@ An answer whose shape does not match the decision that asked for it is
 ## See also
 
 - [Decision models](https://effect-uai.betalyra.com/decisions/)
+- [TypeSafe AI usage page](https://effect-uai.betalyra.com/decisions/providers/typesafe-ai/)
 - [`@effect-uai/core/Decision`](https://github.com/betalyra/effect-uai/tree/main/packages/core/src/decision-model)

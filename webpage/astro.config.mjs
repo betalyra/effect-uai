@@ -356,6 +356,21 @@ export default defineConfig({
           ],
         },
         {
+          label: "Decision models",
+          items: [
+            { label: "Overview", slug: "decisions" },
+            {
+              label: "Providers",
+              items: [{ label: "TypeSafe AI", slug: "decisions/providers/typesafe-ai" }],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Decision triage", slug: "recipes/decision-triage" }],
+            },
+          ],
+        },
+        {
           label: "Web search",
           items: [
             { label: "Overview", slug: "search" },
@@ -464,6 +479,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.17", slug: "migrations/v0-17" },
             { label: "Migrating to 0.16", slug: "migrations/v0-16" },
             { label: "Migrating to 0.15", slug: "migrations/v0-15" },
             { label: "Migrating to 0.13", slug: "migrations/v0-13" },

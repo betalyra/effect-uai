@@ -21,9 +21,9 @@ describe("collect", () => {
   it.effect("polls through the live states and stops at the first settled one", () =>
     Effect.gen(function* () {
       const { calls, poll } = yield* scripted([
-        JobState.Pending(),
-        JobState.Running({ queuePosition: 3 }),
-        JobState.Running({ queuePosition: 1 }),
+        JobState.Pending({ queuePosition: 3 }),
+        JobState.Pending({ queuePosition: 1 }),
+        JobState.Running(),
         JobState.Succeeded({ result: "video.mp4" }),
         JobState.Succeeded({ result: "never reached" }),
       ])
@@ -60,7 +60,7 @@ describe("collect", () => {
 
   it.effect("fails `Timeout` when the job never settles", () =>
     Effect.gen(function* () {
-      const { poll } = yield* scripted([JobState.Running({})])
+      const { poll } = yield* scripted([JobState.Running()])
 
       const fiber = yield* Effect.forkChild(
         Effect.flip(collect(poll, ref, { pollInterval: "1 second", timeout: "30 seconds" })),
@@ -75,7 +75,7 @@ describe("collect", () => {
     Effect.gen(function* () {
       // Every poll finishes well inside the timeout; their sum does not. A
       // per-attempt deadline would never fire here.
-      const { poll } = yield* scripted([JobState.Running({})])
+      const { poll } = yield* scripted([JobState.Running()])
       const slow = () => Effect.delay(poll(), "5 seconds")
 
       const fiber = yield* Effect.forkChild(
@@ -92,7 +92,7 @@ describe("run", () => {
   it.effect("cancels the server job when the caller is interrupted", () =>
     Effect.gen(function* () {
       const cancelled = yield* Ref.make(false)
-      const { poll } = yield* scripted([JobState.Running({})])
+      const { poll } = yield* scripted([JobState.Running()])
 
       const fiber = yield* Effect.forkChild(
         run(

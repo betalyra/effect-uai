@@ -15,11 +15,11 @@ import * as AiError from "../domain/AiError.js"
  * A cancelled job settles as `Failed`.
  */
 export type JobState<A> = Data.TaggedEnum<{
-  Pending: {}
-  Running: {
+  Pending: {
     /** Places ahead in the provider's queue. Can rise as well as fall. */
     readonly queuePosition?: number
   }
+  Running: {}
   Succeeded: { readonly result: A }
   Failed: { readonly reason?: string; readonly raw?: unknown }
 }>

@@ -509,29 +509,93 @@ Deliverable: the capability compiles and has no providers. Tests cover
 
 This is the phase that unlocks most of the provider list at once.
 
-- `providers/fal/src/queue.ts`: submit, status (with `logs` and
-  `queue_position`), result, cancel against `https://queue.fal.run`,
-  plus the `X-Fal-*` headers. The existing image adapter is sync-only
-  against `fal.run` and has none of this. Written as its own module so
-  any future fal capability reuses it.
-- `providers/fal/src/FalVideoGenerator.ts`: endpoint-as-model exactly
-  as the image adapter does it, output envelope decode
+- `providers/fal/src/queue.ts`: submit, status, result and cancel against
+  `https://queue.fal.run`, mapped onto `Job.JobState<string>` so any
+  future fal capability reuses it and supplies its own decode. The
+  existing image adapter is sync-only against `fal.run` and has none of
+  this.
+- `providers/fal/src/video.ts`: the per-family wire table, below.
+- `providers/fal/src/FalVideoGenerator.ts`: endpoint-as-model exactly as
+  the image adapter does it, output envelope decode
   (`{ video: { url, content_type, file_name, file_size } }` plus the
-  optional `width` / `height` / `fps` / `duration` superset),
-  `providerData` with a typed reader.
+  optional `width` / `height` / `fps` / `duration` / `num_frames`
+  superset), `providerData` with typed readers.
 - `providers/fal/src/models.ts`: `FalVideoModel`.
 
-The one genuinely awkward bit is `duration`. fal spells it `"8s"` on
-Veo endpoints, `"5"` on Kling, an integer on MiniMax, `"auto"` on
-Seedance, and `num_frames` on LTX-2-19b, and the endpoint id does not
-predict which. Proposal: reuse the learned-correction pattern the image
-adapter already uses for `image_url` versus `image_urls`. Send the
-number, read the 422, retry with the string form, cache the answer per
-endpoint in a `Ref`. One sub-second validation round trip per endpoint
-per process, versus a lookup table that goes stale in a week.
+### What fal is, and what it is not
 
-Deliverable: MiniMax H3 and H3 Max Turbo, Dreamina Seedance, BFL FLUX 3,
-Kling and LTX all reachable. One manual run against the real API.
+fal is not a router. OpenRouter and Requesty normalize every model onto
+one schema, which is why one codec covers all of them. fal normalizes
+the _transport_ only: one auth scheme, one queue protocol, one result
+envelope, one error format, across the catalogue. Each model keeps the
+request schema its vendor wrote.
+
+This also settles a question worth recording: a "MiniMax provider with a
+fal base URL" cannot work. Direct MiniMax is `Bearer` auth to
+`api.minimax.io/v2`, returns `{ task_id }`, polls
+`/v2/query/video_generation/{task_id}` with statuses `Preparing`,
+`Queueing`, `Processing`, `Success`, `Fail`, and cancels with `DELETE`.
+fal is `Key` auth to `queue.fal.run`, returns
+`{ request_id, response_url, status_url, cancel_url }`, polls
+`/{app}/requests/{id}/status` with `IN_QUEUE`, `IN_PROGRESS`,
+`COMPLETED`, and cancels with `PUT`. They share model weights and
+nothing else. Every reseller also mints its own model ids; Kling's docs
+say its resellers' `model_name` strings are not valid against
+`api-singapore.klingai.com`.
+
+So fal is a provider in its own right, and the direct packages in Phase 5
+are not redundant with it. Pruna has the same shape, and whatever holds
+here is the template for it.
+
+### Encoding the non-uniform request
+
+`duration` is the awkward field. fal spells it `"8s"` on Veo, `"5"` on
+Kling, an integer on MiniMax, `"auto"` on Seedance, and not at all on
+LTX-2-19b, which counts frames instead. The first-frame field splits
+between `image_url` and `start_image_url`, and resolution between
+`"720p"` and `"768P"`.
+
+Resolved with a table in `video.ts` keyed by **endpoint prefix**, not by
+model:
+
+| prefix                | `duration`              | first frame       | `resolution`             |
+| --------------------- | ----------------------- | ----------------- | ------------------------ |
+| `minimax/`            | integer seconds         | `image_url`       | `480P`, `1080P`          |
+| `bytedance/`          | seconds as text         | `image_url`       | `480p`, `720p`, `1080p`  |
+| `lightricks/`         | integer seconds         | `image_url`       | `720p`, `1080p`, `2160p` |
+| `alibaba/`            | integer seconds         | `start_image_url` | `480p`, `720p`, `1080p`  |
+| `fal-ai/veo`          | `"8s"`                  | `image_url`       | `720p`, `1080p`, `4k`    |
+| `fal-ai/kling-video/` | seconds as text         | `start_image_url` | none                     |
+| `fal-ai/ltx-2`        | none, uses `num_frames` | none              | none                     |
+
+Seven entries, and a new model from a listed vendor needs none.
+`fal-ai/` appears three times because it is fal's catch-all rather than a
+vendor namespace.
+
+Two rules this table follows. It is an **encoding** table (how to spell a
+field here), never a capability table (what a model can do); the first
+changes only when a vendor changes its wire format, the second rots. And
+nothing is inferred at runtime: an earlier draft read fal's 422 and
+retried with whatever spelling the error named, which is a provider
+inventing knowledge rather than holding it.
+
+Consequences, both deliberate:
+
+- **Tiers do not line up.** Ours are scan heights (`720p`); MiniMax's are
+  `480P`, `768P`, `1080P`. A tier a family does not have fails
+  `Unsupported` naming what it does have, rather than rounding to a
+  neighbour and rendering a different clip than was asked for.
+- **An unmatched prefix degrades loudly.** It gets `prompt`, the frames
+  and the `wire` passthrough; `duration` and `resolution` are dropped
+  with a `warnDropped`. No guessed spelling reaches the wire.
+
+The escape hatch is `wire`, a `Record<string, unknown>` of raw wire
+fields merged last. Named `wire` rather than the image adapter's `input`
+because the portable request already carries `inputs`, and a one-letter
+difference between the two is a footgun.
+
+Deliverable: MiniMax H3 and H3 Max Turbo, Dreamina Seedance, Veo, Kling
+and LTX all reachable. One manual run against the real API.
 
 ## Phase 3: the TV station recipe
 

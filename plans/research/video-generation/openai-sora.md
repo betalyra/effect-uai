@@ -6,14 +6,14 @@ Raw research report, summarised in `../video-generation.md`.
 
 The official deprecations page carries this entry (verbatim, table reproduced): "On March 24th, 2026, we notified developers using the Videos API and Sora 2 video generation model aliases and snapshots of their deprecation and removal from the API on September 24, 2026." (https://developers.openai.com/api/docs/deprecations)
 
-| Shutdown date | Model / system | Recommended replacement |
-| --- | --- | --- |
-| 2026-09-24 | Videos API | (none, the column is a dash) |
-| 2026-09-24 | `sora-2` | (none) |
-| 2026-09-24 | `sora-2-pro` | (none) |
-| 2026-09-24 | `sora-2-2025-10-06` | (none) |
-| 2026-09-24 | `sora-2-2025-12-08` | (none) |
-| 2026-09-24 | `sora-2-pro-2025-10-06` | (none) |
+| Shutdown date | Model / system          | Recommended replacement      |
+| ------------- | ----------------------- | ---------------------------- |
+| 2026-09-24    | Videos API              | (none, the column is a dash) |
+| 2026-09-24    | `sora-2`                | (none)                       |
+| 2026-09-24    | `sora-2-pro`            | (none)                       |
+| 2026-09-24    | `sora-2-2025-10-06`     | (none)                       |
+| 2026-09-24    | `sora-2-2025-12-08`     | (none)                       |
+| 2026-09-24    | `sora-2-pro-2025-10-06` | (none)                       |
 
 The help center confirms both dates: "The Sora web and app experiences were discontinued on April 26, 2026." and "The Sora API will be discontinued on September 24, 2026." It adds that after the shutdown "we will permanently delete any data associated with your use of Sora." (https://help.openai.com/en/articles/20001152-what-to-know-about-the-sora-discontinuation)
 
@@ -23,13 +23,13 @@ Implication for effect-uai: an `@effect-uai/openai` Sora adapter would be dead o
 
 ## 1. Model ids and availability
 
-| Id | Kind | Notes |
-| --- | --- | --- |
-| `sora-2` | alias | Points to `sora-2-2025-12-08` since 2026-01-13 (changelog: "Updated the sora-2 slug to point to sora-2-2025-12-08. If you need the previous model snapshot, use sora-2-2025-10-06."). Model page: "Flagship video generation with synced audio", sizes 720x1280 / 1280x720, $0.10 per second, input text + image, output video + audio. |
-| `sora-2-2025-12-08` | snapshot | Current default for `sora-2`. |
-| `sora-2-2025-10-06` | snapshot | Launch snapshot (DevDay, 2025-10-06). |
-| `sora-2-pro` | alias | Points to `sora-2-pro-2025-10-06`. Model page: sizes 720x1280 / 1280x720, 1024x1792 / 1792x1024, 1080x1920 / 1920x1080. |
-| `sora-2-pro-2025-10-06` | snapshot | Only pro snapshot. |
+| Id                      | Kind     | Notes                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sora-2`                | alias    | Points to `sora-2-2025-12-08` since 2026-01-13 (changelog: "Updated the sora-2 slug to point to sora-2-2025-12-08. If you need the previous model snapshot, use sora-2-2025-10-06."). Model page: "Flagship video generation with synced audio", sizes 720x1280 / 1280x720, $0.10 per second, input text + image, output video + audio. |
+| `sora-2-2025-12-08`     | snapshot | Current default for `sora-2`.                                                                                                                                                                                                                                                                                                           |
+| `sora-2-2025-10-06`     | snapshot | Launch snapshot (DevDay, 2025-10-06).                                                                                                                                                                                                                                                                                                   |
+| `sora-2-pro`            | alias    | Points to `sora-2-pro-2025-10-06`. Model page: sizes 720x1280 / 1280x720, 1024x1792 / 1792x1024, 1080x1920 / 1920x1080.                                                                                                                                                                                                                 |
+| `sora-2-pro-2025-10-06` | snapshot | Only pro snapshot.                                                                                                                                                                                                                                                                                                                      |
 
 Sources: https://developers.openai.com/api/docs/models/sora-2, https://developers.openai.com/api/docs/models/sora-2-pro, https://developers.openai.com/api/docs/changelog.
 
@@ -43,25 +43,35 @@ Model pages list the supported endpoint as `v1/videos` only; all other endpoints
 
 Base URL `https://api.openai.com/v1`. Auth is the standard `Authorization: Bearer $OPENAI_API_KEY` header (bearerAuth in the SDK). Source for all rows: https://developers.openai.com/api/reference/resources/videos (markdown at `.../videos.md`) plus https://developers.openai.com/api/docs/guides/video-generation.
 
-| Endpoint | Method + path | Body encoding | Returns |
-| --- | --- | --- | --- |
-| Create video | `POST /videos` | JSON or `multipart/form-data` (multipart required to upload `input_reference` bytes; JSON form takes `input_reference` as `{file_id}` or `{image_url}`) | `video` object |
-| Retrieve (poll) | `GET /videos/{video_id}` | none | `video` object |
-| List | `GET /videos?after=&limit=&order=asc|desc` | none | `{ object: "list", data: Video[], first_id, last_id, has_more }` (cursor page) |
-| Delete | `DELETE /videos/{video_id}` | none | `{ id, deleted: true, object: "video.deleted" }`. "Permanently delete a completed or failed video and its stored assets." |
-| Download content | `GET /videos/{video_id}/content?variant=video|thumbnail|spritesheet` | none | binary stream. SDK sends `Accept: application/binary`. |
-| Remix (legacy) | `POST /videos/{video_id}/remix` | JSON `{ prompt }` (SDK uses maybe-multipart) | `video` object with `remixed_from_video_id` set. Being replaced by edits. |
-| Edit | `POST /videos/edits` | JSON `{ prompt, video: { id } }` or multipart with `video=@file.mp4` plus `model` | `video` object |
-| Extend | `POST /videos/extensions` | JSON `{ prompt, seconds, video: { id } }` (SDK also allows an uploaded video file) | `video` object; `seconds` on the result is the stitched total |
-| Create character | `POST /videos/characters` | `multipart/form-data`: `name`, `video=@clip.mp4;type=video/mp4` | `{ id, created_at, name }` |
-| Retrieve character | `GET /videos/characters/{character_id}` | none | `{ id, created_at, name }` |
+| Endpoint           | Method + path                                 | Body encoding                                                                                                                                           | Returns                                                                                                                   |
+| ------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Create video       | `POST /videos`                                | JSON or `multipart/form-data` (multipart required to upload `input_reference` bytes; JSON form takes `input_reference` as `{file_id}` or `{image_url}`) | `video` object                                                                                                            |
+| Retrieve (poll)    | `GET /videos/{video_id}`                      | none                                                                                                                                                    | `video` object                                                                                                            |
+| List               | `GET /videos?after=&limit=&order=asc          | desc`                                                                                                                                                   | none                                                                                                                      | `{ object: "list", data: Video[], first_id, last_id, has_more }` (cursor page) |
+| Delete             | `DELETE /videos/{video_id}`                   | none                                                                                                                                                    | `{ id, deleted: true, object: "video.deleted" }`. "Permanently delete a completed or failed video and its stored assets." |
+| Download content   | `GET /videos/{video_id}/content?variant=video | thumbnail                                                                                                                                               | spritesheet`                                                                                                              | none                                                                           | binary stream. SDK sends `Accept: application/binary`. |
+| Remix (legacy)     | `POST /videos/{video_id}/remix`               | JSON `{ prompt }` (SDK uses maybe-multipart)                                                                                                            | `video` object with `remixed_from_video_id` set. Being replaced by edits.                                                 |
+| Edit               | `POST /videos/edits`                          | JSON `{ prompt, video: { id } }` or multipart with `video=@file.mp4` plus `model`                                                                       | `video` object                                                                                                            |
+| Extend             | `POST /videos/extensions`                     | JSON `{ prompt, seconds, video: { id } }` (SDK also allows an uploaded video file)                                                                      | `video` object; `seconds` on the result is the stitched total                                                             |
+| Create character   | `POST /videos/characters`                     | `multipart/form-data`: `name`, `video=@clip.mp4;type=video/mp4`                                                                                         | `{ id, created_at, name }`                                                                                                |
+| Retrieve character | `GET /videos/characters/{character_id}`       | none                                                                                                                                                    | `{ id, created_at, name }`                                                                                                |
 
 There is no list or delete for characters in the reference. There is no streaming endpoint (section 6).
 
 Batch API: "Batch currently supports POST /v1/videos only." "Batch requests must use JSON, not multipart." "Batch-generated videos are available for download for up to 24 hours after the batch completes." JSONL line example from the guide:
 
 ```jsonl
-{"custom_id":"shot-001","method":"POST","url":"/v1/videos","body":{"model":"sora-2-pro","prompt":"Slow dolly shot through a miniature paper city at blue hour, soft fog, practical window lights flickering on.","size":"1920x1080","seconds":"20"}}
+{
+  "custom_id": "shot-001",
+  "method": "POST",
+  "url": "/v1/videos",
+  "body": {
+    "model": "sora-2-pro",
+    "prompt": "Slow dolly shot through a miniature paper city at blue hour, soft fog, practical window lights flickering on.",
+    "size": "1920x1080",
+    "seconds": "20"
+  }
+}
 ```
 
 The guide also says batch output video jobs "have already reached a terminal state such as completed, failed, or expired", so `expired` is a terminal state you can see via Batch even though the `video.status` enum in the reference only lists four values.
@@ -70,20 +80,20 @@ The guide also says batch output video jobs "have already reached a terminal sta
 
 Reference (https://developers.openai.com/api/reference/resources/videos) for `POST /videos`:
 
-| Field | Type | Allowed values | Default | Notes |
-| --- | --- | --- | --- | --- |
-| `prompt` | string | free text | required | Only required field. |
-| `model` | string | `sora-2`, `sora-2-pro`, `sora-2-2025-10-06`, `sora-2-pro-2025-10-06`, `sora-2-2025-12-08` | `sora-2` | Doc text: "allowed values: sora-2, sora-2-pro". |
-| `seconds` | string (yes, a string) | reference enum: `"4"`, `"8"`, `"12"`. Guide, cookbook and extensions endpoint: `"4"`, `"8"`, `"12"`, `"16"`, `"20"` | `"4"` | See enum drift note below. |
-| `size` | string `WxH` | reference enum: `720x1280`, `1280x720`, `1024x1792`, `1792x1024`. Guide and cookbook add `1080x1920`, `1920x1080` for `sora-2-pro` only | `720x1280` | Per-model table below. |
-| `input_reference` | multipart file, or JSON `{ file_id }` or `{ image_url }` | `image/jpeg`, `image/png`, `image/webp` | none | "acts as the first frame of your video". "The image must match the target video's resolution (size)." `image_url` is "A fully qualified URL or base64-encoded data URL." "Provide exactly one of image_url or file_id." Image only; no video reference on create. |
-| `characters` | array of `{ id }` | up to two character ids | none | Guide and cookbook only; not in the reference page or SDK `VideoCreateParams` yet. "Mention the character name verbatim in your prompt." Can be combined with `input_reference`. |
+| Field             | Type                                                     | Allowed values                                                                                                                          | Default    | Notes                                                                                                                                                                                                                                                             |
+| ----------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`          | string                                                   | free text                                                                                                                               | required   | Only required field.                                                                                                                                                                                                                                              |
+| `model`           | string                                                   | `sora-2`, `sora-2-pro`, `sora-2-2025-10-06`, `sora-2-pro-2025-10-06`, `sora-2-2025-12-08`                                               | `sora-2`   | Doc text: "allowed values: sora-2, sora-2-pro".                                                                                                                                                                                                                   |
+| `seconds`         | string (yes, a string)                                   | reference enum: `"4"`, `"8"`, `"12"`. Guide, cookbook and extensions endpoint: `"4"`, `"8"`, `"12"`, `"16"`, `"20"`                     | `"4"`      | See enum drift note below.                                                                                                                                                                                                                                        |
+| `size`            | string `WxH`                                             | reference enum: `720x1280`, `1280x720`, `1024x1792`, `1792x1024`. Guide and cookbook add `1080x1920`, `1920x1080` for `sora-2-pro` only | `720x1280` | Per-model table below.                                                                                                                                                                                                                                            |
+| `input_reference` | multipart file, or JSON `{ file_id }` or `{ image_url }` | `image/jpeg`, `image/png`, `image/webp`                                                                                                 | none       | "acts as the first frame of your video". "The image must match the target video's resolution (size)." `image_url` is "A fully qualified URL or base64-encoded data URL." "Provide exactly one of image_url or file_id." Image only; no video reference on create. |
+| `characters`      | array of `{ id }`                                        | up to two character ids                                                                                                                 | none       | Guide and cookbook only; not in the reference page or SDK `VideoCreateParams` yet. "Mention the character name verbatim in your prompt." Can be combined with `input_reference`.                                                                                  |
 
 Per-model `size` (cookbook, https://developers.openai.com/cookbook/examples/sora/sora2_prompting_guide, confirmed by the model pages and the pricing table):
 
-| Model | Sizes |
-| --- | --- |
-| `sora-2` | `720x1280`, `1280x720` |
+| Model        | Sizes                                                                      |
+| ------------ | -------------------------------------------------------------------------- |
+| `sora-2`     | `720x1280`, `1280x720`                                                     |
 | `sora-2-pro` | `720x1280`, `1280x720`, `1024x1792`, `1792x1024`, `1080x1920`, `1920x1080` |
 
 Enum drift note: the API reference page and both SDKs (`VideoSeconds = "4" | "8" | "12"`, `VideoSize` without 1080p) were not regenerated after the 2026-03-12 expansion, while the guide ("Both sora-2 and sora-2-pro support 16- and 20-second generations", "Use sora-2-pro when you need 1080p exports in 1920x1080 or 1080x1920"), the cookbook (`"4"`, `"8"`, `"12"`, `"16"`, `"20"`), the batch JSONL example (`"seconds":"20"`, `"size":"1920x1080"`) and the extensions endpoint reference (`allowed values: 4, 8, 12, 16, 20`) all show the wider set. Treat the wider set as the live behaviour; a client schema should accept `"16"`/`"20"` and the 1080p sizes. The pricing page also lists 1080p for `sora-2-pro`.
@@ -101,21 +111,21 @@ Other endpoints' bodies:
 
 `video` object (reference, identical in openai-node `Video` and openai-python `Video`):
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `id` | string | `video_...` |
-| `object` | `"video"` | |
-| `model` | string | model that produced the job |
-| `status` | `"queued" \| "in_progress" \| "completed" \| "failed"` | "Current lifecycle status of the video job." Batch output may also show `expired`. |
-| `progress` | number | "Approximate completion percentage for the generation task." 0 to 100. |
-| `prompt` | string or null | |
-| `created_at` | number | Unix seconds |
-| `completed_at` | number or null | Unix seconds |
-| `expires_at` | number or null | "Unix timestamp (seconds) for when the downloadable assets expire, if set." |
-| `seconds` | string | "Duration of the generated clip in seconds. For extensions, this is the stitched total duration." |
-| `size` | string | resolution |
-| `remixed_from_video_id` | string or null | set for remixes; the reference does not document an equivalent for edits or extensions |
-| `error` | `VideoCreateError` or null | see below |
+| Field                   | Type                                                   | Meaning                                                                                           |
+| ----------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `id`                    | string                                                 | `video_...`                                                                                       |
+| `object`                | `"video"`                                              |                                                                                                   |
+| `model`                 | string                                                 | model that produced the job                                                                       |
+| `status`                | `"queued" \| "in_progress" \| "completed" \| "failed"` | "Current lifecycle status of the video job." Batch output may also show `expired`.                |
+| `progress`              | number                                                 | "Approximate completion percentage for the generation task." 0 to 100.                            |
+| `prompt`                | string or null                                         |                                                                                                   |
+| `created_at`            | number                                                 | Unix seconds                                                                                      |
+| `completed_at`          | number or null                                         | Unix seconds                                                                                      |
+| `expires_at`            | number or null                                         | "Unix timestamp (seconds) for when the downloadable assets expire, if set."                       |
+| `seconds`               | string                                                 | "Duration of the generated clip in seconds. For extensions, this is the stitched total duration." |
+| `size`                  | string                                                 | resolution                                                                                        |
+| `remixed_from_video_id` | string or null                                         | set for remixes; the reference does not document an equivalent for edits or extensions            |
+| `error`                 | `VideoCreateError` or null                             | see below                                                                                         |
 
 `VideoCreateError` (reference and SDKs):
 
@@ -171,11 +181,11 @@ Container: MP4 ("fetch the final MP4"). Thumbnail is WebP, spritesheet is JPG (g
 
 Three distinct endpoints, not one endpoint with a mode field:
 
-| Operation | Endpoint | Input | What it does |
-| --- | --- | --- | --- |
-| Remix (legacy) | `POST /videos/{video_id}/remix` with `{ prompt }` | completed video id | "Create a remix of a completed video using a refreshed prompt." Result carries `remixed_from_video_id`. Being replaced: "This will replace POST /v1/videos/{video_id}/remix, which will be deprecated in 6 months" (from 2026-03-12). |
-| Edit | `POST /videos/edits` with `{ prompt, video: { id } }` or multipart upload | completed video id, or an uploaded MP4 for "eligible customers" | "the system reuses the original structure, continuity, and composition while applying the modification". Same output length; targeted change. |
-| Extend | `POST /videos/extensions` with `{ prompt, seconds, video: { id } }` | completed video id | "generates the next segment using the full source clip as context" and returns a stitched video; up to 6 extensions, 120 s total. |
+| Operation      | Endpoint                                                                  | Input                                                           | What it does                                                                                                                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Remix (legacy) | `POST /videos/{video_id}/remix` with `{ prompt }`                         | completed video id                                              | "Create a remix of a completed video using a refreshed prompt." Result carries `remixed_from_video_id`. Being replaced: "This will replace POST /v1/videos/{video_id}/remix, which will be deprecated in 6 months" (from 2026-03-12). |
+| Edit           | `POST /videos/edits` with `{ prompt, video: { id } }` or multipart upload | completed video id, or an uploaded MP4 for "eligible customers" | "the system reuses the original structure, continuity, and composition while applying the modification". Same output length; targeted change.                                                                                         |
+| Extend         | `POST /videos/extensions` with `{ prompt, seconds, video: { id } }`       | completed video id                                              | "generates the next segment using the full source clip as context" and returns a stitched video; up to 6 extensions, 120 s total.                                                                                                     |
 
 Video as a reference on `POST /videos` is not supported: `input_reference` is image-only ("ImageInputReferenceParam", formats jpeg/png/webp). The guide's Batch section mentions "Multipart input_reference uploads, including video reference inputs, aren't supported in Batch", which hints at a video reference input path in multipart mode, but neither the reference nor the guide documents it; UNVERIFIED. True video-to-video with your own footage is the multipart edits upload, gated to eligible customers.
 
@@ -201,24 +211,24 @@ Moderation scope (same post): guardrails check "both prompts and outputs across 
 
 Pricing page (https://developers.openai.com/api/docs/pricing, "Video generation models", "Prices per second"):
 
-| Model | Size | Portrait | Landscape | Standard $/s | Batch $/s |
-| --- | --- | --- | --- | --- | --- |
-| `sora-2` | 720p | 720x1280 | 1280x720 | $0.10 | $0.05 |
-| `sora-2-pro` | 720p | 720x1280 | 1280x720 | $0.30 | $0.15 |
-| `sora-2-pro` | 1024p | 1024x1792 | 1792x1024 | $0.50 | $0.25 |
-| `sora-2-pro` | 1080p | 1080x1920 | 1920x1080 | $0.70 | $0.35 |
+| Model        | Size  | Portrait  | Landscape | Standard $/s | Batch $/s |
+| ------------ | ----- | --------- | --------- | ------------ | --------- |
+| `sora-2`     | 720p  | 720x1280  | 1280x720  | $0.10        | $0.05     |
+| `sora-2-pro` | 720p  | 720x1280  | 1280x720  | $0.30        | $0.15     |
+| `sora-2-pro` | 1024p | 1024x1792 | 1792x1024 | $0.50        | $0.25     |
+| `sora-2-pro` | 1080p | 1080x1920 | 1920x1080 | $0.70        | $0.35     |
 
 So a 20 s 1080p pro clip is $14.00 standard, $7.00 via Batch. Billing for edits, extensions and remixes is not called out separately; assume per generated second at the source video's size (UNVERIFIED).
 
 Rate limits (model pages, requests per minute by usage tier):
 
 | Tier | `sora-2` RPM | `sora-2-pro` RPM |
-| --- | --- | --- |
-| 1 | 25 | 10 |
-| 2 | 50 | 25 |
-| 3 | 125 | 50 |
-| 4 | 200 | 75 |
-| 5 | 375 | 150 |
+| ---- | ------------ | ---------------- |
+| 1    | 25           | 10               |
+| 2    | 50           | 25               |
+| 3    | 125          | 50               |
+| 4    | 200          | 75               |
+| 5    | 375          | 150              |
 
 Concurrency (number of in-flight jobs): not documented on any official page; UNVERIFIED (third-party posts describe a per-account concurrent-job ceiling visible in the dashboard).
 

@@ -41,6 +41,19 @@ import { Result } from "effect"
 export type Watermark = "synthid" | "c2pa" | (string & {})
 
 /**
+ * Extras a provider reported that the shared type has no field for:
+ * pixel dimensions, a file name, a revised prompt, a resolved seed.
+ * Opaque, and a shared slot, so a provider keys its data under its own
+ * name (`{ fal: … }`, `{ openai: … }`) and reads only that key. Each
+ * provider package ships a typed reader; the framework never interprets
+ * it.
+ *
+ * Not promoted to real fields because providers disagree on what they
+ * report, and the disagreement differs per modality.
+ */
+export type ProviderData = unknown
+
+/**
  * Requested shape of generated visual media, width to height. Shared by
  * image and video generation: the listed ratios are the ones providers
  * accept as literals, and the `(string & {})` tail keeps a

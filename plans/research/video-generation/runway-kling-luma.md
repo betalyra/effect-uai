@@ -8,14 +8,14 @@ Method note: Runway and Kling both publish machine readable markdown mirrors of 
 
 ## 0. Corrections to the sibling reports
 
-| Claim carried in | Verdict |
-| --- | --- |
-| Runway line is Gen-4.5, Aleph 2.0, Act-Two, realtime Characters over WebRTC | Confirmed. Exact ids `gen4.5`, `aleph2`, `act_two`, `gwm1_avatars`. Characters is WebRTC, with LiveKit as the room layer. |
-| Runway is NOT on fal | Confirmed for fal. Corrected for Replicate: `replicate.com/runwayml/gen-4.5` exists, so Runway is on Replicate. |
-| Kling line is 3.0, 3.0 Omni, 3.0 Turbo, Motion Control | Confirmed, and incomplete. Kling O1, 2.6 and 2.5 Turbo are still first class in the capability map. |
-| Luma is Ray3.2 | Confirmed, id `ray-3.2`. But the API moved: Dream Machine / Ray2 at `api.lumalabs.ai` is deprecated, Ray3.2 lives on the Luma Agents API at `agents.lumalabs.ai/v1`. |
-| (new) Runway is a single vendor surface | Wrong. Runway's API now routes third party models too: Veo 3.1, Seedance 2.x, Hailuo 3, Wan 3, Grok Imagine 1.5, Gemini Omni Flash. It is partly an aggregator. |
-| (new) Kling takes `cfg_scale` and `camera_control` | Those are v1.x fields. The Kling 3.0 API has neither. |
+| Claim carried in                                                            | Verdict                                                                                                                                                              |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runway line is Gen-4.5, Aleph 2.0, Act-Two, realtime Characters over WebRTC | Confirmed. Exact ids `gen4.5`, `aleph2`, `act_two`, `gwm1_avatars`. Characters is WebRTC, with LiveKit as the room layer.                                            |
+| Runway is NOT on fal                                                        | Confirmed for fal. Corrected for Replicate: `replicate.com/runwayml/gen-4.5` exists, so Runway is on Replicate.                                                      |
+| Kling line is 3.0, 3.0 Omni, 3.0 Turbo, Motion Control                      | Confirmed, and incomplete. Kling O1, 2.6 and 2.5 Turbo are still first class in the capability map.                                                                  |
+| Luma is Ray3.2                                                              | Confirmed, id `ray-3.2`. But the API moved: Dream Machine / Ray2 at `api.lumalabs.ai` is deprecated, Ray3.2 lives on the Luma Agents API at `agents.lumalabs.ai/v1`. |
+| (new) Runway is a single vendor surface                                     | Wrong. Runway's API now routes third party models too: Veo 3.1, Seedance 2.x, Hailuo 3, Wan 3, Grok Imagine 1.5, Gemini Omni Flash. It is partly an aggregator.      |
+| (new) Kling takes `cfg_scale` and `camera_control`                          | Those are v1.x fields. The Kling 3.0 API has neither.                                                                                                                |
 
 ---
 
@@ -27,23 +27,23 @@ Base URL `https://api.dev.runwayml.com`. Auth `Authorization: Bearer <api secret
 
 Runway's own models plus hosted third party models, all behind the same endpoints. ([models guide](https://docs.dev.runwayml.com/guides/models.md))
 
-| Model id | Input | Endpoint | Note |
-| --- | --- | --- | --- |
-| `gen4.5` | text or image | `/v1/image_to_video`, `/v1/text_to_video` | Runway flagship. Pro/HDR output formats. |
-| `gen4_turbo` | image | `/v1/image_to_video` | The fast, cheap Runway tier. |
-| `aleph2` | video + text/image | `/v1/video_to_video` | Aleph 2.0, the video editing model. |
-| `act_two` | image or video | `/v1/character_performance` | Act-Two performance transfer. |
-| `gwm1_avatars` | text conversation | `/v1/realtime_sessions` | Realtime Characters, GWM-1. |
-| `veo3.1`, `veo3.1_fast` | text or image | `/v1/image_to_video` | Hosted Google. Only models here with an audio price tier. |
-| `seedance2_5`, `seedance2`, `seedance2_fast`, `seedance2_mini` | text, image or video | `/v1/image_to_video` | Hosted ByteDance. |
-| `hailuo3`, `h3_max` | text or image | `/v1/image_to_video` | Hosted MiniMax. |
-| `wan3`, `wan3_prime` | text or image | `/v1/image_to_video` | Hosted Alibaba. |
-| `grok_imagine_1_5` | text or image | `/v1/image_to_video` | Hosted xAI. |
-| `gemini_omni_flash`, `gemini_omni_flash_1.1` | text, image or video | `/v1/text_to_video` | Hosted Google. |
-| `happyhorse_1_0` | text or image | `/v1/image_to_video` | Unattributed. |
-| `magnific_video_upscaler_creative` | video | `/v1/video_upscale` | 30s max. |
-| `enhance_frame_rate` | video | `/v1/video_upscale` | 300s max, 1 credit per 2s. |
-| `ruby` | SDR video | `/v1/video_to_hdr` | 30s max, under 4096px per side. |
+| Model id                                                       | Input                | Endpoint                                  | Note                                                      |
+| -------------------------------------------------------------- | -------------------- | ----------------------------------------- | --------------------------------------------------------- |
+| `gen4.5`                                                       | text or image        | `/v1/image_to_video`, `/v1/text_to_video` | Runway flagship. Pro/HDR output formats.                  |
+| `gen4_turbo`                                                   | image                | `/v1/image_to_video`                      | The fast, cheap Runway tier.                              |
+| `aleph2`                                                       | video + text/image   | `/v1/video_to_video`                      | Aleph 2.0, the video editing model.                       |
+| `act_two`                                                      | image or video       | `/v1/character_performance`               | Act-Two performance transfer.                             |
+| `gwm1_avatars`                                                 | text conversation    | `/v1/realtime_sessions`                   | Realtime Characters, GWM-1.                               |
+| `veo3.1`, `veo3.1_fast`                                        | text or image        | `/v1/image_to_video`                      | Hosted Google. Only models here with an audio price tier. |
+| `seedance2_5`, `seedance2`, `seedance2_fast`, `seedance2_mini` | text, image or video | `/v1/image_to_video`                      | Hosted ByteDance.                                         |
+| `hailuo3`, `h3_max`                                            | text or image        | `/v1/image_to_video`                      | Hosted MiniMax.                                           |
+| `wan3`, `wan3_prime`                                           | text or image        | `/v1/image_to_video`                      | Hosted Alibaba.                                           |
+| `grok_imagine_1_5`                                             | text or image        | `/v1/image_to_video`                      | Hosted xAI.                                               |
+| `gemini_omni_flash`, `gemini_omni_flash_1.1`                   | text, image or video | `/v1/text_to_video`                       | Hosted Google.                                            |
+| `happyhorse_1_0`                                               | text or image        | `/v1/image_to_video`                      | Unattributed.                                             |
+| `magnific_video_upscaler_creative`                             | video                | `/v1/video_upscale`                       | 30s max.                                                  |
+| `enhance_frame_rate`                                           | video                | `/v1/video_upscale`                       | 300s max, 1 credit per 2s.                                |
+| `ruby`                                                         | SDR video            | `/v1/video_to_hdr`                        | 30s max, under 4096px per side.                           |
 
 No deprecation notices appear in the models guide. Gen-3 ids are simply gone from the list, which is the de facto deprecation. Fast tier: `gen4_turbo` for Runway's own line (5 credits/s versus 12 for `gen4.5`); among hosted models `seedance2_fast`, `seedance2_mini` and `veo3.1_fast` are the fast tiers.
 
@@ -51,22 +51,22 @@ No deprecation notices appear in the models guide. Gen-3 ids are simply gone fro
 
 All generation is asynchronous: POST returns a task, you poll.
 
-| Purpose | Endpoint |
-| --- | --- |
-| text to video | `POST /v1/text_to_video` |
-| image to video, incl. first/last frame | `POST /v1/image_to_video` |
-| video to video, incl. extend | `POST /v1/video_to_video` |
-| character / performance transfer | `POST /v1/character_performance` |
-| upscale | `POST /v1/image_upscale`, `POST /v1/video_upscale` |
-| SDR to HDR | `POST /v1/video_to_hdr` |
-| text to image | `POST /v1/text_to_image` |
-| audio | `POST /v1/text_to_speech`, `/v1/speech_to_speech`, `/v1/sound_effect`, `/v1/voice_dubbing`, `/v1/voice_isolation` |
-| poll task | `GET /v1/tasks/{id}` |
-| cancel or delete task | `DELETE /v1/tasks/{id}` |
-| upload asset | `POST /v1/uploads` |
-| avatars | `POST /v1/avatars`, `GET/PATCH /v1/avatars/{id}` |
-| realtime session | `POST /v1/realtime_sessions`, `GET /v1/realtime_sessions/{id}`, `POST /v1/realtime_sessions/{id}/consume` |
-| conversation history | `GET /v1/avatars/{id}/conversations[/{conversationId}]` |
+| Purpose                                | Endpoint                                                                                                          |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| text to video                          | `POST /v1/text_to_video`                                                                                          |
+| image to video, incl. first/last frame | `POST /v1/image_to_video`                                                                                         |
+| video to video, incl. extend           | `POST /v1/video_to_video`                                                                                         |
+| character / performance transfer       | `POST /v1/character_performance`                                                                                  |
+| upscale                                | `POST /v1/image_upscale`, `POST /v1/video_upscale`                                                                |
+| SDR to HDR                             | `POST /v1/video_to_hdr`                                                                                           |
+| text to image                          | `POST /v1/text_to_image`                                                                                          |
+| audio                                  | `POST /v1/text_to_speech`, `/v1/speech_to_speech`, `/v1/sound_effect`, `/v1/voice_dubbing`, `/v1/voice_isolation` |
+| poll task                              | `GET /v1/tasks/{id}`                                                                                              |
+| cancel or delete task                  | `DELETE /v1/tasks/{id}`                                                                                           |
+| upload asset                           | `POST /v1/uploads`                                                                                                |
+| avatars                                | `POST /v1/avatars`, `GET/PATCH /v1/avatars/{id}`                                                                  |
+| realtime session                       | `POST /v1/realtime_sessions`, `GET /v1/realtime_sessions/{id}`, `POST /v1/realtime_sessions/{id}/consume`         |
+| conversation history                   | `GET /v1/avatars/{id}/conversations[/{conversationId}]`                                                           |
 
 Shape note: modality picks the endpoint, model picks the behaviour. Extend is not its own endpoint, it is `mode: "extend"` on `/v1/video_to_video` for `seedance2_5`. First and last frame are not separate endpoints either, they are positions inside `promptImage` on `/v1/image_to_video`.
 
@@ -97,13 +97,13 @@ Moderation:
 
 Ratios are pixel pairs, per model:
 
-| Model | `ratio` values |
-| --- | --- |
-| `gen4.5`, `gen4_turbo` | `1280:720`, `720:1280`, `1104:832`, `960:960`, `832:1104`, `1584:672` |
-| `veo3.1`, `veo3.1_fast` | `1280:720`, `720:1280`, `1080:1920`, `1920:1080` |
-| `seedance2_5` | 18 pairs from `992:432` up to `1080:1920` |
-| `seedance2` | 24 pairs including 4K (`3840:2160`, `3840:3840`) |
-| `wan3`, `wan3_prime` | 15 pairs plus `auto_480p`, `auto_720p`, `auto_1080p` |
+| Model                         | `ratio` values                                                                                                         |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `gen4.5`, `gen4_turbo`        | `1280:720`, `720:1280`, `1104:832`, `960:960`, `832:1104`, `1584:672`                                                  |
+| `veo3.1`, `veo3.1_fast`       | `1280:720`, `720:1280`, `1080:1920`, `1920:1080`                                                                       |
+| `seedance2_5`                 | 18 pairs from `992:432` up to `1080:1920`                                                                              |
+| `seedance2`                   | 24 pairs including 4K (`3840:2160`, `3840:3840`)                                                                       |
+| `wan3`, `wan3_prime`          | 15 pairs plus `auto_480p`, `auto_720p`, `auto_1080p`                                                                   |
 | `hailuo3`, `grok_imagine_1_5` | ratio strings, not pixel pairs: `16:9`, `9:16`, `1:1`, `4:3`, `3:4`, plus `adaptive` (hailuo3) and `3:2`, `2:3` (grok) |
 
 So the "Runway uses pixel pairs" rule holds for Runway's own models and breaks for some hosted ones. A `VideoGenerator` cannot assume a single ratio encoding even within one provider.
@@ -149,37 +149,37 @@ Default container mp4 / H.264. `gen4.5` and `aleph2` additionally offer ProRes .
 
 1 credit = $0.01 ([pricing](https://docs.dev.runwayml.com/guides/pricing.md)).
 
-| Model | Credits/s | USD/s | Minimum |
-| --- | --- | --- | --- |
-| `gen4_turbo` | 5 | $0.05 | |
-| `act_two` | 5 | $0.05 | |
-| `gen4.5` | 12 | $0.12 | |
-| `aleph2` | 28 | $0.28 | 56 credits |
-| `veo3.1` no audio / audio | 20 / 40 | $0.20 / $0.40 | |
-| `veo3.1_fast` no audio / audio | 10 / 15 | $0.10 / $0.15 | |
-| `seedance2_5` 480p / 720p / 1080p | 20 / 30 / 68 output, plus half that per second of input or reference | $0.20 / $0.30 / $0.68 | 80 credits |
-| `seedance2` 480p-720p / 1080p / 4K | 36 / 40 / 150 | $0.36 / $0.40 / $1.50 | |
-| `seedance2_fast` | 29 | $0.29 | |
-| `seedance2_mini` | 16 | $0.16 | 64 credits |
-| `wan3` 480p / 720p / 1080p | 5 / 10 / 20 | $0.05 / $0.10 / $0.20 | |
-| `hailuo3` 768p / 2K | 10 / 15, plus 2 per reference image | $0.10 / $0.15 | |
-| `h3_max` 480p / 768p | 5 / 8 | $0.05 / $0.08 | |
-| `grok_imagine_1_5` 480p / 720p / 1080p | 10 / 16 / 29, plus 1 per reference | $0.10 / $0.16 / $0.29 | |
-| `happyhorse_1_0` 720p / 1080p | 15 / 30 | $0.15 / $0.30 | |
-| `gemini_omni_flash` | 10 | $0.10 | |
-| `enhance_frame_rate` | 0.5 | $0.005 | |
+| Model                                  | Credits/s                                                            | USD/s                 | Minimum    |
+| -------------------------------------- | -------------------------------------------------------------------- | --------------------- | ---------- |
+| `gen4_turbo`                           | 5                                                                    | $0.05                 |            |
+| `act_two`                              | 5                                                                    | $0.05                 |            |
+| `gen4.5`                               | 12                                                                   | $0.12                 |            |
+| `aleph2`                               | 28                                                                   | $0.28                 | 56 credits |
+| `veo3.1` no audio / audio              | 20 / 40                                                              | $0.20 / $0.40         |            |
+| `veo3.1_fast` no audio / audio         | 10 / 15                                                              | $0.10 / $0.15         |            |
+| `seedance2_5` 480p / 720p / 1080p      | 20 / 30 / 68 output, plus half that per second of input or reference | $0.20 / $0.30 / $0.68 | 80 credits |
+| `seedance2` 480p-720p / 1080p / 4K     | 36 / 40 / 150                                                        | $0.36 / $0.40 / $1.50 |            |
+| `seedance2_fast`                       | 29                                                                   | $0.29                 |            |
+| `seedance2_mini`                       | 16                                                                   | $0.16                 | 64 credits |
+| `wan3` 480p / 720p / 1080p             | 5 / 10 / 20                                                          | $0.05 / $0.10 / $0.20 |            |
+| `hailuo3` 768p / 2K                    | 10 / 15, plus 2 per reference image                                  | $0.10 / $0.15         |            |
+| `h3_max` 480p / 768p                   | 5 / 8                                                                | $0.05 / $0.08         |            |
+| `grok_imagine_1_5` 480p / 720p / 1080p | 10 / 16 / 29, plus 1 per reference                                   | $0.10 / $0.16 / $0.29 |            |
+| `happyhorse_1_0` 720p / 1080p          | 15 / 30                                                              | $0.15 / $0.30         |            |
+| `gemini_omni_flash`                    | 10                                                                   | $0.10                 |            |
+| `enhance_frame_rate`                   | 0.5                                                                  | $0.005                |            |
 
 Note that `gen4.5` at $0.12/s is cheaper than most hosted models on the same platform.
 
 Tiers ([tiers](https://docs.dev.runwayml.com/usage/tiers/)):
 
-| Tier | Max concurrency | Max gens/day | Max spend/mo | Unlocks at |
-| --- | --- | --- | --- | --- |
-| 1 | 1-2 | 50-200 | $100 | start |
-| 2 | 3 | 500-1,000 | $500 | $50 spent |
-| 3 | 5 | 1,000-2,000 | $2,000 | $100 spent |
-| 4 | 10 | 5,000-10,000 | $20,000 | $1,000 spent |
-| 5 | 20 | 25,000-30,000 | $100,000 | $5,000 spent |
+| Tier | Max concurrency | Max gens/day  | Max spend/mo | Unlocks at   |
+| ---- | --------------- | ------------- | ------------ | ------------ |
+| 1    | 1-2             | 50-200        | $100         | start        |
+| 2    | 3               | 500-1,000     | $500         | $50 spent    |
+| 3    | 5               | 1,000-2,000   | $2,000       | $100 spent   |
+| 4    | 10              | 5,000-10,000  | $20,000      | $1,000 spent |
+| 5    | 20              | 25,000-30,000 | $100,000     | $5,000 spent |
 
 No requests-per-minute limit as long as you stay inside the daily generation cap. Exceeding the daily cap gives `429`. Exceeding concurrency gives `THROTTLED` tasks, not an error. Video and image models share one concurrency pool. Characters credits: 600 free credits is roughly 30 minutes of Character video, billed while the worker is active.
 
@@ -195,6 +195,7 @@ Authorization: Bearer <secret>
 X-Runway-Version: 2024-11-06
 Content-Type: application/json
 ```
+
 ```json
 {
   "model": "gen4.5",
@@ -248,38 +249,38 @@ There is no version header. **The model version is in the URL path.** This is th
 
 From the [capability map](https://kling.ai/document-api/guides/capability-map/video.md) and [pricing](https://kling.ai/document-api/pricing/base/video.md):
 
-| Model | Path segment | Res | Duration | Native audio | Notes |
-| --- | --- | --- | --- | --- | --- |
-| Kling 3.0 | `kling-3.0` | 720p, 1080p, 4k | 3-15s | yes | flagship, multi-shot |
-| Kling 3.0 Omni | `kling-3.0-omni` | 720p, 1080p, 4k | 3-15s | yes | all-in-one multimodal input: text, image and video |
-| Kling 3.0 Turbo | `kling-3.0-turbo` | 720p, 1080p | 3-15s | yes | the fast tier; no 4K |
-| Kling O1 | `o1` | 720p, 1080p | 3-10s | limited multi-shot | |
-| Kling 2.6 | `2-6` | 720p, 1080p | | yes | only 2.6 has human voice control |
-| Kling 2.5 Turbo | `2-5-turbo` | 720p, 1080p | | no | oldest still documented |
+| Model           | Path segment      | Res             | Duration | Native audio       | Notes                                              |
+| --------------- | ----------------- | --------------- | -------- | ------------------ | -------------------------------------------------- |
+| Kling 3.0       | `kling-3.0`       | 720p, 1080p, 4k | 3-15s    | yes                | flagship, multi-shot                               |
+| Kling 3.0 Omni  | `kling-3.0-omni`  | 720p, 1080p, 4k | 3-15s    | yes                | all-in-one multimodal input: text, image and video |
+| Kling 3.0 Turbo | `kling-3.0-turbo` | 720p, 1080p     | 3-15s    | yes                | the fast tier; no 4K                               |
+| Kling O1        | `o1`              | 720p, 1080p     | 3-10s    | limited multi-shot |                                                    |
+| Kling 2.6       | `2-6`             | 720p, 1080p     |          | yes                | only 2.6 has human voice control                   |
+| Kling 2.5 Turbo | `2-5-turbo`       | 720p, 1080p     |          | no                 | oldest still documented                            |
 
-No formal deprecation of models in the [changelog](https://kling.ai/document-api/updates/api.md); the only sunsets listed are video *effects* (`magic_match_tree` on 2026-07-03, and seven effects including `kiss`, `fight`, `hug`, `3d_cartoon_1` on 2026-01-30). Launch dates: 3.0 Omni and V3 on 2026-02-25, Motion Control 3.0 on 2026-03-04, 3.0 Turbo plus Omni 4K and 15s reference video on 2026-06-17.
+No formal deprecation of models in the [changelog](https://kling.ai/document-api/updates/api.md); the only sunsets listed are video _effects_ (`magic_match_tree` on 2026-07-03, and seven effects including `kiss`, `fight`, `hug`, `3d_cartoon_1` on 2026-01-30). Launch dates: 3.0 Omni and V3 on 2026-02-25, Motion Control 3.0 on 2026-03-04, 3.0 Turbo plus Omni 4K and 15s reference video on 2026-06-17.
 
-Fast tier: `kling-3.0-turbo`. Trade: it is the only 3.x tier that costs *more* per second at 720p than base 3.0 (0.8 vs 0.6 Units), so Turbo buys latency, not money.
+Fast tier: `kling-3.0-turbo`. Trade: it is the only 3.x tier that costs _more_ per second at 720p than base 3.0 (0.8 vs 0.6 Units), so Turbo buys latency, not money.
 
 ## 2. Endpoints
 
-| Purpose | Endpoint |
-| --- | --- |
-| text to video | `POST /text-to-video/kling-3.0`, `POST /text-to-video/kling-3.0-turbo` |
-| image to video (first and/or last frame) | `POST /image-to-video/kling-3.0`, `POST /image-to-video/kling-3.0-turbo` |
-| omni: video in, edit, extend, reference | `POST /omni-video/kling-3.0-omni` |
-| motion control | `POST /motion-control/kling-3.0` (also `/api/video/motion-control/2-6`) |
-| multi element reference editing | `/api/video/multi-elements` |
-| element management | `/api/video/3-0-omni/elements` |
-| lip sync | `POST /v1/videos/lip-sync` (legacy flat shape) |
-| face detection for lip sync | `/api/video/lip-sync/face-detection` |
-| avatar | `/api/video/avatar`, TTS at `/api/video/avatar/text-to-speech` |
-| audio | `/api/video/audio-generation/text-to-audio`, `/video-to-audio` |
-| effects | `/api/effects/video-effects` |
-| e-commerce solutions | apparel replicator, goods studio, video commerce, virtual try-on |
-| poll task | `GET /tasks?task_ids={id}` or `?external_task_ids={id}` |
-| list tasks | `POST /tasks` with cursor pagination and `status` / `product_type` filters |
-| account | `/api/assets/account-usage`, billing deduction queries |
+| Purpose                                  | Endpoint                                                                   |
+| ---------------------------------------- | -------------------------------------------------------------------------- |
+| text to video                            | `POST /text-to-video/kling-3.0`, `POST /text-to-video/kling-3.0-turbo`     |
+| image to video (first and/or last frame) | `POST /image-to-video/kling-3.0`, `POST /image-to-video/kling-3.0-turbo`   |
+| omni: video in, edit, extend, reference  | `POST /omni-video/kling-3.0-omni`                                          |
+| motion control                           | `POST /motion-control/kling-3.0` (also `/api/video/motion-control/2-6`)    |
+| multi element reference editing          | `/api/video/multi-elements`                                                |
+| element management                       | `/api/video/3-0-omni/elements`                                             |
+| lip sync                                 | `POST /v1/videos/lip-sync` (legacy flat shape)                             |
+| face detection for lip sync              | `/api/video/lip-sync/face-detection`                                       |
+| avatar                                   | `/api/video/avatar`, TTS at `/api/video/avatar/text-to-speech`             |
+| audio                                    | `/api/video/audio-generation/text-to-audio`, `/video-to-audio`             |
+| effects                                  | `/api/effects/video-effects`                                               |
+| e-commerce solutions                     | apparel replicator, goods studio, video commerce, virtual try-on           |
+| poll task                                | `GET /tasks?task_ids={id}` or `?external_task_ids={id}`                    |
+| list tasks                               | `POST /tasks` with cursor pagination and `status` / `product_type` filters |
+| account                                  | `/api/assets/account-usage`, billing deduction queries                     |
 
 Cancel or delete: no cancel endpoint is documented. UNVERIFIED whether one exists.
 
@@ -301,37 +302,37 @@ The 3.x API abandoned the flat v1/v2 body. The new shape is three objects:
 
 `contents` is a typed, discriminated array. Item `type` values:
 
-| `type` | Where | Payload |
-| --- | --- | --- |
-| `prompt` | all | `text`, max 3072 chars (2500 recommended) |
-| `first_frame` | image-to-video, omni | `url` |
-| `last_frame` | image-to-video, omni | `url` |
-| `element` | all | `element_id`, `id` |
-| `refer_image` | omni | style or scene reference image |
-| `feature_video` | omni | motion or style reference video, multi-shot supported, up to 15s |
-| `base_video` | omni | the video to edit or extend |
-| `image` / `video` | motion control | character appearance / motion reference |
+| `type`            | Where                | Payload                                                          |
+| ----------------- | -------------------- | ---------------------------------------------------------------- |
+| `prompt`          | all                  | `text`, max 3072 chars (2500 recommended)                        |
+| `first_frame`     | image-to-video, omni | `url`                                                            |
+| `last_frame`      | image-to-video, omni | `url`                                                            |
+| `element`         | all                  | `element_id`, `id`                                               |
+| `refer_image`     | omni                 | style or scene reference image                                   |
+| `feature_video`   | omni                 | motion or style reference video, multi-shot supported, up to 15s |
+| `base_video`      | omni                 | the video to edit or extend                                      |
+| `image` / `video` | motion control       | character appearance / motion reference                          |
 
 So first versus last frame is expressed as **the item's type**, not a `position` field (contrast Runway) and not `image` / `image_tail` (contrast Kling v1.x).
 
 `settings`:
 
-| Field | Values | Default |
-| --- | --- | --- |
-| `resolution` | `720p`, `1080p`, `4k` | `720p` |
-| `aspect_ratio` | `16:9`, `9:16`, `1:1` | `16:9` |
-| `duration` | integer 3-15 seconds | `5` |
-| `audio` | `native`, `original`, `off` (`original` on omni and motion control only) | `off` |
-| `multi_shot` | boolean | `true` |
-| `character_orientation` | motion control only, `image` or `video`, required | |
+| Field                   | Values                                                                   | Default |
+| ----------------------- | ------------------------------------------------------------------------ | ------- |
+| `resolution`            | `720p`, `1080p`, `4k`                                                    | `720p`  |
+| `aspect_ratio`          | `16:9`, `9:16`, `1:1`                                                    | `16:9`  |
+| `duration`              | integer 3-15 seconds                                                     | `5`     |
+| `audio`                 | `native`, `original`, `off` (`original` on omni and motion control only) | `off`   |
+| `multi_shot`            | boolean                                                                  | `true`  |
+| `character_orientation` | motion control only, `image` or `video`, required                        |         |
 
 `options`:
 
-| Field | Meaning |
-| --- | --- |
-| `callback_url` | webhook target |
-| `external_task_id` | your own idempotency/correlation id, queryable |
-| `watermark_info.enabled` | boolean, default `false` |
+| Field                    | Meaning                                        |
+| ------------------------ | ---------------------------------------------- |
+| `callback_url`           | webhook target                                 |
+| `external_task_id`       | your own idempotency/correlation id, queryable |
+| `watermark_info.enabled` | boolean, default `false`                       |
 
 Multi-shot prompt syntax on Turbo: `shot n, m, words`, up to 6 shots, each shot at least 1 second, each shot prompt up to 512 chars.
 
@@ -388,21 +389,21 @@ Container and codec are not stated in the docs (UNVERIFIED, mp4/H.264 in practic
 
 Priced in "Units", and the docs give the USD equivalent inline at roughly **1 Unit = $0.14**. ([pricing](https://kling.ai/document-api/pricing/base/video.md))
 
-| Model | Config | 720p | 1080p | 4K |
-| --- | --- | --- | --- | --- |
-| 3.0 Turbo | | 0.8 U / $0.112 per s | 1.0 U / $0.14 per s | n/a |
-| 3.0 | no audio | 0.6 U / $0.084 | 0.8 U / $0.112 | 3.0 U / $0.42 |
-| 3.0 | native audio | 0.9 U / $0.126 | 1.2 U / $0.168 | 3.0 U / $0.42 |
-| 3.0 | motion control | 0.9 U / $0.126 | 1.2 U / $0.168 | n/a |
-| 3.0 Omni | no video in, no audio | 0.6 U / $0.084 | 0.8 U / $0.112 | 3.0 U / $0.42 |
-| 3.0 Omni | no video in, audio | 0.8 U / $0.112 | 1.0 U / $0.14 | 3.0 U / $0.42 |
-| 3.0 Omni | with video in | 0.9 U / $0.126 | 1.2 U / $0.168 | 3.0 U / $0.42 |
-| O1 | no video in | 0.6 U / $0.084 | 0.8 U / $0.112 | n/a |
-| O1 | with video in | 0.9 U / $0.126 | 1.2 U / $0.168 | n/a |
-| 2.6 | basic | 0.3 U / $0.042 | 0.5 U / $0.07 | n/a |
-| 2.6 | native audio | | 1.0-1.2 U / $0.14-$0.168 | n/a |
-| 2.6 | motion control | 0.5 U / $0.07 | 0.8 U / $0.112 | n/a |
-| 2.5 Turbo | | 0.3 U / $0.042 | 0.5 U / $0.07 | n/a |
+| Model     | Config                | 720p                 | 1080p                    | 4K            |
+| --------- | --------------------- | -------------------- | ------------------------ | ------------- |
+| 3.0 Turbo |                       | 0.8 U / $0.112 per s | 1.0 U / $0.14 per s      | n/a           |
+| 3.0       | no audio              | 0.6 U / $0.084       | 0.8 U / $0.112           | 3.0 U / $0.42 |
+| 3.0       | native audio          | 0.9 U / $0.126       | 1.2 U / $0.168           | 3.0 U / $0.42 |
+| 3.0       | motion control        | 0.9 U / $0.126       | 1.2 U / $0.168           | n/a           |
+| 3.0 Omni  | no video in, no audio | 0.6 U / $0.084       | 0.8 U / $0.112           | 3.0 U / $0.42 |
+| 3.0 Omni  | no video in, audio    | 0.8 U / $0.112       | 1.0 U / $0.14            | 3.0 U / $0.42 |
+| 3.0 Omni  | with video in         | 0.9 U / $0.126       | 1.2 U / $0.168           | 3.0 U / $0.42 |
+| O1        | no video in           | 0.6 U / $0.084       | 0.8 U / $0.112           | n/a           |
+| O1        | with video in         | 0.9 U / $0.126       | 1.2 U / $0.168           | n/a           |
+| 2.6       | basic                 | 0.3 U / $0.042       | 0.5 U / $0.07            | n/a           |
+| 2.6       | native audio          |                      | 1.0-1.2 U / $0.14-$0.168 | n/a           |
+| 2.6       | motion control        | 0.5 U / $0.07        | 0.8 U / $0.112           | n/a           |
+| 2.5 Turbo |                       | 0.3 U / $0.042       | 0.5 U / $0.07            | n/a           |
 
 Ancillary: Avatar 0.4-0.8 U/s ($0.056-$0.112), TTS 0.05 U/call, Lip Sync 0.5 U per 5s, Audio Generation 0.25 U/call, Image Recognition 0.1 U/call.
 
@@ -419,6 +420,7 @@ POST https://api-singapore.klingai.com/image-to-video/kling-3.0
 Authorization: Bearer <api key>
 Content-Type: application/json
 ```
+
 ```json
 {
   "contents": [
@@ -489,11 +491,11 @@ Base URL `https://agents.lumalabs.ai/v1`. Auth: Bearer token in `Authorization`,
 
 ## 1. Models
 
-| Model id | Supports | Use for |
-| --- | --- | --- |
-| `ray-3.2` | `video`, `video_edit`, `video_reframe` | text-to-video, image-to-video, editing, reframing |
-| `uni-1` | `image`, `image_edit` | default image |
-| `uni-1-max` | `image`, `image_edit` | higher quality image |
+| Model id    | Supports                               | Use for                                           |
+| ----------- | -------------------------------------- | ------------------------------------------------- |
+| `ray-3.2`   | `video`, `video_edit`, `video_reframe` | text-to-video, image-to-video, editing, reframing |
+| `uni-1`     | `image`, `image_edit`                  | default image                                     |
+| `uni-1-max` | `image`, `image_edit`                  | higher quality image                              |
 
 ([models](https://docs.agents.lumalabs.ai/guides/model)) One video model, no fast tier, no flash variant. Deprecated: everything before Ray3.2, plus Photon as a separate product. Simplest lineup of the three vendors by a wide margin.
 
@@ -501,10 +503,10 @@ Base URL `https://agents.lumalabs.ai/v1`. Auth: Bearer token in `Authorization`,
 
 Two endpoints, total.
 
-| Purpose | Endpoint |
-| --- | --- |
-| create anything | `POST /v1/generations` |
-| poll | `GET /v1/generations/{generation_id}` |
+| Purpose         | Endpoint                              |
+| --------------- | ------------------------------------- |
+| create anything | `POST /v1/generations`                |
+| poll            | `GET /v1/generations/{generation_id}` |
 
 Everything is discriminated by a `type` field on the body: `video`, `video_edit`, `video_reframe`, `image`, `image_edit`. Text-to-video and image-to-video are the same `type: "video"`, differing only by whether `video.start_frame` / `keyframes` are present. Extend is `type: "video"` with `start_frame.generation_id` or `end_frame.generation_id` pointing at a prior generation. Reframe is `type: "video_reframe"`. Video-to-video is `type: "video_edit"`. There is no upscale.
 
@@ -514,17 +516,17 @@ No cancel or delete endpoint is documented (UNVERIFIED). `callback_url` is liste
 
 Top level: `model` (`"ray-3.2"`), `type`, `prompt` (1 to 6,000 chars), `aspect_ratio` (`9:16`, `3:4`, `1:1`, `4:3`, `16:9`, `21:9`; omit for auto). All output controls live under a nested `video` object. ([video generation](https://docs.agents.lumalabs.ai/guides/videos/generation))
 
-| `video` field | Values | Notes |
-| --- | --- | --- |
-| `resolution` | `360p`, `540p`, `720p`, `1080p` | default `720p`; 360p/540p incompatible with HDR |
-| `duration` | `"5s"`, `"10s"` | **string, not a number**; default `5s`; `10s` incompatible with HDR, `start_frame`, `end_frame` |
-| `loop` | boolean | create only; rejected with `10s`, `hdr`, `end_frame` or `keyframes` |
-| `hdr` | boolean | requires 720p or 1080p |
-| `exr_export` | boolean | requires `hdr: true` |
-| `start_frame` | ImageRef | first frame anchor, or extend from a prior generation |
-| `end_frame` | ImageRef | last frame anchor |
-| `keyframes` | ImageRef[], 1 to 64 | mutually exclusive with `start_frame`, `end_frame`, `loop` |
-| `keyframe_indexes` | number[] | parallel to `keyframes`; 0-120 for `5s`, 0-240 for `10s`, i.e. **frame numbers at 24fps** |
+| `video` field      | Values                          | Notes                                                                                           |
+| ------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `resolution`       | `360p`, `540p`, `720p`, `1080p` | default `720p`; 360p/540p incompatible with HDR                                                 |
+| `duration`         | `"5s"`, `"10s"`                 | **string, not a number**; default `5s`; `10s` incompatible with HDR, `start_frame`, `end_frame` |
+| `loop`             | boolean                         | create only; rejected with `10s`, `hdr`, `end_frame` or `keyframes`                             |
+| `hdr`              | boolean                         | requires 720p or 1080p                                                                          |
+| `exr_export`       | boolean                         | requires `hdr: true`                                                                            |
+| `start_frame`      | ImageRef                        | first frame anchor, or extend from a prior generation                                           |
+| `end_frame`        | ImageRef                        | last frame anchor                                                                               |
+| `keyframes`        | ImageRef[], 1 to 64             | mutually exclusive with `start_frame`, `end_frame`, `loop`                                      |
+| `keyframe_indexes` | number[]                        | parallel to `keyframes`; 0-120 for `5s`, 0-240 for `10s`, i.e. **frame numbers at 24fps**       |
 
 ImageRef is a union of three shapes: `{ "url": "..." }`, `{ "data": "<base64>", "media_type": "image/png" }`, or `{ "generation_id": "<uuid>" }`.
 
@@ -556,18 +558,18 @@ mp4 by default (UNVERIFIED as to codec). Native HDR via `hdr: true`, and 16-bit 
 
 Priced directly in USD, no credit layer. ([pricing](https://docs.agents.lumalabs.ai/guides/pricing/))
 
-| Request type | Range | 540p | 720p | 1080p |
-| --- | --- | --- | --- | --- |
-| generate, 5s | SDR | $0.15 | $0.30 | $1.20 |
-| generate, 10s | SDR | $0.45 | $0.90 | $3.60 |
-| generate, 5s | HDR | n/a | $0.60 | $2.40 |
-| generate, 5s | HDR + EXR | n/a | $0.90 | $3.60 |
+| Request type           | Range                       | 540p  | 720p  | 1080p |
+| ---------------------- | --------------------------- | ----- | ----- | ----- |
+| generate, 5s           | SDR                         | $0.15 | $0.30 | $1.20 |
+| generate, 10s          | SDR                         | $0.45 | $0.90 | $3.60 |
+| generate, 5s           | HDR                         | n/a   | $0.60 | $2.40 |
+| generate, 5s           | HDR + EXR                   | n/a   | $0.90 | $3.60 |
 | single-keyframe extend | SDR, billed as one 5s block | $0.15 | $0.30 | $1.20 |
-| reframe, per second | SDR only | $0.06 | $0.12 | $0.36 |
-| edit, 5s | SDR | $0.72 | $1.08 | $2.16 |
-| edit, 10s | SDR | $1.44 | $2.16 | $4.32 |
-| edit, 5s | HDR | $1.44 | $2.16 | $4.32 |
-| edit, 5s | HDR + EXR | $2.16 | $3.24 | $6.48 |
+| reframe, per second    | SDR only                    | $0.06 | $0.12 | $0.36 |
+| edit, 5s               | SDR                         | $0.72 | $1.08 | $2.16 |
+| edit, 10s              | SDR                         | $1.44 | $2.16 | $4.32 |
+| edit, 5s               | HDR                         | $1.44 | $2.16 | $4.32 |
+| edit, 5s               | HDR + EXR                   | $2.16 | $3.24 | $6.48 |
 
 Two notable shapes. First, pricing is **per video block, not per second**, except reframe. Second, the 10s SDR price is 3x the 5s price, not 2x, so duration is superlinear. 1080p 5s SDR works out to $0.24/s, which is double Runway `gen4.5` and well above Kling 3.0 1080p.
 
@@ -582,6 +584,7 @@ POST https://agents.lumalabs.ai/v1/generations
 Authorization: Bearer <key>
 Content-Type: application/json
 ```
+
 ```json
 {
   "model": "ray-3.2",
@@ -623,9 +626,7 @@ Succeeded poll:
   "state": "completed",
   "model": "ray-3.2",
   "created_at": "2026-09-19T12:00:00Z",
-  "output": [
-    { "type": "video", "url": "https://storage.../output.mp4?X-Amz-Expires=3600&..." }
-  ],
+  "output": [{ "type": "video", "url": "https://storage.../output.mp4?X-Amz-Expires=3600&..." }],
   "failure_reason": null,
   "failure_code": null
 }
@@ -644,10 +645,10 @@ Succeeded poll:
 
 **Looks uniform but is not:**
 
-- *Ratio encoding.* Runway uses pixel pairs (`"1280:720"`) for its own models but plain ratios (`"16:9"`) for some hosted ones. Kling and Luma use plain ratios. Do not normalise; keep it provider-typed.
-- *Duration type.* Runway integer seconds, Kling integer seconds, Luma a string enum (`"5s"`, `"10s"`). Luma cannot express 7 seconds at all.
-- *First and last frame.* Three different encodings: Runway `promptImage[].position`, Kling `contents[].type`, Luma `video.start_frame` / `end_frame` / `keyframes` + `keyframe_indexes`. Only Luma has real multi-keyframe.
-- *Resolution.* Runway derives it from `ratio`. Kling and Luma have an explicit `resolution` field with different enums (Kling has 4k, Luma has 360p, neither overlaps fully).
+- _Ratio encoding._ Runway uses pixel pairs (`"1280:720"`) for its own models but plain ratios (`"16:9"`) for some hosted ones. Kling and Luma use plain ratios. Do not normalise; keep it provider-typed.
+- _Duration type._ Runway integer seconds, Kling integer seconds, Luma a string enum (`"5s"`, `"10s"`). Luma cannot express 7 seconds at all.
+- _First and last frame._ Three different encodings: Runway `promptImage[].position`, Kling `contents[].type`, Luma `video.start_frame` / `end_frame` / `keyframes` + `keyframe_indexes`. Only Luma has real multi-keyframe.
+- _Resolution._ Runway derives it from `ratio`. Kling and Luma have an explicit `resolution` field with different enums (Kling has 4k, Luma has 360p, neither overlaps fully).
 
 **Vendor-only, do not promote:** Runway `contentModeration.publicFigureThreshold`, Runway pro/HDR output format enum, Runway `seed`; Kling `multi_shot` and the shot prompt syntax, `watermark_info`, `element` ids, `character_orientation`; Luma `loop`, `hdr`, `exr_export`, `keyframe_indexes`.
 

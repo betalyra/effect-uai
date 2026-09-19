@@ -1,4 +1,4 @@
-import { Duration, Effect, Schedule } from "effect"
+import { Data, Duration, Effect, Schedule, Schema } from "effect"
 import * as AiError from "../domain/AiError.js"
 
 // ---------------------------------------------------------------------------
@@ -11,12 +11,25 @@ import * as AiError from "../domain/AiError.js"
  * carry their payload: `Succeeded` the collected result, `Failed` an optional
  * reason and the raw provider error. This mirrors the wire, where a single
  * poll response returns both status and (when done) the result.
+ *
+ * A cancelled job settles as `Failed`.
  */
-export type JobState<A> =
-  | { readonly _tag: "Pending" }
-  | { readonly _tag: "Running" }
-  | { readonly _tag: "Succeeded"; readonly result: A }
-  | { readonly _tag: "Failed"; readonly reason?: string; readonly raw?: unknown }
+export type JobState<A> = Data.TaggedEnum<{
+  Pending: {}
+  Running: {
+    /** Places ahead in the provider's queue. Can rise as well as fall. */
+    readonly queuePosition?: number
+  }
+  Succeeded: { readonly result: A }
+  Failed: { readonly reason?: string; readonly raw?: unknown }
+}>
+
+interface JobStateDef extends Data.TaggedEnum.WithGenerics<1> {
+  readonly taggedEnum: JobState<this["A"]>
+}
+
+/** Constructors, guards and matchers. The type stays a structural union. */
+export const JobState = Data.taggedEnum<JobStateDef>()
 
 /** The two states that end a poll loop. */
 export const isSettled = <A>(
@@ -36,12 +49,23 @@ declare const ResultType: unique symbol
  * The brand is phantom: the runtime value is just `{ _tag, provider, id }`, so
  * a ref stays plain serializable data for persistence across restarts.
  */
-export type JobRef<A = unknown> = {
+export interface JobRef<out A = unknown> {
   readonly _tag: "JobRef"
   readonly provider: string
   readonly id: string
+  /** Phantom. Never present at runtime; ties the ref to its result type. */
   readonly [ResultType]?: A
 }
+
+/**
+ * Decodes a ref persisted to a queue or a database. The phantom result type
+ * does not survive the round trip: decode, then narrow at the call site that
+ * knows which capability the ref belongs to.
+ */
+export const JobRef = Schema.TaggedStruct("JobRef", {
+  provider: Schema.String,
+  id: Schema.String,
+})
 
 export const jobRef = <A = unknown>(provider: string, id: string): JobRef<A> => ({
   _tag: "JobRef",

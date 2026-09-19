@@ -64,6 +64,7 @@ It takes optional `stream` (boolean, default `False`) and `last_event_id` ("Opti
 **Persist-and-poll-from-another-process: yes.** The id is a plain opaque string (`"id": "v1_Chd..."`), the GET is keyed only by id plus API key, and storage is server-side by default. From https://ai.google.dev/gemini-api/docs/interactions-overview:
 
 > By default, the API stores all Interaction objects (`store=true`) in order to simplify use of server-side state management features (with `previous_interaction_id`), [background execution](...) (using `background=true`) and observability purposes.
+>
 > - **Paid tier** : The system retains interactions for **55 days**.
 > - **Free tier** : The system retains interactions for **1 day**.
 
@@ -77,7 +78,7 @@ So `background: true` forces `store: true`, which directly contradicts the Omni 
 
 Status enum, verbatim from the `Interaction` resource in https://ai.google.dev/api/interactions:
 
-> - **status** (`enum (string)`) *(Required)* Required. Output only. The status of the interaction.
+> - **status** (`enum (string)`) _(Required)_ Required. Output only. The status of the interaction.
 >   Possible values:
 >   - `in_progress`: The interaction is in progress.
 >   - `requires_action`: The interaction requires action/input from the user.
@@ -112,9 +113,11 @@ So background plus `previous_interaction_id` conversational editing is legal, bu
 
 - **Operations-style LRO / `predictLongRunning`: no, that is the Veo path, not Omni.** https://ai.google.dev/gemini-api/docs/veo uses `POST .../models/veo-3.1-generate-preview:predictLongRunning` plus `client.operations.get(operation)` polling. Omni is documented exclusively through `interactions.create`. No `operations` endpoint appears anywhere in the Omni guide or the Interactions reference.
 - **Batch API: no.** https://ai.google.dev/gemini-api/docs/interactions-overview lists, under features supported by `generateContent` but "**not yet available** in the Interactions API":
+
   > - **[Batch API](https://ai.google.dev/gemini-api/docs/batch-api)**
 
   Since Omni is only reachable through the Interactions API, Batch is unavailable to it. Corroborating: https://ai.google.dev/gemini-api/docs/batch-api contains **zero occurrences** of the strings "omni" or "video"; it is `models/{model}:batchGenerateContent` only, and its own note says "Batch API supports a range of Gemini models. Refer to the [Models page](https://ai.google.dev/gemini-api/docs/models) for each model's support of Batch API." The Omni model card (https://ai.google.dev/gemini-api/docs/models/gemini-omni-flash) does not mention Batch API support.
+
 - **Streaming as a third option: yes, and it is the timeout workaround that is unambiguously documented for media.** The SSE schema in https://ai.google.dev/api/interactions defines `VideoDelta` (mime types `video/mp4` etc.), plus `ProcessingCallDelta` ("Streaming delta for a server-initiated media processing step") and `ProcessingResultDelta`, alongside `interaction.created`, `interaction.status_update`, `step.start`, `step.delta`, `step.stop`, `interaction.completed`. The Omni guide's note on `delivery: "uri"` confirms video flows over SSE: "The `uri` field is only guaranteed to be present in the initial creation response or Server-Sent Events (SSE) stream." A long `stream: true` request keeps the connection alive but is still one process holding one socket, so it is not equivalent to a persistable job id.
 
 ## 5. What `delivery: "uri"` actually changes about timing

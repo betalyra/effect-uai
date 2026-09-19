@@ -22,14 +22,14 @@ job, plus provider adapters.
 
 **Providers, decided.**
 
-| Provider | How | Why |
-| --- | --- | --- |
-| fal | new video adapter on a new queue client | One adapter reaches MiniMax H3, Dreamina Seedance, BFL FLUX 3, Kling and LTX. The fastest path to real coverage. |
-| Google Gemini Omni | new adapter in `@effect-uai/google` | Google's own docs make it the default video model. |
-| MiniMax | new package | Top of the image-to-video leaderboard, and the fast tier the TV station runs on. |
-| ByteDance Dreamina Seedance | new package | The leading video model right now. |
-| BFL | new package | Top 5 on text-to-video. |
-| Runway | new package | The only one of these that fal does not host, so a package is the only way to reach it. |
+| Provider                    | How                                     | Why                                                                                                              |
+| --------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| fal                         | new video adapter on a new queue client | One adapter reaches MiniMax H3, Dreamina Seedance, BFL FLUX 3, Kling and LTX. The fastest path to real coverage. |
+| Google Gemini Omni          | new adapter in `@effect-uai/google`     | Google's own docs make it the default video model.                                                               |
+| MiniMax                     | new package                             | Top of the image-to-video leaderboard, and the fast tier the TV station runs on.                                 |
+| ByteDance Dreamina Seedance | new package                             | The leading video model right now.                                                                               |
+| BFL                         | new package                             | Top 5 on text-to-video.                                                                                          |
+| Runway                      | new package                             | The only one of these that fal does not host, so a package is the only way to reach it.                          |
 
 **Excluded, decided.** Veo, because Google's video guide says to use
 Gemini Omni Flash as the default and Veo only for scene extension and
@@ -69,11 +69,11 @@ and the plan changes accordingly.
 `Job.ts` is used by exactly one capability, `DeepResearch`, and by three
 providers through it.
 
-| File | What it does |
-| --- | --- |
-| `core/src/job/Job.ts` | `JobRef`, `JobState`, `JobOps`, plus `collect` (poll to settled) and `run` (submit then collect) |
-| `core/src/research/DeepResearch.ts` | `fromJob` derives the whole service from three wire ops |
-| `google/src/GoogleDeepResearch.ts`, `responses/src/OpenAIDeepResearch.ts`, `perplexity/src/PerplexityDeepResearch.ts` | each supplies `submit` / `poll` / `cancel` and calls `fromJob(ops, cfg.job)` |
+| File                                                                                                                  | What it does                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `core/src/job/Job.ts`                                                                                                 | `JobRef`, `JobState`, `JobOps`, plus `collect` (poll to settled) and `run` (submit then collect) |
+| `core/src/research/DeepResearch.ts`                                                                                   | `fromJob` derives the whole service from three wire ops                                          |
+| `google/src/GoogleDeepResearch.ts`, `responses/src/OpenAIDeepResearch.ts`, `perplexity/src/PerplexityDeepResearch.ts` | each supplies `submit` / `poll` / `cancel` and calls `fromJob(ops, cfg.job)`                     |
 
 Your intuition was right on the first half: **no provider writes a poll
 loop.** Each supplies three wire calls and nothing else. The loop lives
@@ -127,8 +127,8 @@ So the blocking path reads as two visible steps, and the poll cadence
 and timeout are arguments rather than hidden defaults:
 
 ```ts
-const ref = yield* VideoGenerator.submit({ model, prompt })
-const result = yield* VideoGenerator.collect(ref, { pollInterval: "3 seconds" })
+const ref = yield * VideoGenerator.submit({ model, prompt })
+const result = yield * VideoGenerator.collect(ref, { pollInterval: "3 seconds" })
 ```
 
 What this buys, concretely. A caller can submit ten clips, persist the
@@ -156,16 +156,16 @@ should change.**
 
 Candidates in Effect, and whether any replaces what we hand-rolled:
 
-| Effect primitive | What it is | Fit |
-| --- | --- | --- |
-| `Effect.repeat({ schedule, until })` plus `Effect.timeoutOrElse` | repeat an effect on a schedule until a predicate holds, bounded | **This is already what `Job.collect` uses.** It is the idiomatic polling loop. Not reinvented. |
+| Effect primitive                                                                                        | What it is                                                                                                                      | Fit                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Effect.repeat({ schedule, until })` plus `Effect.timeoutOrElse`                                        | repeat an effect on a schedule until a predicate holds, bounded                                                                 | **This is already what `Job.collect` uses.** It is the idiomatic polling loop. Not reinvented.                                                                                                                                                                |
 | `effect/unstable/workflow`: `Workflow`, `Activity`, `DurableDeferred`, `DurableQueue`, `WorkflowEngine` | durable execution of **our own** code, with execute / poll / interrupt / resume, backed by a `WorkflowEngine` persistence layer | Wrong direction, and see the note below. Its durable state is ours to store; our durable state is the provider's, and we hold a remote handle to it. Adopting it would mean standing up a persistence backend to track work someone else is already tracking. |
-| `Resource` | a value loaded into memory, refreshable manually or on a schedule | No. Caches a current value, does not model a one-shot remote job. |
-| `Cache`, `ScopedCache`, `Pool`, `RcRef`, `ScopedRef` | caching and lifecycle | No. |
-| `Deferred`, `Latch` | in-process completion signal | No. Dies with the process, which is the case the ref exists for. |
-| `Request` / `RequestResolver` | batching and deduplicating data fetches | No, though it is the closest thing to a "handle plus resolution" shape. |
-| `Data.TaggedEnum` | tagged union with generated constructors, `$is` and `$match` | **Yes, for `JobState`.** |
-| `Schema` | encode and decode | **Yes, for `JobRef`.** |
+| `Resource`                                                                                              | a value loaded into memory, refreshable manually or on a schedule                                                               | No. Caches a current value, does not model a one-shot remote job.                                                                                                                                                                                             |
+| `Cache`, `ScopedCache`, `Pool`, `RcRef`, `ScopedRef`                                                    | caching and lifecycle                                                                                                           | No.                                                                                                                                                                                                                                                           |
+| `Deferred`, `Latch`                                                                                     | in-process completion signal                                                                                                    | No. Dies with the process, which is the case the ref exists for.                                                                                                                                                                                              |
+| `Request` / `RequestResolver`                                                                           | batching and deduplicating data fetches                                                                                         | No, though it is the closest thing to a "handle plus resolution" shape.                                                                                                                                                                                       |
+| `Data.TaggedEnum`                                                                                       | tagged union with generated constructors, `$is` and `$match`                                                                    | **Yes, for `JobState`.**                                                                                                                                                                                                                                      |
+| `Schema`                                                                                                | encode and decode                                                                                                               | **Yes, for `JobRef`.**                                                                                                                                                                                                                                        |
 
 So there is no Effect primitive that subsumes `JobRef` plus
 `JobOps`, and the loop we wrote is the one Effect would have us write.
@@ -400,9 +400,16 @@ many callers only want to hand the URL to a player or a CDN.
 The cost is the expiry footgun, which is real and uneven: about an hour
 on MiniMax V1, roughly 24 hours on Dreamina, 24 to 48 on Runway, 48 on
 the Omni Files API, 30 days on Kling, configurable on fal. Mitigated
-two ways. Each provider doc states its lifetime in the first screen. And
-core ships a `download` helper that resolves a `url` variant into
-`bytes`, provider-aware because some URIs need auth attached.
+two ways. Each provider doc states its lifetime in the first screen.
+And core ships an opt-in `download` that reads any `VideoSource` into
+bytes, so persisting a clip is one call rather than a hand-rolled fetch.
+
+Two details of that helper, settled while building it. It fails with the
+HTTP client's own error rather than an `AiError`, because every `AiError`
+variant carries a required `provider` and a plain GET has none to name.
+And a provider whose URLs carry auth, such as Omni's Files API URI,
+resolves them inside its own adapter and never hands back a link the
+caller cannot fetch.
 
 ## Errors
 
@@ -420,16 +427,16 @@ than a `ContentFiltered` we can justify.
 
 ## Consistency with the existing capabilities
 
-| Convention | Where it lives today | Applied here |
-| --- | --- | --- |
-| One generic `Context.Service` tag, `Common*Request` with `model: string`, module-level helpers that `Effect.flatMap` the tag | every capability | `VideoGenerator`, `CommonVideoGenerateRequest`, `submit` / `status` / `cancel` / `collect` |
-| Provider request = `Omit<Common, "model"> & { model: TypedUnion; ...knobs }`; one `layer` registers both tags | `FalImageGenerator`, `GeminiImageGenerator` | `FalVideoGenerator`, `GeminiOmniVideoGenerator` |
-| Background job ops are `submit` / `poll` / `cancel`, and core owns the loop | `Job.ts`, `DeepResearch.fromJob` | same ops, but **no derived blocking method** |
-| Optional methods gated by a `void` marker tag | `SttStreaming`, `ImageStreaming` | none in v1; `DetachableVideoJob` is the escalation if option 3 above is taken |
-| No per-model capability tables. Send it, translate the error | capabilities-plan §2.3 | resolution and duration limits are the server's call |
-| `Config = { apiKey, baseUrl?, job? }` | `GoogleDeepResearch.Config` | same on every adapter |
-| Per-item and per-response `providerData` with a typed reader | `FalImageGenerator.imageDataOf` | `videoDataOf` / `responseDataOf` |
-| Docs: `docs/<capability>/index.md` plus `providers/<provider>.md` | `docs/image-generation/` | same, each provider page leading with URL lifetime |
+| Convention                                                                                                                   | Where it lives today                        | Applied here                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| One generic `Context.Service` tag, `Common*Request` with `model: string`, module-level helpers that `Effect.flatMap` the tag | every capability                            | `VideoGenerator`, `CommonVideoGenerateRequest`, `submit` / `status` / `cancel` / `collect` |
+| Provider request = `Omit<Common, "model"> & { model: TypedUnion; ...knobs }`; one `layer` registers both tags                | `FalImageGenerator`, `GeminiImageGenerator` | `FalVideoGenerator`, `GeminiOmniVideoGenerator`                                            |
+| Background job ops are `submit` / `poll` / `cancel`, and core owns the loop                                                  | `Job.ts`, `DeepResearch.fromJob`            | same ops, but **no derived blocking method**                                               |
+| Optional methods gated by a `void` marker tag                                                                                | `SttStreaming`, `ImageStreaming`            | none in v1; `DetachableVideoJob` is the escalation if option 3 above is taken              |
+| No per-model capability tables. Send it, translate the error                                                                 | capabilities-plan §2.3                      | resolution and duration limits are the server's call                                       |
+| `Config = { apiKey, baseUrl?, job? }`                                                                                        | `GoogleDeepResearch.Config`                 | same on every adapter                                                                      |
+| Per-item and per-response `providerData` with a typed reader                                                                 | `FalImageGenerator.imageDataOf`             | `videoDataOf` / `responseDataOf`                                                           |
+| Docs: `docs/<capability>/index.md` plus `providers/<provider>.md`                                                            | `docs/image-generation/`                    | same, each provider page leading with URL lifetime                                         |
 
 ---
 
@@ -442,15 +449,21 @@ most fun thing to have running.
 
 ## Phase 0: lock the open decisions
 
-No code. Resolve, in this document:
+No code. All resolved, 2026-09-19.
 
-1. Whether `JobState` gains a `Cancelled` variant or cancellation stays
-   in `Failed` with a reason. Recommendation: stays in `Failed`.
-2. Whether Kling gets a direct package eventually or stays fal-only.
-
-**Decided:** duration is always a `Duration.Duration`, on the request,
-on `GeneratedVideo` and on `VideoUsage`. No raw seconds in any public
-type; adapters convert at the wire boundary.
+- **Duration is always a `Duration.Duration`,** on the request, on
+  `GeneratedVideo` and on `VideoUsage`. No raw seconds in any public
+  type; adapters convert at the wire boundary.
+- **`JobState` does not gain a `Cancelled` variant.** Cancellation lands
+  in `Failed` with the provider's status as the reason. The caller who
+  cancelled knows they did, so nothing is lost, and a fifth variant
+  would touch `DeepResearch` for no gain. Revisit only if a recipe needs
+  to distinguish a cancelled job from a failed one without having issued
+  the cancel itself.
+- **Kling stays fal-only.** It is reachable through the fal adapter from
+  Phase 2, and versioning by URL path makes a direct package a
+  meaningfully different shape from the other four. Revisit after
+  Phase 5, not before.
 
 ## Phase 1: core primitives
 
@@ -465,20 +478,29 @@ type; adapters convert at the wire boundary.
   - Convert `JobState` to a `Data.TaggedEnum` via `WithGenerics<1>`, per
     the analysis above. The resulting type is still a structural union,
     so the three deep-research adapters need no edits.
-  - Add optional `progress` and `queuePosition` to `Running`.
+  - Add optional `queuePosition` to `Running`. No percentage field: no
+    provider in the set reports one, and a bare number is ambiguous
+    between a fraction and a percent.
   - Add a `Schema` for `JobRef`, so a ref persisted to a database or a
     queue can be decoded back rather than cast.
 
   These three are worth landing as their own change, reviewable on its
   own, because they touch `DeepResearch` as well. Its tests should pass
   untouched, which is the check that the conversion really was additive.
+
 - `core/src/video-generator/VideoGenerator.ts`: the tag, the common
   request and response types, `submit` / `status` / `cancel` accessors,
   and the `collect` free function.
-- `core/src/video-generator/download.ts` or a method on the service:
-  resolve a `url` `VideoSource` into `bytes`.
-- Package exports for `./Video` and `./VideoGenerator`, plus
-  `core/src/index.ts`.
+- `VideoInput` in `domain/Video.ts`: a `Data.TaggedEnum` of `FirstFrame`,
+  `LastFrame` and `ReferenceImage`, carried on the request as an ordered
+  `inputs` array. The role is explicit because it is not inferable from
+  the image, and four of six providers take exactly this shape on the
+  wire. `prompt` stays a separate required string, since every provider
+  demands exactly one text and none accepts several as equals.
+- `core/src/video-generator/download.ts`: opt-in `download` from any
+  `VideoSource` to bytes, failing with the HTTP client's own error.
+- Package exports for `./Video`, `./VideoGenerator` and
+  `./VideoDownload`, plus `core/src/index.ts`.
 
 Deliverable: the capability compiles and has no providers. Tests cover
 `collect`'s settle and timeout behaviour against a fake `status`.

@@ -16,24 +16,24 @@ From https://ai.google.dev/gemini-api/docs/video (the whole page is short, this 
 >
 > Use Gemini Omni Flash as your default model for video generation. It provides superior video coherence, multi-input reasoning (supporting text, images, audio, and video inputs simultaneously), character consistency, factual accuracy, and multi-turn conversational editing (e.g., element replacement or perspective changes). Use Veo 3.1 for specific capabilities like scene extension, last-frame control, or integration with legacy pipelines are required." (sic, the sentence is ungrammatical in the source)
 
-So: **Gemini Omni Flash is the default; Veo 3.1 is the specialist / legacy path.** Veo is *not* deprecated. `veo-3.1-generate-preview`, `veo-3.1-fast-generate-preview` and `veo-3.1-lite-generate-preview` all show "No shutdown date announced" on the deprecations page (https://ai.google.dev/gemini-api/docs/deprecations), and the Veo guide is still actively maintained (4K added 2026-01-13, Lite launched 2026-03-31). What *is* superseded is the Veo 3.0 / 2.0 generation, which is shut down.
+So: **Gemini Omni Flash is the default; Veo 3.1 is the specialist / legacy path.** Veo is _not_ deprecated. `veo-3.1-generate-preview`, `veo-3.1-fast-generate-preview` and `veo-3.1-lite-generate-preview` all show "No shutdown date announced" on the deprecations page (https://ai.google.dev/gemini-api/docs/deprecations), and the Veo guide is still actively maintained (4K added 2026-01-13, Lite launched 2026-03-31). What _is_ superseded is the Veo 3.0 / 2.0 generation, which is shut down.
 
 Note the positioning oddity: Omni is **GA and paid-only**, while all three Veo 3.1 ids on the Gemini API are still **Preview**. The GA Veo 3.1 ids live on the Gemini Enterprise Agent Platform (section 1.3).
 
 ### 1.1 Current model ids, Gemini API
 
-| Model id (exact) | Display name | Status | Release date | Shutdown |
-|---|---|---|---|---|
-| `gemini-omni-1.1-flash` | Gemini Omni Flash | Stable / GA | August 27, 2026 | "No shutdown date announced" |
-| `gemini-omni-flash-preview` | Gemini Omni Flash (preview) | Preview | June 30, 2026 | **September 30, 2026** (replace with `gemini-omni-1.1-flash`) |
-| `veo-3.1-generate-preview` | Veo 3.1 | Preview | October 15, 2025 | "No shutdown date announced" |
-| `veo-3.1-fast-generate-preview` | Veo 3.1 Fast | Preview | October 15, 2025 | "No shutdown date announced" |
-| `veo-3.1-lite-generate-preview` | Veo 3.1 Lite | Preview | March 31, 2026 | "No shutdown date announced" |
-| `veo-3.0-generate-001` | Veo 3 | Deprecated | September 9, 2025 | **June 30, 2026** (shut down) |
-| `veo-3.0-fast-generate-001` | Veo 3 Fast | Deprecated | September 9, 2025 | **June 30, 2026** (shut down) |
-| `veo-2.0-generate-001` | Veo 2 | Deprecated | April 9, 2025 | **June 30, 2026** (shut down) |
-| `veo-3.0-generate-preview` | Veo 3 preview | Shut down | July 31, 2025 | November 12, 2025 |
-| `veo-3.0-fast-generate-preview` | Veo 3 Fast preview | Shut down | July 31, 2025 | November 12, 2025 |
+| Model id (exact)                | Display name                | Status      | Release date      | Shutdown                                                      |
+| ------------------------------- | --------------------------- | ----------- | ----------------- | ------------------------------------------------------------- |
+| `gemini-omni-1.1-flash`         | Gemini Omni Flash           | Stable / GA | August 27, 2026   | "No shutdown date announced"                                  |
+| `gemini-omni-flash-preview`     | Gemini Omni Flash (preview) | Preview     | June 30, 2026     | **September 30, 2026** (replace with `gemini-omni-1.1-flash`) |
+| `veo-3.1-generate-preview`      | Veo 3.1                     | Preview     | October 15, 2025  | "No shutdown date announced"                                  |
+| `veo-3.1-fast-generate-preview` | Veo 3.1 Fast                | Preview     | October 15, 2025  | "No shutdown date announced"                                  |
+| `veo-3.1-lite-generate-preview` | Veo 3.1 Lite                | Preview     | March 31, 2026    | "No shutdown date announced"                                  |
+| `veo-3.0-generate-001`          | Veo 3                       | Deprecated  | September 9, 2025 | **June 30, 2026** (shut down)                                 |
+| `veo-3.0-fast-generate-001`     | Veo 3 Fast                  | Deprecated  | September 9, 2025 | **June 30, 2026** (shut down)                                 |
+| `veo-2.0-generate-001`          | Veo 2                       | Deprecated  | April 9, 2025     | **June 30, 2026** (shut down)                                 |
+| `veo-3.0-generate-preview`      | Veo 3 preview               | Shut down   | July 31, 2025     | November 12, 2025                                             |
+| `veo-3.0-fast-generate-preview` | Veo 3 Fast preview          | Shut down   | July 31, 2025     | November 12, 2025                                             |
 
 Dates from https://ai.google.dev/gemini-api/docs/deprecations and https://ai.google.dev/gemini-api/docs/changelog.
 
@@ -46,6 +46,7 @@ Quirk worth knowing for a model registry: the "All generative media models" tabl
 August 27, 2026 (https://ai.google.dev/gemini-api/docs/changelog):
 
 > "**Gemini Omni Flash generally available (GA)**: Released `gemini-omni-1.1-flash`, the GA version of our fast, conversational video generation and editing model. This release includes significant new capabilities:
+>
 > - **Video extension**: Seamlessly extend existing videos by generating continuations at the end of a clip using the `extend` task or directly with a prompt.
 > - **Interpolation (first + last frame)**: Generate a video transitioning between two images using the `image_to_video` task with up to 2 images.
 > - **Resolution control**: New `resolution` parameter in `video_config` supports `360p`, `720p` (default), `1080p`, and `4k` outputs. 1080p and 4K outputs are generated using upscaling.
@@ -64,11 +65,11 @@ June 15, 2026 (Veo 3.0/2.0 deprecation announcement):
 
 From https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/veo/3-1-generate:
 
-| Model id (exact) | Launch stage | Release date | Retirement |
-|---|---|---|---|
-| `veo-3.1-generate-001` | GA | November 17, 2025 | "November 17, 2026 or later" |
-| `veo-3.1-fast-generate-001` | GA | November 17, 2025 | "November 17, 2026 or later" |
-| `veo-3.1-lite-generate-001` | Preview | April 2, 2026 | not stated |
+| Model id (exact)            | Launch stage | Release date      | Retirement                   |
+| --------------------------- | ------------ | ----------------- | ---------------------------- |
+| `veo-3.1-generate-001`      | GA           | November 17, 2025 | "November 17, 2026 or later" |
+| `veo-3.1-fast-generate-001` | GA           | November 17, 2025 | "November 17, 2026 or later" |
+| `veo-3.1-lite-generate-001` | Preview      | April 2, 2026     | not stated                   |
 
 `veo-3.1-fast-generate-preview` also still appears on GEAP reference pages alongside the `-001` ids. No Gemini Omni video model is documented on GEAP as of this date (UNVERIFIED that it is absent; I did not exhaustively crawl GEAP, but the GEAP video model index reached from the Veo page lists only Veo).
 
@@ -106,10 +107,10 @@ Auth: the guide shows both `?key=$API_KEY` as a query parameter and `-H "x-goog-
   "model": "gemini-omni-1.1-flash",
   "previous_interaction_id": "v1_...",
   "input": [
-    {"type": "text",  "text": "..."},
-    {"type": "image", "data": "<base64>", "mime_type": "image/jpeg"},
-    {"type": "image", "uri": "https://generativelanguage.googleapis.com/v1beta/files/..."},
-    {"type": "video", "uri": "...", "mime_type": "video/mp4"}
+    { "type": "text", "text": "..." },
+    { "type": "image", "data": "<base64>", "mime_type": "image/jpeg" },
+    { "type": "image", "uri": "https://generativelanguage.googleapis.com/v1beta/files/..." },
+    { "type": "video", "uri": "...", "mime_type": "video/mp4" }
   ],
   "generation_config": {
     "video_config": { "task": "text_to_video" }
@@ -138,10 +139,12 @@ Response, inline:
 ```json
 {
   "steps": [
-    { "type": "user_input", "content": [{"type": "text", "text": "..."}] },
-    { "type": "thought", "content": [{"text": "...", "type": "thought"}] },
-    { "type": "model_output",
-      "content": [{ "type": "video", "mime_type": "video/mp4", "data": "AAAAIGZ0eXBpc29t..." }] }
+    { "type": "user_input", "content": [{ "type": "text", "text": "..." }] },
+    { "type": "thought", "content": [{ "text": "...", "type": "thought" }] },
+    {
+      "type": "model_output",
+      "content": [{ "type": "video", "mime_type": "video/mp4", "data": "AAAAIGZ0eXBpc29t..." }]
+    }
   ],
   "id": "v1_...",
   "status": "completed",
@@ -155,11 +158,19 @@ Response, uri:
 ```json
 {
   "steps": [
-    { "type": "model_output",
-      "content": [{ "type": "video", "mime_type": "video/mp4",
-                    "uri": "https://generativelanguage.googleapis.com/v1beta/files/...:download?alt=media" }] }
+    {
+      "type": "model_output",
+      "content": [
+        {
+          "type": "video",
+          "mime_type": "video/mp4",
+          "uri": "https://generativelanguage.googleapis.com/v1beta/files/...:download?alt=media"
+        }
+      ]
+    }
   ],
-  "id": "v1_...", "status": "completed"
+  "id": "v1_...",
+  "status": "completed"
 }
 ```
 
@@ -236,23 +247,23 @@ Auth is OAuth (`Authorization: Bearer $(gcloud auth print-access-token)`), not a
 
 Omni deliberately has **very few knobs**. Duration, camera, audio and negatives are all prompt-level, not fields.
 
-| Knob | Where | Values | Notes |
-|---|---|---|---|
-| prompt | `input[].text` or `input` as a plain string | free text | context window 1,048,576 tokens |
-| image (first frame) | `input[]` part `{"type":"image", ...}` | base64 `data` + `mime_type`, or Files `uri` | 1 image = image-to-video |
-| last frame | second `image` part in `input[]` | as above | "up to 2 images" with `image_to_video` gives interpolation |
-| reference images | more `image` parts | multiple; docs show 2 subject images, no hard cap stated for images | UNVERIFIED max count for image references |
-| video input | `input[]` part `{"type":"video", "uri": ...}` | Files API upload preferred | used for `edit` and `extend` |
-| video references | `input[]` | "maximum of 3 clips, up to 3 seconds each" | audio in a video reference is ignored |
-| `task` | `generation_config.video_config.task` | `text_to_video`, `image_to_video`, `reference_to_video`, `edit`, `extend` | optional, model infers otherwise; docs advise prompting first because "using the `task` field adds strict constraints" |
-| `aspect_ratio` | `response_format` | `"16:9"` (default), `"9:16"` | only two values |
-| `resolution` | `response_format` | `"360p"`, `"720p"` (default), `"1080p"`, `"4k"` | 1080p and 4K are **upscaled**, per the changelog and the guide table ("1080p output (upscaled)", "4K output (upscaled)") |
-| `delivery` | `response_format` | `inline` (default), `uri` | API reference spells the values `inline`/`uri`; the guide prose says `base64`/`uri`, the guide's samples use `uri` |
-| `duration` | `response_format` (`VideoResponseFormat.duration`, type `string`) | not documented | Present in the API reference at https://ai.google.dev/api/interactions but **absent from the guide, which never sets it**. Allowed values UNVERIFIED. Output range is 3s to 10s per the model card. |
-| `previous_interaction_id` | top level | prior interaction id | carries the video state for multi-turn edit/extend |
-| `store` | top level | bool, default `true` | `store=false` breaks multi-turn editing and background execution |
-| `background` | top level | bool | docs recommend `false` for video |
-| `stream` | top level | bool | see section 6 |
+| Knob                      | Where                                                             | Values                                                                    | Notes                                                                                                                                                                                               |
+| ------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| prompt                    | `input[].text` or `input` as a plain string                       | free text                                                                 | context window 1,048,576 tokens                                                                                                                                                                     |
+| image (first frame)       | `input[]` part `{"type":"image", ...}`                            | base64 `data` + `mime_type`, or Files `uri`                               | 1 image = image-to-video                                                                                                                                                                            |
+| last frame                | second `image` part in `input[]`                                  | as above                                                                  | "up to 2 images" with `image_to_video` gives interpolation                                                                                                                                          |
+| reference images          | more `image` parts                                                | multiple; docs show 2 subject images, no hard cap stated for images       | UNVERIFIED max count for image references                                                                                                                                                           |
+| video input               | `input[]` part `{"type":"video", "uri": ...}`                     | Files API upload preferred                                                | used for `edit` and `extend`                                                                                                                                                                        |
+| video references          | `input[]`                                                         | "maximum of 3 clips, up to 3 seconds each"                                | audio in a video reference is ignored                                                                                                                                                               |
+| `task`                    | `generation_config.video_config.task`                             | `text_to_video`, `image_to_video`, `reference_to_video`, `edit`, `extend` | optional, model infers otherwise; docs advise prompting first because "using the `task` field adds strict constraints"                                                                              |
+| `aspect_ratio`            | `response_format`                                                 | `"16:9"` (default), `"9:16"`                                              | only two values                                                                                                                                                                                     |
+| `resolution`              | `response_format`                                                 | `"360p"`, `"720p"` (default), `"1080p"`, `"4k"`                           | 1080p and 4K are **upscaled**, per the changelog and the guide table ("1080p output (upscaled)", "4K output (upscaled)")                                                                            |
+| `delivery`                | `response_format`                                                 | `inline` (default), `uri`                                                 | API reference spells the values `inline`/`uri`; the guide prose says `base64`/`uri`, the guide's samples use `uri`                                                                                  |
+| `duration`                | `response_format` (`VideoResponseFormat.duration`, type `string`) | not documented                                                            | Present in the API reference at https://ai.google.dev/api/interactions but **absent from the guide, which never sets it**. Allowed values UNVERIFIED. Output range is 3s to 10s per the model card. |
+| `previous_interaction_id` | top level                                                         | prior interaction id                                                      | carries the video state for multi-turn edit/extend                                                                                                                                                  |
+| `store`                   | top level                                                         | bool, default `true`                                                      | `store=false` breaks multi-turn editing and background execution                                                                                                                                    |
+| `background`              | top level                                                         | bool                                                                      | docs recommend `false` for video                                                                                                                                                                    |
+| `stream`                  | top level                                                         | bool                                                                      | see section 6                                                                                                                                                                                       |
 
 **Explicitly unsupported on Omni**, verbatim from the Limitations section:
 
@@ -266,18 +277,18 @@ Fixed output characteristics: 24 FPS, MP4, 3s to 10s (model card, https://ai.goo
 
 Verbatim from the "Veo API parameters and specifications" table on https://ai.google.dev/gemini-api/docs/veo:
 
-| Parameter | Veo 3.1 and Veo 3.1 Fast | Veo 3.1 Lite |
-|---|---|---|
-| `prompt` (instances) | `string`, 1,024 token limit | same |
-| `image` (instances) | `Image` object | `Image` object |
-| `lastFrame` (instances) | `Image` object, "Must be used in combination with the `image` parameter" | `Image` object |
-| `referenceImages` (instances) | `VideoGenerationReferenceImage` object, "Up to three images to be used as style and content references" | **n/a** |
-| `video` (instances) | `Video` object from a previous generation | **n/a** |
-| `aspectRatio` | `"16:9"` (default), `"9:16"` | same |
-| `durationSeconds` | `"4"`, `"6"`, `"8"`. Must be `"8"` with extension, reference images, 1080p or 4k | `"4"`, `"6"`, `"8"`. Must be `"8"` with reference images or 1080p |
-| `resolution` | `"720p"` (default), `"1080p"` (8s only), `"4k"` (8s only); `"720p"` only for extension | `"720p"` (default), `"1080p"` (8s only) |
-| `personGeneration` | text-to-video and extension: `"allow_all"` only. Image-to-video, interpolation, reference images: `"allow_adult"` only | text-to-video: `"allow_all"` only. Image-to-video, interpolation, reference images: `"allow_adult"` only |
-| `seed` | "Note that the `seed` parameter is also available for Veo 3 models. It doesn't guarantee determinism, but slightly improves it." | listed N/A for Lite in the derived table |
+| Parameter                     | Veo 3.1 and Veo 3.1 Fast                                                                                                         | Veo 3.1 Lite                                                                                             |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `prompt` (instances)          | `string`, 1,024 token limit                                                                                                      | same                                                                                                     |
+| `image` (instances)           | `Image` object                                                                                                                   | `Image` object                                                                                           |
+| `lastFrame` (instances)       | `Image` object, "Must be used in combination with the `image` parameter"                                                         | `Image` object                                                                                           |
+| `referenceImages` (instances) | `VideoGenerationReferenceImage` object, "Up to three images to be used as style and content references"                          | **n/a**                                                                                                  |
+| `video` (instances)           | `Video` object from a previous generation                                                                                        | **n/a**                                                                                                  |
+| `aspectRatio`                 | `"16:9"` (default), `"9:16"`                                                                                                     | same                                                                                                     |
+| `durationSeconds`             | `"4"`, `"6"`, `"8"`. Must be `"8"` with extension, reference images, 1080p or 4k                                                 | `"4"`, `"6"`, `"8"`. Must be `"8"` with reference images or 1080p                                        |
+| `resolution`                  | `"720p"` (default), `"1080p"` (8s only), `"4k"` (8s only); `"720p"` only for extension                                           | `"720p"` (default), `"1080p"` (8s only)                                                                  |
+| `personGeneration`            | text-to-video and extension: `"allow_all"` only. Image-to-video, interpolation, reference images: `"allow_adult"` only           | text-to-video: `"allow_all"` only. Image-to-video, interpolation, reference images: `"allow_adult"` only |
+| `seed`                        | "Note that the `seed` parameter is also available for Veo 3 models. It doesn't guarantee determinism, but slightly improves it." | listed N/A for Lite in the derived table                                                                 |
 
 Note the values are **strings** for `durationSeconds`, not integers, on the Gemini API.
 
@@ -318,16 +329,16 @@ Genuinely uniform across both Google video paths: **prompt, aspect ratio (16:9 /
 
 Not uniform, do not promote to a common request:
 
-| Knob | Omni | Veo 3.1 (Gemini API) | Veo 3.1 (Vertex) |
-|---|---|---|---|
-| duration | prompt-driven, 3 to 10s, undocumented `duration` field | `durationSeconds` string "4"/"6"/"8" | `durationSeconds` integer |
-| negative prompt | not supported, use the prompt | not supported | `negativePrompt` |
-| seed | no | ambiguous, UNVERIFIED | yes, uint32 |
-| person generation | no field | `allow_all` / `allow_adult` | `allow_adult` / `disallow` |
-| number of videos | no field | 1 | `sampleCount` 1 to 4 |
-| audio toggle | none, always on | none, always on | none, always on |
-| 4K | yes, upscaled | 3.1 and Fast only, 8s only | Preview models only |
-| field naming | `snake_case` | `camelCase` | `camelCase` |
+| Knob              | Omni                                                   | Veo 3.1 (Gemini API)                 | Veo 3.1 (Vertex)           |
+| ----------------- | ------------------------------------------------------ | ------------------------------------ | -------------------------- |
+| duration          | prompt-driven, 3 to 10s, undocumented `duration` field | `durationSeconds` string "4"/"6"/"8" | `durationSeconds` integer  |
+| negative prompt   | not supported, use the prompt                          | not supported                        | `negativePrompt`           |
+| seed              | no                                                     | ambiguous, UNVERIFIED                | yes, uint32                |
+| person generation | no field                                               | `allow_all` / `allow_adult`          | `allow_adult` / `disallow` |
+| number of videos  | no field                                               | 1                                    | `sampleCount` 1 to 4       |
+| audio toggle      | none, always on                                        | none, always on                      | none, always on            |
+| 4K                | yes, upscaled                                          | 3.1 and Fast only, 8s only           | Preview models only        |
+| field naming      | `snake_case`                                           | `camelCase`                          | `camelCase`                |
 
 The naming split is worth flagging: the Interactions API is `snake_case` end to end (`aspect_ratio`, `mime_type`, `previous_interaction_id`), while `predictLongRunning` is `camelCase` (`aspectRatio`, `mimeType`, `durationSeconds`). One provider package, two codecs.
 
@@ -374,16 +385,16 @@ Vertex additionally documents an "Insert objects into Veo videos" page, so objec
 
 ## 5. Audio
 
-| | Omni | Veo 3.1 / Fast / Lite |
-|---|---|---|
-| Native audio | yes | yes |
-| Toggle | none | none. Model features table: "**Audio:** Natively generates audio with video. ✔️ Always on" for all three variants |
-| Dialogue and lip-sync | yes, prompted. Veo's own sample prompt embeds quoted dialogue in the prompt string | yes, the flagship text-to-video sample is a "Dialogue & sound effects" example with quoted speech |
-| Sound effects / music | yes, prompted: "Include calm background music", "The video has a high energy techno beat" | yes, "Prompting for audio" section |
-| Audio input | accepted as an input modality by the model, but "Uploading audio references is unsupported in the current version of the API" | not supported (Vertex model card: Audio "Not supported") |
-| Audio on video references | "any audio in a video reference is ignored" | n/a |
-| Container | `video/mp4` | `video/mp4` |
-| Codecs | **UNVERIFIED.** Neither page names a video or audio codec. Only `mimeType: video/mp4` and 24 FPS are documented. | same |
+|                           | Omni                                                                                                                          | Veo 3.1 / Fast / Lite                                                                                             |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Native audio              | yes                                                                                                                           | yes                                                                                                               |
+| Toggle                    | none                                                                                                                          | none. Model features table: "**Audio:** Natively generates audio with video. ✔️ Always on" for all three variants |
+| Dialogue and lip-sync     | yes, prompted. Veo's own sample prompt embeds quoted dialogue in the prompt string                                            | yes, the flagship text-to-video sample is a "Dialogue & sound effects" example with quoted speech                 |
+| Sound effects / music     | yes, prompted: "Include calm background music", "The video has a high energy techno beat"                                     | yes, "Prompting for audio" section                                                                                |
+| Audio input               | accepted as an input modality by the model, but "Uploading audio references is unsupported in the current version of the API" | not supported (Vertex model card: Audio "Not supported")                                                          |
+| Audio on video references | "any audio in a video reference is ignored"                                                                                   | n/a                                                                                                               |
+| Container                 | `video/mp4`                                                                                                                   | `video/mp4`                                                                                                       |
+| Codecs                    | **UNVERIFIED.** Neither page names a video or audio codec. Only `mimeType: video/mp4` and 24 FPS are documented.              | same                                                                                                              |
 
 Veo has an audio-specific failure mode worth handling:
 
@@ -409,7 +420,7 @@ Every sample polls `jq .done` on a 10 second loop. There is **no** `metadata.pro
 
 ### Omni: SSE exists, but not for progressive video
 
-This one needs care because there *is* a streaming surface, and it *does* touch video.
+This one needs care because there _is_ a streaming surface, and it _does_ touch video.
 
 What is confirmed:
 
@@ -426,23 +437,23 @@ What is **not** confirmed, and should be treated as UNVERIFIED:
 
 **For a `VideoGenerator` capability:** model Google as request-then-await-a-whole-file. Model Veo as an explicit long-running operation with `done` polling at ~10s and a separate authenticated download. Model Omni as a single blocking call, optionally with a Files API poll when `delivery: "uri"`. Do not promise progressive frames on either. If we want a stream-shaped API, the only honest events are lifecycle events (submitted, still running, ready, downloading), not media.
 
-The Omni URI mode is arguably worse than Veo's for a library, because the create call blocks for the full generation *and then* you still have to poll the Files API for `ACTIVE`. Veo at least returns control immediately.
+The Omni URI mode is arguably worse than Veo's for a library, because the create call blocks for the full generation _and then_ you still have to poll the Files API for `ACTIVE`. Veo at least returns control immediately.
 
 ---
 
 ## 7. Output and safety
 
-| | Omni | Veo 3.1 |
-|---|---|---|
-| Container | MP4 (`video/mp4`) | MP4 (`video/mp4`) |
-| Codec | UNVERIFIED | UNVERIFIED |
-| Frame rate | 24 FPS | 24 FPS |
-| Duration | 3s to 10s | 4s, 6s, 8s (extension up to 148s total) |
-| Resolutions | 360p, 720p, 1080p (upscaled), 4K (upscaled) | 720p, 1080p (8s only), 4k (8s only, not Lite) |
-| Videos per request | 1 | 1 (Gemini API); up to 4 on Vertex via `sampleCount` |
-| Watermark | "All generated videos include SynthID watermarking, which is invisible to viewers but can be detected programmatically for provenance verification." | "Videos created by Veo are watermarked using SynthID... Videos can be verified using the SynthID verification platform." |
-| C2PA | not stated on the Gemini API pages | "Content Credentials (C2PA): Supported" on GEAP for all three `-001` ids |
-| Retention | Files API 48 hours; interaction record 55 days paid / 1 day free | 2 days, timer resets if the video is referenced for extension |
+|                    | Omni                                                                                                                                                 | Veo 3.1                                                                                                                  |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Container          | MP4 (`video/mp4`)                                                                                                                                    | MP4 (`video/mp4`)                                                                                                        |
+| Codec              | UNVERIFIED                                                                                                                                           | UNVERIFIED                                                                                                               |
+| Frame rate         | 24 FPS                                                                                                                                               | 24 FPS                                                                                                                   |
+| Duration           | 3s to 10s                                                                                                                                            | 4s, 6s, 8s (extension up to 148s total)                                                                                  |
+| Resolutions        | 360p, 720p, 1080p (upscaled), 4K (upscaled)                                                                                                          | 720p, 1080p (8s only), 4k (8s only, not Lite)                                                                            |
+| Videos per request | 1                                                                                                                                                    | 1 (Gemini API); up to 4 on Vertex via `sampleCount`                                                                      |
+| Watermark          | "All generated videos include SynthID watermarking, which is invisible to viewers but can be detected programmatically for provenance verification." | "Videos created by Veo are watermarked using SynthID... Videos can be verified using the SynthID verification platform." |
+| C2PA               | not stated on the Gemini API pages                                                                                                                   | "Content Credentials (C2PA): Supported" on GEAP for all three `-001` ids                                                 |
+| Retention          | Files API 48 hours; interaction record 55 days paid / 1 day free                                                                                     | 2 days, timer resets if the video is referenced for extension                                                            |
 
 **Safety filters.**
 
@@ -465,10 +476,10 @@ Veo (Gemini API): "Generated videos are passed through safety filters and memori
 
 **Gemini Omni Flash** is billed as **tokens**, not seconds, which is unusual for a video model:
 
-| | Free tier | Paid tier, per 1M tokens USD |
-|---|---|---|
-| Input | Not available | $1.50 (text / image / video / audio) |
-| Output (including thinking tokens) | Not available | $9.00 (text), $17.50 (video) |
+|                                    | Free tier     | Paid tier, per 1M tokens USD         |
+| ---------------------------------- | ------------- | ------------------------------------ |
+| Input                              | Not available | $1.50 (text / image / video / audio) |
+| Output (including thinking tokens) | Not available | $9.00 (text), $17.50 (video)         |
 
 Footnote, verbatim:
 
@@ -478,11 +489,11 @@ Two consequences for a client library: (a) there is **no free tier** for Omni at
 
 **Veo 3.1**, billed per second of output video, audio included in the price:
 
-| Model | Free tier | Paid tier, per second USD |
-|---|---|---|
-| Veo 3.1 Standard, video with audio (default) | Not available | $0.40 (720p and 1080p), $0.60 (4k) |
-| Veo 3.1 Fast, video with audio (default) | Not available | $0.10 (720p), $0.12 (1080p), $0.30 (4k) |
-| Veo 3.1 Lite, video with audio (default) | Not available | $0.05 (720p), $0.08 (1080p), 4k not supported |
+| Model                                        | Free tier     | Paid tier, per second USD                     |
+| -------------------------------------------- | ------------- | --------------------------------------------- |
+| Veo 3.1 Standard, video with audio (default) | Not available | $0.40 (720p and 1080p), $0.60 (4k)            |
+| Veo 3.1 Fast, video with audio (default)     | Not available | $0.10 (720p), $0.12 (1080p), $0.30 (4k)       |
+| Veo 3.1 Lite, video with audio (default)     | Not available | $0.05 (720p), $0.08 (1080p), 4k not supported |
 
 There is no audio-off price row any more (Veo 3.0 used to have one); audio is always on and always priced in. No free tier on any Veo model.
 
@@ -519,6 +530,7 @@ POST https://generativelanguage.googleapis.com/v1beta/interactions
 x-goog-api-key: $GEMINI_API_KEY
 Content-Type: application/json
 ```
+
 ```json
 {
   "model": "gemini-omni-1.1-flash",
@@ -527,15 +539,17 @@ Content-Type: application/json
 }
 ```
 
-Response (this *is* the done response; there is no pending state in unary mode):
+Response (this _is_ the done response; there is no pending state in unary mode):
 
 ```json
 {
   "steps": [
     { "type": "user_input", "content": [{ "type": "text", "text": "..." }] },
     { "type": "thought", "content": [{ "text": "...", "type": "thought" }] },
-    { "type": "model_output",
-      "content": [{ "type": "video", "mime_type": "video/mp4", "data": "AAAAIGZ0eXBpc29t..." }] }
+    {
+      "type": "model_output",
+      "content": [{ "type": "video", "mime_type": "video/mp4", "data": "AAAAIGZ0eXBpc29t..." }]
+    }
   ],
   "id": "v1_...",
   "status": "completed",
@@ -561,11 +575,19 @@ Create response carries the URI:
 ```json
 {
   "steps": [
-    { "type": "model_output",
-      "content": [{ "type": "video", "mime_type": "video/mp4",
-                    "uri": "https://generativelanguage.googleapis.com/v1beta/files/abc-123:download?alt=media" }] }
+    {
+      "type": "model_output",
+      "content": [
+        {
+          "type": "video",
+          "mime_type": "video/mp4",
+          "uri": "https://generativelanguage.googleapis.com/v1beta/files/abc-123:download?alt=media"
+        }
+      ]
+    }
   ],
-  "id": "v1_...", "status": "completed"
+  "id": "v1_...",
+  "status": "completed"
 }
 ```
 
@@ -590,11 +612,10 @@ POST https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-generate-pr
 x-goog-api-key: $GEMINI_API_KEY
 Content-Type: application/json
 ```
+
 ```json
 {
-  "instances": [
-    { "prompt": "A cinematic shot of a majestic lion in the savannah." }
-  ],
+  "instances": [{ "prompt": "A cinematic shot of a majestic lion in the savannah." }],
   "parameters": {
     "aspectRatio": "16:9",
     "resolution": "720p",
@@ -617,7 +638,9 @@ Response:
 ```json
 {
   "name": "models/veo-3.1-generate-preview/operations/abc123xyz",
-  "metadata": { "@type": "type.googleapis.com/google.ai.generativelanguage.v1beta.GenerateVideoMetadata" }
+  "metadata": {
+    "@type": "type.googleapis.com/google.ai.generativelanguage.v1beta.GenerateVideoMetadata"
+  }
 }
 ```
 
@@ -632,7 +655,11 @@ Response:
   "response": {
     "generateVideoResponse": {
       "generatedSamples": [
-        { "video": { "uri": "https://generativelanguage.googleapis.com/v1beta/files/xyz789:download?alt=media" } }
+        {
+          "video": {
+            "uri": "https://generativelanguage.googleapis.com/v1beta/files/xyz789:download?alt=media"
+          }
+        }
       ]
     }
   }
@@ -645,10 +672,14 @@ Field path confirmed by the official jq: `.response.generateVideoResponse.genera
 
 ```json
 {
-  "instances": [{
-    "prompt": "Track the butterfly into the garden as it lands on an orange origami flower. A fluffy white puppy runs up and gently pats the flower.",
-    "video": { "inlineData": { "mimeType": "video/mp4", "data": "<base64 of a previous Veo generation>" } }
-  }],
+  "instances": [
+    {
+      "prompt": "Track the butterfly into the garden as it lands on an orange origami flower. A fluffy white puppy runs up and gently pats the flower.",
+      "video": {
+        "inlineData": { "mimeType": "video/mp4", "data": "<base64 of a previous Veo generation>" }
+      }
+    }
+  ],
   "parameters": { "numberOfVideos": 1, "resolution": "720p" }
 }
 ```
@@ -657,14 +688,25 @@ Field path confirmed by the official jq: `.response.generateVideoResponse.genera
 
 ```json
 {
-  "instances": [{
-    "prompt": "...",
-    "referenceImages": [
-      { "image": { "inlineData": { "mimeType": "image/png", "data": "<b64>" } }, "referenceType": "asset" },
-      { "image": { "inlineData": { "mimeType": "image/png", "data": "<b64>" } }, "referenceType": "asset" },
-      { "image": { "inlineData": { "mimeType": "image/png", "data": "<b64>" } }, "referenceType": "asset" }
-    ]
-  }]
+  "instances": [
+    {
+      "prompt": "...",
+      "referenceImages": [
+        {
+          "image": { "inlineData": { "mimeType": "image/png", "data": "<b64>" } },
+          "referenceType": "asset"
+        },
+        {
+          "image": { "inlineData": { "mimeType": "image/png", "data": "<b64>" } },
+          "referenceType": "asset"
+        },
+        {
+          "image": { "inlineData": { "mimeType": "image/png", "data": "<b64>" } },
+          "referenceType": "asset"
+        }
+      ]
+    }
+  ]
 }
 ```
 

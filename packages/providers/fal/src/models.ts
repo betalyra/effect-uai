@@ -29,6 +29,32 @@ export type FalImageModel =
   | (string & {})
 
 /**
+ * Video endpoints. Text-to-video and image-to-video are separate endpoints
+ * of the same family, so the first-frame input selects the id rather than a
+ * flag: `minimax/h3-max/text-to-video` versus `minimax/h3-max/image-to-video`.
+ *
+ * The turbo tier is what makes continuous generation viable. fal measured
+ * `minimax/h3-max-turbo/text-to-video` at 1.61 s for a 5 second clip, which
+ * is faster than the clip plays.
+ *
+ * Reference: https://fal.ai/models?categories=text-to-video
+ */
+export type FalVideoModel =
+  | "minimax/h3-max-turbo/text-to-video"
+  | "minimax/h3-max/text-to-video"
+  | "minimax/h3-max/image-to-video"
+  | "bytedance/seedance-2.5/text-to-video"
+  | "bytedance/seedance-2.5/image-to-video"
+  | "fal-ai/veo3.1"
+  | "fal-ai/veo3.1/fast"
+  | "fal-ai/kling-video/v3/pro/text-to-video"
+  | "fal-ai/kling-video/v3/turbo/pro/text-to-video"
+  | "lightricks/ltx-2.5/text-to-video/fast"
+  | "fal-ai/ltx-2-19b/text-to-video"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
  * Edit endpoints. A generate id sent to `edit` gets fal's 422 for an
  * unknown field.
  *

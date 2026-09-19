@@ -1,0 +1,31 @@
+{
+  "name": "@effect-uai/recipe-tv-station",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx run.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect-uai/anthropic": "link:../../packages/providers/anthropic",
+    "@effect-uai/core": "link:../../packages/core",
+    "@effect-uai/exa": "link:../../packages/providers/exa",
+    "@effect-uai/fal": "link:../../packages/providers/fal",
+    "@effect-uai/google": "link:../../packages/providers/google",
+    "@effect-uai/recipe-kit": "link:../../packages/recipe-kit",
+    "@effect-uai/responses": "link:../../packages/providers/responses",
+    "@effect-uai/tavily": "link:../../packages/providers/tavily",
+    "@mediabunny/server": "^1.58.0",
+    "effect": "link:../../packages/core/node_modules/effect",
+    "mediabunny": "^1.58.1",
+    "node-av": "^6.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "4.1.11"
+  }
+}

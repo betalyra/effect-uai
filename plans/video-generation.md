@@ -600,56 +600,252 @@ and LTX all reachable. One manual run against the real API.
 ## Phase 3: the TV station recipe
 
 The analog of `recipes/radio-station`, and the reason the fast tier
-matters.
+matters. An LLM invents a channel nobody has made before, a handful of
+short clips are generated against a spend cap, and the result plays
+forever in a browser tab.
 
 **Why it works.** fal measured `minimax/h3-max-turbo/text-to-video` at
 1.61 seconds for a 5 second clip, and `minimax/h3-max/text-to-video` at
-2.82. Generation is roughly three times faster than playback, so a
-prefetch fiber can stay ahead of the viewer indefinitely. That headroom
-is the whole premise, exactly as the radio station depends on music
-generating faster than it plays.
+2.82. Generation is roughly three times faster than playback, so the
+producer stays ahead of the viewer from the first clip onward. That
+headroom is the premise, exactly as the radio station depends on music
+generating faster than it plays. MiniMax H3 also has no audio toggle and
+always generates sound, so the channel is not silent for free.
 
-**Shape**, mirroring `runStation`:
+### The budget is the primary knob
+
+`--budget 30 --clip 6` means thirty seconds of generated video in six
+second clips, so five clips. Clip count falls out rather than being set.
+
+At `minimax/h3-max-turbo` 768p pricing of $0.04 per second of output,
+thirty seconds is about $1.20. The estimate is printed before anything is
+submitted, and `--dry-run` plans the program and writes the manifest
+without spending, which is how you iterate on the planner prompt for
+free.
+
+**The default run ends.** Generate the budget, play the program once,
+exit. Nothing here runs up a bill because a tab stayed open. Two flags
+extend it, and `--budget` is the single cap either way:
+
+| mode                                 | flag         | cost                     |
+| ------------------------------------ | ------------ | ------------------------ |
+| generate the budget, play once, exit | default      | bounded                  |
+| then replay from disk forever        | `--loop`     | nothing further          |
+| keep planning and generating forever | `--infinite` | unbounded, lifts the cap |
+
+`--infinite` is exactly `--budget` with no ceiling, so there is one knob
+rather than a flag that silently overrides another.
+
+### Resume is the interesting part
+
+State lives in one JSON manifest under
+`output/tv-station/cache/<provider>/station.json`:
+
+```json
+{
+  "brief": "…",
+  "budgetSeconds": 30,
+  "program": { "channel": "…", "tagline": "…" },
+  "clips": [
+    {
+      "index": 0,
+      "title": "…",
+      "prompt": "…",
+      "seconds": 5,
+      "state": "done",
+      "file": "clip-0.mp4"
+    },
+    {
+      "index": 1,
+      "title": "…",
+      "prompt": "…",
+      "seconds": 5,
+      "state": "submitted",
+      "ref": { "_tag": "JobRef", "provider": "fal", "id": "minimax/h3-max/abc" }
+    }
+  ]
+}
+```
+
+On start, with no flags: read the manifest and pick up. A `done` clip
+plays from disk. A `submitted` clip resumes with
+`VideoGenerator.collect(ref)` against **the job already running on fal**,
+so a crash during polling costs nothing. A `planned` clip is submitted.
+`--fresh` archives the old manifest and plans a new channel.
+
+This is the payoff for the surface Phase 1 chose. Because `submit` and
+`status` are separate and a `JobRef` is plain serializable data with a
+`Schema`, a job survives the process that started it. A `generate()` that
+submitted and polled behind one call could not do this: a crash would
+leave no handle, and the restart would pay twice.
+
+Two ordering rules make it real:
+
+- **Persist the ref before the first poll.** Submit, write the manifest,
+  then poll. Any other order leaves the exact crash window this is meant
+  to close.
+- **Write through `.partial` and rename**, the same dance the radio
+  station uses for tracks, so a crash mid-write cannot leave a manifest
+  that parses into a lie.
+
+### Program generation
+
+Three stages. The split exists because mixing tools with structured
+output in one call is fiddly, and because a planner that emits the whole
+program at once cannot extend into `--infinite`.
+
+**Stage 1, research, only with `--search`.** A small agentic loop over
+`webSearchTool`, exactly as `recipes/grounded-answer` drives it,
+producing a plain-text briefing. Off by default. This is what turns "a
+news program about today" into a program grounded in things that
+actually happened.
+
+**Stage 2, the channel, once per station.** One structured call taking
+the brief and, when stage 1 ran, the briefing:
 
 ```
-                            [brief]
-                               │
-                               ▼  plan scene 0
-                        { title, prompt }
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│  prefetch fiber : plan scene N+1 → submit → collect → disk   │
-│  main loop      : emit events + clip URLs as ServerEvent     │
-└─────────────────────────────────────────────────────────────┘
-                               │
-                               ▼  Stream<ServerEvent>
+{ concepts: [string], chosen: number, channel, tagline }
 ```
 
-- An LLM writes the next scene as structured output (`{ title, prompt }`,
-  plus continuity notes) while the current clip plays.
-- `VideoGenerator.submit` then `collect` inside the prefetch fiber. The
-  explicit two-step is the point: the recipe shows the job surface being
-  driven deliberately, and the poll interval is tuned to the model
-  (sub-second for the turbo tier, not the 10 second default).
-- Clips cached to disk with the `.partial` rename dance from the radio
-  station, so a second pass through the loop is free.
-- Driven by the `loop` primitive, with state threading `cycle`, `idx`,
-  the prefetch fiber and the plans seen so far.
+**Surprise is the default.** With no brief, the system prompt pushes hard
+for something nobody has made: absurd premises, invented genres, channels
+that should not exist. The `concepts` array then `chosen` is there
+because an LLM asked directly for one idea converges on the same handful;
+making it brainstorm first and commit second buys real variety. A random
+seed phrase goes into the prompt so repeated runs diverge rather than
+rediscovering the same attractor.
 
-**The one real difference from radio.** `MusicGenerator.streamGeneration`
-yields audio chunks, so the radio station tees bytes downstream as they
-arrive. Video has no streaming, so a clip is a whole file. The main loop
-therefore emits a `clip-ready` event carrying a URL the client fetches,
-rather than a `data` variant carrying bytes. The browser client keeps
-two `<video>` elements and swaps them, preloading clip N+1 while N
-plays, which is the standard gapless pattern and is simpler than the
-audio case.
+**A brief overrides it.** `--brief "..."` inline, or `--brief-file
+path.md` for anything longer than a shell argument wants to be. Given
+one, the planner follows it instead of inventing.
 
-Files: `recipes/tv-station/{README.md,recipe.ts,app.ts,run.ts,client/}`,
-matching the radio station layout exactly.
+The brief is deliberately not editable from the page. A station is
+durable state, and a brief changed in a browser would either replay
+clips that no longer match it or silently discard work already paid
+for. Configuration that invalidates the manifest belongs where the
+manifest's lifetime is decided, which is the command line.
 
-Deliverable: open a tab, click Start, watch an endless AI TV channel.
+**Stage 3, segments, rolling in small batches.**
+
+```
+{ segments: [{ title, prompt }] }
+```
+
+Planned three at a time, refilled whenever fewer than two unplanned
+clips remain ahead of the producer. Not one at a time like the radio
+station, because a batch planned together gives a short arc rather than
+five unrelated shots. Not all at once, because that cannot extend into
+`--infinite`.
+
+Each batch call carries the channel identity plus the titles of recent
+segments, so the planner varies instead of circling the same idea. In
+`--infinite` that history is capped at the last handful of titles rather
+than every segment ever made, or the prompt grows without bound.
+
+The budget stops the planner: in the default run it emits five segments
+and is never called again.
+
+### Shape
+
+```
+  manifest ──► planner (once, if fresh) ──► manifest
+                          │
+                          ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │ producer fiber : submit ─► persist ref ─► collect ─► disk │
+  │                  concurrency 2, bounded by the budget     │
+  │ playback loop  : await clip N ─► emit events ─► ack       │
+  └──────────────────────────────────────────────────────────┘
+                          │
+                          ▼  Stream<ServerEvent> over WebSocket
+                             clips over plain HTTP
+```
+
+The producer is a forked `Effect.forEach(clips, produce, { concurrency: 2 })`
+that completes a `Deferred` per clip. Playback awaits clip N's deferred,
+so the first clip starts playing in a few seconds while the rest are
+still rendering, and the loop never catches up because generation runs
+three times faster than playback.
+
+### Transport
+
+Unlike audio, a clip is a whole file, so the WebSocket carries control
+events only and video goes over plain HTTP:
+
+- `GET /` and `GET /client.js`, as the radio station has them.
+- `GET /clips/:index.mp4` serves a generated clip from the cache
+  directory, which lets the browser buffer and seek natively.
+- `GET /ws` carries `station-info`, `clip-planned`, `clip-ready`,
+  `clip-start`, `clip-end`, and takes `clip-ended` back from the client
+  as the playback ack, mirroring the radio station's `track-ended`.
+
+`station-info` is the first frame out, so the page names the channel it
+is resuming rather than showing a bare button.
+
+The client keeps two `<video>` elements and swaps them, preloading clip
+N+1 while N plays. Standard gapless pattern, and simpler than the audio
+case because the browser does the buffering.
+
+**Nothing runs until you press Play.** Booting the server bundles the
+client, reads the manifest and serves HTTP. No LLM call, no fal call, no
+spend. Planning and generation begin when a WebSocket connects, which
+the Start button the radio station already has does for free.
+`--dry-run` skips the server entirely: plan, write the manifest, print
+it, exit.
+
+A consequence worth stating: a clip left rendering on fal is not
+collected until someone presses Play. That is free to defer, since fal
+holds a result for about an hour and the file far longer.
+
+The page sends one thing, the decision to start. Every knob that costs
+money, and every knob that invalidates the manifest, is a server-side
+flag. A second tab joins the running station rather than starting a
+rival.
+
+### Files
+
+`recipes/tv-station/{README.md,recipe.ts,station.ts,app.ts,run.ts,client/}`,
+matching the radio station layout with one addition: `station.ts` holds
+the manifest schema and its crash-safe read and write, which keeps
+`recipe.ts` about the same size as `runStation`.
+
+`recipes/_shared/model.ts` gains `videoGeneratorLayer`, and `argv.ts`
+gains a `boolFlag` for `--fresh`, `--loop`, `--infinite`, `--dry-run`
+and `--search`.
+
+Flags in full:
+
+| flag                  | default                                  | effect                                                   |
+| --------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| `--budget <seconds>`  | `30`                                     | total generated video, about $1.20 at turbo pricing      |
+| `--clip <seconds>`    | `6`                                      | per clip, so clip count is budget / clip                 |
+| `--brief <text>`      | none                                     | follow this instead of inventing a channel               |
+| `--brief-file <path>` | none                                     | the same, for anything longer                            |
+| `--search`            | off                                      | research the brief with `webSearchTool` first            |
+| `--fresh`             | off                                      | archive the manifest and plan a new channel              |
+| `--loop`              | off                                      | replay the program from disk after it ends               |
+| `--infinite`          | off                                      | lift the budget and keep generating forever              |
+| `--dry-run`           | off                                      | plan, write the manifest, print it, exit without serving |
+| `--video-model`       | `fal:minimax/h3-max-turbo/text-to-video` |                                                          |
+| `--planner-model`     | `gpt-5.4-mini`                           |                                                          |
+
+`run.ts` stays runtime-agnostic through `serveRecipe`. Nothing here is
+bun-specific, so the same file runs under bun, node and deno; the README
+leads with bun.
+
+The client is the radio station's, with `<audio>` swapped for two
+`<video>` elements. No form, no settings panel: a Play button and the
+running order. Inputs, browsing past stations and editing the system
+prompt are what turn a recipe into a web app, and they belong in flags
+or nowhere.
+
+In `--infinite`, clips accumulate on disk. A retention cap is the guard
+worth having there, and it is the one piece of this deliberately left
+until the mode is actually used.
+
+Deliverable: open a tab, watch an AI TV channel that cost about a euro
+to make. Kill the process mid-render, restart, and it picks up the job
+that was already running.
 
 ## Phase 4: Google Gemini Omni
 

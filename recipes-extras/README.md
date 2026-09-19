@@ -15,6 +15,10 @@ workspace. Nothing in this tree is installed unless you opt in.
 - [`agentic-search/`](./agentic-search/) - search that catches exact names and
   paraphrases both, given to an agent as a tool it can call again. Runs on one
   local file. Needs a native libsql binding.
+- [`tv-station/`](./tv-station/) - an LLM invents a television channel nobody
+  has made, writes its running order a few slots at a time, and each slot is
+  generated as a short clip. Clips are stitched into one continuous stream.
+  Needs `mediabunny` and a fal key.
 - [`contextual-retrieval/`](./contextual-retrieval/) - an LLM writes one line of
   context per chunk at indexing time, so chunks full of pronouns become
   findable. Builds a plain and a contextual index side by side to measure it.

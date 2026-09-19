@@ -95,7 +95,10 @@ const server: Layer.Layer<ServerServices, Config.ConfigError | HttpServerError.S
       }),
       bun: Effect.gen(function* () {
         const { BunHttpServer } = yield* Effect.promise(() => import("@effect/platform-bun"))
-        return BunHttpServer.layer({ port: yield* port })
+        // Bun alone drops a connection after ten idle seconds, and a
+        // browser with a full media buffer stops reading for longer than
+        // that. Node and Deno leave an open response alone; so does this.
+        return BunHttpServer.layer({ port: yield* port, idleTimeout: 0 })
       }),
       deno: Effect.gen(function* () {
         const { DenoHttpServer } = yield* Effect.promise(() => import("@effect/platform-deno"))

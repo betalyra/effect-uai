@@ -1,10 +1,40 @@
-import { Array as Arr, Effect, Match, Option, Schema, pipe } from "effect"
+import { Array as Arr, Effect, Encoding, Match, Option, Result, Schema, pipe } from "effect"
 import * as AiError from "@effect-uai/core/AiError"
+import type { ImageSource } from "@effect-uai/core/Image"
 
 export const PROVIDER = "fal"
 
 export const transportFailure = (cause: unknown): AiError.AiError =>
   new AiError.Unavailable({ provider: PROVIDER, raw: cause })
+
+// ---------------------------------------------------------------------------
+// Media at the wire boundary
+// ---------------------------------------------------------------------------
+
+/**
+ * fal reads reference media from URLs, and a data URI is a URL, so every
+ * `ImageSource` has a wire form here. This is the one adapter where passing
+ * a `url` reference costs nothing.
+ */
+export const referenceUrl: (image: ImageSource) => string = Match.type<ImageSource>().pipe(
+  Match.tag("url", (i) => i.url),
+  Match.tag("base64", (i) => `data:${i.mimeType};base64,${i.base64}`),
+  Match.tag("bytes", (i) => `data:${i.mimeType};base64,${Encoding.encodeBase64(i.bytes)}`),
+  Match.exhaustive,
+)
+
+const DATA_URI = /^data:([^;,]+);base64,(.*)$/s
+
+/** `sync_mode` returns a data URI; without it, a link that expires. */
+export const dataUri = (url: string): Option.Option<readonly [string, string]> =>
+  pipe(
+    Option.fromNullOr(DATA_URI.exec(url)),
+    Option.flatMap(([, mimeType, base64]) =>
+      mimeType !== undefined && base64 !== undefined
+        ? Option.some([mimeType, base64] as const)
+        : Option.none(),
+    ),
+  )
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -112,6 +142,18 @@ export const httpError = (status: number, body: string): Effect.Effect<AiError.A
 /** `image_url`, `image_urls`, `input_image_urls`, `reference_image_url`, … */
 const IMAGE_FIELD = /^[a-z_]*image[a-z_]*_urls?$/
 
+const decodeField = Schema.decodeUnknownOption(Schema.String)
+
+/** Absence as a `Result` failure, which is what the `Array` combinators read. */
+const absent = (): void => undefined
+
+const present = <A>(option: Option.Option<A>): Result.Result<A, void> =>
+  Result.fromOption(option, absent)
+
+/** `loc` is `["body", <field>]`; anything else is not about a field we sent. */
+const fieldOf = (detail: Detail): Result.Result<string, void> =>
+  present(decodeField(detail.loc?.[1]))
+
 /**
  * The reference field this endpoint asked for, if it rejected the request
  * for want of one. `Effect` only because the decode is; it never fails.
@@ -122,8 +164,8 @@ export const missingImageField = (body: string): Effect.Effect<Option.Option<str
       pipe(
         detailsOf(wire),
         Arr.filter((detail) => detail.type === "missing"),
-        Arr.map((detail) => detail.loc?.[1]),
-        Arr.findFirst((name): name is string => typeof name === "string" && IMAGE_FIELD.test(name)),
+        Arr.filterMap(fieldOf),
+        Arr.findFirst((name) => IMAGE_FIELD.test(name)),
       ),
     ),
     Effect.orElseSucceed(() => Option.none<string>()),

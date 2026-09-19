@@ -27,7 +27,14 @@ import type {
   ImageStreamEvent,
 } from "@effect-uai/core/ImageGenerator"
 import { ImageGenerator } from "@effect-uai/core/ImageGenerator"
-import { PROVIDER, httpError, missingImageField, transportFailure } from "./codec.js"
+import {
+  PROVIDER,
+  dataUri,
+  httpError,
+  missingImageField,
+  referenceUrl,
+  transportFailure,
+} from "./codec.js"
 import type { FalImageEditModel, FalImageModel } from "./models.js"
 
 // ---------------------------------------------------------------------------
@@ -175,18 +182,6 @@ export const imageSizeOf = (
 // Codec - request
 // ---------------------------------------------------------------------------
 
-/**
- * fal reads reference images from URLs, and a data URI is a URL, so
- * every `ImageSource` has a wire form here. This is the one adapter
- * where passing a `url` reference costs nothing.
- */
-const referenceUrl: (image: ImageSource) => string = Match.type<ImageSource>().pipe(
-  Match.tag("url", (i) => i.url),
-  Match.tag("base64", (i) => `data:${i.mimeType};base64,${i.base64}`),
-  Match.tag("bytes", (i) => `data:${i.mimeType};base64,${Encoding.encodeBase64(i.bytes)}`),
-  Match.exhaustive,
-)
-
 /** `_urls` takes the set, `_url` takes one. True of every spelling fal uses. */
 const takesMany = (field: string): boolean => field.endsWith("_urls")
 
@@ -290,19 +285,6 @@ export const decodeWire = (body: string): Effect.Effect<Wire, AiError.AiError> =
           // what gets attached: enough to see the shape, not megabytes.
           raw: body.length > 2000 ? `${body.slice(0, 2000)}… (${body.length} bytes)` : body,
         }),
-    ),
-  )
-
-const DATA_URI = /^data:([^;,]+);base64,(.*)$/s
-
-/** `sync_mode` returns a data URI; without it, a link that expires. */
-const dataUri = (url: string): Option.Option<readonly [string, string]> =>
-  pipe(
-    Option.fromNullOr(DATA_URI.exec(url)),
-    Option.flatMap(([, mimeType, base64]) =>
-      mimeType !== undefined && base64 !== undefined
-        ? Option.some([mimeType, base64] as const)
-        : Option.none(),
     ),
   )
 

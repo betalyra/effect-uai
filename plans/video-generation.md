@@ -1,0 +1,934 @@
+# Plan: video generation
+
+Design and implementation plan for the `VideoGenerator` capability
+(issue #136). Research behind every claim:
+[research/video-generation.md](./research/video-generation.md) (summary)
+and [research/video-generation/](./research/video-generation/) (seven
+raw reports, including the wire schemas in
+[google-veo.md](./research/video-generation/google-veo.md) and
+[aggregators.md](./research/video-generation/aggregators.md)).
+
+Nothing here is implemented. Part 1 is the design. Part 2 is the
+sequenced build.
+
+---
+
+# Part 1: Design
+
+## Scope
+
+A **`VideoGenerator` service** in core shaped as an explicit background
+job, plus provider adapters.
+
+**Providers, decided.**
+
+| Provider                    | How                                     | Why                                                                                                              |
+| --------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| fal                         | new video adapter on a new queue client | One adapter reaches MiniMax H3, Dreamina Seedance, BFL FLUX 3, Kling and LTX. The fastest path to real coverage. |
+| Google Gemini Omni          | new adapter in `@effect-uai/google`     | Google's own docs make it the default video model.                                                               |
+| MiniMax                     | new package                             | Top of the image-to-video leaderboard, and the fast tier the TV station runs on.                                 |
+| ByteDance Dreamina Seedance | new package                             | The leading video model right now.                                                                               |
+| BFL                         | new package                             | Top 5 on text-to-video.                                                                                          |
+| Runway                      | new package                             | The only one of these that fal does not host, so a package is the only way to reach it.                          |
+
+**Excluded, decided.** Veo, because Google's video guide says to use
+Gemini Omni Flash as the default and Veo only for scene extension and
+legacy pipelines, and because dropping it removes an entire second
+codec and operation model from the Google package. OpenAI Sora, removed
+2026-09-24. Alibaba Wan. xAI Grok Imagine. Kling as a direct package,
+though it comes free through fal.
+
+**Audio is out of scope for v1.** No `audio` field on the request, no
+`hasAudio` on the result, no audio handling in any adapter. Whatever
+each model does natively, it does; we neither ask for it nor describe
+it. The research found the request-side toggle is not uniform anyway
+(three vendors take a boolean, one a tri-state, three always generate
+audio with no toggle, two cannot generate it at all), so deferring costs
+nothing and avoids promising behaviour we cannot deliver. It can be
+added later as one optional field plus one result field, additively.
+
+**Also out of scope.** Progressive frame delivery, because it does not
+exist anywhere. Continuous and interactive WebRTC generation (fal
+`h3-max/director`, Decart Lucy, Runway Characters), which is the
+realtime archetype and belongs next to `RealtimeSession`. Audio-driven
+video and lip-sync. Video-to-video restyle and edit. `extend` as a
+method, deferred with its recipe. Video input to language model turns.
+Upscalers. Webhook receipt, which is the application's job.
+
+Current models only. Model unions carry the `(string & {})` tail, so a
+new id works without an SDK update.
+
+## The job question
+
+You asked where `Job` is used today and whether hiding a poll loop
+inside the capability is the right default. The investigation says no,
+and the plan changes accordingly.
+
+### What the code actually does today
+
+`Job.ts` is used by exactly one capability, `DeepResearch`, and by three
+providers through it.
+
+| File                                                                                                                  | What it does                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `core/src/job/Job.ts`                                                                                                 | `JobRef`, `JobState`, `JobOps`, plus `collect` (poll to settled) and `run` (submit then collect) |
+| `core/src/research/DeepResearch.ts`                                                                                   | `fromJob` derives the whole service from three wire ops                                          |
+| `google/src/GoogleDeepResearch.ts`, `responses/src/OpenAIDeepResearch.ts`, `perplexity/src/PerplexityDeepResearch.ts` | each supplies `submit` / `poll` / `cancel` and calls `fromJob(ops, cfg.job)`                     |
+
+Your intuition was right on the first half: **no provider writes a poll
+loop.** Each supplies three wire calls and nothing else. The loop lives
+in core.
+
+But the second half is the problem. `fromJob` derives a `research()`
+method that calls `Job.run`, which submits and then polls to completion
+behind a single `Effect`. So the hidden-polling default does exist
+today, in `DeepResearch`, and copying it into video would spread it.
+
+Worth noting: the one recipe that consumes the native capability,
+`recipes/native-deep-research`, does not call the blocking `research()`
+at all. It uses `researchStream`. The blocking convenience is the least
+used part of the surface.
+
+### What video should do instead
+
+The capability hands back a job. Polling is the caller's, and it is
+visible at the call site.
+
+```ts
+export type VideoGeneratorService = {
+  /**
+   * Start a generation. Returns as soon as the provider has accepted
+   * the request. Does not poll and does not wait for the video.
+   */
+  readonly submit: (request: Req) => Effect.Effect<VideoJobRef, AiError.AiError>
+
+  /** Exactly one status fetch. No loop, no retry, no schedule. */
+  readonly status: (ref: VideoJobRef) => Effect.Effect<VideoState, AiError.AiError>
+
+  /** Cancel a running job. `Unsupported` where the provider has none. */
+  readonly cancel: (ref: VideoJobRef) => Effect.Effect<void, AiError.AiError>
+}
+```
+
+Three methods, each one wire call. There is no `generate`.
+
+A caller who wants to block opts in by name, and the name says loop:
+
+```ts
+// core, a free function over the tag, not a service method
+export const collect = (
+  ref: VideoJobRef,
+  config?: Job.JobConfig,
+): Effect.Effect<VideoResponse, AiError.AiError, VideoGenerator> =>
+  Effect.flatMap(VideoGenerator, (s) => Job.collect(s.status, ref, config))
+```
+
+So the blocking path reads as two visible steps, and the poll cadence
+and timeout are arguments rather than hidden defaults:
+
+```ts
+const ref = yield * VideoGenerator.submit({ model, prompt })
+const result = yield * VideoGenerator.collect(ref, { pollInterval: "3 seconds" })
+```
+
+What this buys, concretely. A caller can submit ten clips, persist the
+ten refs, and collect them from a queue worker in another process,
+because `VideoJobRef` is plain `{ _tag, provider, id }` data. A caller
+can drive their own schedule, or surface queue position in a UI, or
+abandon a job without an interrupt handler racing a cancel. None of
+that is reachable when the loop is welded inside a `generate`.
+
+What it costs. Every caller writes two lines instead of one. That is
+the whole cost, and it is the right trade for a capability where one
+call can take six minutes and costs real money.
+
+`Job.collect` already does the right thing on the two bugs the Vercel
+AI SDK hit (`vercel/ai#21053`, a poll deadline that did not cover the
+in-flight status request, and `#21000`, a timeout implemented as an
+attempt count), because it wraps `Effect.timeoutOrElse` around the whole
+repeat. No change needed there.
+
+### Is the `Job` abstraction itself right?
+
+Checked against what `effect@4.0.0-rc.111` actually ships. Short answer:
+**the runner is idiomatic and should stay, the data types are not and
+should change.**
+
+Candidates in Effect, and whether any replaces what we hand-rolled:
+
+| Effect primitive                                                                                        | What it is                                                                                                                      | Fit                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Effect.repeat({ schedule, until })` plus `Effect.timeoutOrElse`                                        | repeat an effect on a schedule until a predicate holds, bounded                                                                 | **This is already what `Job.collect` uses.** It is the idiomatic polling loop. Not reinvented.                                                                                                                                                                |
+| `effect/unstable/workflow`: `Workflow`, `Activity`, `DurableDeferred`, `DurableQueue`, `WorkflowEngine` | durable execution of **our own** code, with execute / poll / interrupt / resume, backed by a `WorkflowEngine` persistence layer | Wrong direction, and see the note below. Its durable state is ours to store; our durable state is the provider's, and we hold a remote handle to it. Adopting it would mean standing up a persistence backend to track work someone else is already tracking. |
+| `Resource`                                                                                              | a value loaded into memory, refreshable manually or on a schedule                                                               | No. Caches a current value, does not model a one-shot remote job.                                                                                                                                                                                             |
+| `Cache`, `ScopedCache`, `Pool`, `RcRef`, `ScopedRef`                                                    | caching and lifecycle                                                                                                           | No.                                                                                                                                                                                                                                                           |
+| `Deferred`, `Latch`                                                                                     | in-process completion signal                                                                                                    | No. Dies with the process, which is the case the ref exists for.                                                                                                                                                                                              |
+| `Request` / `RequestResolver`                                                                           | batching and deduplicating data fetches                                                                                         | No, though it is the closest thing to a "handle plus resolution" shape.                                                                                                                                                                                       |
+| `Data.TaggedEnum`                                                                                       | tagged union with generated constructors, `$is` and `$match`                                                                    | **Yes, for `JobState`.**                                                                                                                                                                                                                                      |
+| `Schema`                                                                                                | encode and decode                                                                                                               | **Yes, for `JobRef`.**                                                                                                                                                                                                                                        |
+
+So there is no Effect primitive that subsumes `JobRef` plus
+`JobOps`, and the loop we wrote is the one Effect would have us write.
+Three changes are still worth making.
+
+**1. `JobState` should be a `Data.TaggedEnum`.** It is currently a
+hand-rolled union, and it is the outlier: `TurnEvent`,
+`ImageStreamEvent`, `MockMessenger.Call`, `MockSandbox.Call` and the
+messenger's `Progress` are all `Data.TaggedEnum`. Converting gets `$is`
+and `$match` for free and makes exhaustiveness a type error rather than
+a convention.
+
+Being generic in the result type costs a little ceremony, via the
+`WithGenerics` and `Kind` helpers:
+
+```ts
+export type JobState<A> = Data.TaggedEnum<{
+  Pending: {}
+  Running: { readonly progress?: number; readonly queuePosition?: number }
+  Succeeded: { readonly result: A }
+  Failed: { readonly reason?: string; readonly raw?: unknown }
+}>
+
+interface JobStateDef extends Data.TaggedEnum.WithGenerics<1> {
+  readonly taggedEnum: JobState<this["A"]>
+}
+
+export const JobState = Data.taggedEnum<JobStateDef>()
+```
+
+This is a low-risk change. `Data.TaggedEnum` resolves to an ordinary
+structural union, so every existing `{ _tag: "Succeeded", result }`
+literal in the three deep-research adapters still typechecks and every
+existing `_tag === "Running"` match still narrows. The constructors are
+an addition, not a migration.
+
+**2. `JobRef` has no `Schema`, and it should.** The entire justification
+for the ref being plain `{ _tag, provider, id }` data is that you can
+persist it and collect it from another process. But there is no decoder,
+so a ref read back out of a database or a queue message is an unchecked
+cast today. A `Schema` for it closes the loop that the type was designed
+to open. The phantom result-type brand stays a compile-time concern and
+does not need to survive the round trip.
+
+**3. Video does not need `JobOps`.** `JobOps` exists to feed
+`DeepResearch.fromJob`, which derives a blocking method we are
+deliberately not deriving. The video service already exposes `submit`,
+`status` and `cancel` directly, and `collect` is a free function over
+the tag, so bundling the three into an ops record buys nothing here.
+Leave `JobOps` alone for `DeepResearch` and do not use it for video.
+
+### Why the split surface is also the composable one
+
+Worth stating because it turns a preference into an argument.
+`effect/unstable/workflow`'s `Activity` is "run this step, and once it
+has succeeded, remember that and do not run it again". A `generate()`
+that submits and then polls internally is a poor `Activity`: a retry
+after a crash cannot tell whether the submit already happened, so it
+re-submits and pays for a second video.
+
+Split into `submit` and `status`, each is a clean `Activity`. Submit
+once, record the ref, poll as a separate durable step, resume after a
+crash without re-paying. So the surface you asked for is also the one
+that composes with Effect's own durable execution, for the users who
+want that. We do not adopt `Workflow` ourselves, but we stop blocking
+anyone who does.
+
+### Every provider fits, including Gemini Omni
+
+An earlier draft of this plan claimed Gemini Omni was synchronous only
+and spent a page on how to accommodate the one provider that did not fit
+a job model. That was wrong, and the correction matters enough to record
+why.
+
+**Omni has an async mode: `background: true` on the create body.** The
+create call then returns an interaction id immediately, and you poll
+`GET /v1beta/interactions/{id}`, abort with
+`POST /v1beta/interactions/{id}/cancel`, and clean up with `DELETE`. The
+id is server-stored and opaque, retained 55 days on the paid tier and 1
+day on free, so it is persistable and collectable from another process,
+which is exactly the contract `VideoJobRef` promises.
+
+The earlier mistake came from reading the background-execution guide's
+"supported for standard Gemini models (such as `gemini-3.8-flash` and
+`gemini-3.1-pro-preview`) and Managed Agents" as an allowlist. It says
+"such as". The API reference defines `background` with no model
+restriction at all: "Input only. Whether to run the model interaction in
+the background."
+
+Two checks against Google's own Omni page confirm it, both verified
+directly rather than taken from a report. The page says, verbatim, "Set
+`background=false`, `store=false`, and `stream=false` for faster,
+synchronous unary generation", which only parses if `background=true` is
+a real option for this model. And the page's Limitations section is long
+and specific, naming provisioned throughput, system instructions,
+temperature, `top_p`, stop sequences and negative prompts as
+unsupported. It never mentions `background`.
+
+Residual uncertainty, stated plainly: no Google doc shows a worked
+Omni-plus-background example, and no live call was made. Confidence is
+high but not total. **One `curl` settles it, and that is the first task
+of Phase 4.** If it turns out the server rejects `background: true` for
+this model, the fallback is to document `submit` as blocking on Omni and
+move on, which is a provider doc note rather than a design change.
+
+So the job surface is uniform across every provider in scope. fal,
+MiniMax, Dreamina, BFL and Runway all return a task id immediately, and
+so does Omni with one flag set.
+
+### What the Omni async mode costs in the adapter
+
+Four details that shape the adapter, each a small trap.
+
+**`background: true` requires `store: true`.** The docs say `store=false`
+"is incompatible with background execution", which is the exact inverse
+of the synchronous fast-path trio. A pleasant side effect: `store: true`
+is also what keeps `previous_interaction_id` available for conversational
+editing, so the async path and the multi-turn path want the same setting.
+
+**The status enum has eight values, not five:** `queued`, `in_progress`,
+`requires_action`, `completed`, `incomplete`, `failed`, `cancelled`, and
+the deprecated `budget_exceeded`. Google's own sample loop is
+`while status == "in_progress"`, which exits early on `queued` and would
+report a job finished before it started. Our mapping must be explicit:
+`queued` to `Pending`, `in_progress` to `Running`, `completed` to
+`Succeeded`, and `incomplete` / `failed` / `cancelled` /
+`budget_exceeded` / `requires_action` all to `Failed` carrying the raw
+status as the reason.
+
+That last group raises a small design question worth deciding in Phase 0:
+**should `JobState` gain a `Cancelled` variant?** Today a cancelled job
+lands in `Failed` with a reason string. The caller who cancelled it knows
+they did, so the information is not lost, and adding a variant touches
+`DeepResearch` too. Recommendation: leave it in `Failed`, revisit if a
+recipe needs to distinguish.
+
+**`delivery: "uri"` does not return early.** The create call still blocks
+(in the synchronous mode) and comes back `completed`; the polling in
+Google's samples is against the Files API for `ACTIVE`, not against the
+generation. It is a fix for payloads over roughly 4 MB, nothing more. And
+a later `GET /interactions/{id}` returns inline base64 even when the
+interaction was created with `delivery: "uri"`, so the URI must be
+captured from the create response.
+
+**Chaining to an `in_progress` interaction returns 400.** Multi-turn
+conversational edits must be serialised, which matters if a recipe ever
+fans out edits on one interaction.
+
+One more reliability note for whoever writes the adapter: the API
+reference's `ModelOption` enum and the overview's supported-models table
+both omit `gemini-omni-1.1-flash` entirely, although the Omni guide
+passes exactly that string. Those lists are stale, so an omission there
+proves nothing.
+
+## Common request
+
+Portable fields only.
+
+```ts
+export type CommonVideoGenerateRequest = {
+  readonly prompt: string
+  /** Each provider narrows this to its typed literal union. */
+  readonly model: string
+  /** First frame. Image-to-video is `submit` with this set. */
+  readonly image?: ImageSource
+  /** Last frame. Requires `image` on every provider that takes it. */
+  readonly lastFrame?: ImageSource
+  /** Adapters encode to the wire: `"8s"`, `"5"`, `8`, or a frame count. */
+  readonly duration?: Duration.Duration
+  readonly aspectRatio?: AspectRatio
+  readonly resolution?: VideoResolution
+  /** Bucket 3: honored where the provider takes one, silent elsewhere. */
+  readonly seed?: number
+}
+```
+
+**Duration is a `Duration.Duration`,** matching
+`CommonGenerateMusicRequest.duration`, which is already a `Duration` for
+the same reason. Raw numbers never appear in a public request or result
+type in this codebase. Every vendor projects from a duration; only the
+wire encoding differs (`"8s"`, `"5"`, `8`, `"auto"`, or `num_frames`
+plus `fps`), so each adapter owns its encoding and converts at the wire
+boundary.
+
+**Aspect ratio reuses `AspectRatio` from `Media.ts`**, whose comment
+already says "Shared by image and video generation". Runway's pixel
+pairs and the various `"adaptive"` values stay out; the `(string & {})`
+tail covers the first and `undefined` the second.
+
+**Resolution is new and video-typed**, because `Media.ts` says "video
+models tier by scan height. Each modality types its own."
+
+**Dropped:** `n` (Veo only, and the Gemini API pins it to 1), `fps`
+(24 almost everywhere, reported on the result instead), `audio` (out of
+scope), `negativePrompt`, `cameraControl`, `enhancePrompt`, `watermark`
+(all provider-typed).
+
+## Output
+
+```ts
+export type GeneratedVideo = {
+  readonly video: VideoSource
+  readonly duration?: Duration.Duration
+  readonly width?: number
+  readonly height?: number
+  readonly fps?: number
+  /** Set only when the provider applies one. Omni sets `"synthid"`. */
+  readonly watermark?: Watermark
+  readonly providerData?: ProviderData
+}
+
+export type VideoResponse = {
+  readonly videos: ReadonlyArray<GeneratedVideo>
+  readonly usage: VideoUsage
+  readonly providerData?: ProviderData
+}
+
+/** Optional throughout: fal bills per second, Google per token. */
+export type VideoUsage = {
+  readonly inputTokens?: number
+  readonly outputTokens?: number
+  readonly totalTokens?: number
+  /** What the provider says it billed for, where it says so. */
+  readonly billedDuration?: Duration.Duration
+}
+```
+
+Adapters return what the provider gave: a `url` for fal, inline
+`base64` for Omni. No eager download, because a 4K clip is large and
+many callers only want to hand the URL to a player or a CDN.
+
+The cost is the expiry footgun, which is real and uneven: about an hour
+on MiniMax V1, roughly 24 hours on Dreamina, 24 to 48 on Runway, 48 on
+the Omni Files API, 30 days on Kling, configurable on fal. Mitigated
+two ways. Each provider doc states its lifetime in the first screen.
+And core ships an opt-in `download` that reads any `VideoSource` into
+bytes, so persisting a clip is one call rather than a hand-rolled fetch.
+
+Two details of that helper, settled while building it. It fails with the
+HTTP client's own error rather than an `AiError`, because every `AiError`
+variant carries a required `provider` and a plain GET has none to name.
+And a provider whose URLs carry auth, such as Omni's Files API URI,
+resolves them inside its own adapter and never hands back a link the
+caller cannot fetch.
+
+## Errors
+
+Safety and moderation blocks map to `AiError.ContentFiltered`. A
+provider settling with no video maps to `AiError.GenerationFailed`. A
+job that never settles inside the timeout is `AiError.Timeout`, which
+`Job.collect` already raises. Everything else follows each package's
+existing helpers: `httpStatusError` and `transportFailure` in the google
+codec, `httpError` and `transportFailure` in fal's.
+
+Note for the Gemini adapter: the Gemini API returns no machine-readable
+safety reason (`raiMediaFilteredCount` is Vertex only), so a filtered
+generation is a `GenerationFailed` with the raw body attached rather
+than a `ContentFiltered` we can justify.
+
+## Consistency with the existing capabilities
+
+| Convention                                                                                                                   | Where it lives today                        | Applied here                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| One generic `Context.Service` tag, `Common*Request` with `model: string`, module-level helpers that `Effect.flatMap` the tag | every capability                            | `VideoGenerator`, `CommonVideoGenerateRequest`, `submit` / `status` / `cancel` / `collect` |
+| Provider request = `Omit<Common, "model"> & { model: TypedUnion; ...knobs }`; one `layer` registers both tags                | `FalImageGenerator`, `GeminiImageGenerator` | `FalVideoGenerator`, `GeminiOmniVideoGenerator`                                            |
+| Background job ops are `submit` / `poll` / `cancel`, and core owns the loop                                                  | `Job.ts`, `DeepResearch.fromJob`            | same ops, but **no derived blocking method**                                               |
+| Optional methods gated by a `void` marker tag                                                                                | `SttStreaming`, `ImageStreaming`            | none in v1; `DetachableVideoJob` is the escalation if option 3 above is taken              |
+| No per-model capability tables. Send it, translate the error                                                                 | capabilities-plan §2.3                      | resolution and duration limits are the server's call                                       |
+| `Config = { apiKey, baseUrl?, job? }`                                                                                        | `GoogleDeepResearch.Config`                 | same on every adapter                                                                      |
+| Per-item and per-response `providerData` with a typed reader                                                                 | `FalImageGenerator.imageDataOf`             | `videoDataOf` / `responseDataOf`                                                           |
+| Docs: `docs/<capability>/index.md` plus `providers/<provider>.md`                                                            | `docs/image-generation/`                    | same, each provider page leading with URL lifetime                                         |
+
+---
+
+# Part 2: Implementation plan
+
+Ordered so that something demoable exists as early as possible, and so
+that each phase is independently shippable. The TV station is phase 3
+on purpose: it is the proof that the whole design works, and it is the
+most fun thing to have running.
+
+## Phase 0: lock the open decisions
+
+No code. All resolved, 2026-09-19.
+
+- **Duration is always a `Duration.Duration`,** on the request, on
+  `GeneratedVideo` and on `VideoUsage`. No raw seconds in any public
+  type; adapters convert at the wire boundary.
+- **`JobState` does not gain a `Cancelled` variant.** Cancellation lands
+  in `Failed` with the provider's status as the reason. The caller who
+  cancelled knows they did, so nothing is lost, and a fifth variant
+  would touch `DeepResearch` for no gain. Revisit only if a recipe needs
+  to distinguish a cancelled job from a failed one without having issued
+  the cancel itself.
+- **Kling stays fal-only.** It is reachable through the fal adapter from
+  Phase 2, and versioning by URL path makes a direct package a
+  meaningfully different shape from the other four. Revisit after
+  Phase 5, not before.
+
+## Phase 1: core primitives
+
+- `core/src/domain/Video.ts`: `VideoMimeType`, `VideoSource` as
+  `MediaSource<VideoMimeType>`, `VideoResolution`, `GeneratedVideo`,
+  constructors and guards mirroring `Image.ts`.
+- `core/src/domain/Media.ts` and `Image.ts`: move `ProviderData` to
+  `Media.ts`, re-export from `Image.ts`. Same move `Watermark` already
+  had, for the same reason.
+- `core/src/job/Job.ts`, three changes, all additive and all landing
+  before any video code depends on them:
+  - Convert `JobState` to a `Data.TaggedEnum` via `WithGenerics<1>`, per
+    the analysis above. The resulting type is still a structural union,
+    so the three deep-research adapters need no edits.
+  - Add optional `queuePosition` to `Running`. No percentage field: no
+    provider in the set reports one, and a bare number is ambiguous
+    between a fraction and a percent.
+  - Add a `Schema` for `JobRef`, so a ref persisted to a database or a
+    queue can be decoded back rather than cast.
+
+  These three are worth landing as their own change, reviewable on its
+  own, because they touch `DeepResearch` as well. Its tests should pass
+  untouched, which is the check that the conversion really was additive.
+
+- `core/src/video-generator/VideoGenerator.ts`: the tag, the common
+  request and response types, `submit` / `status` / `cancel` accessors,
+  and the `collect` free function.
+- `VideoInput` in `domain/Video.ts`: a `Data.TaggedEnum` of `FirstFrame`,
+  `LastFrame` and `ReferenceImage`, carried on the request as an ordered
+  `inputs` array. The role is explicit because it is not inferable from
+  the image, and four of six providers take exactly this shape on the
+  wire. `prompt` stays a separate required string, since every provider
+  demands exactly one text and none accepts several as equals.
+- `core/src/video-generator/download.ts`: opt-in `download` from any
+  `VideoSource` to bytes, failing with the HTTP client's own error.
+- Package exports for `./Video`, `./VideoGenerator` and
+  `./VideoDownload`, plus `core/src/index.ts`.
+
+Deliverable: the capability compiles and has no providers. Tests cover
+`collect`'s settle and timeout behaviour against a fake `status`.
+
+## Phase 2: fal, the queue client and the video adapter
+
+This is the phase that unlocks most of the provider list at once.
+
+- `providers/fal/src/queue.ts`: submit, status, result and cancel against
+  `https://queue.fal.run`, mapped onto `Job.JobState<string>` so any
+  future fal capability reuses it and supplies its own decode. The
+  existing image adapter is sync-only against `fal.run` and has none of
+  this.
+- `providers/fal/src/video.ts`: the per-family wire table, below.
+- `providers/fal/src/FalVideoGenerator.ts`: endpoint-as-model exactly as
+  the image adapter does it, output envelope decode
+  (`{ video: { url, content_type, file_name, file_size } }` plus the
+  optional `width` / `height` / `fps` / `duration` / `num_frames`
+  superset), `providerData` with typed readers.
+- `providers/fal/src/models.ts`: `FalVideoModel`.
+
+### What fal is, and what it is not
+
+fal is not a router. OpenRouter and Requesty normalize every model onto
+one schema, which is why one codec covers all of them. fal normalizes
+the _transport_ only: one auth scheme, one queue protocol, one result
+envelope, one error format, across the catalogue. Each model keeps the
+request schema its vendor wrote.
+
+This also settles a question worth recording: a "MiniMax provider with a
+fal base URL" cannot work. Direct MiniMax is `Bearer` auth to
+`api.minimax.io/v2`, returns `{ task_id }`, polls
+`/v2/query/video_generation/{task_id}` with statuses `Preparing`,
+`Queueing`, `Processing`, `Success`, `Fail`, and cancels with `DELETE`.
+fal is `Key` auth to `queue.fal.run`, returns
+`{ request_id, response_url, status_url, cancel_url }`, polls
+`/{app}/requests/{id}/status` with `IN_QUEUE`, `IN_PROGRESS`,
+`COMPLETED`, and cancels with `PUT`. They share model weights and
+nothing else. Every reseller also mints its own model ids; Kling's docs
+say its resellers' `model_name` strings are not valid against
+`api-singapore.klingai.com`.
+
+So fal is a provider in its own right, and the direct packages in Phase 5
+are not redundant with it. Pruna has the same shape, and whatever holds
+here is the template for it.
+
+### Encoding the non-uniform request
+
+`duration` is the awkward field. fal spells it `"8s"` on Veo, `"5"` on
+Kling, an integer on MiniMax, `"auto"` on Seedance, and not at all on
+LTX-2-19b, which counts frames instead. The first-frame field splits
+between `image_url` and `start_image_url`, and resolution between
+`"720p"` and `"768P"`.
+
+Resolved with a table in `video.ts` keyed by **endpoint prefix**, not by
+model:
+
+| prefix                | `duration`              | first frame       | `resolution`             |
+| --------------------- | ----------------------- | ----------------- | ------------------------ |
+| `minimax/`            | integer seconds         | `image_url`       | `480P`, `1080P`          |
+| `bytedance/`          | seconds as text         | `image_url`       | `480p`, `720p`, `1080p`  |
+| `lightricks/`         | integer seconds         | `image_url`       | `720p`, `1080p`, `2160p` |
+| `alibaba/`            | integer seconds         | `start_image_url` | `480p`, `720p`, `1080p`  |
+| `fal-ai/veo`          | `"8s"`                  | `image_url`       | `720p`, `1080p`, `4k`    |
+| `fal-ai/kling-video/` | seconds as text         | `start_image_url` | none                     |
+| `fal-ai/ltx-2`        | none, uses `num_frames` | none              | none                     |
+
+Seven entries, and a new model from a listed vendor needs none.
+`fal-ai/` appears three times because it is fal's catch-all rather than a
+vendor namespace.
+
+Two rules this table follows. It is an **encoding** table (how to spell a
+field here), never a capability table (what a model can do); the first
+changes only when a vendor changes its wire format, the second rots. And
+nothing is inferred at runtime: an earlier draft read fal's 422 and
+retried with whatever spelling the error named, which is a provider
+inventing knowledge rather than holding it.
+
+Consequences, both deliberate:
+
+- **Tiers do not line up.** Ours are scan heights (`720p`); MiniMax's are
+  `480P`, `768P`, `1080P`. A tier a family does not have fails
+  `Unsupported` naming what it does have, rather than rounding to a
+  neighbour and rendering a different clip than was asked for.
+- **An unmatched prefix degrades loudly.** It gets `prompt`, the frames
+  and the `wire` passthrough; `duration` and `resolution` are dropped
+  with a `warnDropped`. No guessed spelling reaches the wire.
+
+The escape hatch is `wire`, a `Record<string, unknown>` of raw wire
+fields merged last. Named `wire` rather than the image adapter's `input`
+because the portable request already carries `inputs`, and a one-letter
+difference between the two is a footgun.
+
+Deliverable: MiniMax H3 and H3 Max Turbo, Dreamina Seedance, Veo, Kling
+and LTX all reachable. One manual run against the real API.
+
+## Phase 3: the TV station recipe
+
+The analog of `recipes/radio-station`, and the reason the fast tier
+matters. An LLM invents a channel nobody has made before, a handful of
+short clips are generated against a spend cap, and the result plays
+forever in a browser tab.
+
+**Why it works.** fal measured `minimax/h3-max-turbo/text-to-video` at
+1.61 seconds for a 5 second clip, and `minimax/h3-max/text-to-video` at
+2.82. Generation is roughly three times faster than playback, so the
+producer stays ahead of the viewer from the first clip onward. That
+headroom is the premise, exactly as the radio station depends on music
+generating faster than it plays. MiniMax H3 also has no audio toggle and
+always generates sound, so the channel is not silent for free.
+
+### The budget is the primary knob
+
+`--budget 30 --clip 6` means thirty seconds of generated video in six
+second clips, so five clips. Clip count falls out rather than being set.
+
+At `minimax/h3-max-turbo` 768p pricing of $0.04 per second of output,
+thirty seconds is about $1.20. The estimate is printed before anything is
+submitted, and `--dry-run` plans the program and writes the manifest
+without spending, which is how you iterate on the planner prompt for
+free.
+
+**The default run ends.** Generate the budget, play the program once,
+exit. Nothing here runs up a bill because a tab stayed open. Two flags
+extend it, and `--budget` is the single cap either way:
+
+| mode                                 | flag         | cost                     |
+| ------------------------------------ | ------------ | ------------------------ |
+| generate the budget, play once, exit | default      | bounded                  |
+| then replay from disk forever        | `--loop`     | nothing further          |
+| keep planning and generating forever | `--infinite` | unbounded, lifts the cap |
+
+`--infinite` is exactly `--budget` with no ceiling, so there is one knob
+rather than a flag that silently overrides another.
+
+### Resume is the interesting part
+
+State lives in one JSON manifest under
+`output/tv-station/cache/<provider>/station.json`:
+
+```json
+{
+  "brief": "…",
+  "budgetSeconds": 30,
+  "program": { "channel": "…", "tagline": "…" },
+  "clips": [
+    {
+      "index": 0,
+      "title": "…",
+      "prompt": "…",
+      "seconds": 5,
+      "state": "done",
+      "file": "clip-0.mp4"
+    },
+    {
+      "index": 1,
+      "title": "…",
+      "prompt": "…",
+      "seconds": 5,
+      "state": "submitted",
+      "ref": { "_tag": "JobRef", "provider": "fal", "id": "minimax/h3-max/abc" }
+    }
+  ]
+}
+```
+
+On start, with no flags: read the manifest and pick up. A `done` clip
+plays from disk. A `submitted` clip resumes with
+`VideoGenerator.collect(ref)` against **the job already running on fal**,
+so a crash during polling costs nothing. A `planned` clip is submitted.
+`--fresh` archives the old manifest and plans a new channel.
+
+This is the payoff for the surface Phase 1 chose. Because `submit` and
+`status` are separate and a `JobRef` is plain serializable data with a
+`Schema`, a job survives the process that started it. A `generate()` that
+submitted and polled behind one call could not do this: a crash would
+leave no handle, and the restart would pay twice.
+
+Two ordering rules make it real:
+
+- **Persist the ref before the first poll.** Submit, write the manifest,
+  then poll. Any other order leaves the exact crash window this is meant
+  to close.
+- **Write through `.partial` and rename**, the same dance the radio
+  station uses for tracks, so a crash mid-write cannot leave a manifest
+  that parses into a lie.
+
+### Program generation
+
+Three stages. The split exists because mixing tools with structured
+output in one call is fiddly, and because a planner that emits the whole
+program at once cannot extend into `--infinite`.
+
+**Stage 1, research, only with `--search`.** A small agentic loop over
+`webSearchTool`, exactly as `recipes/grounded-answer` drives it,
+producing a plain-text briefing. Off by default. This is what turns "a
+news program about today" into a program grounded in things that
+actually happened.
+
+**Stage 2, the channel, once per station.** One structured call taking
+the brief and, when stage 1 ran, the briefing:
+
+```
+{ concepts: [string], chosen: number, channel, tagline }
+```
+
+**Surprise is the default.** With no brief, the system prompt pushes hard
+for something nobody has made: absurd premises, invented genres, channels
+that should not exist. The `concepts` array then `chosen` is there
+because an LLM asked directly for one idea converges on the same handful;
+making it brainstorm first and commit second buys real variety. A random
+seed phrase goes into the prompt so repeated runs diverge rather than
+rediscovering the same attractor.
+
+**A brief overrides it.** `--brief "..."` inline, or `--brief-file
+path.md` for anything longer than a shell argument wants to be. Given
+one, the planner follows it instead of inventing.
+
+The brief is deliberately not editable from the page. A station is
+durable state, and a brief changed in a browser would either replay
+clips that no longer match it or silently discard work already paid
+for. Configuration that invalidates the manifest belongs where the
+manifest's lifetime is decided, which is the command line.
+
+**Stage 3, segments, rolling in small batches.**
+
+```
+{ segments: [{ title, prompt }] }
+```
+
+Planned three at a time, refilled whenever fewer than two unplanned
+clips remain ahead of the producer. Not one at a time like the radio
+station, because a batch planned together gives a short arc rather than
+five unrelated shots. Not all at once, because that cannot extend into
+`--infinite`.
+
+Each batch call carries the channel identity plus the titles of recent
+segments, so the planner varies instead of circling the same idea. In
+`--infinite` that history is capped at the last handful of titles rather
+than every segment ever made, or the prompt grows without bound.
+
+The budget stops the planner: in the default run it emits five segments
+and is never called again.
+
+### Shape
+
+```
+  manifest ──► planner (once, if fresh) ──► manifest
+                          │
+                          ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │ producer fiber : submit ─► persist ref ─► collect ─► disk │
+  │                  concurrency 2, bounded by the budget     │
+  │ playback loop  : await clip N ─► emit events ─► ack       │
+  └──────────────────────────────────────────────────────────┘
+                          │
+                          ▼  Stream<ServerEvent> over WebSocket
+                             clips over plain HTTP
+```
+
+The producer is a forked `Effect.forEach(clips, produce, { concurrency: 2 })`
+that completes a `Deferred` per clip. Playback awaits clip N's deferred,
+so the first clip starts playing in a few seconds while the rest are
+still rendering, and the loop never catches up because generation runs
+three times faster than playback.
+
+### Transport
+
+Unlike audio, a clip is a whole file, so the WebSocket carries control
+events only and video goes over plain HTTP:
+
+- `GET /` and `GET /client.js`, as the radio station has them.
+- `GET /clips/:index.mp4` serves a generated clip from the cache
+  directory, which lets the browser buffer and seek natively.
+- `GET /ws` carries `station-info`, `clip-planned`, `clip-ready`,
+  `clip-start`, `clip-end`, and takes `clip-ended` back from the client
+  as the playback ack, mirroring the radio station's `track-ended`.
+
+`station-info` is the first frame out, so the page names the channel it
+is resuming rather than showing a bare button.
+
+The client keeps two `<video>` elements and swaps them, preloading clip
+N+1 while N plays. Standard gapless pattern, and simpler than the audio
+case because the browser does the buffering.
+
+**Nothing runs until you press Play.** Booting the server bundles the
+client, reads the manifest and serves HTTP. No LLM call, no fal call, no
+spend. Planning and generation begin when a WebSocket connects, which
+the Start button the radio station already has does for free.
+`--dry-run` skips the server entirely: plan, write the manifest, print
+it, exit.
+
+A consequence worth stating: a clip left rendering on fal is not
+collected until someone presses Play. That is free to defer, since fal
+holds a result for about an hour and the file far longer.
+
+The page sends one thing, the decision to start. Every knob that costs
+money, and every knob that invalidates the manifest, is a server-side
+flag. A second tab joins the running station rather than starting a
+rival.
+
+### Files
+
+`recipes/tv-station/{README.md,recipe.ts,station.ts,app.ts,run.ts,client/}`,
+matching the radio station layout with one addition: `station.ts` holds
+the manifest schema and its crash-safe read and write, which keeps
+`recipe.ts` about the same size as `runStation`.
+
+`recipes/_shared/model.ts` gains `videoGeneratorLayer`, and `argv.ts`
+gains a `boolFlag` for `--fresh`, `--loop`, `--infinite`, `--dry-run`
+and `--search`.
+
+Flags in full:
+
+| flag                  | default                                  | effect                                                   |
+| --------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| `--budget <seconds>`  | `30`                                     | total generated video, about $1.20 at turbo pricing      |
+| `--clip <seconds>`    | `6`                                      | per clip, so clip count is budget / clip                 |
+| `--brief <text>`      | none                                     | follow this instead of inventing a channel               |
+| `--brief-file <path>` | none                                     | the same, for anything longer                            |
+| `--search`            | off                                      | research the brief with `webSearchTool` first            |
+| `--fresh`             | off                                      | archive the manifest and plan a new channel              |
+| `--loop`              | off                                      | replay the program from disk after it ends               |
+| `--infinite`          | off                                      | lift the budget and keep generating forever              |
+| `--dry-run`           | off                                      | plan, write the manifest, print it, exit without serving |
+| `--video-model`       | `fal:minimax/h3-max-turbo/text-to-video` |                                                          |
+| `--planner-model`     | `gpt-5.4-mini`                           |                                                          |
+
+`run.ts` stays runtime-agnostic through `serveRecipe`. Nothing here is
+bun-specific, so the same file runs under bun, node and deno; the README
+leads with bun.
+
+The client is the radio station's, with `<audio>` swapped for two
+`<video>` elements. No form, no settings panel: a Play button and the
+running order. Inputs, browsing past stations and editing the system
+prompt are what turn a recipe into a web app, and they belong in flags
+or nowhere.
+
+In `--infinite`, clips accumulate on disk. A retention cap is the guard
+worth having there, and it is the one piece of this deliberately left
+until the mode is actually used.
+
+Deliverable: open a tab, watch an AI TV channel that cost about a euro
+to make. Kill the process mid-render, restart, and it picks up the job
+that was already running.
+
+## Phase 4: Google Gemini Omni
+
+**First task, before any adapter code:** one `curl` against
+`POST /v1beta/interactions` with `background: true`, `store: true` and
+`model: "gemini-omni-1.1-flash"`, to confirm the server accepts it for
+this model. This is the one unverified assumption in the design. If it
+is rejected, the adapter documents `submit` as blocking on Omni and
+everything else in this phase stands unchanged.
+
+- `providers/google/src/GeminiOmniVideoGenerator.ts`: the Interactions
+  API in `snake_case`; `background: true` plus `store: true` on submit;
+  poll `GET /v1beta/interactions/{id}` with the full eight-value status
+  mapping, not Google's own two-state sample loop; cancel via
+  `POST /v1beta/interactions/{id}/cancel`; the `steps[]` walk for the
+  `model_output` step, because `interaction.output_video` is SDK-only;
+  and the file URI captured from the create response, because re-reading
+  the interaction returns inline base64 instead.
+- `providers/google/src/models.ts`: `GeminiOmniVideoModel`.
+- Default `delivery: "inline"`, with `uri` documented as the escape
+  hatch above the roughly 4 MB cap. Note that `uri` does not make the
+  call return earlier; it only avoids the payload limit.
+
+Deliverable: the direct Google path, with the same job semantics as
+every other provider.
+
+## Phase 5: direct provider packages
+
+In priority order, each a new package at the current fixed-group
+version. Each is independently shippable and none blocks the others.
+
+1. `@effect-uai/minimax`: V2 `POST /v2/video_generation`, poll
+   `GET /v2/query/video_generation/{task_id}`, `DELETE` to cancel.
+   Statuses `queued` / `running` / `succeeded` / `failed` / `cancelled`.
+   Content items carry first frame, last frame and references by `role`.
+   Also unlocks the 2K regeneration endpoint later.
+2. `@effect-uai/bytedance` (Dreamina Seedance): ModelArk
+   `POST /contents/generations/tasks` and the matching retrieve, list
+   and delete. Same status vocabulary as MiniMax V2. Note the region
+   split (`ark.ap-southeast.bytepluses.com` versus the China host) and
+   that BytePlus is not available in the United States.
+3. `@effect-uai/bfl`: FLUX 3 Video. The research did not pin its wire
+   shape, so this phase starts with a short spike.
+4. `@effect-uai/runway`: the only provider here fal does not host.
+   Modality picks the endpoint, `X-Runway-Version` header, poll
+   `GET /v1/tasks/{id}`, no webhooks at all. `THROTTLED` is a task
+   state rather than an HTTP error, so backoff reads the task.
+
+## Phase 6: the remaining recipes
+
+In the order you ranked them.
+
+- `product-clip`: a hero still (generated or supplied) animated by an
+  image-to-video model, downloaded and persisted. The smallest complete
+  use of the capability.
+- `storyboard-to-video`: an LLM shot list as structured output, a
+  keyframe per shot from the image generator, each shot animated with
+  `lastFrame` chaining for continuity. Shows fan-out over N jobs and
+  per-shot retry, and is the recipe that justifies `lastFrame` being
+  common.
+- `ad-variants`, if it still looks worthwhile after the first two.
+
+## Phase 7: docs and site
+
+- Rewrite `docs/video-generation/index.md`. The async-job framing in the
+  current stub survives and is correct; the provider list and the
+  "rendering 38%" progress promise do not.
+- `docs/video-generation/providers/{fal,google,minimax,bytedance,runway}.md`,
+  each leading with that provider's result URL lifetime.
+- `docs/migrations/v0-18.md`, additive.
+- Webpage: capability count and card, recipe grid entries, icon map.
+
+## Open items to resolve during implementation
+
+1. Confirm Dreamina's `omni_reference_task_type` value list, which
+   selects reference versus editing versus extension. UNVERIFIED from
+   the SDK source.
+2. Measure the real default lifetime of a fal result URL. The docs
+   describe the override header but never state the default.
+3. Confirm `background: true` is accepted for `gemini-omni-1.1-flash`.
+   This is the one load-bearing unverified assumption in the design and
+   is the first task of Phase 4. Everything else survives either answer.
+4. Pin BFL FLUX 3 Video's wire shape before phase 5 item 3.
+5. Confirm whether fal's `sync_mode` (base64 instead of a CDN URL) is
+   worth exposing. It exists on the MiniMax H3 family and LTX-2-19b but
+   not on Veo, Kling, Seedance or Wan, so it cannot be a portable field.

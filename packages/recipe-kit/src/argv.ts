@@ -12,6 +12,12 @@ export class UnknownFlag extends Data.TaggedError("UnknownFlag")<{
   readonly expected: string
 }> {}
 
+/** The `--name=value` form alone, which cannot be a usage error. */
+const inlineValue = (name: string, argv: ReadonlyArray<string>): Option.Option<string> => {
+  const eq = `--${name}=`
+  return Arr.findFirst(argv, (a) => a.startsWith(eq)).pipe(Option.map((a) => a.slice(eq.length)))
+}
+
 /**
  * Look up a long flag's value in `argv`. Supports both `--name=value`
  * and `--name value` forms. Returns `None` if the flag isn't present.
@@ -21,11 +27,7 @@ export class UnknownFlag extends Data.TaggedError("UnknownFlag")<{
  */
 export const flagValue = (name: string, argv: ReadonlyArray<string>): Option.Option<string> => {
   const long = `--${name}`
-  const eq = `${long}=`
-
-  const inline = Arr.findFirst(argv, (a) => a.startsWith(eq)).pipe(
-    Option.map((a) => a.slice(eq.length)),
-  )
+  const inline = inlineValue(name, argv)
   if (Option.isSome(inline)) return inline
 
   const spaceIdx = Arr.findFirstIndex(argv, (a) => a === long)
@@ -95,4 +97,18 @@ export const intFlag = (name: string, argv: ReadonlyArray<string>, fallback: num
   Option.match(flagValue(name, argv), {
     onNone: () => fallback,
     onSome: (raw) => (Number.isFinite(Number(raw)) ? Number(raw) : fallback),
+  })
+
+const OFF = ["false", "0", "no", "off"]
+
+/**
+ * Read a `--<flag>` as a switch. Present is on, absent is `fallback`.
+ * Only the `--flag=false` form turns one off, so a bare `--flag` at the
+ * end of the line is never mistaken for a flag missing its value, and
+ * `--flag` does not swallow the token after it.
+ */
+export const boolFlag = (name: string, argv: ReadonlyArray<string>, fallback = false): boolean =>
+  Option.match(inlineValue(name, argv), {
+    onNone: () => argv.includes(`--${name}`) || fallback,
+    onSome: (raw) => !OFF.includes(raw.toLowerCase()),
   })

@@ -106,6 +106,10 @@
       "types": "./dist/domain/Turn.d.mts",
       "import": "./dist/domain/Turn.mjs"
     },
+    "./Video": {
+      "types": "./dist/domain/Video.d.mts",
+      "import": "./dist/domain/Video.mjs"
+    },
     "./Decision": {
       "types": "./dist/decision-model/Decision.d.mts",
       "import": "./dist/decision-model/Decision.mjs"
@@ -177,6 +181,14 @@
     "./Transcriber": {
       "types": "./dist/transcriber/Transcriber.d.mts",
       "import": "./dist/transcriber/Transcriber.mjs"
+    },
+    "./VideoDownload": {
+      "types": "./dist/video-generator/download.d.mts",
+      "import": "./dist/video-generator/download.mjs"
+    },
+    "./VideoGenerator": {
+      "types": "./dist/video-generator/VideoGenerator.d.mts",
+      "import": "./dist/video-generator/VideoGenerator.mjs"
     },
     "./WebRead": {
       "types": "./dist/web-read/WebRead.d.mts",

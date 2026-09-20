@@ -8,7 +8,10 @@
     "fal",
     "flux",
     "image-generation",
-    "seedream"
+    "minimax",
+    "seedance",
+    "seedream",
+    "video-generation"
   ],
   "homepage": "https://github.com/betalyra/effect-uai/tree/main/packages/providers/fal",
   "bugs": {
@@ -38,6 +41,10 @@
     "./FalImageGenerator": {
       "types": "./dist/FalImageGenerator.d.mts",
       "import": "./dist/FalImageGenerator.mjs"
+    },
+    "./FalVideoGenerator": {
+      "types": "./dist/FalVideoGenerator.d.mts",
+      "import": "./dist/FalVideoGenerator.mjs"
     }
   },
   "publishConfig": {

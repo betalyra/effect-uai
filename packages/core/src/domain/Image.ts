@@ -6,6 +6,7 @@ import type {
   MediaBytes,
   MediaSource,
   MediaUrl,
+  ProviderData,
   Watermark,
 } from "./Media.js"
 import { parseAspectRatio, round16 } from "./Media.js"
@@ -114,18 +115,8 @@ export const pixelsOf = (request: {
           : { width: short, height: round16((short * h) / w) }
       })
 
-/**
- * Per-image extras a provider reported and this type has no field for:
- * pixel dimensions, a file name, a revised prompt. Opaque here, and a
- * shared slot, so a provider keys its data under its own name
- * (`{ fal: … }`, `{ openai: … }`) and reads only that key. Each provider
- * package ships a typed reader; the framework never interprets it.
- *
- * Not promoted to real fields because the providers disagree on what
- * they report. Only some fal endpoints return dimensions, and neither
- * OpenAI's Images API nor Gemini returns them at all.
- */
-export type ProviderData = unknown
+/** Cross-modality; lives in `Media.ts` because video generation shares it. */
+export type { ProviderData } from "./Media.js"
 
 /** One image off a generation call, plus what the provider stamped into it. */
 export type GeneratedImage = {

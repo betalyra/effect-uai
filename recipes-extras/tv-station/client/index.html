@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>effect-uai · tv station</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        max-width: 820px;
+        margin: 2rem auto;
+        padding: 0 1.5rem;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin-bottom: 0.25rem;
+      }
+      h2#channel {
+        font-size: 1rem;
+        font-weight: 500;
+        opacity: 0.7;
+        margin-top: 0;
+        margin-bottom: 1rem;
+        min-height: 1.3em;
+      }
+      button {
+        font: inherit;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        border: 1px solid currentColor;
+        background: transparent;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #screen {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border-radius: 10px;
+        margin: 1rem 0;
+        display: block;
+      }
+      #status {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        opacity: 0.7;
+        margin: 1rem 0;
+      }
+      #listing {
+        list-style: none;
+        padding: 0;
+        margin: 1.5rem 0;
+      }
+      #listing li {
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        margin: 0.25rem 0;
+        display: flex;
+        gap: 0.75rem;
+        align-items: baseline;
+      }
+      #listing li .kind {
+        font-size: 0.7em;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.5;
+        min-width: 7.5em;
+      }
+      #listing li .num {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        opacity: 0.4;
+        font-size: 0.85em;
+      }
+      #listing li.playing {
+        background: color-mix(in srgb, currentColor 10%, transparent);
+        font-weight: 600;
+      }
+      #listing li.playing .num::before {
+        content: "▶ ";
+      }
+      #cycle {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85em;
+        opacity: 0.5;
+        margin-left: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>tv station · effect-uai</h1>
+    <h2 id="channel">press play to start the channel</h2>
+    <p>
+      <button id="toggle">Play</button>
+      <span id="status">idle</span>
+      <span id="cycle"></span>
+    </p>
+    <video id="screen" playsinline autoplay></video>
+    <p style="opacity: 0.55; font-size: 0.85em">
+      <a href="/programme.mp4">download the programme so far</a>
+    </p>
+    <ol id="listing"></ol>
+    <p style="opacity: 0.55; font-size: 0.85em">
+      An LLM invents a channel and writes its running order a few slots at a time. Each slot is
+      generated as a short clip, and the clips are joined into one continuous stream; an interlude
+      card loops whenever the next one is not ready yet. Clips are cached, so a restart resumes
+      rather than re-renders. Nothing is generated until you press play.
+    </p>
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>

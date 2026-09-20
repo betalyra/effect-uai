@@ -1,3 +1,6 @@
 export * as FalImageGenerator from "./FalImageGenerator.js"
+export * as FalVideoGenerator from "./FalVideoGenerator.js"
 export * as codec from "./codec.js"
+export * as queue from "./queue.js"
+export * as video from "./video.js"
 export * from "./models.js"

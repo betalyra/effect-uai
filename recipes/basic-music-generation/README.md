@@ -41,18 +41,44 @@ against both providers without changes.
 ## Run it
 
 ```sh
-# Default: Google Lyria with the built-in prompt
-GOOGLE_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts
+# Default: ElevenLabs with the built-in prompt
+ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts
 
 # Explicit provider
-GOOGLE_API_KEY=...     pnpm tsx recipes/basic-music-generation/run.ts --provider=google
-ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts --provider=elevenlabs
+GOOGLE_API_KEY=...     pnpm tsx recipes/basic-music-generation/run.ts --provider google
+ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts --provider elevenlabs
 
-# Custom prompt from a .txt file
-ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts --provider=elevenlabs ./my-prompt.txt
+# Custom prompt from a .txt file, 75-second clip
+ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts \
+  --provider elevenlabs --duration 75 --prompt-file ./my-prompt.txt
 ```
 
-Writes `out-google.mp3` or `out-elevenlabs.mp3` next to the recipe.
+Flags (`--name value` and `--name=value` both work):
+
+| Flag            | Default      | Notes                                                                 |
+| --------------- | ------------ | --------------------------------------------------------------------- |
+| `--provider`    | `elevenlabs` | `elevenlabs` or `google`.                                             |
+| `--prompt-file` | built-in     | Path to a `.txt` file. A bare positional path is **not** picked up.   |
+| `--duration`    | `30`         | Clip length in seconds. ElevenLabs honors it; Lyria `clip` ignores it. |
+
+Audio lands in `output/basic-music-generation/<timestamp>/track.mp3`.
+
+## Writing a prompt that gets followed
+
+In prompt mode ElevenLabs treats the text as a style brief. Things
+that made a real difference while iterating on this recipe:
+
+- **Spell the lyrics out.** Describing the lyrics ("a song that
+  celebrates...") yields improvised, usually English, lyrics. Put the
+  actual lines in the prompt under section tags (`[Verse 1]`,
+  `[Chorus]`, `[Bridge]`) and say "with these exact lyrics".
+- **Give it room.** 30 s is too short for a verse and a chorus with
+  names in it. 60–120 s works for a short song.
+- **Name the accent and pronunciation.** State the singer's origin
+  and a couple of concrete phonetic cues (e.g. "castilian z, no
+  seseo"). Spell out how unusual names should sound.
+- **Never name real artists.** "In the style of <artist>" is
+  rejected with a 4xx `InvalidRequest`. Describe the genre instead.
 
 ## Where the providers differ
 

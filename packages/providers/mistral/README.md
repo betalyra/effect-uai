@@ -20,7 +20,7 @@ One package, the whole Mistral surface:
 pnpm add @effect-uai/mistral @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers. The
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers. The
 realtime transcriber additionally needs the optional `ws` peer (Node /
 Bun only).
 
@@ -30,12 +30,12 @@ Bun only).
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as mistralLayer } from "@effect-uai/mistral/Mistral"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("MISTRAL_API_KEY")
+    const apiKey = yield* Config.Redacted("MISTRAL_API_KEY")
     return mistralLayer({ apiKey })
   }),
 )

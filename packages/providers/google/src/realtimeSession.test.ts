@@ -1,5 +1,6 @@
 import { describe, it } from "@effect/vitest"
-import { Duration, Effect, Encoding, Fiber, Logger, Redacted, Ref, Stream } from "effect"
+import { Duration, Effect, Fiber, Logger, Redacted, Ref, Stream } from "effect"
+import { Base64 } from "effect/encoding"
 import { expect } from "vitest"
 import type { RealtimeEvent } from "@effect-uai/core/Realtime"
 import { RealtimeInput } from "@effect-uai/core/Realtime"
@@ -55,7 +56,7 @@ const tags = (events: ReadonlyArray<RealtimeEvent>) => events.map((e) => e._tag)
 const audioPart = (bytes: ReadonlyArray<number>) => ({
   inlineData: {
     mimeType: "audio/pcm;rate=24000",
-    data: Encoding.encodeBase64(new Uint8Array(bytes)),
+    data: Base64.encode(new Uint8Array(bytes)),
   },
 })
 
@@ -406,7 +407,7 @@ describe("Gemini live session video", () => {
       expect(sent.filter((f: any) => f.realtimeInput?.video !== undefined)).toEqual([
         {
           realtimeInput: {
-            video: { data: Encoding.encodeBase64(new Uint8Array([1, 2])), mimeType: "image/jpeg" },
+            video: { data: Base64.encode(new Uint8Array([1, 2])), mimeType: "image/jpeg" },
           },
         },
       ])

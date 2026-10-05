@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Match, Option, Redacted, Result, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import * as StructuredFormat from "@effect-uai/core/StructuredFormat"

@@ -18,18 +18,18 @@ Groq, Together, or a self-hosted gateway.
 pnpm add @effect-uai/chat-completions @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers.
 
 ## Usage
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as chatLayer } from "@effect-uai/chat-completions/ChatCompletions"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("LLM_API_KEY")
+    const apiKey = yield* Config.Redacted("LLM_API_KEY")
     return chatLayer({
       apiKey,
       baseUrl: "https://openrouter.ai/api/v1",

@@ -1,4 +1,5 @@
-import { Effect, Encoding, Match, Result } from "effect"
+import { Effect, Match, Result } from "effect"
+import { Base64 } from "effect/encoding"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioSource } from "@effect-uai/core/Audio"
 
@@ -34,7 +35,7 @@ export const audioSourceToInlineData: (
   Match.tag("bytes", (a) =>
     Effect.succeed<InlineAudioData>({
       mimeType: a.mimeType,
-      data: Encoding.encodeBase64(a.bytes),
+      data: Base64.encode(a.bytes),
     }),
   ),
   Match.tag("base64", (a) =>
@@ -46,7 +47,7 @@ export const audioSourceToInlineData: (
 
 /** Decode a base64-encoded audio payload into bytes. */
 export const decodeBase64Audio = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
-  Result.match(Encoding.decodeBase64(b64), {
+  Result.match(Base64.decode(b64), {
     onSuccess: Effect.succeed,
     onFailure: (cause) =>
       Effect.fail(new AiError.InvalidRequest({ provider: "gemini", param: "audio", raw: cause })),

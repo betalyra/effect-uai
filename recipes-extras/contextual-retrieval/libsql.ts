@@ -8,7 +8,7 @@
  * index shadow table.
  */
 import { Array as Arr, Effect, Layer, pipe } from "effect"
-import { SqlClient } from "effect/unstable/sql"
+import { SqlClient } from "effect/sql"
 import { LibsqlClient } from "@effect/sql-libsql"
 import {
   ChunkStore,

@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Redacted, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
-import * as Socket from "effect/unstable/socket/Socket"
+import { HttpClient, HttpClientRequest } from "effect/http"
+import * as Socket from "effect/socket/Socket"
 import type * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk } from "@effect-uai/core/Audio"
 import {

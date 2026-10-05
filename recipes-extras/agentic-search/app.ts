@@ -101,7 +101,7 @@ const services = Layer.mergeAll(
   Chunking.layer(Chunking.sentences, { targetSize: 512, overlap: 64 }),
   Layer.unwrap(
     Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("JINA_API_KEY")
+      const apiKey = yield* Config.Redacted("JINA_API_KEY")
       return Layer.merge(jinaEmbeddingLayer({ apiKey }), jinaRerankerLayer({ apiKey }))
     }),
   ),
@@ -126,7 +126,7 @@ export const main = Effect.gen(function* () {
   yield* write(dim(ingested ? `ingested ${chunks} chunks\n` : `${chunks} chunks already indexed\n`))
   yield* write(`\n${cyan("question")}  ${flags.question}\n`)
 
-  const apiKey = yield* Config.redacted("LLM_API_KEY")
+  const apiKey = yield* Config.Redacted("LLM_API_KEY")
   const model = yield* makeResponses({ apiKey, baseUrl: flags.baseUrl })
 
   yield* Stream.runForEach(

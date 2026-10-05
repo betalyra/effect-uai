@@ -4,7 +4,6 @@ import {
   Context,
   Duration,
   Effect,
-  Encoding,
   Layer,
   Match,
   Option,
@@ -15,7 +14,8 @@ import {
   type Scope,
   Stream,
 } from "effect"
-import { HttpClient } from "effect/unstable/http"
+import { Base64 } from "effect/encoding"
+import { HttpClient } from "effect/http"
 import type { MediaSource } from "@effect-uai/core/Media"
 import {
   CurrentConversation,
@@ -285,7 +285,7 @@ export const make = (
         Match.tag("url", ({ url }) => call(method, { ...params, [field]: url })),
         Match.tag("bytes", ({ bytes, mimeType }) => send(bytes, mimeType)),
         Match.tag("base64", ({ base64, mimeType }) =>
-          Effect.fromResult(Encoding.decodeBase64(base64)).pipe(
+          Effect.fromResult(Base64.decode(base64)).pipe(
             Effect.mapError(invalidMedia),
             Effect.flatMap((bytes) => send(bytes, mimeType)),
           ),

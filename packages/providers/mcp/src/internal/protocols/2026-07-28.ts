@@ -7,7 +7,8 @@
  * Files here are named for the revision they implement. A later revision that
  * keeps this wire shape gets its own file re-exporting this one.
  */
-import { Effect, Encoding, Option, Predicate, Record, type Scope } from "effect"
+import { Effect, Option, Predicate, Record, type Scope } from "effect"
+import { Base64 } from "effect/encoding"
 import { type McpError, McpUnsupportedProtocol } from "../../McpError.js"
 import { modernRejection, type Protocol, type ProtocolProbe } from "../protocol.js"
 import type { McpConnection, SendMeta } from "../rpc.js"
@@ -56,7 +57,7 @@ const HEADER_SAFE = /^[\x21-\x7e]([\x20-\x7e]*[\x21-\x7e])?$/
  * for the marker) ride the spec's Base64 sentinel form.
  */
 export const headerValue = (raw: string): string =>
-  HEADER_SAFE.test(raw) && !SENTINEL.test(raw) ? raw : `=?base64?${Encoding.encodeBase64(raw)}?=`
+  HEADER_SAFE.test(raw) && !SENTINEL.test(raw) ? raw : `=?base64?${Base64.encode(raw)}?=`
 
 const makeProtocol = (version: ProtocolVersion, serverInfo: ServerInfo): Protocol => ({
   version,

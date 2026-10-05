@@ -1,5 +1,6 @@
-import { Context, Effect, Encoding, Layer, Match, type Redacted, Schema } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Context, Effect, Layer, Match, type Redacted, Schema } from "effect"
+import { Base64 } from "effect/encoding"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { ImageSource } from "@effect-uai/core/Image"
 import {
@@ -59,7 +60,7 @@ type WireDocument = string | { readonly text: string } | { readonly image: strin
 const imageSourceToWire: (s: ImageSource) => WireDocument = Match.type<ImageSource>().pipe(
   Match.tag("url", (s): WireDocument => ({ image: s.url })),
   Match.tag("base64", (s): WireDocument => ({ image: s.base64 })),
-  Match.tag("bytes", (s): WireDocument => ({ image: Encoding.encodeBase64(s.bytes) })),
+  Match.tag("bytes", (s): WireDocument => ({ image: Base64.encode(s.bytes) })),
   Match.exhaustive,
 )
 

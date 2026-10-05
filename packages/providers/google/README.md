@@ -20,18 +20,18 @@ One key reaches the whole Gemini family, each at its own subpath:
 pnpm add @effect-uai/google @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers.
 
 ## Usage
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as googleLayer } from "@effect-uai/google"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
+    const apiKey = yield* Config.Redacted("GOOGLE_API_KEY")
     return googleLayer({ apiKey })
   }),
 )

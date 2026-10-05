@@ -21,7 +21,8 @@
  */
 import * as CoreBrowser from "@effect-uai/core/Browser"
 import * as BrowserError from "@effect-uai/core/BrowserError"
-import { Clock, Duration, Effect, Encoding, Option, PubSub, Ref, Schema, type Scope } from "effect"
+import { Clock, Duration, Effect, Option, PubSub, Ref, Schema, type Scope } from "effect"
+import { Base64 } from "effect/encoding"
 import type { Cdp, CdpError, CdpEvent, CdpParams, CdpReturn } from "./cdp.js"
 import {
   agentExpression,
@@ -410,7 +411,7 @@ export const makeSession = (
                 sessionId,
               )
               .pipe(Effect.mapError(mapCdp("observe")))
-            return yield* Effect.fromResult(Encoding.decodeBase64(reply.data)).pipe(
+            return yield* Effect.fromResult(Base64.decode(reply.data)).pipe(
               Effect.mapError(
                 (e) =>
                   new BrowserError.BrowserActionFailed({

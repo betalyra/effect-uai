@@ -27,7 +27,7 @@ so edge / browser builds only pull in what you actually use.
 
 ```ts
 import { Config, Effect, Layer, Match, Stream } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import * as Items from "@effect-uai/core/Items"
 import { streamTurn } from "@effect-uai/core/LanguageModel"
 import { layer as responsesLayer } from "@effect-uai/responses"
@@ -48,7 +48,7 @@ const program = Stream.runForEach(
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+    const apiKey = yield* Config.Redacted("OPENAI_API_KEY")
     return responsesLayer({ apiKey })
   }),
 )

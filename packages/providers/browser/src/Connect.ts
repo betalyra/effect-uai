@@ -30,6 +30,12 @@ export type CdpConnectConfig = {
    * obscura, or a hosted provider's connect URL (credentials in the URL).
    */
   readonly endpoint: string
+  /**
+   * Sent on the WebSocket handshake, e.g. `Authorization: Bearer <token>` for
+   * obscura with `OBSCURA_CDP_TOKEN` set. Needs Node or Bun; browsers cannot
+   * set handshake headers.
+   */
+  readonly headers?: Readonly<Record<string, string>>
 }
 
 /**
@@ -93,7 +99,7 @@ const applyViewport = (
 const makeService = (config: CdpConnectConfig): CoreBrowser.BrowserService => ({
   create: (request) =>
     Effect.gen(function* () {
-      const cdp = yield* openCdp(config.endpoint)
+      const cdp = yield* openCdp(config.endpoint, config.headers)
       const { targetId } = yield* cdp
         .send("Target.createTarget", { url: "about:blank" })
         .pipe(Effect.mapError(mapCreate))
@@ -118,7 +124,7 @@ const makeService = (config: CdpConnectConfig): CoreBrowser.BrowserService => ({
 
   attach: (id) =>
     Effect.gen(function* () {
-      const cdp = yield* openCdp(config.endpoint)
+      const cdp = yield* openCdp(config.endpoint, config.headers)
       const { sessionId } = yield* cdp
         .send("Target.attachToTarget", { targetId: id, flatten: true })
         .pipe(Effect.mapError(mapLookup(id)))
@@ -139,7 +145,7 @@ const makeService = (config: CdpConnectConfig): CoreBrowser.BrowserService => ({
 
   list: Effect.scoped(
     Effect.gen(function* () {
-      const cdp = yield* openCdp(config.endpoint)
+      const cdp = yield* openCdp(config.endpoint, config.headers)
       const { targetInfos } = yield* cdp.send("Target.getTargets").pipe(Effect.mapError(mapCreate))
       return targetInfos
         .filter((target) => target.type === "page")
@@ -153,7 +159,7 @@ const makeService = (config: CdpConnectConfig): CoreBrowser.BrowserService => ({
   destroy: (id) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const cdp = yield* openCdp(config.endpoint)
+        const cdp = yield* openCdp(config.endpoint, config.headers)
         yield* cdp.send("Target.closeTarget", { targetId: id }).pipe(Effect.mapError(mapLookup(id)))
       }),
     ),

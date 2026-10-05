@@ -1,9 +1,11 @@
-import { Cause, Effect, Encoding, Queue, Redacted, Result, Schema, Stream } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Effect, Option, Predicate, Redacted, Result, Schema, Stream } from "effect"
+import { Base64 } from "effect/encoding"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import * as JSONL from "@effect-uai/core/JSONL"
 import type { CustomPronunciation } from "@effect-uai/core/SpeechSynthesizer"
+import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
 import {
   defaultFormat,
   formatToOutputSlug,
@@ -85,7 +87,7 @@ const ServerFrame = Schema.Struct({
 const decodeServerFrame = Schema.decodeUnknownEffect(ServerFrame)
 
 const decodeAudio = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
-  Result.match(Encoding.decodeBase64(b64), {
+  Result.match(Base64.decode(b64), {
     onSuccess: Effect.succeed,
     onFailure: (cause) =>
       Effect.fail(
@@ -96,23 +98,24 @@ const decodeAudio = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
       ),
   })
 
-const handleServerFrame = (queue: Queue.Queue<AudioChunk, Cause.Done>) => (raw: string) =>
+/** One raw text frame to at most one chunk; error frames are logged and dropped. */
+const frameToChunk = (raw: string): Effect.Effect<AudioChunk | undefined> =>
   Effect.gen(function* () {
     const json = yield* JSONL.parseSafe(raw)
-    if (json === undefined) return
+    if (json === undefined) return undefined
     const decoded = yield* decodeServerFrame(json).pipe(Effect.option)
-    if (decoded._tag === "None") return
+    if (decoded._tag === "None") return undefined
     const frame = decoded.value
     if (frame.error !== undefined) {
       yield* Effect.logWarning("[elevenlabs-tts] server error frame", {
         error: frame.error,
         message: frame.message,
       })
-      return
+      return undefined
     }
-    if (frame.audio == null || frame.audio === "") return
+    if (frame.audio == null || frame.audio === "") return undefined
     const bytes = yield* decodeAudio(frame.audio).pipe(Effect.option)
-    if (bytes._tag === "Some") yield* Queue.offer(queue, { bytes: bytes.value })
+    return Option.match(bytes, { onNone: () => undefined, onSome: (b) => ({ bytes: b }) })
   })
 
 // ---------------------------------------------------------------------------
@@ -129,35 +132,31 @@ export const streamSynthesis =
       Effect.gen(function* () {
         yield* rejectInlinePronunciations(request.pronunciations)
         const slug = yield* formatToOutputSlug(request.outputFormat ?? defaultFormat)
-        // ElevenLabs closes `/stream-input` with code 1000 after delivering the
-        // final audio chunk. Effect's default treats all close codes as errors,
-        // which would surface as a stream failure right after the last audio
-        // arrives. Whitelist standard clean-close codes.
-        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg, request, slug), {
-          closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
-        })
-        const queue = yield* Queue.bounded<AudioChunk, Cause.Done>(64)
-        const write = yield* socket.writer
+        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg, request, slug))
+        const { write } = yield* socket.writer
+        const asAiError = WebSocketSession.toAiError("elevenlabs")
 
-        // Writer fiber: BOS → drain text stream → EOS. Socket-side failures
-        // end this fiber; the reader still surfaces a clean stream end via
-        // `Queue.end` (in the ensuring below) when the upstream WS closes.
-        yield* Effect.gen(function* () {
-          yield* write(bosFrame(cfg, request))
-          yield* Stream.runForEach(textIn, (text) =>
-            text.length === 0 ? Effect.void : write(textFrame(text)),
-          )
-          yield* write(eosFrame)
-        }).pipe(Effect.ignore, Effect.forkScoped)
+        // ElevenLabs closes `/stream-input` with 1000 after the final audio chunk.
+        const chunks = Stream.fromPull(Socket.readerString(socket)).pipe(
+          Stream.scoped,
+          Stream.catchIf(WebSocketSession.isCleanClose, () => Stream.empty),
+          Stream.mapError(asAiError),
+          Stream.mapEffect(frameToChunk),
+          Stream.filter(Predicate.isNotUndefined),
+        )
 
-        // Reader fiber. `ensuring(Queue.end)` flushes pending chunks then
-        // fails the next take with `Done`, which `Stream.fromQueue` treats
-        // as a clean end. (`Queue.shutdown` would CLEAR queued items and
-        // interrupt pending takes — wrong for graceful teardown.)
-        yield* socket
-          .runString(handleServerFrame(queue))
-          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
+        // BOS, then the text, then EOS. Writes wait for the reader to connect.
+        const outgoing = Stream.concat(
+          Stream.make(bosFrame(cfg, request)),
+          Stream.concat(
+            textIn.pipe(
+              Stream.filter((text) => text.length > 0),
+              Stream.map(textFrame),
+            ),
+            Stream.make(eosFrame),
+          ),
+        ).pipe(Stream.mapEffect((frame) => Effect.mapError(write(frame), asAiError)))
 
-        return Stream.fromQueue(queue)
+        return Stream.merge(chunks, Stream.drain(outgoing), { haltStrategy: "left" })
       }),
     )

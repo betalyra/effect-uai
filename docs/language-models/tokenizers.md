@@ -67,7 +67,7 @@ terms, Google's among them. Pass a Hugging Face token for those:
 
 ```ts
 const gated = Effect.gen(function* () {
-  const token = yield* Config.redacted("HF_TOKEN")
+  const token = yield* Config.Redacted("HF_TOKEN")
   return yield* download({ model: "google/gemma-2-9b", token })
 })
 ```

@@ -12,18 +12,18 @@ rest of the open-weights field behind one key.
 pnpm add @effect-uai/fal @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers.
 
 ## Usage
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as falLayer } from "@effect-uai/fal/FalImageGenerator"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("FAL_API_KEY")
+    const apiKey = yield* Config.Redacted("FAL_API_KEY")
     return falLayer({ apiKey })
   }),
 )

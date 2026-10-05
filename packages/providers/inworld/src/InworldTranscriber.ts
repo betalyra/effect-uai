@@ -8,8 +8,9 @@
  * Streaming transcription lives at the `InworldRealtimeTranscriber`
  * subpath, which adds the WS path and the `SttStreaming` capability marker.
  */
-import { Context, Effect, Encoding, Layer, Match, Redacted, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Context, Effect, Layer, Match, Redacted, Schema, Stream } from "effect"
+import { Base64 } from "effect/encoding"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioSource } from "@effect-uai/core/Audio"
 import * as Capabilities from "@effect-uai/core/Capabilities"
@@ -65,7 +66,7 @@ const urlNotSupported: AiError.AiError = new AiError.InvalidRequest({
 
 const audioToBase64: (audio: AudioSource) => Effect.Effect<string, AiError.AiError> =
   Match.type<AudioSource>().pipe(
-    Match.tag("bytes", (a) => Effect.succeed(Encoding.encodeBase64(a.bytes))),
+    Match.tag("bytes", (a) => Effect.succeed(Base64.encode(a.bytes))),
     Match.tag("base64", (a) => Effect.succeed(a.base64)),
     Match.tag("url", () => Effect.fail(urlNotSupported)),
     Match.exhaustive,

@@ -18,12 +18,12 @@ pnpm add @effect-uai/core @effect-uai/anthropic effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { Anthropic, layer as anthropicLayer } from "@effect-uai/anthropic"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("ANTHROPIC_API_KEY")
+    const apiKey = yield* Config.Redacted("ANTHROPIC_API_KEY")
     return anthropicLayer({ apiKey, defaultMaxTokens: 1024 })
   }),
 )
@@ -54,7 +54,7 @@ interface Config {
 
 The layer carries connection details only. `model` is per call (see
 below). `apiKey` is always `Redacted.Redacted` - never raw `string`.
-Read it with `Config.redacted("ANTHROPIC_API_KEY")` or wrap manually
+Read it with `Config.Redacted("ANTHROPIC_API_KEY")` or wrap manually
 with `Redacted.make`.
 
 `defaultMaxTokens` is needed because Anthropic requires `max_tokens` on

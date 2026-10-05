@@ -1,4 +1,5 @@
-import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
+import { Array as Arr, Match, Option, Result, Schema, pipe } from "effect"
+import { Base64 } from "effect/encoding"
 import * as AiError from "@effect-uai/core/AiError"
 import type { ImageSource } from "@effect-uai/core/Image"
 import { imageBase64 } from "@effect-uai/core/Image"
@@ -249,7 +250,7 @@ const imageSourceToParts = Match.type<InputImage["source"]>().pipe(
     { inlineData: { mimeType: s.mimeType, data: s.base64 } },
   ]),
   Match.tag("bytes", (s): ReadonlyArray<RequestPart> => [
-    { inlineData: { mimeType: s.mimeType, data: Encoding.encodeBase64(s.bytes) } },
+    { inlineData: { mimeType: s.mimeType, data: Base64.encode(s.bytes) } },
   ]),
   Match.exhaustive,
 )

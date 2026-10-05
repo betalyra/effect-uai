@@ -31,7 +31,7 @@ The tokenizer needs one optional peer:
 pnpm add @huggingface/tokenizers
 ```
 
-ESM-only. Requires `effect@4.x` as a peer.
+ESM-only. Requires `effect@>=4.0.1` (Effect 4.0 stable) as a peer.
 
 ## Usage
 

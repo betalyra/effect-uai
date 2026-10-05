@@ -40,13 +40,13 @@ speech output:
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as realtimeLayer } from "@effect-uai/mistral/MistralRealtimeTranscriber"
 import { layer as synthLayer } from "@effect-uai/mistral/MistralSynthesizer"
 
 const mistral = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("MISTRAL_API_KEY")
+    const apiKey = yield* Config.Redacted("MISTRAL_API_KEY")
     return Layer.mergeAll(realtimeLayer({ apiKey }), synthLayer({ apiKey }))
   }),
 )

@@ -145,7 +145,7 @@ export const parseJson =
         // Validation runs through Standard Schema (Zod / Valibot / Effect), not
         // Effect Schema, so its JSON codecs don't apply here; and JSON.parse is
         // a separate step on purpose, to surface JsonParseError distinctly.
-        // @effect-diagnostics-next-line effect/preferSchemaOverJson:off
+        // @effect-diagnostics-next-linepreferSchemaOverJson:off
         try: () => JSON.parse(raw),
         catch: (cause) => new JsonParseError({ raw, cause }),
       }),

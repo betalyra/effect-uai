@@ -1,4 +1,5 @@
-import { Array as Arr, Encoding, Match, Option, Order, Result, Schema, pipe } from "effect"
+import { Array as Arr, Match, Option, Order, Result, Schema, pipe } from "effect"
+import { Base64 } from "effect/encoding"
 import * as Items from "@effect-uai/core/Items"
 import { JsonParseError } from "@effect-uai/core/JSONL"
 import type { Turn } from "@effect-uai/core/Turn"
@@ -129,7 +130,7 @@ const imageSourceToWire = Match.type<Items.InputImage["source"]>().pipe(
   Match.tag("bytes", (s): RequestImageContent["source"] => ({
     type: "base64",
     media_type: s.mimeType,
-    data: Encoding.encodeBase64(s.bytes),
+    data: Base64.encode(s.bytes),
   })),
   Match.exhaustive,
 )

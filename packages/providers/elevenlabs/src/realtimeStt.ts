@@ -1,12 +1,14 @@
-import { Cause, Effect, Encoding, Match, Queue, Redacted, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Effect, Match, Option, Predicate, Redacted, Schema, Stream } from "effect"
+import { Base64 } from "effect/encoding"
+import { HttpClient, HttpClientRequest } from "effect/http"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent, WordTimestamp } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
+import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
 import { httpStatusError, transportFailure } from "./codec.js"
 import { type ElevenLabsRegion, resolveHost } from "./region.js"
 
@@ -200,29 +202,19 @@ export const buildWsUrl = (
 export const encodeAudioFrame = (bytes: Uint8Array, sampleRate: number) =>
   JSON.stringify({
     message_type: "input_audio_chunk",
-    audio_base_64: Encoding.encodeBase64(bytes),
+    audio_base_64: Base64.encode(bytes),
     sample_rate: sampleRate,
   })
 
-// ---------------------------------------------------------------------------
-// Parse one server message and emit to the queue if it maps to a
-// TranscriptEvent. Invalid JSON / unknown shapes are silently dropped —
-// the connection stays open and we keep streaming subsequent messages.
-// ---------------------------------------------------------------------------
-
-const handleServerMessage =
-  (
-    queue: Queue.Queue<TranscriptEvent, Cause.Done>,
-    mapEvent: (msg: typeof ServerMessage.Type) => TranscriptEvent | undefined,
-  ) =>
-  (raw: string) =>
+/** One raw text frame to at most one event; unknown or malformed frames yield `undefined`. */
+const frameToEvent =
+  (mapEvent: (msg: typeof ServerMessage.Type) => TranscriptEvent | undefined) =>
+  (raw: string): Effect.Effect<TranscriptEvent | undefined> =>
     Effect.gen(function* () {
       const json = yield* JSONL.parseSafe(raw)
-      if (json === undefined) return
+      if (json === undefined) return undefined
       const decoded = yield* decodeServerMessage(json).pipe(Effect.option)
-      if (decoded._tag === "None") return
-      const event = mapEvent(decoded.value)
-      if (event !== undefined) yield* Queue.offer(queue, event)
+      return Option.match(decoded, { onNone: () => undefined, onSome: mapEvent })
     })
 
 // ---------------------------------------------------------------------------
@@ -261,27 +253,25 @@ export const streamTranscription =
           ...(request.biasingTerms !== undefined && { keyterms: request.biasingTerms }),
           includeTimestamps,
         })
-        const socket = yield* Socket.makeWebSocket(url, {
-          // Effect's Socket treats all close codes as errors by default — that
-          // surfaces a clean server-side close as a stream failure. Whitelist
-          // standard clean-close codes (1000 / 1001 / 1005).
-          closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
-        })
-        const queue = yield* Queue.bounded<TranscriptEvent, Cause.Done>(64)
+        const socket = yield* Socket.makeWebSocket(url)
         const sampleRate = request.inputFormat.sampleRate
+        const { write } = yield* socket.writer
+        const asAiError = WebSocketSession.toAiError("elevenlabs")
 
-        const write = yield* socket.writer
-        yield* Stream.runForEach(audioIn, (bytes) =>
-          write(encodeAudioFrame(bytes, sampleRate)),
-        ).pipe(Effect.ignore, Effect.forkScoped)
+        const events = Stream.fromPull(Socket.readerString(socket)).pipe(
+          Stream.scoped,
+          Stream.catchIf(WebSocketSession.isCleanClose, () => Stream.empty),
+          Stream.mapError(asAiError),
+          Stream.mapEffect(frameToEvent(wireToEvent(includeTimestamps))),
+          Stream.filter(Predicate.isNotUndefined),
+        )
 
-        // `Queue.end` flushes pending events then fails the next take with
-        // `Done` — clean stream end. `Queue.shutdown` would CLEAR queued
-        // items and interrupt pending takes (wrong for graceful teardown).
-        yield* socket
-          .runString(handleServerMessage(queue, wireToEvent(includeTimestamps)))
-          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
+        // Writes wait for the reader to connect.
+        const outgoing = Stream.map(audioIn, (bytes) => encodeAudioFrame(bytes, sampleRate)).pipe(
+          Stream.mapEffect((frame) => Effect.mapError(write(frame), asAiError)),
+        )
 
-        return Stream.fromQueue(queue)
+        // The server's close ends the transcript; the audio running out does not.
+        return Stream.merge(events, Stream.drain(outgoing), { haltStrategy: "left" })
       }),
     )

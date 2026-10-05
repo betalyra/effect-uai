@@ -36,11 +36,15 @@ export const defaultModel: Record<Provider, string> = {
  * Lyria Layer (`@effect-uai/google/LyriaGenerator`) is fixed at 30 s
  * for the clip model and ignores `duration`; ElevenLabs honors it.
  */
-export const run = (input: { readonly model: string; readonly prompt: string }) =>
+export const run = (input: {
+  readonly model: string
+  readonly prompt: string
+  readonly duration?: Duration.Duration
+}) =>
   MusicGenerator.generate({
     model: input.model,
     prompt: input.prompt,
-    duration: Duration.seconds(30),
+    duration: input.duration ?? Duration.seconds(30),
     outputFormat: { container: "mp3", encoding: "mp3", sampleRate: 44100, channels: 2 },
   })
 

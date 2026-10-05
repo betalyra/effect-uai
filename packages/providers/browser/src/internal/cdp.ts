@@ -9,10 +9,9 @@
  *
  * Commands are typed against the official `devtools-protocol` schema (types
  * only, zero runtime): `send("Page.navigate", params)` gets its params and
- * return type from the protocol. The transport rides Effect's native
- * `WebSocket` (via `layerWebSocketConstructorGlobal`), so no `ws` dependency is
- * needed on modern runtimes; CDP connect uses a bare `ws://` URL with no custom
- * headers.
+ * return type from the protocol. The transport rides the runtime's global
+ * `WebSocket`, so no `ws` dependency is needed; handshake headers (an auth
+ * token) need a runtime whose `WebSocket` accepts them, i.e. Node or Bun.
  *
  * Failures are transport-shaped ({@link CdpError}), not the public
  * `BrowserError`: the transport cannot know which browser verb a command was
@@ -25,15 +24,18 @@ import {
   Deferred,
   Effect,
   HashMap,
+  Layer,
   Option,
   PubSub,
   Ref,
   Schema,
   type Scope,
+  Stream,
 } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import * as Socket from "effect/socket/Socket"
 import type { ProtocolMapping } from "devtools-protocol/types/protocol-mapping.js"
 import * as JSONL from "@effect-uai/core/JSONL"
+import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
 
 type Commands = ProtocolMapping.Commands
 
@@ -103,20 +105,30 @@ const frame = (
     sessionId === undefined ? { id, method, params } : { id, method, params, sessionId },
   )
 
+/** Effect's global constructor rejects client options, so headers get their own. */
+const constructorFor = (
+  headers: Readonly<Record<string, string>> | undefined,
+): Layer.Layer<Socket.WebSocketConstructor> =>
+  headers === undefined
+    ? Socket.layerWebSocketConstructorGlobal
+    : Layer.succeed(Socket.WebSocketConstructor)(
+        (url) => new globalThis.WebSocket(url, { headers } as unknown as string),
+      )
+
 /**
  * Open a scoped CDP connection to a browser-level WebSocket endpoint. The
- * socket and its reader fiber are torn down on scope close. The underlying
- * socket connects lazily, so a bad endpoint surfaces on the first `send` as
- * a `CdpError` of kind `closed` (carrying the socket failure on `raw`), not
- * here.
+ * socket and its reader fiber are torn down on scope close. A bad endpoint
+ * surfaces on the first `send` as a `CdpError` of kind `closed` (carrying the
+ * socket failure on `raw`), not here.
  */
-export const openCdp = (endpoint: string): Effect.Effect<Cdp, never, Scope.Scope> =>
+export const openCdp = (
+  endpoint: string,
+  headers?: Readonly<Record<string, string>>,
+): Effect.Effect<Cdp, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const socket = yield* Socket.makeWebSocket(endpoint, {
-      // Effect's Socket treats every close code as an error; whitelist the
-      // standard clean-close codes.
-      closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
-    }).pipe(Effect.provide(Socket.layerWebSocketConstructorGlobal))
+    const socket = yield* Socket.makeWebSocket(endpoint).pipe(
+      Effect.provide(constructorFor(headers)),
+    )
 
     const pending = yield* Ref.make(HashMap.empty<number, Pending>())
     const counter = yield* Ref.make(0)
@@ -124,7 +136,10 @@ export const openCdp = (endpoint: string): Effect.Effect<Cdp, never, Scope.Scope
     // Why the socket died (failed to open, dropped, dirty close); carried on
     // the `closed` errors handed to in-flight commands.
     const closeCause = yield* Ref.make<unknown>(undefined)
-    const write = yield* socket.writer
+    // The writer waits for a reconnect rather than failing, so a command sent
+    // after the reader ends is refused here.
+    const ended = yield* Ref.make(false)
+    const { write } = yield* socket.writer
 
     const dispatch = (raw: string): Effect.Effect<void> =>
       Effect.gen(function* () {
@@ -170,11 +185,19 @@ export const openCdp = (endpoint: string): Effect.Effect<Cdp, never, Scope.Scope
         ),
       )
     })
-    yield* socket.runString(dispatch).pipe(
+    yield* Stream.fromPull(Socket.readerString(socket)).pipe(
+      Stream.scoped,
+      Stream.catchIf(WebSocketSession.isCleanClose, () => Stream.empty),
+      Stream.runForEach(dispatch),
       Effect.tapCause((cause) => Ref.set(closeCause, Cause.squash(cause))),
-      Effect.ensuring(failPending),
+      Effect.ensuring(Effect.andThen(Ref.set(ended, true), failPending)),
       Effect.forkScoped,
     )
+
+    const closed = (method: string) =>
+      Effect.flatMap(Ref.get(closeCause), (raw) =>
+        Effect.fail(new CdpError({ kind: "closed", method, reason: "connection closed", raw })),
+      )
 
     const send = <M extends CdpMethod>(
       method: M,
@@ -186,15 +209,23 @@ export const openCdp = (endpoint: string): Effect.Effect<Cdp, never, Scope.Scope
         const deferred = yield* Deferred.make<unknown, CdpError>()
         const entry: Pending = { method, deferred }
         yield* Ref.update(pending, HashMap.set(id, entry))
-        // `ensuring` reclaims the entry on write failure and on caller
-        // interruption; on the success path dispatch has already removed it.
-        const result = yield* write(frame(id, method, params ?? {}, sessionId)).pipe(
+        // Checked after registering: either `failPending` sees this entry, or
+        // this sees the flag it sets first.
+        if (yield* Ref.get(ended)) {
+          yield* Ref.update(pending, HashMap.remove(id))
+          return yield* closed(method)
+        }
+        const written = write(frame(id, method, params ?? {}, sessionId)).pipe(
           Effect.mapError(
             (raw) => new CdpError({ kind: "write", method, reason: "socket write failed", raw }),
           ),
-          Effect.flatMap(() => Deferred.await(deferred)),
-          Effect.ensuring(Ref.update(pending, HashMap.remove(id))),
         )
+        // Concurrent, because a write before the socket opens waits for it; a
+        // socket that never opens fails the reply instead, which ends the write.
+        // `ensuring` reclaims the entry on failure and on caller interruption.
+        const [, result] = yield* Effect.all([written, Deferred.await(deferred)], {
+          concurrency: 2,
+        }).pipe(Effect.ensuring(Ref.update(pending, HashMap.remove(id))))
         return result as CdpReturn<M>
       })
 

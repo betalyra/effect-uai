@@ -31,7 +31,7 @@ interface PickedProvider {
 }
 
 const openaiProvider = Effect.gen(function* () {
-  const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+  const apiKey = yield* Config.Redacted("OPENAI_API_KEY")
   const service = yield* makeResponses({ apiKey })
   return {
     label: "openai/gpt-5.4-mini",
@@ -41,7 +41,7 @@ const openaiProvider = Effect.gen(function* () {
 })
 
 const anthropicProvider = Effect.gen(function* () {
-  const apiKey = yield* Config.redacted("ANTHROPIC_API_KEY")
+  const apiKey = yield* Config.Redacted("ANTHROPIC_API_KEY")
   const service = yield* makeAnthropic({ apiKey, defaultMaxTokens: 2048 })
   return {
     label: "anthropic/claude-sonnet-4-6",
@@ -51,7 +51,7 @@ const anthropicProvider = Effect.gen(function* () {
 })
 
 const googleProvider = Effect.gen(function* () {
-  const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
+  const apiKey = yield* Config.Redacted("GOOGLE_API_KEY")
   const service = yield* makeGemini({ apiKey })
   return {
     label: "google/gemini-3-flash-preview",

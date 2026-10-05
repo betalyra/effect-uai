@@ -1,5 +1,5 @@
 import { Stream } from "effect"
-import { Sse } from "effect/unstable/encoding"
+import { Sse } from "effect/encoding"
 
 /**
  * One Server-Sent Event. Fields per the WHATWG spec:
@@ -35,7 +35,7 @@ const makeParserState = (): ParserState => {
 
 /**
  * Decode a `Stream<Uint8Array>` (e.g. an HTTP response body) into a
- * `Stream<SSE.Event>`, using the spec parser from `effect/unstable/encoding`.
+ * `Stream<SSE.Event>`, using the spec parser from `effect/encoding`.
  * An event is dispatched only once its terminating blank line arrives, so a
  * partial event at stream end (clean or failed) is discarded per the spec
  * rather than surfaced as a truncated frame.

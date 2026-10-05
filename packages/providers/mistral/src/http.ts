@@ -1,5 +1,5 @@
 import { Effect, Match } from "effect"
-import { HttpClientRequest } from "effect/unstable/http"
+import { HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Multipart from "@effect-uai/core/Multipart"
 

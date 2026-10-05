@@ -23,10 +23,10 @@ import {
   Stdio,
   Stream,
 } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
-import * as HttpRouter from "effect/unstable/http/HttpRouter"
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest"
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
+import { HttpClient, HttpClientRequest } from "effect/http"
+import * as HttpRouter from "effect/http/HttpRouter"
+import * as HttpServerRequest from "effect/http/HttpServerRequest"
+import * as HttpServerResponse from "effect/http/HttpServerResponse"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import { webSearchTool } from "@effect-uai/core/WebSearchTool"
@@ -362,7 +362,7 @@ export const main = Effect.gen(function* () {
     `realtime-voice-agent (${flags.provider}: ${cfg.model}, voice ${cfg.voiceId}, search ${flags.search})`,
   )
 
-  // @effect-diagnostics-next-line effect/returnEffectInGen:off
+  // @effect-diagnostics-next-linereturnEffectInGen:off
   return Layer.launch(
     HttpRouter.serve(
       routesLayer({

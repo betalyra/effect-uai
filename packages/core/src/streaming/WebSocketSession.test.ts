@@ -1,8 +1,10 @@
 import { describe, it } from "@effect/vitest"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Effect, Exit, Pull, Queue, Schema } from "effect"
+import * as Socket from "effect/socket/Socket"
 import { expect } from "vitest"
 import * as AiError from "../domain/AiError.js"
-import { toAiError } from "./WebSocketSession.js"
+import * as FakeWebSocket from "../testing/FakeWebSocket.js"
+import { open, toAiError } from "./WebSocketSession.js"
 
 const KEY = "AIzaSyEXAMPLEKEY"
 const URL = `wss://generativelanguage.googleapis.com/ws/BidiGenerateContent?key=${KEY}`
@@ -49,4 +51,54 @@ describe("WebSocketSession errors", () => {
     expect(forbidden._tag).toBe("AuthFailed")
     expect(ended._tag).toBe("Unavailable")
   })
+})
+
+const Frame = Schema.Struct({ n: Schema.Number })
+
+const session = (server: FakeWebSocket.FakeWebSocketServer) =>
+  open({ url: "wss://example.test", provider: "test", schema: Frame }).pipe(
+    Effect.provide(server.layer),
+  )
+
+describe("WebSocketSession lifetime", () => {
+  it.live("writes a reply to a frame before the next one arrives", () =>
+    Effect.gen(function* () {
+      const server = yield* FakeWebSocket.make({ greeting: [{ n: 1 }] })
+      const { send, frames } = yield* session(server)
+
+      const first = yield* Queue.take(frames)
+      yield* send(JSON.stringify({ n: first.n + 1 }))
+      yield* Effect.sleep("5 millis")
+
+      expect(yield* server.sent).toEqual([{ n: 2 }])
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("ends the frames on a clean close, and refuses a send after it", () =>
+    Effect.gen(function* () {
+      const server = yield* FakeWebSocket.make({ greeting: [{ n: 1 }] })
+      const { send, frames } = yield* session(server)
+
+      yield* Queue.take(frames)
+      yield* server.close(1000)
+      const end = yield* Effect.exit(Queue.take(frames))
+      const late = yield* Effect.exit(send(JSON.stringify({ n: 2 })))
+
+      expect(Exit.isFailure(end) && Pull.isDoneCause(end.cause)).toBe(true)
+      expect(Exit.isFailure(late) && JSON.stringify(late)).toContain("Unavailable")
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("fails the frames on a dirty close", () =>
+    Effect.gen(function* () {
+      const server = yield* FakeWebSocket.make({ greeting: [{ n: 1 }] })
+      const { frames } = yield* session(server)
+
+      yield* Queue.take(frames)
+      yield* server.close(1011)
+      const end = yield* Effect.exit(Queue.take(frames))
+
+      expect(JSON.stringify(end)).toContain("Unavailable")
+    }).pipe(Effect.scoped),
+  )
 })

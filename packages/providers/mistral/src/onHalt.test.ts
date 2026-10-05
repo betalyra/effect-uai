@@ -1,5 +1,5 @@
 import { Effect, Exit, Redacted, Stream } from "effect"
-import { HttpClient, HttpClientResponse } from "effect/unstable/http"
+import { HttpClient, HttpClientResponse } from "effect/http"
 import { describe, expect, it } from "vitest"
 import { TurnEvent } from "@effect-uai/core/Turn"
 import { make as makeMistral } from "./Mistral.js"

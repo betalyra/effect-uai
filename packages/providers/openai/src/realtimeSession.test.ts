@@ -1,5 +1,6 @@
 import { describe, it } from "@effect/vitest"
-import { Effect, Encoding, Fiber, Match, Redacted, Stream } from "effect"
+import { Effect, Fiber, Match, Redacted, Stream } from "effect"
+import { Base64 } from "effect/encoding"
 import { expect } from "vitest"
 import type { RealtimeEvent } from "@effect-uai/core/Realtime"
 import { RealtimeInput } from "@effect-uai/core/Realtime"
@@ -98,7 +99,7 @@ describe("OpenAI realtime session responses", () => {
           yield* server.push({
             type: "response.output_audio.delta",
             response_id: "resp_1",
-            delta: Encoding.encodeBase64(new Uint8Array([1, 2, 3])),
+            delta: Base64.encode(new Uint8Array([1, 2, 3])),
           })
           yield* server.push({
             type: "response.output_audio_transcript.delta",

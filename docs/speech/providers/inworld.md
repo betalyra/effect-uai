@@ -28,14 +28,14 @@ you need. The realtime paths add WS / JWT plumbing.
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import * as Socket from "effect/unstable/socket/Socket"
+import { FetchHttpClient } from "effect/http"
+import * as Socket from "effect/socket/Socket"
 import { layer as realtimeTranscriber } from "@effect-uai/inworld/InworldRealtimeTranscriber"
 import { layer as realtimeSynth } from "@effect-uai/inworld/InworldRealtimeSynthesizer"
 
 const inworld = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("INWORLD_API_KEY")
+    const apiKey = yield* Config.Redacted("INWORLD_API_KEY")
     return Layer.mergeAll(realtimeTranscriber({ apiKey }), realtimeSynth({ apiKey }))
   }),
 )

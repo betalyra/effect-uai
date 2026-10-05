@@ -146,11 +146,11 @@ const costLine = (chunks: number, cost: Cost) =>
 const languageModel = (flags: { readonly baseUrl: Option.Option<string> }) =>
   Option.match(flags.baseUrl, {
     onNone: () =>
-      Effect.flatMap(Config.redacted("ANTHROPIC_API_KEY"), (apiKey) =>
+      Effect.flatMap(Config.Redacted("ANTHROPIC_API_KEY"), (apiKey) =>
         makeAnthropic({ apiKey, promptCaching: true }),
       ),
     onSome: (baseUrl) =>
-      Effect.flatMap(Config.redacted("LLM_API_KEY"), (apiKey) =>
+      Effect.flatMap(Config.Redacted("LLM_API_KEY"), (apiKey) =>
         makeResponses({ apiKey, baseUrl }),
       ),
   })
@@ -162,7 +162,7 @@ const services = Layer.mergeAll(
   Chunking.layer(Chunking.sentences, { targetSize: 512, overlap: 64 }),
   Layer.unwrap(
     Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("JINA_API_KEY")
+      const apiKey = yield* Config.Redacted("JINA_API_KEY")
       return Layer.merge(jinaEmbeddingLayer({ apiKey }), jinaRerankerLayer({ apiKey }))
     }),
   ),

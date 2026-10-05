@@ -10,7 +10,7 @@
  * download on every run.
  */
 import { Array as Arr, Effect, Layer, Redacted, Schema } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import { Tokenizer, type TokenizerService } from "@effect-uai/core/Tokenizer"
 import { Tokenizer as HfTokenizer } from "@huggingface/tokenizers"
 

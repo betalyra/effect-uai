@@ -1,4 +1,5 @@
-import { Effect, Encoding } from "effect"
+import { Effect } from "effect"
+import { Base64 } from "effect/encoding"
 import { describe, expect, it } from "vitest"
 import type { AudioSource } from "@effect-uai/core/Audio"
 import { audioToBlob, defaultFileName, formatToOutputSlug, httpStatusError } from "./codec.js"
@@ -74,7 +75,7 @@ describe("audioToBlob", () => {
     const original = new Uint8Array([0xde, 0xad, 0xbe, 0xef])
     const source: AudioSource = {
       _tag: "base64",
-      base64: Encoding.encodeBase64(original),
+      base64: Base64.encode(original),
       mimeType: "audio/mpeg",
     }
     const blob = await Effect.runPromise(audioToBlob(source))

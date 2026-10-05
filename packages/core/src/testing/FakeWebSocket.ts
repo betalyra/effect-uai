@@ -10,12 +10,16 @@
  * shim registers, since `Socket.makeWebSocket` drives it with plain callbacks.
  * The shim is a plain object, so nothing here touches a platform global.
  */
-import { Effect, Layer, Queue, Ref, type Scope, Stream } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Deferred, Effect, Layer, Queue, type Scope, Stream, SubscriptionRef } from "effect"
+import * as Socket from "effect/socket/Socket"
 
 export type FakeWebSocketServer = {
   /** Every frame the client has sent, JSON-parsed, oldest first. */
   readonly sent: Effect.Effect<ReadonlyArray<unknown>>
+  /** Wait until the client has sent at least `count` frames. */
+  readonly awaitSent: (count: number) => Effect.Effect<void>
+  /** Wait until the client has subscribed and the greeting has landed. */
+  readonly greeted: Effect.Effect<void>
   /** Deliver one frame to the client. */
   readonly push: (frame: unknown) => Effect.Effect<void>
   /** Close the socket. 1000, 1001 and 1005 are the clean codes. */
@@ -46,7 +50,8 @@ export const make = (
 ): Effect.Effect<FakeWebSocketServer, never, Scope.Scope> =>
   Effect.gen(function* () {
     const inbound = yield* Queue.unbounded<unknown>()
-    const sent = yield* Ref.make<ReadonlyArray<unknown>>([])
+    const sent = yield* SubscriptionRef.make<ReadonlyArray<unknown>>([])
+    const greeted = yield* Deferred.make<void>()
 
     const wiring = {
       listeners: {} as Record<string, ReadonlyArray<Listener>>,
@@ -73,7 +78,7 @@ export const make = (
     yield* Stream.fromQueue(inbound).pipe(
       Stream.runForEach((frame) =>
         Effect.gen(function* () {
-          yield* Ref.update(sent, (frames) => [...frames, frame])
+          yield* SubscriptionRef.update(sent, (frames) => [...frames, frame])
           const answer = yield* options?.reply?.(frame) ?? Effect.succeed([])
           yield* deliver(answer)
         }),
@@ -93,7 +98,10 @@ export const make = (
         // The greeting waits for a subscriber before it lands.
         if (type === "message" && !wiring.greeted) {
           wiring.greeted = true
-          soon(() => deliverSync(options?.greeting ?? []))
+          soon(() => {
+            deliverSync(options?.greeting ?? [])
+            Deferred.doneUnsafe(greeted, Effect.void)
+          })
         }
       },
       removeEventListener: (type: string, fn: Listener): void => {
@@ -111,7 +119,14 @@ export const make = (
       socket as unknown as globalThis.WebSocket
 
     return {
-      sent: Ref.get(sent),
+      sent: SubscriptionRef.get(sent),
+      awaitSent: (count) =>
+        SubscriptionRef.changes(sent).pipe(
+          Stream.filter((frames) => frames.length >= count),
+          Stream.take(1),
+          Stream.runDrain,
+        ),
+      greeted: Deferred.await(greeted),
       push: (frame) => deliver([frame]),
       close: (code = 1000) => Effect.sync(() => shutdown(code)),
       connect,

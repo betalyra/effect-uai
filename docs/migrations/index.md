@@ -15,6 +15,12 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.18](/migrations/v0-18/): one required action, upgrade to
+  Effect 4.0 stable (`effect` peer `>=4.0.1 <5.0.0`); effect-uai renames
+  nothing. Realtime transcription and synthesis streams now fail on a
+  dropped connection or a failing input instead of ending quietly. Additive:
+  CDP handshake `headers` in `@effect-uai/browser`, and Discord resumes that
+  carry the real sequence number.
 - [Migrating to 0.17](/migrations/v0-17/): purely additive. A
   `DecisionModel` capability in `@effect-uai/core` (typed `classify` /
   `rate` / `probability` questions about one input, a probability

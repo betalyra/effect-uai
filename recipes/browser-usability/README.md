@@ -50,15 +50,16 @@ explaining why, rather than inventing a product.
 
 ## Configuration
 
-| Env var          | Default                              | Meaning                                                                                                     |
-| ---------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `GOOGLE_API_KEY` | (required)                           | Gemini API key for the decision model.                                                                      |
-| `GOAL`           | Shop for calligraphy brush pens (…). | The task you want a first-time user to finish.                                                              |
-| `START_URL`      | `https://next-faster.vercel.app`     | Where the agent begins.                                                                                     |
-| `MODEL`          | `gemini-3-flash-preview`             | Decision model id.                                                                                          |
-| `MAX_STEPS`      | `20`                                 | Hard cap on loop iterations.                                                                                |
-| `CDP_URL`        | `http://127.0.0.1:9222`              | Chromium debug address (`http://` is resolved to the `ws://` endpoint automatically) or a full `ws://` URL. |
-| `LOG_LEVEL`      | `Info`                               | Set `Debug` to see each step live.                                                                          |
+| Env var             | Default                              | Meaning                                                                                                     |
+| ------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_API_KEY`    | (required)                           | Gemini API key for the decision model.                                                                      |
+| `GOAL`              | Shop for calligraphy brush pens (…). | The task you want a first-time user to finish.                                                              |
+| `START_URL`         | `https://next-faster.vercel.app`     | Where the agent begins.                                                                                     |
+| `MODEL`             | `gemini-3-flash-preview`             | Decision model id.                                                                                          |
+| `MAX_STEPS`         | `20`                                 | Hard cap on loop iterations.                                                                                |
+| `CDP_URL`           | `http://127.0.0.1:9222`              | Chromium debug address (`http://` is resolved to the `ws://` endpoint automatically) or a full `ws://` URL. |
+| `OBSCURA_CDP_TOKEN` | (unset)                              | Sent as `Authorization: Bearer <token>` to the CDP endpoint. Set it to the token obscura was started with.  |
+| `LOG_LEVEL`         | `Info`                               | Set `Debug` to see each step live.                                                                          |
 
 ## How it works
 
@@ -83,5 +84,6 @@ how to test.
 `app.ts` drives any CDP endpoint. Point `CDP_URL` at a locally installed
 Chrome (`--remote-debugging-port=9222`), a hosted CDP vendor, or even
 [obscura](https://github.com/h4ckf0r0day/obscura), a from-scratch partial
-CDP engine this recipe's vision-free grounding also runs on. `recipe.ts`
-never changes.
+CDP engine this recipe's vision-free grounding also runs on. obscura 0.2.3+
+in Docker requires a token: start it with `-e OBSCURA_CDP_TOKEN=...` and set
+the same `OBSCURA_CDP_TOKEN` for the recipe. `recipe.ts` never changes.

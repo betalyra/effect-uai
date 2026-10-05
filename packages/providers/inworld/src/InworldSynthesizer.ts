@@ -11,7 +11,7 @@
  * `TtsIncrementalText` capability marker.
  */
 import { Array as Arr, Context, Effect, Layer, Redacted, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk } from "@effect-uai/core/Audio"
 import * as JSONL from "@effect-uai/core/JSONL"

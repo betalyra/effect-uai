@@ -1,4 +1,5 @@
-import { Effect, Encoding, Match, Redacted, Result } from "effect"
+import { Effect, Match, Redacted, Result } from "effect"
+import { Base64 } from "effect/encoding"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import type { InworldAudioEncoding } from "./models.js"
@@ -82,7 +83,7 @@ export const defaultFormat: AudioFormat = {
 // ---------------------------------------------------------------------------
 
 export const decodeAudioContent = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
-  Result.match(Encoding.decodeBase64(b64), {
+  Result.match(Base64.decode(b64), {
     onSuccess: Effect.succeed,
     onFailure: (cause) =>
       Effect.fail(

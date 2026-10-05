@@ -15,10 +15,10 @@
  * pnpm-installed tree.
  */
 import { Config, Effect, Layer, Logger, References } from "effect"
-import type { HttpClient } from "effect/unstable/http"
-import * as HttpServerNs from "effect/unstable/http/HttpServer"
-import type * as HttpServerError from "effect/unstable/http/HttpServerError"
-import * as Socket from "effect/unstable/socket/Socket"
+import type { HttpClient } from "effect/http"
+import * as HttpServerNs from "effect/http/HttpServer"
+import type * as HttpServerError from "effect/http/HttpServerError"
+import * as Socket from "effect/socket/Socket"
 import type { NodeServices } from "@effect/platform-node"
 
 /**
@@ -44,7 +44,7 @@ const runtime: Runtime = "Bun" in globalThis ? "bun" : "Deno" in globalThis ? "d
 /** Picks this runtime's branch. The other two stay unevaluated descriptions. */
 const on = <A>(cases: Record<Runtime, A>): A => cases[runtime]
 
-const port = Config.port("PORT").pipe(Config.withDefault(3000))
+const port = Config.Port("PORT").pipe(Config.withDefault(3000))
 
 // ---------------------------------------------------------------------------
 // Platform services + an HTTP client
@@ -112,7 +112,7 @@ const server: Layer.Layer<ServerServices, Config.ConfigError | HttpServerError.S
 const logging = Layer.mergeAll(
   Logger.layer([Logger.consolePretty()]),
   Layer.unwrap(
-    Effect.map(Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const)), (level) =>
+    Effect.map(Config.LogLevel("LOG_LEVEL").pipe(Config.withDefault("Info" as const)), (level) =>
       Layer.succeed(References.MinimumLogLevel, level),
     ),
   ),

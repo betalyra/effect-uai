@@ -3,7 +3,6 @@ import {
   type Cause,
   Context,
   Effect,
-  Encoding,
   Layer,
   Match,
   Option,
@@ -12,7 +11,9 @@ import {
   type Scope,
   Stream,
 } from "effect"
-import { HttpClient } from "effect/unstable/http"
+import { Base64 } from "effect/encoding"
+import { HttpClient } from "effect/http"
+import * as Socket from "effect/socket/Socket"
 import type { MediaSource } from "@effect-uai/core/Media"
 import {
   CurrentConversation,
@@ -225,7 +226,10 @@ export const make = (
       ),
     )
 
-    const session = yield* SocketMode.connect({ open })
+    // The ticket is in the URL, so every runtime's global `WebSocket` is enough.
+    const session = yield* SocketMode.connect({ open }).pipe(
+      Effect.provide(Socket.layerWebSocketConstructorGlobal),
+    )
     const toEvents = Events.toEvents({ bot, replyIn: cfg.replyIn ?? "thread" })
     const inbox = yield* Queue.unbounded<InboundEvent, MessengerError.MessengerError | Cause.Done>()
 
@@ -298,7 +302,7 @@ export const make = (
         Match.tag("url", ({ url }) => sendUrl(at, msg, body, url)),
         Match.tag("bytes", ({ bytes, mimeType }) => sendBytes(at, msg, body, bytes, mimeType)),
         Match.tag("base64", ({ base64, mimeType }) =>
-          Effect.fromResult(Encoding.decodeBase64(base64)).pipe(
+          Effect.fromResult(Base64.decode(base64)).pipe(
             Effect.mapError(invalidMedia),
             Effect.flatMap((bytes) => sendBytes(at, msg, body, bytes, mimeType)),
           ),

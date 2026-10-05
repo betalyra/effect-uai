@@ -10,9 +10,9 @@
  * `Path`.
  */
 import { Cause, Channel, Effect, FileSystem, Layer, Path, Queue, Stdio, Stream } from "effect"
-import * as HttpRouter from "effect/unstable/http/HttpRouter"
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest"
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
+import * as HttpRouter from "effect/http/HttpRouter"
+import * as HttpServerRequest from "effect/http/HttpServerRequest"
+import * as HttpServerResponse from "effect/http/HttpServerResponse"
 import { providerChoice } from "@effect-uai/recipe-kit/argv"
 import { bundleClient } from "@effect-uai/recipe-kit/bundle"
 import { incrementalSynthesizerLayer } from "../_shared/model.js"
@@ -37,7 +37,7 @@ const textOf = (buf: Uint8Array): string | undefined =>
   Effect.runSync(
     Effect.try({
       // A raw WebSocket frame, so plain JSON is the right tool.
-      // @effect-diagnostics-next-line effect/preferSchemaOverJson:off
+      // @effect-diagnostics-next-linepreferSchemaOverJson:off
       try: () => (JSON.parse(decoder.decode(buf)) as { readonly text?: unknown }).text,
       catch: () => "malformed" as const,
     }).pipe(
@@ -122,7 +122,7 @@ export const main = Effect.gen(function* () {
   // The rule's `return yield*` suggestion would surface the served layer's
   // requirements onto main's R and break `run.ts`, so keep returning the
   // launch effect here.
-  // @effect-diagnostics-next-line effect/returnEffectInGen:off
+  // @effect-diagnostics-next-linereturnEffectInGen:off
   return Layer.launch(
     HttpRouter.serve(routesLayer({ provider, indexHtml, clientJs, playbackWorkletJs })),
   ).pipe(Effect.provide(incrementalSynthesizerLayer({ provider, model })))

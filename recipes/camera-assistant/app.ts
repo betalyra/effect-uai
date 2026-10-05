@@ -23,9 +23,9 @@ import {
   Stdio,
   Stream,
 } from "effect"
-import * as HttpRouter from "effect/unstable/http/HttpRouter"
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest"
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
+import * as HttpRouter from "effect/http/HttpRouter"
+import * as HttpServerRequest from "effect/http/HttpServerRequest"
+import * as HttpServerResponse from "effect/http/HttpServerResponse"
 import type { ImageSource } from "@effect-uai/core/Image"
 import type { CommonSessionRequest } from "@effect-uai/core/Realtime"
 import {
@@ -99,7 +99,7 @@ const videoTuned = Layer.effect(RealtimeSession)(
 
 const sessionLayer = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
+    const apiKey = yield* Config.Redacted("GOOGLE_API_KEY")
     return Layer.mergeAll(videoTuned, Layer.succeed(RealtimeVideoInput, undefined)).pipe(
       Layer.provide(geminiLiveLayer({ apiKey })),
     )
@@ -302,7 +302,7 @@ export const main = Effect.gen(function* () {
     })})`,
   )
 
-  // @effect-diagnostics-next-line effect/returnEffectInGen:off
+  // @effect-diagnostics-next-linereturnEffectInGen:off
   return Layer.launch(
     HttpRouter.serve(
       routesLayer({ flags, fromDisk, indexHtml, clientJs, micWorkletJs, playbackWorkletJs }),

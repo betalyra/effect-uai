@@ -18,17 +18,27 @@
  * Inworld's STT WS sends audio as base64 inside JSON (NOT binary frames),
  * matching the rest of the Inworld API style.
  */
-import { Cause, Effect, Encoding, Match, Queue, Redacted, Schema, Stream } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Effect, Match, Option, Predicate, Redacted, Schema, Stream } from "effect"
+import { Base64 } from "effect/encoding"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent, WordTimestamp } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
+import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
 import { authedWsConstructor } from "./wsAuth.js"
 
-export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
+export type Config = {
+  readonly apiKey: Redacted.Redacted
+  readonly baseUrl?: string
+  /**
+   * Build the socket yourself, for a proxy or an in-memory transport. The
+   * default attaches the Basic auth header through the `ws` package.
+   */
+  readonly webSocket?: Socket.WebSocketConstructor["Service"]
+}
 
 // ---------------------------------------------------------------------------
 // AudioFormat → `audioEncoding` slug for Inworld STT
@@ -85,7 +95,7 @@ const configFrame = (encoding: WireEncoding, request: CommonStreamTranscribeRequ
   })
 
 const audioChunkFrame = (bytes: Uint8Array) =>
-  JSON.stringify({ audioChunk: { content: Encoding.encodeBase64(bytes) } })
+  JSON.stringify({ audioChunk: { content: Base64.encode(bytes) } })
 
 const endTurnFrame = JSON.stringify({ endTurn: {} })
 const closeStreamFrame = JSON.stringify({ closeStream: {} })
@@ -177,14 +187,13 @@ export const wireToEvent = (frame: typeof ServerFrame.Type): TranscriptEvent | u
   return undefined
 }
 
-const handleServerMessage = (queue: Queue.Queue<TranscriptEvent, Cause.Done>) => (raw: string) =>
+/** One raw text frame to at most one event; unknown or malformed frames yield `undefined`. */
+const frameToEvent = (raw: string): Effect.Effect<TranscriptEvent | undefined> =>
   Effect.gen(function* () {
     const json = yield* JSONL.parseSafe(raw)
-    if (json === undefined) return
+    if (json === undefined) return undefined
     const decoded = yield* decodeServerFrame(json).pipe(Effect.option)
-    if (decoded._tag === "None") return
-    const event = wireToEvent(decoded.value)
-    if (event !== undefined) yield* Queue.offer(queue, event)
+    return Option.match(decoded, { onNone: () => undefined, onSome: wireToEvent })
   })
 
 // ---------------------------------------------------------------------------
@@ -206,32 +215,33 @@ export const streamTranscription =
           reason: "Inworld STT has no free-form prompt field; bias via `biasingTerms`.",
         })
         const encoding = yield* inputFormatToWire(request.inputFormat)
-        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg), {
-          // Effect's Socket treats all close codes as errors by default —
-          // whitelist standard clean-close codes (1000 / 1001 / 1005).
-          closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
-        }).pipe(Effect.provideService(Socket.WebSocketConstructor, authedWsConstructor(cfg.apiKey)))
-        const queue = yield* Queue.bounded<TranscriptEvent, Cause.Done>(64)
-        const write = yield* socket.writer
+        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg)).pipe(
+          Effect.provideService(
+            Socket.WebSocketConstructor,
+            cfg.webSocket ?? authedWsConstructor(cfg.apiKey),
+          ),
+        )
+        const { write } = yield* socket.writer
+        const asAiError = WebSocketSession.toAiError("inworld")
 
-        // Writer: config → drain audio → endTurn → closeStream. Inworld
-        // emits `result.transcription` partials in real-time via VAD;
-        // `endTurn` is sent on input-stream end to flush any tail audio
-        // into a final transcript, then `closeStream` for graceful close.
-        yield* Effect.gen(function* () {
-          yield* write(configFrame(encoding, request))
-          yield* Stream.runForEach(audioIn, (bytes) => write(audioChunkFrame(bytes)))
-          yield* write(endTurnFrame)
-          yield* write(closeStreamFrame)
-        }).pipe(Effect.ignore, Effect.forkScoped)
+        const events = Stream.fromPull(Socket.readerString(socket)).pipe(
+          Stream.scoped,
+          Stream.catchIf(WebSocketSession.isCleanClose, () => Stream.empty),
+          Stream.mapError(asAiError),
+          Stream.mapEffect(frameToEvent),
+          Stream.filter(Predicate.isNotUndefined),
+        )
 
-        // `Queue.end` flushes pending events then fails the next take with
-        // `Done` — clean stream end. `Queue.shutdown` would CLEAR queued
-        // items and interrupt pending takes (wrong for graceful teardown).
-        yield* socket
-          .runString(handleServerMessage(queue))
-          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
+        // `endTurn` flushes tail audio into a final transcript before `closeStream`.
+        const outgoing = Stream.concat(
+          Stream.make(configFrame(encoding, request)),
+          Stream.concat(
+            Stream.map(audioIn, audioChunkFrame),
+            Stream.make(endTurnFrame, closeStreamFrame),
+          ),
+        ).pipe(Stream.mapEffect((frame) => Effect.mapError(write(frame), asAiError)))
 
-        return Stream.fromQueue(queue)
+        // The server's close ends the transcript; the audio running out does not.
+        return Stream.merge(events, Stream.drain(outgoing), { haltStrategy: "left" })
       }),
     )

@@ -16,7 +16,6 @@
 import {
   Cause,
   Effect,
-  Encoding,
   FileSystem,
   Layer,
   Match,
@@ -27,6 +26,7 @@ import {
   Stdio,
   Stream,
 } from "effect"
+import { Base64 } from "effect/encoding"
 import type { ImageResolution, ImageSource } from "@effect-uai/core/Image"
 import { flagValue, intFlag } from "@effect-uai/recipe-kit/argv"
 import {
@@ -137,7 +137,7 @@ const EXTENSION: Record<string, string> = {
 const bytesOf: (source: ImageSource) => Effect.Effect<Uint8Array> = Match.type<ImageSource>().pipe(
   Match.tag("bytes", (s) => Effect.succeed(s.bytes)),
   Match.tag("base64", (s) =>
-    Result.match(Encoding.decodeBase64(s.base64), {
+    Result.match(Base64.decode(s.base64), {
       onSuccess: Effect.succeed,
       onFailure: (cause) => Effect.die(cause),
     }),

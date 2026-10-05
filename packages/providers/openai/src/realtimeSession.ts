@@ -11,7 +11,6 @@ import {
   DateTime,
   Duration,
   Effect,
-  Encoding,
   Match,
   Pull,
   Queue,
@@ -22,7 +21,8 @@ import {
   type Scope,
   Stream,
 } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Base64 } from "effect/encoding"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import type { AudioFormat } from "@effect-uai/core/Audio"
@@ -382,7 +382,7 @@ const usageOf = (response: typeof Response.Type) =>
   response.usage == null ? undefined : { ...response.usage }
 
 const decodeAudio = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
-  Result.match(Encoding.decodeBase64(b64), {
+  Result.match(Base64.decode(b64), {
     onSuccess: Effect.succeed,
     onFailure: (cause) =>
       Effect.fail(
@@ -537,7 +537,7 @@ const handleInput = (
       send(
         JSON.stringify({
           type: "input_audio_buffer.append",
-          audio: Encoding.encodeBase64(i.bytes),
+          audio: Base64.encode(i.bytes),
         }),
       ),
     ),

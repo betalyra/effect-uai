@@ -18,7 +18,7 @@
   "dependencies": {
     "@effect-uai/core": "workspace:*",
     "@effect/platform-bun": "catalog:",
-    "@effect/platform-deno": "^4.0.0-rc.111",
+    "@effect/platform-deno": "^4.0.1",
     "@effect/platform-node": "catalog:",
     "effect": "catalog:",
     "rolldown": "^1.0.2"

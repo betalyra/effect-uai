@@ -22,12 +22,12 @@ pnpm add @effect-uai/core @effect-uai/perplexity effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as perplexityLayer } from "@effect-uai/perplexity/PerplexitySearch"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("PERPLEXITY_API_KEY")
+    const apiKey = yield* Config.Redacted("PERPLEXITY_API_KEY")
     return perplexityLayer({ apiKey })
   }),
 )

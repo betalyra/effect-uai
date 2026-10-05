@@ -1,5 +1,5 @@
 {
-  "$schema": "./node_modules/@effect/language-service/schema.json",
+  "$schema": "./node_modules/@effect/tsgo/schema.json",
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",

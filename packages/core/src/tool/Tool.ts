@@ -461,7 +461,7 @@ export const decodeCallInput = <Input>(
 ): Effect.Effect<DecodeResult<Input>> => {
   const raw = call.arguments.trim() === "" ? "{}" : call.arguments
   return Effect.try({
-    // @effect-diagnostics-next-line effect/preferSchemaOverJson:off
+    // @effect-diagnostics-next-linepreferSchemaOverJson:off
     try: () => JSON.parse(raw) as unknown,
     catch: (): DecodeResult<Input> => ({ _tag: "parseError" }),
   }).pipe(

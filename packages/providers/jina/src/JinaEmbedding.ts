@@ -1,5 +1,6 @@
-import { Context, Effect, Encoding, Layer, Match, Redacted, Result, Schema } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Context, Effect, Layer, Match, Redacted, Result, Schema } from "effect"
+import { Base64 } from "effect/encoding"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { Embedding, EmbedContentPart, EmbedInput, Usage } from "@effect-uai/core/Embedding"
 
@@ -126,7 +127,7 @@ type WireItem = WireTextItem | WireImageItem
 const imageSourceToItem: (s: ImageSource) => WireItem = Match.type<ImageSource>().pipe(
   Match.tag("url", (s): WireItem => ({ image: s.url })),
   Match.tag("base64", (s): WireItem => ({ image: s.base64 })),
-  Match.tag("bytes", (s): WireItem => ({ image: Encoding.encodeBase64(s.bytes) })),
+  Match.tag("bytes", (s): WireItem => ({ image: Base64.encode(s.bytes) })),
   Match.exhaustive,
 )
 
@@ -301,7 +302,7 @@ const decodeBase64Embedding = (
   b64: string,
   encoding: JinaEncoding | undefined,
 ): Effect.Effect<Embedding, AiError.AiError> =>
-  Result.match(Encoding.decodeBase64(b64), {
+  Result.match(Base64.decode(b64), {
     onFailure: (cause) => Effect.fail(transportFailure(cause)),
     onSuccess: (bytes) =>
       Match.value(encoding).pipe(

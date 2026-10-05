@@ -9,7 +9,7 @@
  * we use the `ws` peer dep (Node/Bun only).
  */
 import { Redacted } from "effect"
-import type * as Socket from "effect/unstable/socket/Socket"
+import type * as Socket from "effect/socket/Socket"
 import { WebSocket as WSWebSocket } from "ws"
 import { authHeader } from "./codec.js"
 

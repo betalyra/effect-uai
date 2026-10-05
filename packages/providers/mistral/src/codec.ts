@@ -1,4 +1,5 @@
-import { Array as Arr, Effect, Encoding, Match, Option, Result } from "effect"
+import { Array as Arr, Effect, Match, Option, Result } from "effect"
+import { Base64 } from "effect/encoding"
 import type { ContentBlock, HistoryItem, InputImage } from "@effect-uai/core/Items"
 
 // The streaming decoder, tool encoding, and terminal-turn assembly are the
@@ -37,7 +38,7 @@ type WireMessage = {
 const imageSourceToUrl = Match.type<InputImage["source"]>().pipe(
   Match.tag("url", (s) => s.url),
   Match.tag("base64", (s) => `data:${s.mimeType};base64,${s.base64}`),
-  Match.tag("bytes", (s) => `data:${s.mimeType};base64,${Encoding.encodeBase64(s.bytes)}`),
+  Match.tag("bytes", (s) => `data:${s.mimeType};base64,${Base64.encode(s.bytes)}`),
   Match.exhaustive,
 )
 

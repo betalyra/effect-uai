@@ -9,7 +9,7 @@
  * cancellation signal (closing the response stream).
  */
 import { Cause, Effect, Match, Option, Queue, Ref, type Scope, Stream } from "effect"
-import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import * as SSE from "@effect-uai/core/SSE"
 import {
   McpAuthRequired,

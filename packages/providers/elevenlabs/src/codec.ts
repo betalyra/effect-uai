@@ -1,5 +1,6 @@
-import { Array as Arr, Effect, Encoding, Match, Option, Result } from "effect"
-import { HttpClientRequest } from "effect/unstable/http"
+import { Array as Arr, Effect, Match, Option, Result } from "effect"
+import { Base64 } from "effect/encoding"
+import { HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat, AudioSource } from "@effect-uai/core/Audio"
 import * as Multipart from "@effect-uai/core/Multipart"
@@ -139,7 +140,7 @@ const urlNotSupported: AiError.AiError = new AiError.InvalidRequest({
 })
 
 const decodeBase64ToBytes = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
-  Result.match(Encoding.decodeBase64(b64), {
+  Result.match(Base64.decode(b64), {
     onSuccess: Effect.succeed,
     onFailure: (cause) =>
       Effect.fail(

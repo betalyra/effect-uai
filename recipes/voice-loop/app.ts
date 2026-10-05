@@ -26,9 +26,9 @@ import {
   Stdio,
   Stream,
 } from "effect"
-import * as HttpRouter from "effect/unstable/http/HttpRouter"
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest"
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
+import * as HttpRouter from "effect/http/HttpRouter"
+import * as HttpServerRequest from "effect/http/HttpServerRequest"
+import * as HttpServerResponse from "effect/http/HttpServerResponse"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import { flagValue, providerChoice } from "@effect-uai/recipe-kit/argv"
 import {
@@ -272,7 +272,7 @@ export const main = Effect.gen(function* () {
   // The rule's `return yield*` suggestion would surface the served layer's
   // requirements onto main's R and break `run.ts`, so keep returning the
   // launch effect here.
-  // @effect-diagnostics-next-line effect/returnEffectInGen:off
+  // @effect-diagnostics-next-linereturnEffectInGen:off
   return Layer.launch(
     HttpRouter.serve(
       routesLayer({ cfg, indexHtml, clientJs, micWorkletJs, playbackWorkletJs, minLevel }),

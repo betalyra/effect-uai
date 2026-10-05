@@ -13,9 +13,9 @@
  * Internal to `recipes/`: provider selection is runner ergonomics, and the
  * library stays unopinionated about which provider you wire.
  */
-import { Config, Data, Effect, Layer, type Redacted, Schema } from "effect"
-import { HttpClient } from "effect/unstable/http"
-import type * as Socket from "effect/unstable/socket/Socket"
+import { Config, Data, Effect, Layer, Option, Redacted, Schema } from "effect"
+import { HttpClient } from "effect/http"
+import type * as Socket from "effect/socket/Socket"
 import { layer as anthropicLayer } from "@effect-uai/anthropic/Anthropic"
 import { layer as cdpLayer } from "@effect-uai/browser/Connect"
 import { layer as elevenLabsMusicLayer } from "@effect-uai/elevenlabs/ElevenLabsMusicGenerator"
@@ -113,8 +113,8 @@ const key = (
   fallback?: string,
 ): Effect.Effect<Redacted.Redacted, Config.ConfigError> =>
   fallback === undefined
-    ? Config.redacted(primary)
-    : Config.redacted(primary).pipe(Config.orElse(() => Config.redacted(fallback)))
+    ? Config.Redacted(primary)
+    : Config.Redacted(primary).pipe(Config.orElse(() => Config.Redacted(fallback)))
 
 type Entry<L> = {
   /** `baseUrl` is the caller's override; each entry supplies its own default. */
@@ -631,8 +631,10 @@ export const webReadLayer = (
 // ---------------------------------------------------------------------------
 // Browser
 //
-// No key and no model: a CDP endpoint is the whole configuration. Start one
-// with `docker run -d -p 127.0.0.1:9222:9222 chromedp/headless-shell`.
+// No model: a CDP endpoint is the whole configuration. Start one with
+// `docker run -d -p 127.0.0.1:9222:9222 chromedp/headless-shell`. obscura in
+// Docker requires a token: set `OBSCURA_CDP_TOKEN` for both the container and
+// the recipe.
 // ---------------------------------------------------------------------------
 
 const VersionInfo = Schema.Struct({ webSocketDebuggerUrl: Schema.String })
@@ -642,12 +644,12 @@ const VersionInfo = Schema.Struct({ webSocketDebuggerUrl: Schema.String })
  * Only the path is taken from the response, so a port-remapped container
  * (whose Chrome reports its internal port) still resolves correctly.
  */
-const resolveCdpEndpoint = (raw: string) =>
+const resolveCdpEndpoint = (raw: string, headers: Readonly<Record<string, string>>) =>
   raw.startsWith("http")
     ? Effect.gen(function* () {
-        const client = yield* HttpClient.HttpClient
+        const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
         const base = raw.replace(/\/$/, "")
-        const response = yield* client.get(`${base}/json/version`)
+        const response = yield* client.get(`${base}/json/version`, { headers })
         const info = yield* Schema.decodeUnknownEffect(VersionInfo)(yield* response.json)
         return `${base.replace(/^http/, "ws")}${new URL(info.webSocketDebuggerUrl).pathname}`
       })
@@ -656,4 +658,14 @@ const resolveCdpEndpoint = (raw: string) =>
 export const browserLayer = (
   endpoint = "http://127.0.0.1:9222",
 ): Layer.Layer<Browser, unknown, HttpClient.HttpClient> =>
-  Layer.unwrap(Effect.map(resolveCdpEndpoint(endpoint), (endpoint) => cdpLayer({ endpoint })))
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const token = yield* Config.option(Config.Redacted("OBSCURA_CDP_TOKEN"))
+      const headers = Option.match(token, {
+        onNone: () => ({}),
+        onSome: (t) => ({ Authorization: `Bearer ${Redacted.value(t)}` }),
+      })
+      const resolved = yield* resolveCdpEndpoint(endpoint, headers)
+      return cdpLayer({ endpoint: resolved, ...(Option.isSome(token) && { headers }) })
+    }),
+  )

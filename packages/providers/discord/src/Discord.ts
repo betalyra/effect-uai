@@ -3,7 +3,6 @@ import {
   type Cause,
   Context,
   Effect,
-  Encoding,
   Layer,
   Match,
   Option,
@@ -13,7 +12,9 @@ import {
   type Scope,
   Stream,
 } from "effect"
-import { HttpClient } from "effect/unstable/http"
+import { Base64 } from "effect/encoding"
+import { HttpClient } from "effect/http"
+import * as Socket from "effect/socket/Socket"
 import type { MediaSource } from "@effect-uai/core/Media"
 import {
   CurrentConversation,
@@ -208,11 +209,13 @@ export const make = (
 
     // -- inbound -----------------------------------------------------------
 
+    // The gateway takes its token in the identify payload, not a header, so
+    // every runtime's global `WebSocket` is enough.
     const session = yield* Gateway.connect({
       token: cfg.token,
       intents: cfg.intents ?? defaultIntents,
       url,
-    })
+    }).pipe(Effect.provide(Socket.layerWebSocketConstructorGlobal))
     const toEvents = Events.toEvents(session.bot)
     const inbox = yield* Queue.unbounded<InboundEvent, MessengerError.MessengerError | Cause.Done>()
 
@@ -280,7 +283,7 @@ export const make = (
         Match.tag("url", ({ url }) => sendUrl(at, fields, body, url)),
         Match.tag("bytes", ({ bytes, mimeType }) => send(bytes, mimeType)),
         Match.tag("base64", ({ base64, mimeType }) =>
-          Effect.fromResult(Encoding.decodeBase64(base64)).pipe(
+          Effect.fromResult(Base64.decode(base64)).pipe(
             Effect.mapError(invalidMedia),
             Effect.flatMap((bytes) => send(bytes, mimeType)),
           ),

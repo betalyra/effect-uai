@@ -4,8 +4,8 @@
  * and fixed for the connection's lifetime. The client surface is era-uniform.
  */
 import { Context, Effect, Layer, Option, Ref, type Scope } from "effect"
-import type { HttpClient } from "effect/unstable/http"
-import type { ChildProcessSpawner } from "effect/unstable/process"
+import type { HttpClient } from "effect/http"
+import type { ChildProcessSpawner } from "effect/process"
 import { McpConnectFailed, type McpError, McpProtocolError } from "./McpError.js"
 import { Auth, type TokenSource } from "./internal/auth.js"
 import * as Handshake from "./internal/protocols/2025-06-18.js"

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Option, Redacted, Result, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import {
   type CommonRequest,

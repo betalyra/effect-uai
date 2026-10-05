@@ -22,12 +22,12 @@ pnpm add @effect-uai/core @effect-uai/fal effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as falImageLayer } from "@effect-uai/fal/FalImageGenerator"
 
 const images = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("FAL_API_KEY")
+    const apiKey = yield* Config.Redacted("FAL_API_KEY")
     return falImageLayer({ apiKey })
   }),
 )

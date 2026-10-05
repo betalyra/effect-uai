@@ -11,9 +11,11 @@ import {
   Schedule,
   Schema,
   type Scope,
+  Stream,
 } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import * as Socket from "effect/socket/Socket"
 import * as MessengerError from "@effect-uai/core/MessengerError"
+import { isCleanClose } from "@effect-uai/core/WebSocketSession"
 import * as Events from "./events.js"
 import { provider } from "./rest.js"
 
@@ -140,6 +142,14 @@ const socketReason = (error: Socket.SocketError): string =>
     ? (error.reason.closeReason ?? error.reason.message)
     : error.reason.message
 
+// Effect's `Socket` fails on every close. A clean one is only ever our own
+// teardown; anything else carries the close code the classifier reads.
+const endedBy = (error: Socket.SocketError): Ended => {
+  if (isCleanClose(error)) return { action: "resume", code: 1000, reason: "closed" }
+  const code = socketCode(error)
+  return { action: classifyClose(code), code, reason: closeReason(code, socketReason(error)) }
+}
+
 // Discord asks for a random 1-5 s pause before identifying on a fresh session.
 const freshSessionDelay = Effect.sync(() => Duration.millis(1000 + Math.random() * 4000))
 
@@ -159,7 +169,11 @@ const identity = { os: "effect-uai", browser: "effect-uai", device: "effect-uai"
  */
 export const connect = (
   cfg: Config,
-): Effect.Effect<Session, MessengerError.MessengerConnectFailed, Scope.Scope> =>
+): Effect.Effect<
+  Session,
+  MessengerError.MessengerConnectFailed,
+  Scope.Scope | Socket.WebSocketConstructor
+> =>
   Effect.gen(function* () {
     const dispatches = yield* Queue.unbounded<
       Incoming,
@@ -168,6 +182,8 @@ export const connect = (
     const ready = yield* Deferred.make<Events.BotIdentity, MessengerError.MessengerConnectFailed>()
     const resume = yield* Ref.make(Option.none<Resume>())
     const attempts = yield* Ref.make(0)
+    // Outlives a connection: a resume replays from the last sequence seen.
+    const seq = yield* Ref.make(Option.none<number>())
 
     // -- one connection ----------------------------------------------------
 
@@ -176,16 +192,16 @@ export const connect = (
       // A resumable session has its own host; a fresh one starts at the URL
       // `GET /gateway/bot` gave us.
       const host = Option.match(from, { onNone: () => cfg.url, onSome: (r: Resume) => r.url })
-      const socket = yield* Socket.makeWebSocket(`${host}/?v=10&encoding=json`, {
-        // Effect treats every close as an error by default; the standard clean
-        // codes are not, and Discord's 4xxx ones are what drives `classifyClose`.
-        closeCodeIsError: (code: number) => code !== 1000 && code !== 1001 && code !== 1005,
-        // The gateway takes its token in the identify payload, not a header,
-        // so every runtime's global `WebSocket` is enough.
-      }).pipe(Effect.provide(Socket.layerWebSocketConstructorGlobal))
-      const write = yield* socket.writer
+      const socket = yield* Socket.makeWebSocket(`${host}/?v=10&encoding=json`)
+      const writer = yield* socket.writer
+      // The writer waits for the next connection rather than failing, so a
+      // beat or handshake after this one's reader ended is dropped here.
+      const closed = yield* Ref.make(false)
+      const write = (chunk: string | Socket.CloseEvent) =>
+        Effect.flatMap(Ref.get(closed), (isClosed) =>
+          isClosed ? Effect.void : writer.write(chunk),
+        )
       const send = (payload: unknown) => write(JSON.stringify(payload))
-      const seq = yield* Ref.make(Option.none<number>())
       const acked = yield* Ref.make(true)
       // Set by op 9 with `d: false`, the one case the close code cannot express.
       const requested = yield* Ref.make(Option.none<CloseAction>())
@@ -301,18 +317,12 @@ export const connect = (
           )
         }).pipe(Effect.ignore)
 
-      // A clean 1000 is only ever our own teardown; anything else carries the
-      // close code the classifier reads.
-      const ended = yield* socket.runString(handle).pipe(
+      const ended = yield* Stream.fromPull(Socket.readerString(socket)).pipe(
+        Stream.scoped,
+        Stream.runForEach(handle),
+        Effect.ensuring(Ref.set(closed, true)),
         Effect.as<Ended>({ action: "resume", code: 1000, reason: "closed" }),
-        Effect.catch((error: Socket.SocketError) => {
-          const code = socketCode(error)
-          return Effect.succeed<Ended>({
-            action: classifyClose(code),
-            code,
-            reason: closeReason(code, socketReason(error)),
-          })
-        }),
+        Effect.catch((error: Socket.SocketError) => Effect.succeed(endedBy(error))),
       )
       const override = yield* Ref.get(requested)
       return Option.match(override, {

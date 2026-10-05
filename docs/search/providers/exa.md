@@ -21,12 +21,12 @@ pnpm add @effect-uai/core @effect-uai/exa effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as exaLayer } from "@effect-uai/exa/ExaSearch"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("EXA_API_KEY")
+    const apiKey = yield* Config.Redacted("EXA_API_KEY")
     return exaLayer({ apiKey })
   }),
 )

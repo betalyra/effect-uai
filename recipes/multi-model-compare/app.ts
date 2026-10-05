@@ -35,9 +35,9 @@ export const main = Effect.gen(function* () {
     flagValue("question", yield* stdio.args),
     () => DEFAULT_QUESTION,
   )
-  const openaiKey = yield* Config.redacted("OPENAI_API_KEY")
-  const googleKey = yield* Config.redacted("GOOGLE_API_KEY")
-  const anthropicKey = yield* Config.redacted("ANTHROPIC_API_KEY")
+  const openaiKey = yield* Config.Redacted("OPENAI_API_KEY")
+  const googleKey = yield* Config.Redacted("GOOGLE_API_KEY")
+  const anthropicKey = yield* Config.Redacted("ANTHROPIC_API_KEY")
 
   const openai = yield* makeResponses({ apiKey: openaiKey })
   const google = yield* makeGemini({ apiKey: googleKey })

@@ -10,9 +10,11 @@ import {
   Ref,
   Schema,
   type Scope,
+  Stream,
 } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import * as Socket from "effect/socket/Socket"
 import * as MessengerError from "@effect-uai/core/MessengerError"
+import { isCleanClose } from "@effect-uai/core/WebSocketSession"
 import * as Events from "./events.js"
 import { provider } from "./api.js"
 
@@ -108,7 +110,11 @@ const backoff = (attempt: number): Duration.Duration =>
  */
 export const connect = (
   cfg: Config,
-): Effect.Effect<Session, MessengerError.MessengerConnectFailed, Scope.Scope> =>
+): Effect.Effect<
+  Session,
+  MessengerError.MessengerConnectFailed,
+  Scope.Scope | Socket.WebSocketConstructor
+> =>
   Effect.gen(function* () {
     const envelopes = yield* Queue.unbounded<Incoming, MessengerError.MessengerError | Cause.Done>()
     const ready = yield* Deferred.make<void, MessengerError.MessengerConnectFailed>()
@@ -119,20 +125,19 @@ export const connect = (
 
     const once = Effect.gen(function* () {
       const url = yield* cfg.open
-      const socket = yield* Socket.makeWebSocket(url, {
-        // Effect treats every close as an error by default; the standard clean
-        // codes are not, and Slack's close codes say nothing a reconnect
-        // cannot fix, so a `disconnect` frame is the only fatal signal.
-        closeCodeIsError: (code: number) => code !== 1000 && code !== 1001 && code !== 1005,
-        // The ticket is in the URL, so every runtime's global `WebSocket` is enough.
-      }).pipe(Effect.provide(Socket.layerWebSocketConstructorGlobal))
-      const write = yield* socket.writer
+      const socket = yield* Socket.makeWebSocket(url)
+      const { write } = yield* socket.writer
+      // The writer waits for a reconnect that never comes on this URL, so
+      // nothing is written once this connection's reader has ended.
+      const closed = yield* Ref.make(false)
+      const send = (chunk: string | Socket.CloseEvent) =>
+        Effect.flatMap(Ref.get(closed), (isClosed) => (isClosed ? Effect.void : write(chunk)))
       // Set by a `disconnect` frame, the one end a close code cannot express.
       const requested = yield* Ref.make(Option.none<Ended>())
 
       // Acknowledged before the envelope is offered, well inside Slack's three
       // second deadline, so the platform is never waiting on the recipe.
-      const acknowledge = (envelopeId: string) => write(JSON.stringify({ envelope_id: envelopeId }))
+      const acknowledge = (envelopeId: string) => send(JSON.stringify({ envelope_id: envelopeId }))
 
       // A redelivery is acknowledged like any other envelope and then dropped,
       // so Slack stops retrying it and the recipe never sees it twice.
@@ -152,7 +157,7 @@ export const connect = (
         Effect.gen(function* () {
           const action = classifyDisconnect(reason)
           yield* Ref.set(requested, Option.some<Ended>({ action, reason: reason ?? "disconnect" }))
-          yield* write(new Socket.CloseEvent(1000, reason ?? "disconnect"))
+          yield* send(new Socket.CloseEvent(1000, reason ?? "disconnect"))
         })
 
       const handle = (text: string) =>
@@ -170,9 +175,13 @@ export const connect = (
           )
         }).pipe(Effect.ignore)
 
-      // A clean 1000 is only ever our own teardown or a disconnect we asked
+      // A clean close is only ever our own teardown or a disconnect we asked
       // for; anything else is a drop, and every drop reconnects.
-      const ended = yield* socket.runString(handle).pipe(
+      const ended = yield* Stream.fromPull(Socket.readerString(socket)).pipe(
+        Stream.scoped,
+        Stream.catchIf(isCleanClose, () => Stream.empty),
+        Stream.runForEach(handle),
+        Effect.ensuring(Ref.set(closed, true)),
         Effect.as<Ended>({ action: "reconnect", reason: "closed" }),
         Effect.catch((error: Socket.SocketError) =>
           Effect.succeed<Ended>({ action: "reconnect", reason: reasonOf(error) }),

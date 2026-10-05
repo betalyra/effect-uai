@@ -4,7 +4,7 @@
  * `meta.headers` a caller passes are HTTP-only and ignored here.
  */
 import { Cause, Effect, Queue, type Scope, Stream } from "effect"
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
+import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import * as JSONL from "@effect-uai/core/JSONL"
 import { McpConnectFailed, type McpError, McpTransportClosed } from "../McpError.js"
 import type { Transport } from "./rpc.js"

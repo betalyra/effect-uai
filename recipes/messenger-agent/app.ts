@@ -13,7 +13,7 @@
  * grant first; without it only DMs and mentions carry any text.
  */
 import { Array as Arr, Config, Effect, Layer, Match, Option, Stdio } from "effect"
-import type { HttpClient } from "effect/unstable/http"
+import type { HttpClient } from "effect/http"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import type { Messenger } from "@effect-uai/core/Messenger"
 import { type MessengerConnectFailed, describe } from "@effect-uai/core/MessengerError"
@@ -45,12 +45,12 @@ type Wiring = {
  */
 const platforms: Record<string, (readAll: boolean) => Effect.Effect<Wiring, Config.ConfigError>> = {
   telegram: () =>
-    Effect.map(Config.redacted("TELEGRAM_BOT_TOKEN"), (token) => ({
+    Effect.map(Config.Redacted("TELEGRAM_BOT_TOKEN"), (token) => ({
       layer: telegramLayer({ token }),
       markup: "html",
     })),
   discord: (readAll) =>
-    Effect.map(Config.redacted("DISCORD_BOT_TOKEN"), (token) => ({
+    Effect.map(Config.Redacted("DISCORD_BOT_TOKEN"), (token) => ({
       layer: discordLayer({
         token,
         ...(readAll && { intents: defaultIntents | Intents.MessageContent }),
@@ -60,8 +60,8 @@ const platforms: Record<string, (readAll: boolean) => Effect.Effect<Wiring, Conf
   slack: () =>
     Effect.map(
       Effect.all({
-        botToken: Config.redacted("SLACK_BOT_TOKEN"),
-        appToken: Config.redacted("SLACK_APP_TOKEN"),
+        botToken: Config.Redacted("SLACK_BOT_TOKEN"),
+        appToken: Config.Redacted("SLACK_APP_TOKEN"),
       }),
       (tokens) => ({ layer: slackLayer(tokens), markup: "markdown" }),
     ),

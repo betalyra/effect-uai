@@ -1,4 +1,5 @@
-import { Effect, Encoding } from "effect"
+import { Effect } from "effect"
+import { Base64 } from "effect/encoding"
 import { describe, expect, it } from "vitest"
 import type { AudioSource } from "@effect-uai/core/Audio"
 import { audioSourceToInlineData, wrapPcmAsWav } from "./geminiSpeechCodec.js"
@@ -9,11 +10,11 @@ describe("audioSourceToInlineData", () => {
     const source: AudioSource = { _tag: "bytes", bytes: original, mimeType: "audio/wav" }
     const inline = await Effect.runPromise(audioSourceToInlineData(source))
     expect(inline.mimeType).toBe("audio/wav")
-    expect(inline.data).toBe(Encoding.encodeBase64(original))
+    expect(inline.data).toBe(Base64.encode(original))
   })
 
   it("passes a `base64` source through unchanged", async () => {
-    const b64 = Encoding.encodeBase64(new Uint8Array([1, 2, 3]))
+    const b64 = Base64.encode(new Uint8Array([1, 2, 3]))
     const source: AudioSource = { _tag: "base64", base64: b64, mimeType: "audio/mp3" }
     const inline = await Effect.runPromise(audioSourceToInlineData(source))
     expect(inline.mimeType).toBe("audio/mp3")

@@ -8,14 +8,16 @@
  * it. The `ws` dep is only pulled in transitively via
  * `OpenAIRealtimeTranscriber`; `OpenAITranscriber` (sync) stays free of it.
  */
-import { Cause, Effect, Encoding, Match, Option, Queue, Redacted, Schema, Stream } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Effect, Match, Option, Predicate, Redacted, Schema, Stream } from "effect"
+import { Base64 } from "effect/encoding"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
+import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
 import { WebSocket as WSWebSocket } from "ws"
 import { type OpenAiRegion, resolveHost } from "./region.js"
 
@@ -23,6 +25,11 @@ export type Config = {
   readonly apiKey: Redacted.Redacted
   readonly baseUrl?: string
   readonly region?: OpenAiRegion
+  /**
+   * Build the socket yourself, for a proxy or an in-memory transport. The
+   * default attaches the bearer token through the `ws` package.
+   */
+  readonly webSocket?: Socket.WebSocketConstructor["Service"]
 }
 
 // ---------------------------------------------------------------------------
@@ -89,7 +96,7 @@ const sessionUpdateFrame = (wireFormat: WireFormat, request: CommonStreamTranscr
 const encodeAudioFrame = (bytes: Uint8Array) =>
   JSON.stringify({
     type: "input_audio_buffer.append",
-    audio: Encoding.encodeBase64(bytes),
+    audio: Base64.encode(bytes),
   })
 
 // ---------------------------------------------------------------------------
@@ -163,12 +170,6 @@ export const frameToEvent = (raw: string): Effect.Effect<TranscriptEvent | undef
     return Option.match(decoded, { onNone: () => undefined, onSome: wireToEvent })
   })
 
-const handleServerMessage = (queue: Queue.Queue<TranscriptEvent, Cause.Done>) => (raw: string) =>
-  Effect.gen(function* () {
-    const event = yield* frameToEvent(raw)
-    if (event !== undefined) yield* Queue.offer(queue, event)
-  })
-
 // ---------------------------------------------------------------------------
 // Stream<Uint8Array> -> Stream<TranscriptEvent>
 // ---------------------------------------------------------------------------
@@ -200,26 +201,30 @@ export const streamTranscription =
           reason: "OpenAI Realtime transcription has no keyterm field; use `prompt`.",
         })
         const wireFormat = yield* inputFormatToWire(request.inputFormat)
-        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg), {
-          // Effect's Socket treats every close code as an error by default.
-          closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
-        }).pipe(Effect.provideService(Socket.WebSocketConstructor, authedWsConstructor(cfg)))
-        const queue = yield* Queue.bounded<TranscriptEvent, Cause.Done>(64)
-        const write = yield* socket.writer
+        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg)).pipe(
+          Effect.provideService(
+            Socket.WebSocketConstructor,
+            cfg.webSocket ?? authedWsConstructor(cfg),
+          ),
+        )
+        const { write } = yield* socket.writer
+        const asAiError = WebSocketSession.toAiError("openai")
 
-        // session.update first, then drain audio. Both fork-scoped so the
-        // Stream's downstream scope tears them down on disconnect / cancel.
-        yield* Effect.gen(function* () {
-          yield* write(sessionUpdateFrame(wireFormat, request))
-          yield* Stream.runForEach(audioIn, (bytes) => write(encodeAudioFrame(bytes)))
-        }).pipe(Effect.ignore, Effect.forkScoped)
+        const events = Stream.fromPull(Socket.readerString(socket)).pipe(
+          Stream.scoped,
+          Stream.catchIf(WebSocketSession.isCleanClose, () => Stream.empty),
+          Stream.mapError(asAiError),
+          Stream.mapEffect(frameToEvent),
+          Stream.filter(Predicate.isNotUndefined),
+        )
 
-        // `Queue.end` flushes pending events then ends the stream cleanly;
-        // `Queue.shutdown` would drop queued items.
-        yield* socket
-          .runString(handleServerMessage(queue))
-          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
+        // session.update first, then the audio. Writes wait for the reader to connect.
+        const outgoing = Stream.concat(
+          Stream.make(sessionUpdateFrame(wireFormat, request)),
+          Stream.map(audioIn, encodeAudioFrame),
+        ).pipe(Stream.mapEffect((frame) => Effect.mapError(write(frame), asAiError)))
 
-        return Stream.fromQueue(queue)
+        // The server's close ends the transcript; the audio running out does not.
+        return Stream.merge(events, Stream.drain(outgoing), { haltStrategy: "left" })
       }),
     )

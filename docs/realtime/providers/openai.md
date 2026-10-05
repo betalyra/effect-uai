@@ -28,7 +28,7 @@ import { layer as realtimeLayer } from "@effect-uai/openai/OpenAIRealtimeSession
 
 const openai = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+    const apiKey = yield* Config.Redacted("OPENAI_API_KEY")
     return realtimeLayer({ apiKey })
   }),
 )

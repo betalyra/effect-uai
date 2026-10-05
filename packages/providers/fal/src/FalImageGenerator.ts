@@ -1,7 +1,6 @@
 import {
   Context,
   Effect,
-  Encoding,
   Layer,
   Match,
   Option,
@@ -12,7 +11,8 @@ import {
   Stream,
   pipe,
 } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Base64 } from "effect/encoding"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import type { GeneratedImage, ImageSource } from "@effect-uai/core/Image"
@@ -183,7 +183,7 @@ export const imageSizeOf = (
 const referenceUrl: (image: ImageSource) => string = Match.type<ImageSource>().pipe(
   Match.tag("url", (i) => i.url),
   Match.tag("base64", (i) => `data:${i.mimeType};base64,${i.base64}`),
-  Match.tag("bytes", (i) => `data:${i.mimeType};base64,${Encoding.encodeBase64(i.bytes)}`),
+  Match.tag("bytes", (i) => `data:${i.mimeType};base64,${Base64.encode(i.bytes)}`),
   Match.exhaustive,
 )
 

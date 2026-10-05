@@ -1,5 +1,5 @@
 import { Duration, Effect, Layer, Redacted, Stream } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { describe, expect, expectTypeOf, it } from "vitest"
 import type * as AiError from "@effect-uai/core/AiError"
 import type { GenerateResult } from "@effect-uai/core/Music"

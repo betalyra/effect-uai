@@ -37,7 +37,7 @@ type Flags = {
  */
 const readAuth = (argv: ReadonlyArray<string>) =>
   Config.option(
-    Config.redacted(Option.getOrElse(flagValue("mcp-token-env", argv), () => "MCP_TOKEN")),
+    Config.Redacted(Option.getOrElse(flagValue("mcp-token-env", argv), () => "MCP_TOKEN")),
   ).pipe(
     Effect.map(Option.map((token) => Auth.Static({ token }))),
     Effect.orElseSucceed(() => Option.none<Auth>()),

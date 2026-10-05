@@ -13,7 +13,6 @@ import {
   Cause,
   Duration,
   Effect,
-  Encoding,
   Match,
   Pull,
   Queue,
@@ -24,7 +23,8 @@ import {
   type Scope,
   Stream,
 } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Base64 } from "effect/encoding"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import * as Capabilities from "@effect-uai/core/Capabilities"
@@ -383,7 +383,7 @@ const usageOf = (metadata: typeof UsageMetadata.Type): Usage => ({
 })
 
 const decodeAudio = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
-  Result.match(Encoding.decodeBase64(b64), {
+  Result.match(Base64.decode(b64), {
     onSuccess: Effect.succeed,
     onFailure: (cause) =>
       Effect.fail(
@@ -555,7 +555,7 @@ const videoPart = (
   Match.value(frame).pipe(
     Match.tag("base64", (s) => Effect.succeed({ data: s.base64, mimeType: s.mimeType })),
     Match.tag("bytes", (s) =>
-      Effect.succeed({ data: Encoding.encodeBase64(s.bytes), mimeType: s.mimeType }),
+      Effect.succeed({ data: Base64.encode(s.bytes), mimeType: s.mimeType }),
     ),
     Match.tag("url", () =>
       Effect.fail(
@@ -596,7 +596,7 @@ const handleInput = (
         JSON.stringify({
           realtimeInput: {
             audio: {
-              data: Encoding.encodeBase64(i.bytes),
+              data: Base64.encode(i.bytes),
               mimeType: `audio/pcm;rate=${options.rate}`,
             },
           },

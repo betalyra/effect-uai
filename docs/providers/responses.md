@@ -23,12 +23,12 @@ pnpm add @effect-uai/core @effect-uai/responses effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { Responses, layer as responsesLayer } from "@effect-uai/responses"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+    const apiKey = yield* Config.Redacted("OPENAI_API_KEY")
     return responsesLayer({ apiKey })
   }),
 )
@@ -57,7 +57,7 @@ interface Config {
 
 The layer carries connection details only. `model` is per call (see
 below). `apiKey` is always `Redacted.Redacted` - never raw `string`.
-Read it with `Config.redacted("OPENAI_API_KEY")` or wrap manually with
+Read it with `Config.Redacted("OPENAI_API_KEY")` or wrap manually with
 `Redacted.make`.
 
 `baseUrl` exists for proxies / Azure / local LLM gateways that speak

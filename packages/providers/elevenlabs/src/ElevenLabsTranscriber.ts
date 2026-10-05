@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Redacted, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
-import * as Socket from "effect/unstable/socket/Socket"
+import { HttpClient, HttpClientRequest } from "effect/http"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import type { TranscriptResult, WordTimestamp } from "@effect-uai/core/Transcript"

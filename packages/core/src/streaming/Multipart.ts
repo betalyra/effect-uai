@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { HttpClientRequest } from "effect/unstable/http"
+import { HttpClientRequest } from "effect/http"
 
 /**
  * Multipart body for an `HttpClientRequest`, encoded to bytes.

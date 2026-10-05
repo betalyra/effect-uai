@@ -1,6 +1,6 @@
 import { describe, it } from "@effect/vitest"
 import { Array as Arr, Duration, Effect, Layer, Metric, Option, Ref, Stream } from "effect"
-import { type HttpBody, HttpClient, HttpClientResponse } from "effect/unstable/http"
+import { type HttpBody, HttpClient, HttpClientResponse } from "effect/http"
 import { expect } from "vitest"
 import { type Measurement, makeEvent } from "./Metrics.js"
 import { layerOtlp, record } from "./Telemetry.js"

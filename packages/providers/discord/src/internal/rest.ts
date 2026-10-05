@@ -1,5 +1,5 @@
 import { Data, Duration, Effect, Redacted, Schema } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as MessengerError from "@effect-uai/core/MessengerError"
 import * as Multipart from "@effect-uai/core/Multipart"
 

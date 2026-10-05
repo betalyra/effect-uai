@@ -1,4 +1,5 @@
-import { Array as Arr, Encoding, Match, Option, Result, Schema, pipe } from "effect"
+import { Array as Arr, Match, Option, Result, Schema, pipe } from "effect"
+import { Base64 } from "effect/encoding"
 import type { ContentBlock, InputImage, HistoryItem } from "@effect-uai/core/Items"
 import type { Turn } from "@effect-uai/core/Turn"
 
@@ -198,7 +199,7 @@ const passthrough = (item: HistoryItem): StoredItem | undefined =>
 const imageSourceToUrl = Match.type<InputImage["source"]>().pipe(
   Match.tag("url", (s) => s.url),
   Match.tag("base64", (s) => `data:${s.mimeType};base64,${s.base64}`),
-  Match.tag("bytes", (s) => `data:${s.mimeType};base64,${Encoding.encodeBase64(s.bytes)}`),
+  Match.tag("bytes", (s) => `data:${s.mimeType};base64,${Base64.encode(s.bytes)}`),
   Match.exhaustive,
 )
 

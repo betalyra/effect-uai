@@ -24,24 +24,25 @@
  * when the deltas go quiet for `utteranceSilence`.
  */
 import {
-  Cause,
   Clock,
   Duration,
   Effect,
-  Encoding,
   Match,
-  Queue,
+  Option,
+  Predicate,
   Redacted,
   Ref,
   Schema,
   Stream,
 } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Base64 } from "effect/encoding"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import * as JSONL from "@effect-uai/core/JSONL"
 import type { TranscriptEvent } from "@effect-uai/core/Transcript"
 import type { CommonStreamTranscribeRequest } from "@effect-uai/core/Transcriber"
+import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
 import { WebSocket as WSWebSocket } from "ws"
 
 export type Config = {
@@ -55,6 +56,11 @@ export type Config = {
    * adapter delimits turns. Default 700 ms.
    */
   readonly utteranceSilence?: Duration.Duration
+  /**
+   * Build the socket yourself, for a proxy or an in-memory transport. The
+   * default attaches the bearer token through the `ws` package.
+   */
+  readonly webSocket?: Socket.WebSocketConstructor["Service"]
 }
 
 const DEFAULT_SILENCE = Duration.millis(700)
@@ -95,7 +101,7 @@ const sessionUpdateFrame = (cfg: Config) =>
   })
 
 const audioAppendFrame = (bytes: Uint8Array) =>
-  JSON.stringify({ type: "input_audio.append", audio: Encoding.encodeBase64(bytes) })
+  JSON.stringify({ type: "input_audio.append", audio: Base64.encode(bytes) })
 
 const audioEndFrame = JSON.stringify({ type: "input_audio.end" })
 
@@ -120,68 +126,73 @@ const ServerEvent = Schema.Union([
 ])
 const decodeServerEvent = Schema.decodeUnknownEffect(ServerEvent)
 
-/** Mutable turn state shared by the message handler and the silence finalizer. */
+/** Mutable turn state shared by the frame handler and the silence finalizer. */
 type TurnState = {
   readonly text: Ref.Ref<string>
   readonly lastActivityMs: Ref.Ref<number>
 }
 
-const emitFinal = (
-  queue: Queue.Queue<TranscriptEvent, Cause.Done>,
+const takeFinal = (
   state: TurnState,
   override?: string,
-): Effect.Effect<void> =>
+): Effect.Effect<TranscriptEvent | undefined> =>
   Effect.gen(function* () {
     const acc = yield* Ref.getAndSet(state.text, "")
     const text = (override !== undefined && override.length > 0 ? override : acc).trim()
-    if (text.length > 0) yield* Queue.offer(queue, { _tag: "final", text })
+    return text.length > 0 ? { _tag: "final", text } : undefined
   })
 
-const handleServerMessage =
-  (queue: Queue.Queue<TranscriptEvent, Cause.Done>, state: TurnState) => (raw: string) =>
+const frameToEvent =
+  (state: TurnState) =>
+  (raw: string): Effect.Effect<TranscriptEvent | undefined> =>
     Effect.gen(function* () {
       const json = yield* JSONL.parseSafe(raw)
-      if (json === undefined) return
+      if (json === undefined) return undefined
       const decoded = yield* decodeServerEvent(json).pipe(Effect.option)
-      if (decoded._tag === "None") return
-      yield* Match.value(decoded.value).pipe(
+      if (Option.isNone(decoded)) return undefined
+      return yield* Match.value(decoded.value).pipe(
         Match.when({ type: "transcription.text.delta" }, (m) =>
           Effect.gen(function* () {
             const now = yield* Clock.currentTimeMillis
             const next = yield* Ref.updateAndGet(state.text, (t) => t + m.text)
             yield* Ref.set(state.lastActivityMs, now)
             // Cumulative partial so the UI shows the growing sentence.
-            yield* Queue.offer(queue, { _tag: "partial", text: next })
+            return { _tag: "partial", text: next } satisfies TranscriptEvent
           }),
         ),
         // End-of-audio: commit whatever's left as the final utterance.
-        Match.when({ type: "transcription.done" }, (m) => emitFinal(queue, state, m.text)),
+        Match.when({ type: "transcription.done" }, (m) => takeFinal(state, m.text)),
         Match.when({ type: "error" }, (m) =>
-          Queue.offer(queue, {
+          Effect.succeed<TranscriptEvent>({
             _tag: "error",
             ...(m.error.code != null && { code: String(m.error.code) }),
             message: m.error.message,
           }),
         ),
         // session.created / .updated / language / segment: no user-visible event.
-        Match.orElse(() => Effect.void),
+        Match.orElse(() => Effect.succeed(undefined)),
       )
     })
 
-// Background loop: commit a synthetic final once the deltas go quiet.
-const silenceFinalizer = (
-  queue: Queue.Queue<TranscriptEvent, Cause.Done>,
+// Commits a synthetic final once the deltas go quiet; checks now, then every 150 ms.
+const silenceFinals = (
   state: TurnState,
   silence: Duration.Duration,
-): Effect.Effect<never> => {
+): Stream.Stream<TranscriptEvent> => {
   const silenceMs = Duration.toMillis(silence)
-  return Effect.gen(function* () {
-    const now = yield* Clock.currentTimeMillis
-    const last = yield* Ref.get(state.lastActivityMs)
-    const acc = yield* Ref.get(state.text)
-    if (acc.trim().length > 0 && now - last >= silenceMs) yield* emitFinal(queue, state)
-    yield* Effect.sleep("150 millis")
-  }).pipe(Effect.forever)
+  return Stream.tick("150 millis").pipe(
+    Stream.mapEffect(() =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis
+        const last = yield* Ref.get(state.lastActivityMs)
+        const acc = yield* Ref.get(state.text)
+        return acc.trim().length > 0 && now - last >= silenceMs
+          ? yield* takeFinal(state)
+          : undefined
+      }),
+    ),
+    Stream.filter(Predicate.isNotUndefined),
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -208,49 +219,42 @@ export const streamTranscription =
     Stream.unwrap(
       Effect.gen(function* () {
         yield* ensureInputFormat(request.inputFormat)
-        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg, request.model), {
-          // Effect's Socket treats all close codes as errors by default —
-          // whitelist standard clean-close codes (1000 / 1001 / 1005).
-          closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
-        }).pipe(Effect.provideService(Socket.WebSocketConstructor, authedWsConstructor(cfg)))
-        const queue = yield* Queue.bounded<TranscriptEvent, Cause.Done>(64)
+        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg, request.model)).pipe(
+          Effect.provideService(
+            Socket.WebSocketConstructor,
+            cfg.webSocket ?? authedWsConstructor(cfg),
+          ),
+        )
         const state: TurnState = {
           text: yield* Ref.make(""),
           lastActivityMs: yield* Ref.make(0),
         }
-        const write = yield* socket.writer
+        const { write } = yield* socket.writer
+        const asAiError = WebSocketSession.toAiError("mistral")
 
-        // session.update first, then stream base64 PCM frames, then signal end.
-        // Fork-scoped so the Stream's downstream scope tears them down on
-        // disconnect / cancel.
-        yield* Effect.gen(function* () {
-          yield* write(sessionUpdateFrame(cfg))
-          yield* Stream.runForEach(audioIn, (bytes) => write(audioAppendFrame(bytes)))
-          yield* write(audioEndFrame)
-        }).pipe(
-          Effect.tapError((cause) =>
-            Effect.logWarning("[voxtral-realtime] audio send failed", { cause }),
+        const frames = Stream.fromPull(Socket.readerString(socket)).pipe(
+          Stream.scoped,
+          Stream.catchIf(WebSocketSession.isCleanClose, () => Stream.empty),
+          Stream.mapError(asAiError),
+          Stream.mapEffect(frameToEvent(state)),
+          Stream.filter(Predicate.isNotUndefined),
+        )
+        const events = Stream.merge(
+          frames,
+          silenceFinals(state, cfg.utteranceSilence ?? DEFAULT_SILENCE),
+          { haltStrategy: "left" },
+        )
+
+        // session.update first, then base64 PCM, then signal end. Writes wait for the reader to connect.
+        const outgoing = Stream.concat(
+          Stream.concat(
+            Stream.make(sessionUpdateFrame(cfg)),
+            Stream.map(audioIn, audioAppendFrame),
           ),
-          Effect.ignore,
-          Effect.forkScoped,
-        )
+          Stream.make(audioEndFrame),
+        ).pipe(Stream.mapEffect((frame) => Effect.mapError(write(frame), asAiError)))
 
-        yield* silenceFinalizer(queue, state, cfg.utteranceSilence ?? DEFAULT_SILENCE).pipe(
-          Effect.forkScoped,
-        )
-
-        // `Queue.end` flushes pending events then ends the stream cleanly;
-        // `Queue.shutdown` would drop queued items and interrupt takes. A
-        // connection/read failure is logged (otherwise the stream would end
-        // silently with no transcripts).
-        yield* socket.runString(handleServerMessage(queue, state)).pipe(
-          Effect.tapError((cause) =>
-            Effect.logWarning("[voxtral-realtime] socket closed", { cause }),
-          ),
-          Effect.ensuring(Queue.end(queue)),
-          Effect.forkScoped,
-        )
-
-        return Stream.fromQueue(queue)
+        // The server's close ends the transcript; the audio running out does not.
+        return Stream.merge(events, Stream.drain(outgoing), { haltStrategy: "left" })
       }),
     )

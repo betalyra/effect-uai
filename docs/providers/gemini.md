@@ -17,12 +17,12 @@ pnpm add @effect-uai/core @effect-uai/google effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { Gemini, layer as geminiLayer } from "@effect-uai/google"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("GEMINI_API_KEY")
+    const apiKey = yield* Config.Redacted("GEMINI_API_KEY")
     return geminiLayer({ apiKey })
   }),
 )
@@ -50,7 +50,7 @@ interface Config {
 
 The layer carries connection details only. `model` is per call (see
 below). `apiKey` is always `Redacted.Redacted` - never raw `string`.
-Read it with `Config.redacted("GEMINI_API_KEY")` or wrap manually with
+Read it with `Config.Redacted("GEMINI_API_KEY")` or wrap manually with
 `Redacted.make`.
 
 `baseUrl` exists for proxies and self-hosted gateways that speak the

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Match, type Redacted, Record, Schema, pipe } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Decision from "@effect-uai/core/Decision"
 import {

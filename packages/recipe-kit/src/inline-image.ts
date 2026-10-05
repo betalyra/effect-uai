@@ -19,7 +19,7 @@ const iterm = (columns: number) => (base64: string) =>
 const kitty = () => (base64: string) => `\x1b_Gf=100,a=T;${base64}\x1b\\\n`
 
 const env = (name: string): Effect.Effect<string> =>
-  Config.string(name).pipe(Effect.orElseSucceed(() => ""))
+  Config.String(name).pipe(Effect.orElseSucceed(() => ""))
 
 /**
  * How this terminal draws an image, if it does. `columns` is how wide to

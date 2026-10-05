@@ -25,7 +25,7 @@ import * as Toolkit from "@effect-uai/core/Toolkit"
 import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
 import { Duration, Effect, Match, Result, Schema, Stream, pipe } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/unstable/http"
+import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http"
 import { readProvider } from "../../../lib/model"
 
 // ---------------------------------------------------------------------------

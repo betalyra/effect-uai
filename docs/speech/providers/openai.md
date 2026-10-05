@@ -33,14 +33,14 @@ require it: edge / browser builds stay slim.
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as transcriberLayer } from "@effect-uai/openai/OpenAITranscriber"
 import { layer as realtimeLayer } from "@effect-uai/openai/OpenAIRealtimeTranscriber"
 import { layer as synthLayer } from "@effect-uai/openai/OpenAISynthesizer"
 
 const openai = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+    const apiKey = yield* Config.Redacted("OPENAI_API_KEY")
     return Layer.mergeAll(
       transcriberLayer({ apiKey }), // sync STT
       realtimeLayer({ apiKey }), // streaming STT

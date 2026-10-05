@@ -22,10 +22,10 @@ export const main = Effect.gen(function* () {
   const baseUrl = Option.getOrElse(flagValue("base-url", argv), () => UNREACHABLE)
 
   const openai = yield* makeResponses({
-    apiKey: yield* Config.redacted("OPENAI_API_KEY"),
+    apiKey: yield* Config.Redacted("OPENAI_API_KEY"),
     baseUrl,
   })
-  const google = yield* makeGemini({ apiKey: yield* Config.redacted("GOOGLE_API_KEY") })
+  const google = yield* makeGemini({ apiKey: yield* Config.Redacted("GOOGLE_API_KEY") })
 
   const tiers: ReadonlyArray<Tier> = [
     { name: "openai/gpt-5.4-mini", model: "gpt-5.4-mini", service: openai },

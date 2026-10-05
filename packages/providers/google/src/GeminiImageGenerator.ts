@@ -1,5 +1,6 @@
-import { Context, Effect, Encoding, Layer, Match, Redacted, Schema, Stream } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Context, Effect, Layer, Match, Redacted, Schema, Stream } from "effect"
+import { Base64 } from "effect/encoding"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import type {
@@ -129,7 +130,7 @@ const referencePart: (image: ImageSource) => Effect.Effect<RequestPart, AiError.
     ),
     Match.tag("bytes", (i) =>
       Effect.succeed<RequestPart>({
-        inlineData: { mimeType: i.mimeType, data: Encoding.encodeBase64(i.bytes) },
+        inlineData: { mimeType: i.mimeType, data: Base64.encode(i.bytes) },
       }),
     ),
     Match.tag("url", () => Effect.fail(urlRefNotSupported)),

@@ -14,22 +14,21 @@ packages:
 
 allowBuilds:
   esbuild: true
-  msgpackr-extract: true
   sharp: true
 
 # Single source of truth for versions shared across packages. Bump here, not in
 # each package.json. `catalog:` is resolved to the literal version on publish.
 catalog:
-  "@effect/language-service": ^0.87.2
-  "@effect/platform-bun": 4.0.0-rc.111
-  "@effect/platform-node": 4.0.0-rc.111
-  "@effect/vitest": 4.0.0-rc.111
+  "@effect/platform-bun": 4.0.1
+  "@effect/platform-node": 4.0.1
+  "@effect/tsgo": ^0.48.1
+  "@effect/vitest": 4.0.1
   "@types/node": ^26.2.0
   "@types/ws": ^8.5.13
-  effect: 4.0.0-rc.111
+  effect: 4.0.1
   tsx: ^4.23.12
   typescript: ^7.0.2
-  vitest: ^4.1.11
+  vitest: ^5.0.3
   ws: ^8.18.0
 
 catalogs:
@@ -41,3 +40,19 @@ catalogs:
   # Drop this catalog once it supports TS 7.
   astro:
     typescript: ^6.0.3
+
+minimumReleaseAgeExclude:
+  - "@effect/platform-bun@4.0.1"
+  - "@effect/platform-deno@4.0.1"
+  - "@effect/platform-node-shared@4.0.1"
+  - "@effect/platform-node@4.0.1"
+  - "@effect/vitest@4.0.1"
+  - effect@4.0.1
+  - "@effect/tsgo-darwin-arm64@0.48.1"
+  - "@effect/tsgo-darwin-x64@0.48.1"
+  - "@effect/tsgo-linux-arm64@0.48.1"
+  - "@effect/tsgo-linux-arm@0.48.1"
+  - "@effect/tsgo-linux-x64@0.48.1"
+  - "@effect/tsgo-win32-arm64@0.48.1"
+  - "@effect/tsgo-win32-x64@0.48.1"
+  - "@effect/tsgo@0.48.1"

@@ -17,12 +17,12 @@ pnpm add @effect-uai/core @effect-uai/typesafe-ai effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as jevLayer } from "@effect-uai/typesafe-ai/Jev"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("TYPESAFE_AI_API_KEY")
+    const apiKey = yield* Config.Redacted("TYPESAFE_AI_API_KEY")
     return jevLayer({ apiKey })
   }),
 )

@@ -10,7 +10,7 @@ import {
   Stream,
   pipe,
 } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import {

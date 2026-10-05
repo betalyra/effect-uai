@@ -28,7 +28,7 @@ import { layer as liveLayer } from "@effect-uai/google/GeminiLiveSession"
 
 const gemini = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
+    const apiKey = yield* Config.Redacted("GOOGLE_API_KEY")
     return liveLayer({ apiKey })
   }),
 )

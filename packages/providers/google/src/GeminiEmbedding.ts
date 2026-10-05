@@ -1,5 +1,6 @@
-import { Context, Effect, Encoding, Layer, Match, Redacted, Schema } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Context, Effect, Layer, Match, Redacted, Schema } from "effect"
+import { Base64 } from "effect/encoding"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type {
   EmbedContentPart,
@@ -126,7 +127,7 @@ const imageSourceToPart = (param: string) =>
     ),
     Match.tag("bytes", (s): Effect.Effect<WirePart, AiError.AiError> =>
       Effect.succeed({
-        inlineData: { mimeType: s.mimeType, data: Encoding.encodeBase64(s.bytes) },
+        inlineData: { mimeType: s.mimeType, data: Base64.encode(s.bytes) },
       }),
     ),
     Match.tag("url", (): Effect.Effect<WirePart, AiError.AiError> =>

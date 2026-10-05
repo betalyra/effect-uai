@@ -14,7 +14,7 @@
     "@effect-uai/recipe-kit": "link:../../packages/recipe-kit",
     "@effect-uai/responses": "link:../../packages/providers/responses",
     "@effect-uai/retrieval": "link:../../packages/retrieval",
-    "@effect/sql-libsql": "4.0.0-rc.111",
+    "@effect/sql-libsql": "4.0.1",
     "effect": "link:../../packages/core/node_modules/effect"
   },
   "devDependencies": {

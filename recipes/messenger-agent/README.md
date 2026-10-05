@@ -137,18 +137,18 @@ formatting sentence, greeting and status line follow the markup:
 
 ```ts
 const platforms = {
-  telegram: Effect.map(Config.redacted("TELEGRAM_BOT_TOKEN"), (token) => ({
+  telegram: Effect.map(Config.Redacted("TELEGRAM_BOT_TOKEN"), (token) => ({
     layer: telegramLayer({ token }),
     markup: "html",
   })),
-  discord: Effect.map(Config.redacted("DISCORD_BOT_TOKEN"), (token) => ({
+  discord: Effect.map(Config.Redacted("DISCORD_BOT_TOKEN"), (token) => ({
     layer: discordLayer({ token }),
     markup: "markdown",
   })),
   slack: Effect.map(
     Effect.all({
-      botToken: Config.redacted("SLACK_BOT_TOKEN"),
-      appToken: Config.redacted("SLACK_APP_TOKEN"),
+      botToken: Config.Redacted("SLACK_BOT_TOKEN"),
+      appToken: Config.Redacted("SLACK_APP_TOKEN"),
     }),
     (tokens) => ({ layer: slackLayer(tokens), markup: "markdown" }),
   ),

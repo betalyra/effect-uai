@@ -20,12 +20,12 @@ pnpm add @effect-uai/core @effect-uai/mistral effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { Mistral, layer as mistralLayer } from "@effect-uai/mistral/Mistral"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("MISTRAL_API_KEY")
+    const apiKey = yield* Config.Redacted("MISTRAL_API_KEY")
     return mistralLayer({ apiKey })
   }),
 )
@@ -49,7 +49,7 @@ interface Config {
 ```
 
 `apiKey` is always `Redacted.Redacted`. Read it with
-`Config.redacted("MISTRAL_API_KEY")` or wrap a string with
+`Config.Redacted("MISTRAL_API_KEY")` or wrap a string with
 `Redacted.make`. Set `baseUrl` only when you go through a proxy or
 gateway; most apps leave it unset. The model is chosen per call, not on
 the layer.

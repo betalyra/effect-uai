@@ -19,17 +19,26 @@
  * Multi-context (`contextId`) is not surfaced here — one logical
  * utterance per call.
  */
-import { Cause, Effect, Queue, Redacted, Schema, Stream } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import { Effect, Option, Predicate, Redacted, Schema, Stream } from "effect"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import * as JSONL from "@effect-uai/core/JSONL"
 import type { CustomPronunciation } from "@effect-uai/core/SpeechSynthesizer"
+import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
 import { audioConfigFor, decodeAudioContent, defaultFormat } from "./codec.js"
 import type { InworldDeliveryMode, InworldTtsModel, InworldVoiceId } from "./models.js"
 import { authedWsConstructor } from "./wsAuth.js"
 
-export type Config = { readonly apiKey: Redacted.Redacted; readonly baseUrl?: string }
+export type Config = {
+  readonly apiKey: Redacted.Redacted
+  readonly baseUrl?: string
+  /**
+   * Build the socket yourself, for a proxy or an in-memory transport. The
+   * default attaches the Basic auth header through the `ws` package.
+   */
+  readonly webSocket?: Socket.WebSocketConstructor["Service"]
+}
 
 /**
  * Incremental-text-in request. Mirrors the sync request minus `text` (which
@@ -110,21 +119,25 @@ const ServerFrame = Schema.Struct({
 })
 const decodeServerFrame = Schema.decodeUnknownEffect(ServerFrame)
 
-const handleServerFrame = (queue: Queue.Queue<AudioChunk, Cause.Done>) => (raw: string) =>
+/** One raw text frame to at most one audio chunk; error frames are logged, not raised. */
+const frameToChunk = (raw: string): Effect.Effect<AudioChunk | undefined> =>
   Effect.gen(function* () {
     const json = yield* JSONL.parseSafe(raw)
-    if (json === undefined) return
+    if (json === undefined) return undefined
     const decoded = yield* decodeServerFrame(json).pipe(Effect.option)
-    if (decoded._tag === "None") return
+    if (Option.isNone(decoded)) return undefined
     const frame = decoded.value
     if (frame.error !== undefined) {
       yield* Effect.logWarning("[inworld-tts] server error frame", { error: frame.error })
-      return
+      return undefined
     }
     const audio = frame.result?.audioChunk?.audioContent
-    if (audio === undefined || audio === "") return
+    if (audio === undefined || audio === "") return undefined
     const bytes = yield* decodeAudioContent(audio).pipe(Effect.option)
-    if (bytes._tag === "Some") yield* Queue.offer(queue, { bytes: bytes.value })
+    return Option.match(bytes, {
+      onNone: () => undefined,
+      onSome: (b): AudioChunk => ({ bytes: b }),
+    })
   })
 
 // ---------------------------------------------------------------------------
@@ -153,32 +166,35 @@ export const streamSynthesis =
           )
         }
         const create = yield* createFrame(request)
-        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg), {
-          // Effect's Socket treats all close codes as errors by default —
-          // whitelist standard clean-close codes (1000 / 1001 / 1005).
-          closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
-        }).pipe(Effect.provideService(Socket.WebSocketConstructor, authedWsConstructor(cfg.apiKey)))
-        const queue = yield* Queue.bounded<AudioChunk, Cause.Done>(64)
-        const write = yield* socket.writer
+        const socket = yield* Socket.makeWebSocket(buildWsUrl(cfg)).pipe(
+          Effect.provideService(
+            Socket.WebSocketConstructor,
+            cfg.webSocket ?? authedWsConstructor(cfg.apiKey),
+          ),
+        )
+        const { write } = yield* socket.writer
+        const asAiError = WebSocketSession.toAiError("inworld")
 
-        // Writer: BOS `create` → drain text as `send_text` → `close_context`.
-        // The reader fiber surfaces the remaining audio drained by the server
-        // post-close and shuts the queue when the WS upstream closes.
-        yield* Effect.gen(function* () {
-          yield* write(create)
-          yield* Stream.runForEach(textIn, (text) =>
-            text.length === 0 ? Effect.void : write(sendTextFrame(text)),
-          )
-          yield* write(closeContextFrame)
-        }).pipe(Effect.ignore, Effect.forkScoped)
+        const chunks = Stream.fromPull(Socket.readerString(socket)).pipe(
+          Stream.scoped,
+          Stream.catchIf(WebSocketSession.isCleanClose, () => Stream.empty),
+          Stream.mapError(asAiError),
+          Stream.mapEffect(frameToChunk),
+          Stream.filter(Predicate.isNotUndefined),
+        )
 
-        // `Queue.end` flushes pending chunks then fails the next take with
-        // `Done` — clean stream end. `Queue.shutdown` would CLEAR queued items
-        // and interrupt pending takes (wrong for graceful teardown).
-        yield* socket
-          .runString(handleServerFrame(queue))
-          .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
+        const outgoing = Stream.concat(
+          Stream.make(create),
+          Stream.concat(
+            textIn.pipe(
+              Stream.filter((text) => text.length > 0),
+              Stream.map(sendTextFrame),
+            ),
+            Stream.make(closeContextFrame),
+          ),
+        ).pipe(Stream.mapEffect((frame) => Effect.mapError(write(frame), asAiError)))
 
-        return Stream.fromQueue(queue)
+        // The server drains remaining audio after `close_context`, then closes.
+        return Stream.merge(chunks, Stream.drain(outgoing), { haltStrategy: "left" })
       }),
     )

@@ -14,10 +14,12 @@ import {
   Option,
   Predicate,
   Queue,
+  Ref,
   Schema,
   type Scope,
+  Stream,
 } from "effect"
-import * as Socket from "effect/unstable/socket/Socket"
+import * as Socket from "effect/socket/Socket"
 import * as AiError from "../domain/AiError.js"
 import * as JSONL from "./JSONL.js"
 
@@ -85,6 +87,13 @@ export const toAiError =
     )
   }
 
+/** Normal closure, going away, and no status code. */
+const cleanCloseCodes: ReadonlySet<number> = new Set([1000, 1001, 1005])
+
+/** Effect's `Socket` fails on every close, clean or not. */
+export const isCleanClose = (error: Socket.SocketError): boolean =>
+  error.reason._tag === "SocketCloseError" && cleanCloseCodes.has(error.reason.code)
+
 /**
  * Connect for the lifetime of the surrounding `Scope`. The reader runs in a
  * forked fiber; a dirty close reaches the consumer as a failed queue rather
@@ -97,12 +106,14 @@ export const open = <A, I>(
     const asAiError = toAiError(options.provider)
     const decode = Schema.decodeUnknownEffect(options.schema)
     const socket = yield* Socket.makeWebSocket(options.url, {
-      // Effect's Socket treats every close code as an error by default.
-      closeCodeIsError: (code) => code !== 1000 && code !== 1001 && code !== 1005,
       ...(options.openTimeout !== undefined && { openTimeout: options.openTimeout }),
     })
     const frames = yield* Queue.bounded<A, AiError.AiError | Cause.Done>(options.capacity ?? 64)
-    const write = yield* socket.writer
+    const { write } = yield* socket.writer
+    // The writer waits for the next connection rather than failing, so a send
+    // after the reader ends has to be refused here.
+    const ended = yield* Ref.make(false)
+    const closed = new AiError.Unavailable({ provider: options.provider, raw: "socket closed" })
 
     const onFrame = (raw: string) =>
       Effect.gen(function* () {
@@ -116,8 +127,13 @@ export const open = <A, I>(
         yield* Queue.offer(frames, decoded.value)
       })
 
-    yield* socket.runString(onFrame).pipe(
+    yield* Stream.fromPull(Socket.readerString(socket)).pipe(
+      Stream.scoped,
+      Stream.catchIf(isCleanClose, () => Stream.empty),
+      Stream.runForEach(onFrame),
       Effect.mapError(asAiError),
+      // Set before `frames` ends, so a send after the last frame already fails.
+      Effect.ensuring(Ref.set(ended, true)),
       // `Queue.end` on a clean close so the consumer drains what is queued;
       // a failure must not arrive looking like the end of the conversation.
       Effect.matchCauseEffect({
@@ -128,5 +144,10 @@ export const open = <A, I>(
       Effect.forkScoped,
     )
 
-    return { send: (frame: string) => write(frame).pipe(Effect.mapError(asAiError)), frames }
+    const send = (frame: string): Effect.Effect<void, AiError.AiError> =>
+      Effect.flatMap(Ref.get(ended), (isEnded) =>
+        isEnded ? Effect.fail(closed) : Effect.mapError(write(frame), asAiError),
+      )
+
+    return { send, frames }
   })

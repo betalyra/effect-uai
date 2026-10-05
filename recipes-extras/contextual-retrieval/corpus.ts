@@ -4,7 +4,7 @@
  */
 import { Effect } from "effect"
 import { FileSystem } from "effect/FileSystem"
-import { HttpClient } from "effect/unstable/http"
+import { HttpClient } from "effect/http"
 
 export const BOOK_URL = "https://www.gutenberg.org/cache/epub/1661/pg1661.txt"
 

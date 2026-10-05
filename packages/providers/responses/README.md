@@ -19,12 +19,12 @@ ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as responsesLayer } from "@effect-uai/responses"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+    const apiKey = yield* Config.Redacted("OPENAI_API_KEY")
     return responsesLayer({ apiKey })
   }),
 )

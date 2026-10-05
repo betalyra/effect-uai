@@ -5,7 +5,7 @@
 import { NodeFileSystem } from "@effect/platform-node"
 import { describe, it, layer } from "@effect/vitest"
 import { Array as Arr, Context, Effect, FileSystem, Layer, Schema } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { expect } from "vitest"
 import { Tokenizer } from "@effect-uai/core/Tokenizer"
 import { recursive, withTokenizer } from "@effect-uai/retrieval/Chunking"

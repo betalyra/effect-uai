@@ -31,12 +31,12 @@ pnpm add @effect-uai/core @effect-uai/chat-completions effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as chatLayer } from "@effect-uai/chat-completions/ChatCompletions"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("LLM_API_KEY")
+    const apiKey = yield* Config.Redacted("LLM_API_KEY")
     return chatLayer({
       apiKey,
       baseUrl: "https://openrouter.ai/api/v1",

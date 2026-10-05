@@ -19,12 +19,12 @@ pnpm add @effect-uai/core @effect-uai/firecrawl effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as firecrawlLayer } from "@effect-uai/firecrawl/FirecrawlRead"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("FIRECRAWL_API_KEY")
+    const apiKey = yield* Config.Redacted("FIRECRAWL_API_KEY")
     return firecrawlLayer({ apiKey })
   }),
 )

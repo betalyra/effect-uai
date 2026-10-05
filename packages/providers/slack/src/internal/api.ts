@@ -1,10 +1,5 @@
 import { Data, Duration, Effect, Option, Redacted, Schema } from "effect"
-import {
-  Headers,
-  HttpClient,
-  HttpClientRequest,
-  type HttpClientResponse,
-} from "effect/unstable/http"
+import { Headers, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import * as MessengerError from "@effect-uai/core/MessengerError"
 
 export const provider = "slack"

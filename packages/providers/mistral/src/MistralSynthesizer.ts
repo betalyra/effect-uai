@@ -1,15 +1,6 @@
-import {
-  Array as Arr,
-  Context,
-  Effect,
-  Encoding,
-  Layer,
-  Redacted,
-  Result,
-  Schema,
-  Stream,
-} from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Array as Arr, Context, Effect, Layer, Redacted, Result, Schema, Stream } from "effect"
+import { Base64 } from "effect/encoding"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioBlob, AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import * as Capabilities from "@effect-uai/core/Capabilities"
@@ -140,7 +131,7 @@ const WireResponse = Schema.Struct({ audio_data: Schema.String })
 const decodeResponse = Schema.decodeUnknownEffect(WireResponse)
 
 const decodeAudioData = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
-  Result.match(Encoding.decodeBase64(b64), {
+  Result.match(Base64.decode(b64), {
     onSuccess: Effect.succeed,
     onFailure: (cause) =>
       Effect.fail(

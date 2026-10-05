@@ -11,7 +11,6 @@
 import {
   Cause,
   Effect,
-  Encoding,
   FileSystem,
   Layer,
   Match,
@@ -21,7 +20,8 @@ import {
   Stream,
   Terminal,
 } from "effect"
-import type { HttpClient } from "effect/unstable/http"
+import { Base64 } from "effect/encoding"
+import type { HttpClient } from "effect/http"
 import type { ImageResolution, ImageSource } from "@effect-uai/core/Image"
 import {
   edit,
@@ -93,7 +93,7 @@ const EXTENSION: Record<string, string> = {
 const bytesOf: (source: ImageSource) => Effect.Effect<Uint8Array> = Match.type<ImageSource>().pipe(
   Match.tag("bytes", (s) => Effect.succeed(s.bytes)),
   Match.tag("base64", (s) =>
-    Result.match(Encoding.decodeBase64(s.base64), {
+    Result.match(Base64.decode(s.base64), {
       onSuccess: Effect.succeed,
       onFailure: Effect.die,
     }),
@@ -104,7 +104,7 @@ const bytesOf: (source: ImageSource) => Effect.Effect<Uint8Array> = Match.type<I
 
 const base64Of: (source: ImageSource) => Effect.Effect<string> = Match.type<ImageSource>().pipe(
   Match.tag("base64", (s) => Effect.succeed(s.base64)),
-  Match.orElse((s) => Effect.map(bytesOf(s), Encoding.encodeBase64)),
+  Match.orElse((s) => Effect.map(bytesOf(s), Base64.encode)),
 )
 
 const writeImage = (

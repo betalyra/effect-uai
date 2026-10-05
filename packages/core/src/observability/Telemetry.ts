@@ -1,6 +1,6 @@
 import { Duration, Effect, Layer, Match, Metric, Stream } from "effect"
-import type { HttpClient } from "effect/unstable/http"
-import { OtlpMetrics, OtlpSerialization } from "effect/unstable/observability"
+import type { HttpClient } from "effect/http"
+import { OtlpMetrics, OtlpSerialization } from "effect/observability"
 import { isMetricEvent, type Measurement, type MetricEvent } from "./Metrics.js"
 
 // ---------------------------------------------------------------------------

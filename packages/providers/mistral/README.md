@@ -30,12 +30,12 @@ Bun only).
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as mistralLayer } from "@effect-uai/mistral/Mistral"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("MISTRAL_API_KEY")
+    const apiKey = yield* Config.Redacted("MISTRAL_API_KEY")
     return mistralLayer({ apiKey })
   }),
 )

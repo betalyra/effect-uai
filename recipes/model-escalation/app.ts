@@ -29,7 +29,7 @@ import {
   References,
   Stream,
 } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import * as Items from "@effect-uai/core/Items"
 import { make as makeAnthropic } from "@effect-uai/anthropic/Anthropic"
 import { make as makeGemini } from "@effect-uai/google/Gemini"
@@ -52,7 +52,7 @@ type Provider = "openai" | "anthropic" | "google"
 const makeTiers = Match.type<Provider>().pipe(
   Match.when("openai", () =>
     Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("OPENAI_API_KEY")
+      const apiKey = yield* Config.Redacted("OPENAI_API_KEY")
       const service = yield* makeResponses({ apiKey })
       return [
         { name: "openai/gpt-5.4-mini", model: "gpt-5.4-mini", service },
@@ -62,7 +62,7 @@ const makeTiers = Match.type<Provider>().pipe(
   ),
   Match.when("anthropic", () =>
     Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("ANTHROPIC_API_KEY")
+      const apiKey = yield* Config.Redacted("ANTHROPIC_API_KEY")
       const service = yield* makeAnthropic({ apiKey, defaultMaxTokens: 1024 })
       return [
         { name: "anthropic/claude-haiku-4-5", model: "claude-haiku-4-5", service },
@@ -72,7 +72,7 @@ const makeTiers = Match.type<Provider>().pipe(
   ),
   Match.when("google", () =>
     Effect.gen(function* () {
-      const apiKey = yield* Config.redacted("GOOGLE_API_KEY")
+      const apiKey = yield* Config.Redacted("GOOGLE_API_KEY")
       const service = yield* makeGemini({ apiKey })
       return [
         {
@@ -172,5 +172,5 @@ export const main = Effect.gen(function* () {
   const provider = yield* providerChoice("openai", "anthropic", "google")
   yield* Effect.logInfo("provider", { provider })
   const [cheap, strong] = yield* makeTiers(provider)
-  yield* program(cheap, strong)
+  return yield* program(cheap, strong)
 }).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))

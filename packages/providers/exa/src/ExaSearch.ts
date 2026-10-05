@@ -1,5 +1,5 @@
 import { Context, DateTime, type Duration, Effect, Layer, Option, Redacted, Schema } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"
 import {

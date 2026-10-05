@@ -1,16 +1,6 @@
-import {
-  Context,
-  Duration,
-  Effect,
-  Encoding,
-  Layer,
-  Match,
-  Redacted,
-  Result,
-  Schema,
-  Stream,
-} from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Context, Duration, Effect, Layer, Match, Redacted, Result, Schema, Stream } from "effect"
+import { Base64 } from "effect/encoding"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import { warnDroppedWhen } from "@effect-uai/core/Capabilities"
@@ -207,7 +197,7 @@ const transportFailure = sharedTransportFailure("lyria")
 const httpStatusError = sharedHttpStatusError("lyria")
 
 const decodeBase64ToBytes = (b64: string): Effect.Effect<Uint8Array, AiError.AiError> =>
-  Result.match(Encoding.decodeBase64(b64), {
+  Result.match(Base64.decode(b64), {
     onSuccess: Effect.succeed,
     onFailure: (cause) =>
       Effect.fail(new AiError.InvalidRequest({ provider: "lyria", param: "audio", raw: cause })),

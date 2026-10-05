@@ -21,12 +21,12 @@ pnpm add @effect-uai/core @effect-uai/elevenlabs effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as elevenlabsMusicLayer } from "@effect-uai/elevenlabs/ElevenLabsMusicGenerator"
 
 const music = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
+    const apiKey = yield* Config.Redacted("ELEVENLABS_API_KEY")
     return elevenlabsMusicLayer({ apiKey })
   }),
 )

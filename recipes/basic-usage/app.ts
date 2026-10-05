@@ -42,7 +42,7 @@ const dialect = Option.getOrElse(flagValue("dialect", argv), () => "chat")
 
 const providerLayer = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("LLM_API_KEY")
+    const apiKey = yield* Config.Redacted("LLM_API_KEY")
     const service = yield* Match.value(dialect).pipe(
       Match.when("responses", () => makeResponses({ apiKey, baseUrl })),
       Match.when("mistral", () => makeMistral({ apiKey })), // Mistral's typed layer + base URL

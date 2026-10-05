@@ -55,10 +55,10 @@ ELEVENLABS_API_KEY=... pnpm tsx recipes/basic-music-generation/run.ts \
 
 Flags (`--name value` and `--name=value` both work):
 
-| Flag            | Default      | Notes                                                                 |
-| --------------- | ------------ | --------------------------------------------------------------------- |
-| `--provider`    | `elevenlabs` | `elevenlabs` or `google`.                                             |
-| `--prompt-file` | built-in     | Path to a `.txt` file. A bare positional path is **not** picked up.   |
+| Flag            | Default      | Notes                                                                  |
+| --------------- | ------------ | ---------------------------------------------------------------------- |
+| `--provider`    | `elevenlabs` | `elevenlabs` or `google`.                                              |
+| `--prompt-file` | built-in     | Path to a `.txt` file. A bare positional path is **not** picked up.    |
 | `--duration`    | `30`         | Clip length in seconds. ElevenLabs honors it; Lyria `clip` ignores it. |
 
 Audio lands in `output/basic-music-generation/<timestamp>/track.mp3`.

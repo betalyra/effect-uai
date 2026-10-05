@@ -15,7 +15,7 @@ import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { make as makeGemini } from "@effect-uai/google/Gemini"
 import { make as makeResponses } from "@effect-uai/responses/Responses"
 import { Config, Effect, Match } from "effect"
-import type { HttpClient } from "effect/unstable/http"
+import type { HttpClient } from "effect/http"
 
 type Provider = "requesty" | "openai" | "anthropic" | "google"
 
@@ -38,13 +38,13 @@ const defaults: Record<Provider, { readonly model: string; readonly fallback: st
 }
 
 const key = (name: string) =>
-  Config.redacted(name).pipe(Config.orElse(() => Config.redacted("LLM_API_KEY")))
+  Config.Redacted(name).pipe(Config.orElse(() => Config.Redacted("LLM_API_KEY")))
 
 /** `LLM_BASE_URL` wins; otherwise the gateway's own endpoint. */
 const responses = (keyName: string, defaultBaseUrl?: string) =>
   Effect.gen(function* () {
     const apiKey = yield* key(keyName)
-    const baseUrl = yield* Config.string("LLM_BASE_URL").pipe(Config.withDefault(defaultBaseUrl))
+    const baseUrl = yield* Config.String("LLM_BASE_URL").pipe(Config.withDefault(defaultBaseUrl))
     return yield* makeResponses({
       apiKey,
       ...(baseUrl !== undefined && { baseUrl }),
@@ -69,15 +69,15 @@ const serviceFor = (
 
 /** One service and the two model ids the route's fallback loop steps through. */
 export const readProvider = Effect.gen(function* () {
-  const provider = yield* Config.literals(
+  const provider = yield* Config.Literals(
     ["requesty", "openai", "anthropic", "google"],
     "LLM_PROVIDER",
   ).pipe(Config.withDefault("requesty" as const))
   const service = yield* serviceFor(provider)
   return {
     service,
-    model: yield* Config.string("LLM_MODEL").pipe(Config.withDefault(defaults[provider].model)),
-    fallback: yield* Config.string("LLM_FALLBACK_MODEL").pipe(
+    model: yield* Config.String("LLM_MODEL").pipe(Config.withDefault(defaults[provider].model)),
+    fallback: yield* Config.String("LLM_FALLBACK_MODEL").pipe(
       Config.withDefault(defaults[provider].fallback),
     ),
   }

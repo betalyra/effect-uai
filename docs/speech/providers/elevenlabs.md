@@ -23,14 +23,14 @@ pnpm add @effect-uai/core @effect-uai/elevenlabs effect
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import * as Socket from "effect/unstable/socket/Socket"
+import { FetchHttpClient } from "effect/http"
+import * as Socket from "effect/socket/Socket"
 import { layer as transcriberLayer } from "@effect-uai/elevenlabs/ElevenLabsTranscriber"
 import { layer as synthLayer } from "@effect-uai/elevenlabs/ElevenLabsSynthesizer"
 
 const eleven = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("ELEVENLABS_API_KEY")
+    const apiKey = yield* Config.Redacted("ELEVENLABS_API_KEY")
     return Layer.mergeAll(transcriberLayer({ apiKey }), synthLayer({ apiKey }))
   }),
 )

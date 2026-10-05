@@ -1,6 +1,6 @@
 import { Effect, Layer, Redacted, Stream } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import * as Socket from "effect/unstable/socket/Socket"
+import { FetchHttpClient } from "effect/http"
+import * as Socket from "effect/socket/Socket"
 import { describe, expect, expectTypeOf, it } from "vitest"
 import type * as AiError from "@effect-uai/core/AiError"
 import type { TranscriptResult } from "@effect-uai/core/Transcript"

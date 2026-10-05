@@ -1,4 +1,5 @@
-import { Array as Arr, Encoding, Match, Option, Result, Schema } from "effect"
+import { Array as Arr, Match, Option, Result, Schema } from "effect"
+import { Base64 } from "effect/encoding"
 import type {
   ContentBlock,
   HistoryItem,
@@ -33,7 +34,7 @@ type WireMessage = {
 const imageSourceToUrl = Match.type<InputImage["source"]>().pipe(
   Match.tag("url", (s) => s.url),
   Match.tag("base64", (s) => `data:${s.mimeType};base64,${s.base64}`),
-  Match.tag("bytes", (s) => `data:${s.mimeType};base64,${Encoding.encodeBase64(s.bytes)}`),
+  Match.tag("bytes", (s) => `data:${s.mimeType};base64,${Base64.encode(s.bytes)}`),
   Match.exhaustive,
 )
 

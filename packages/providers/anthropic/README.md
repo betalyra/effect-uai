@@ -18,12 +18,12 @@ ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
 
 ```ts
 import { Config, Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient } from "effect/http"
 import { layer as anthropicLayer } from "@effect-uai/anthropic"
 
 const provider = Layer.unwrap(
   Effect.gen(function* () {
-    const apiKey = yield* Config.redacted("ANTHROPIC_API_KEY")
+    const apiKey = yield* Config.Redacted("ANTHROPIC_API_KEY")
     return anthropicLayer({ apiKey })
   }),
 )

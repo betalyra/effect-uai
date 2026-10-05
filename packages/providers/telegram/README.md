@@ -12,7 +12,7 @@ media and reactions out. Long-polling, so no public URL, and no SDK.
 pnpm add @effect-uai/telegram @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers.
 
 ## Usage
 

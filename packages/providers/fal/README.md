@@ -12,7 +12,7 @@ rest of the open-weights field behind one key.
 pnpm add @effect-uai/fal @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers.
 
 ## Usage
 

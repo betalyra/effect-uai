@@ -57,6 +57,16 @@ chromium --headless --remote-debugging-port=9222
 curl -s http://127.0.0.1:9222/json/version # → "webSocketDebuggerUrl"
 ```
 
+An endpoint that wants a token on the WebSocket handshake takes it through
+`headers`. Handshake headers need Node or Bun; a browser cannot set them.
+
+```ts
+const provider = cdpLayer({
+  endpoint: "ws://127.0.0.1:9222/devtools/browser",
+  headers: { Authorization: `Bearer ${token}` },
+})
+```
+
 `cdpLayer` registers two service tags from one implementation:
 
 - **`CdpBrowser`**: the typed tag for this provider.
@@ -80,9 +90,16 @@ reaper fibers.
 CDP engine (no Chrome install needed), handy for local development and CI:
 
 ```sh
-docker run -d --name obscura -p 127.0.0.1:9222:9222 h4ckf0r0day/obscura
+export OBSCURA_CDP_TOKEN="$(openssl rand -hex 32)"
+docker run -d --name obscura -p 127.0.0.1:9222:9222 \
+  -e OBSCURA_CDP_TOKEN="$OBSCURA_CDP_TOKEN" h4ckf0r0day/obscura
 # endpoint: ws://127.0.0.1:9222/devtools/browser
 ```
+
+Since 0.2.3, obscura requires that token whenever it listens beyond
+loopback, which inside Docker it always does. Pass it as a bearer token in
+`headers` (above); without it every request, `/json/version` included,
+answers `401`.
 
 obscura implements a partial CDP surface. Domain-enable calls it doesn't
 recognize are tolerated at connect time, and verbs that need a missing domain

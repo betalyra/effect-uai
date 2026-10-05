@@ -138,9 +138,9 @@ s16le at **16 kHz** mono.
 
 **Realtime TTS** (`/stream-input`) takes incoming text as JSON frames
 on a single WS, returns base64 PCM audio frames. The provider closes
-with code `1000` on a clean end. The adapter whitelists
-`1000` / `1001` / `1005` via `closeCodeIsError` so a graceful close
-doesn't surface as a stream failure.
+with code `1000` on a clean end, which ends the audio stream normally.
+Any close other than `1000` / `1001` / `1005` fails it with
+`AiError.Unavailable`.
 
 **Output formats**: PCM s16le at 16 / 22.05 / 24 / 44.1 kHz, plus MP3 at
 several bitrates and µ-law / A-law for telephony. PCM at 24 kHz is the

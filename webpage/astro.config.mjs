@@ -480,6 +480,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.18", slug: "migrations/v0-18" },
             { label: "Migrating to 0.17", slug: "migrations/v0-17" },
             { label: "Migrating to 0.16", slug: "migrations/v0-16" },
             { label: "Migrating to 0.15", slug: "migrations/v0-15" },

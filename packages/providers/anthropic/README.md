@@ -12,7 +12,7 @@ API with SSE streaming, including extended thinking surfaced as
 pnpm add @effect-uai/anthropic @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers.
 
 ## Usage
 

@@ -13,7 +13,7 @@ websocket, so no request URL, and no Bolt.
 pnpm add @effect-uai/slack @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers.
 
 ## Usage
 

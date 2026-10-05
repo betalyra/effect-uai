@@ -34,7 +34,7 @@ catalog:
 catalogs:
   # Ranges for peerDependencies, deliberately wider than the pinned dev versions.
   peer:
-    effect: ">=4.0.0-rc.111 <5.0.0"
+    effect: ">=4.0.1 <5.0.0"
     ws: ^8.0.0
   # `astro check` (@astrojs/language-server 2.16.x, volar 2.4.x) crashes on TS 7.
   # Drop this catalog once it supports TS 7.

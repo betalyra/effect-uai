@@ -186,7 +186,9 @@ for the worklet.
 VAD events (`speech-started`, `utterance-ended`) require
 `vadEvents: true` and are not emitted by every provider. Non-fatal
 provider issues can arrive as `_tag: "error"` events; fatal failures
-still use the Stream error channel.
+still use the Stream error channel. A clean close from the server ends
+the stream; a dropped connection fails it with `AiError.Unavailable`,
+and a failure in `audioIn` fails it with that same error.
 
 ## Next step
 

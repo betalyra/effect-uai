@@ -20,7 +20,7 @@ One key reaches the whole Gemini family, each at its own subpath:
 pnpm add @effect-uai/google @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers.
 
 ## Usage
 

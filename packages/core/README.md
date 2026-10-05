@@ -43,7 +43,7 @@ and [the rest](https://effect-uai.betalyra.com/providers/).
 pnpm add @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` as a peer.
+ESM-only. Requires `effect@>=4.0.1` (Effect 4.0 stable) as a peer.
 
 ## Docs
 

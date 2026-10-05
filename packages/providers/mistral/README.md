@@ -20,7 +20,7 @@ One package, the whole Mistral surface:
 pnpm add @effect-uai/mistral @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers. The
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers. The
 realtime transcriber additionally needs the optional `ws` peer (Node /
 Bun only).
 

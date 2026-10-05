@@ -18,7 +18,7 @@ Groq, Together, or a self-hosted gateway.
 pnpm add @effect-uai/chat-completions @effect-uai/core effect
 ```
 
-ESM-only. Requires `effect@4.x` and `@effect-uai/core` as peers.
+ESM-only. Requires `effect@>=4.0.1` and `@effect-uai/core` as peers.
 
 ## Usage
 

@@ -74,8 +74,25 @@ anthropicLayer({ apiKey, promptCaching: true })
 anthropicLayer({ apiKey, promptCaching: { ttl: "1h" } }) // default is 5m
 ```
 
-There is nothing to mark up per message; the cache point follows the
-conversation as it grows. It is off by default because it changes how you are billed.
+With `promptCaching` there is nothing to mark up per message; the cache point
+follows the conversation as it grows. It is off by default because it changes
+how you are billed.
+
+To cache up to a fixed point instead, for example a long system prompt shared
+by calls whose user content differs, mark that message with `cacheBreakpoint`:
+
+```ts
+const history = [
+  { ...Items.systemText(longSharedPrompt), cacheBreakpoint: true },
+  Items.userText(question),
+]
+```
+
+The codec writes `cache_control` on the last content block that message
+encodes to (a marked system message sends `system` as text blocks). This works
+with `promptCaching` on or off, and the breakpoint takes the `promptCaching`
+TTL, 5m when unset. Anthropic allows four breakpoints per request, and the one
+from `promptCaching` counts towards them.
 
 See Anthropic's [prompt caching guide][caching] for pricing, TTLs and
 per-model minimums.

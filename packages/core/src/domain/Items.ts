@@ -141,10 +141,22 @@ const ProviderData = Schema.optional(Schema.Unknown)
 // Items
 // ---------------------------------------------------------------------------
 
+/**
+ * `cacheBreakpoint: true` marks the end of this message as the end of a
+ * reusable prompt prefix, so the provider caches everything up to and
+ * including it. Use it on a long, stable message (typically the system
+ * prompt) that is followed by content that changes per call.
+ *
+ * It is a hint: providers with per-message cache breakpoints map it to their
+ * wire field on the message's last content block, the rest ignore it. Each
+ * provider caps how many breakpoints one request may write; see the
+ * provider's docs.
+ */
 export const Message = Schema.Struct({
   type: Schema.Literal("message"),
   role: Role,
   content: Schema.Array(ContentBlock),
+  cacheBreakpoint: Schema.optional(Schema.Boolean),
   providerData: ProviderData,
 })
 export type Message = typeof Message.Type

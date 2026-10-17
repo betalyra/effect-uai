@@ -85,3 +85,87 @@ describe("providerData is a shared slot", () => {
     ])
   })
 })
+
+describe("Message.cacheBreakpoint", () => {
+  const breakpoint = { mode: "explicit" }
+
+  it("sends nothing new when no message is marked", () => {
+    const history: ReadonlyArray<HistoryItem> = [
+      { type: "message", role: "system", content: [{ type: "input_text", text: "rules" }] },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "hi" }],
+        cacheBreakpoint: false,
+      },
+    ]
+    expect(itemsToInput(history)).toEqual([
+      { type: "message", role: "system", content: [{ type: "input_text", text: "rules" }] },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+    ])
+  })
+
+  it("puts prompt_cache_breakpoint on the marked message only", () => {
+    const history: ReadonlyArray<HistoryItem> = [
+      {
+        type: "message",
+        role: "system",
+        content: [{ type: "input_text", text: "long shared rules" }],
+        cacheBreakpoint: true,
+      },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+    ]
+    expect(itemsToInput(history)).toEqual([
+      {
+        type: "message",
+        role: "system",
+        content: [
+          { type: "input_text", text: "long shared rules", prompt_cache_breakpoint: breakpoint },
+        ],
+      },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+    ])
+  })
+
+  it("marks the message's last content block", () => {
+    const history: ReadonlyArray<HistoryItem> = [
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "describe this" },
+          { type: "input_image", source: { _tag: "url", url: "https://example.com/a.png" } },
+        ],
+        cacheBreakpoint: true,
+      },
+    ]
+    expect(itemsToInput(history)).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "describe this" },
+          {
+            type: "input_image",
+            image_url: "https://example.com/a.png",
+            prompt_cache_breakpoint: breakpoint,
+          },
+        ],
+      },
+    ])
+  })
+
+  it("sends nothing on assistant output, which the API does not accept it on", () => {
+    const history: ReadonlyArray<HistoryItem> = [
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "hello" }],
+        cacheBreakpoint: true,
+      },
+    ]
+    expect(itemsToInput(history)).toEqual([
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: "hello" }] },
+    ])
+  })
+})

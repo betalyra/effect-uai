@@ -23,7 +23,10 @@ type HistoryItem = Message | ToolCall | ToolCallOutput | Reasoning
 
 - **`Message`** - a `role` (`user` / `assistant` / `system`) plus
   `content: ContentBlock[]`. Content blocks are `input_text`,
-  `input_image`, `output_text`, `output_image`, or `refusal`.
+  `input_image`, `output_text`, `output_image`, or `refusal`. Set
+  `cacheBreakpoint: true` to end a cached prompt prefix after the message;
+  providers with per-message cache breakpoints (Anthropic, OpenAI
+  Responses) send it, the rest ignore it.
 - **`ToolCall`** - the assistant asking for a tool, with `call_id`,
   `name`, and a JSON `arguments` string.
 - **`ToolCallOutput`** - the result you feed back, keyed by

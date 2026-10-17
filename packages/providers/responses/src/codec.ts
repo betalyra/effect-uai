@@ -218,18 +218,39 @@ const contentBlockToInput = Match.type<ContentBlock>().pipe(
   }),
 )
 
+/**
+ * `Message.cacheBreakpoint` becomes `prompt_cache_breakpoint` on the message's
+ * last content block, which marks the end of the message as the end of the
+ * reusable prefix. The API accepts the field on input blocks only, so a marked
+ * message ending in assistant content (`output_text`, `refusal`) sends nothing.
+ * Its TTL is request-wide (`prompt_cache_options.ttl`, 30m by default).
+ */
+const withCacheBreakpoint = (
+  content: ReadonlyArray<{ readonly type: string }>,
+): ReadonlyArray<Record<string, unknown>> =>
+  Option.match(Arr.last(content), {
+    onNone: () => content,
+    onSome: (last) =>
+      last.type === "input_text" || last.type === "input_image"
+        ? [...content.slice(0, -1), { ...last, prompt_cache_breakpoint: { mode: "explicit" } }]
+        : content,
+  })
+
 const itemToInput = (item: HistoryItem): Record<string, unknown> =>
   passthrough(item) ??
   Match.value(item).pipe(
     Match.discriminatorsExhaustive("type")({
-      message: (m) => ({
-        type: "message",
-        role: m.role,
-        content: Arr.filterMap(m.content, (b) => {
+      message: (m) => {
+        const content = Arr.filterMap(m.content, (b) => {
           const encoded = contentBlockToInput(b)
           return encoded === undefined ? Result.failVoid : Result.succeed(encoded)
-        }),
-      }),
+        })
+        return {
+          type: "message",
+          role: m.role,
+          content: m.cacheBreakpoint === true ? withCacheBreakpoint(content) : content,
+        }
+      },
       function_call: (f) => ({
         type: "function_call",
         call_id: f.call_id,

@@ -89,6 +89,27 @@ On top of the core `CommonRequest` (`history`, `model`, `tools`,
   re-sending the full history. See the
   [pause and resume recipe](/recipes/pause-resume/).
 
+## Prompt caching
+
+OpenAI caches prompt prefixes on its own. On models that take explicit
+breakpoints (GPT-5.6 and later), mark a message with `cacheBreakpoint` to end
+a cached prefix there, for example a long system prompt shared by calls whose
+user content differs:
+
+```ts
+const history = [
+  { ...Items.systemText(longSharedPrompt), cacheBreakpoint: true },
+  Items.userText(question),
+]
+```
+
+The codec sends `prompt_cache_breakpoint: { mode: "explicit" }` on the last
+content block of that message. The API takes it on input blocks only, so a
+marked assistant message sends nothing. The breakpoint uses the request's
+cache TTL (30m), and the implicit breakpoint stays on alongside it. See
+OpenAI's [prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching)
+for limits and pricing.
+
 ## Calling it
 
 ```ts

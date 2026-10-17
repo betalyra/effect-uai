@@ -55,6 +55,7 @@ export type WireUsage = typeof WireUsage.Type
 type RequestTextContent = {
   readonly type: "text"
   readonly text: string
+  readonly cache_control?: CacheControl
 }
 
 type RequestToolResultContent = {
@@ -86,9 +87,13 @@ type RequestImageContent = {
   readonly source:
     | { readonly type: "url"; readonly url: string }
     | { readonly type: "base64"; readonly media_type: string; readonly data: string }
+  readonly cache_control?: CacheControl
 }
 
-type RequestUserContentBlock = RequestTextContent | RequestToolResultContent | RequestImageContent
+/** The blocks a user `Message` encodes to. */
+type RequestMessageContentBlock = RequestTextContent | RequestImageContent
+
+type RequestUserContentBlock = RequestMessageContentBlock | RequestToolResultContent
 
 type RequestAssistantContentBlock =
   | RequestTextContent
@@ -137,7 +142,7 @@ const imageSourceToWire = Match.type<Items.InputImage["source"]>().pipe(
 
 const userContentBlock = (
   block: Items.ContentBlock,
-): Result.Result<RequestUserContentBlock, void> =>
+): Result.Result<RequestMessageContentBlock, void> =>
   Match.value(block).pipe(
     Match.discriminatorsExhaustive("type")({
       input_text: (b) =>
@@ -154,6 +159,23 @@ const userContentBlock = (
       refusal: () => Result.failVoid,
     }),
   )
+
+/**
+ * `Message.cacheBreakpoint` becomes `cache_control` on the last block the
+ * message encodes to, so Anthropic caches the prefix through the end of that
+ * message. A message that encodes to no blocks has nowhere to carry it.
+ */
+const withCacheBreakpoint = <B extends RequestMessageContentBlock>(
+  message: Items.Message,
+  blocks: ReadonlyArray<B>,
+  cacheControl: CacheControl,
+): ReadonlyArray<B> =>
+  message.cacheBreakpoint === true
+    ? Option.match(Arr.last(blocks), {
+        onNone: () => blocks,
+        onSome: (last) => [...blocks.slice(0, -1), { ...last, cache_control: cacheControl }],
+      })
+    : blocks
 
 const parseJson = (s: string): Result.Result<unknown, JsonParseError> =>
   Result.try({
@@ -173,11 +195,16 @@ const roleBucket = (item: Items.HistoryItem): RoleBucket =>
     }),
   )
 
-const itemToUserBlocks = (item: Items.HistoryItem): ReadonlyArray<RequestUserContentBlock> =>
+const itemToUserBlocks = (
+  item: Items.HistoryItem,
+  cacheControl: CacheControl,
+): ReadonlyArray<RequestUserContentBlock> =>
   Match.value(item).pipe(
     Match.discriminatorsExhaustive("type")({
       message: (m): ReadonlyArray<RequestUserContentBlock> =>
-        m.role === "user" ? pipe(m.content, Arr.filterMap(userContentBlock)) : [],
+        m.role === "user"
+          ? withCacheBreakpoint(m, pipe(m.content, Arr.filterMap(userContentBlock)), cacheControl)
+          : [],
       function_call: (): ReadonlyArray<RequestUserContentBlock> => [],
       function_call_output: (o): ReadonlyArray<RequestUserContentBlock> => [
         { type: "tool_result", tool_use_id: o.call_id, content: o.output },
@@ -188,13 +215,16 @@ const itemToUserBlocks = (item: Items.HistoryItem): ReadonlyArray<RequestUserCon
 
 const itemToAssistantBlocks = (
   item: Items.HistoryItem,
+  cacheControl: CacheControl,
 ): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> =>
   Match.value(item).pipe(
     Match.discriminatorsExhaustive("type")({
       message: (m): Result.Result<ReadonlyArray<RequestAssistantContentBlock>, JsonParseError> => {
         const text = messageText(m)
         return Result.succeed(
-          m.role === "assistant" && text.length > 0 ? [{ type: "text", text }] : [],
+          m.role === "assistant" && text.length > 0
+            ? withCacheBreakpoint(m, [{ type: "text", text }], cacheControl)
+            : [],
         )
       },
       function_call: (f) =>
@@ -274,14 +304,15 @@ const appendAssistant = (
 const groupStep = (
   acc: GroupAcc,
   item: Items.HistoryItem,
+  cacheControl: CacheControl,
 ): Result.Result<GroupAcc, JsonParseError> => {
   const bucket = roleBucket(item)
   if (bucket === "system") return Result.succeed(acc)
   if (bucket === "user") {
-    return Result.succeed(appendUser(acc, itemToUserBlocks(item)))
+    return Result.succeed(appendUser(acc, itemToUserBlocks(item, cacheControl)))
   }
   return pipe(
-    itemToAssistantBlocks(item),
+    itemToAssistantBlocks(item, cacheControl),
     Result.map((blocks) => appendAssistant(acc, blocks)),
   )
 }
@@ -295,6 +326,7 @@ const groupStep = (
  */
 const groupedMessages = (
   history: ReadonlyArray<Items.HistoryItem>,
+  cacheControl: CacheControl,
 ): Result.Result<ReadonlyArray<RequestMessage>, JsonParseError> => {
   const initial: Result.Result<GroupAcc, JsonParseError> = Result.succeed({
     messages: [],
@@ -303,7 +335,9 @@ const groupedMessages = (
     assistantBuf: [],
   })
   return pipe(
-    Arr.reduce(history, initial, (acc, item) => Result.flatMap(acc, (a) => groupStep(a, item))),
+    Arr.reduce(history, initial, (acc, item) =>
+      Result.flatMap(acc, (a) => groupStep(a, item, cacheControl)),
+    ),
     Result.map(flushAcc),
   )
 }
@@ -311,15 +345,28 @@ const groupedMessages = (
 const isSystemMessage = (item: Items.HistoryItem): item is Items.Message =>
   item.type === "message" && item.role === "system"
 
-const systemFromHistory = (history: ReadonlyArray<Items.HistoryItem>): Option.Option<string> => {
-  const texts = pipe(
+/**
+ * System messages join into the plain `system` string. When one is marked
+ * `cacheBreakpoint`, `system` goes out as one text block per message instead,
+ * since only a block can carry `cache_control`.
+ */
+const systemFromHistory = (
+  history: ReadonlyArray<Items.HistoryItem>,
+  cacheControl: CacheControl,
+): Option.Option<NonNullable<RequestBody["system"]>> => {
+  const messages = pipe(
     history,
-    Arr.filterMap((item) =>
-      isSystemMessage(item) ? Result.succeed(messageText(item)) : Result.failVoid,
-    ),
-    Arr.filter((s) => s.length > 0),
+    Arr.filter(isSystemMessage),
+    Arr.filter((m) => messageText(m).length > 0),
   )
-  return texts.length === 0 ? Option.none() : Option.some(texts.join("\n"))
+  if (messages.length === 0) return Option.none()
+  return messages.some((m) => m.cacheBreakpoint === true)
+    ? Option.some(
+        messages.flatMap((m) =>
+          withCacheBreakpoint(m, [{ type: "text", text: messageText(m) }], cacheControl),
+        ),
+      )
+    : Option.some(messages.map(messageText).join("\n"))
 }
 
 export type ThinkingConfig = {
@@ -331,21 +378,24 @@ export type ThinkingConfig = {
 export type CacheTtl = "5m" | "1h"
 
 /**
- * Request-level cache breakpoint. Anthropic applies it to the last cacheable
- * block and moves it forward as the conversation grows, so the cached prefix
- * (`tools` → `system` → `messages`) follows the conversation without the
- * caller re-placing anything.
+ * A cache breakpoint. At the top level of the request Anthropic applies it to
+ * the last cacheable block and moves it forward as the conversation grows, so
+ * the cached prefix (`tools` → `system` → `messages`) follows the conversation
+ * without the caller re-placing anything. On a content block it marks the end
+ * of a prefix at a fixed point.
  */
 export type CacheControl = {
   readonly type: "ephemeral"
   readonly ttl?: CacheTtl
 }
 
+const EPHEMERAL: CacheControl = { type: "ephemeral" }
+
 export type RequestBody = {
   readonly model: string
   readonly messages: ReadonlyArray<RequestMessage>
   readonly max_tokens: number
-  readonly system?: string
+  readonly system?: string | ReadonlyArray<RequestTextContent>
   readonly temperature?: number
   readonly top_p?: number
   readonly top_k?: number
@@ -372,15 +422,21 @@ export const buildRequestBody = (params: {
   readonly toolChoice: Option.Option<Record<string, unknown>>
   readonly userId: Option.Option<string>
   readonly outputConfig: Option.Option<Record<string, unknown>>
+  /** Request-level automatic breakpoint (`promptCaching` on the layer). */
   readonly cacheControl: Option.Option<CacheControl>
+  /**
+   * Written on the last block of each message marked `cacheBreakpoint`.
+   * Defaults to `{ type: "ephemeral" }` (5m).
+   */
+  readonly messageCacheControl?: CacheControl
 }): Result.Result<RequestBody, JsonParseError> =>
   pipe(
-    groupedMessages(params.history),
+    groupedMessages(params.history, params.messageCacheControl ?? EPHEMERAL),
     Result.map((messages): RequestBody => ({
       model: params.model,
       messages,
       max_tokens: params.maxTokens,
-      ...Option.match(systemFromHistory(params.history), {
+      ...Option.match(systemFromHistory(params.history, params.messageCacheControl ?? EPHEMERAL), {
         onNone: () => ({}),
         onSome: (system) => ({ system }),
       }),

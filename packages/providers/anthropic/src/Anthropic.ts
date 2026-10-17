@@ -158,22 +158,25 @@ const resolvedMaxTokens = (cfg: Config, request: AnthropicRequest): number =>
   request.maxOutputTokens ?? cfg.defaultMaxTokens ?? FALLBACK_MAX_TOKENS
 
 /**
+ * The `cache_control` this layer writes, both for the request-level breakpoint
+ * and on messages marked `cacheBreakpoint`. Both take the `promptCaching` TTL:
+ * Anthropic rejects a longer-TTL breakpoint after a shorter one, and the
+ * request-level breakpoint lands after every message.
+ */
+const cacheControl = (cfg: Config): CacheControl => {
+  const ttl = typeof cfg.promptCaching === "object" ? cfg.promptCaching.ttl : undefined
+  return { type: "ephemeral", ...(ttl !== undefined && { ttl }) }
+}
+
+/**
  * One request-level breakpoint when caching is on. Anthropic places it on the
  * last cacheable block itself, so nothing has to be marked per-block and the
  * breakpoint stays correct as history grows.
  */
 const cacheControlOf = (cfg: Config): Option.Option<CacheControl> =>
-  pipe(
-    Option.fromUndefinedOr(cfg.promptCaching),
-    Option.flatMap((opt) =>
-      opt === false
-        ? Option.none<CacheControl>()
-        : Option.some<CacheControl>({
-            type: "ephemeral",
-            ...(opt !== true && opt.ttl !== undefined && { ttl: opt.ttl }),
-          }),
-    ),
-  )
+  cfg.promptCaching === undefined || cfg.promptCaching === false
+    ? Option.none()
+    : Option.some(cacheControl(cfg))
 
 const functionToolDescriptors = (
   request: AnthropicRequest,
@@ -345,6 +348,7 @@ const buildNativeStream = (cfg: Config) => {
           userId: Option.fromUndefinedOr(request.user),
           outputConfig: structured,
           cacheControl: cacheControlOf(cfg),
+          messageCacheControl: cacheControl(cfg),
         })
 
         const body = yield* Result.match(bodyResult, {

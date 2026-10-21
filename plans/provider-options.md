@@ -128,3 +128,78 @@ passthrough) can follow the same pattern later.
   Proposal: leave it out until someone needs it.
 - Module augmentation is new to this repo. Spike it first to confirm that the
   augmentation applies when the user imports only the provider's layer.
+
+## Annex A: typing options considered
+
+| Option | What you get | Why not |
+|---|---|---|
+| **Module augmentation** (chosen) | Typed keys per installed provider, no generics | Global: once any file imports a provider, its options type-check on every item. Accepted, as effect does |
+| **Generic items** | `Message<O>`, `HistoryItem<O>`, `streamTurn(req: { history: HistoryItem<AnthropicOptions>[] })`; precise per call site | `O` spreads through Items, Turn, Loop, toolkits and every history helper. A fallback needs `HistoryItem<A & B>` |
+| **Untyped slot with typed builders** | `providerOptions: { ...Anthropic.options({ cacheControl }) }`; no compiler tricks | Only helper calls are checked; a hand-written literal is not. This is the AI SDK's approach (`Record<string, JSONObject>`, validated with zod at runtime) |
+| **Opaque tagged values** | `providerOptions: [Anthropic.cacheControl({ ttl: "1h" }), Responses.cacheBreakpoint]`; fully typed, local, impossible to misspell | Harder to serialize or inspect; codecs filter by tag; a new shape users have to learn |
+
+## Annex B: `providerState` per provider
+
+This shows what each provider writes after a turn, in the state the history is
+in when the next request is built. `providerOptions` never appears in
+responses; the caller's options stay where the caller put them.
+
+**Responses** stores the full wire item under `responses`, and re-sends it
+verbatim on the next request so that `encrypted_content` and item ids survive:
+
+```ts
+[
+  {
+    type: "reasoning",
+    id: "rs_01",
+    signature: "gAAAAB...",
+    providerState: {
+      responses: { type: "reasoning", id: "rs_01", encrypted_content: "gAAAAB...", summary: [] },
+    },
+  },
+  {
+    type: "function_call",
+    call_id: "call_9",
+    name: "get_weather",
+    arguments: "{\"city\":\"Lisbon\"}",
+    providerState: {
+      responses: {
+        type: "function_call", id: "fc_02", call_id: "call_9", name: "get_weather",
+        arguments: "{\"city\":\"Lisbon\"}", status: "completed",
+      },
+    },
+  },
+]
+```
+
+**Gemini** stores only the fields the common shape lacks: the wire id of a call
+and its thought signature.
+
+```ts
+{
+  type: "function_call",
+  call_id: "call_9",
+  name: "get_weather",
+  arguments: "{\"city\":\"Lisbon\"}",
+  providerState: { gemini: { id: "fc-abc", thoughtSignature: "CiQB..." } },
+}
+```
+
+**Anthropic** writes no state. Its round-trip data fits typed fields
+(`Reasoning.signature` carries signed or redacted thinking).
+
+**Next request after a fallback from Responses to Gemini**. Caller options and
+codec state live side by side, and each codec reads only its own key:
+
+```ts
+[
+  { type: "message", role: "system",
+    content: [{ type: "input_text", text: longSharedPrompt,
+                providerOptions: { responses: { promptCacheBreakpoint: true } } }] },
+  { type: "message", role: "user", content: [{ type: "input_text", text: "Weather in Lisbon?" }] },
+  { type: "function_call", call_id: "call_9", ..., providerState: { responses: { ... } } },
+  { type: "function_call_output", call_id: "call_9", output: "18°C" },
+  { type: "message", role: "assistant", content: [{ type: "output_text", text: "18°C and sunny." }] },
+  // ↑ answered by Gemini; a later Gemini tool call would carry providerState.gemini
+]
+```

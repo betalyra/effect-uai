@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://effect-uai.betalyra.com/sitemap-index.xml
+Sitemap: https://effect-uai.com/sitemap-index.xml

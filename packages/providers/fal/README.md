@@ -48,7 +48,7 @@ Copy the id off the model's page on fal.ai and pass it as `model`.
 
 ## Docs
 
-<https://effect-uai.betalyra.com/image-generation/providers/fal/>
+<https://effect-uai.com/image-generation/providers/fal/>
 
 ## License
 

@@ -44,7 +44,7 @@ answers in the channel instead.
 
 ## Docs
 
-<https://effect-uai.betalyra.com/messenger/providers/slack/>
+<https://effect-uai.com/messenger/providers/slack/>
 
 ## License
 

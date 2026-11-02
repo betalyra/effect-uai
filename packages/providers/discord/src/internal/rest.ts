@@ -6,7 +6,7 @@ import * as Multipart from "@effect-uai/core/Multipart"
 export const provider = "discord"
 
 /** Tracks the package version; Discord requires a `DiscordBot (url, version)` agent. */
-const userAgent = "DiscordBot (https://effect-uai.betalyra.com, 0.14.0)"
+const userAgent = "DiscordBot (https://effect-uai.com, 0.14.0)"
 
 export type Config = {
   readonly token: Redacted.Redacted

@@ -95,7 +95,7 @@ export interface OgImageInput {
   eyebrow?: string
 }
 
-const URL_FULL = "https://effect-uai.betalyra.com"
+const URL_FULL = "https://effect-uai.com"
 
 // Logo native aspect ratio (1000 × 320 source).
 const LOGO_ASPECT = 1000 / 320

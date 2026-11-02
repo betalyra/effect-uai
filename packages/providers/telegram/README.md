@@ -38,7 +38,7 @@ write Telegram HTML; a message Telegram cannot parse is resent plain.
 
 ## Docs
 
-<https://effect-uai.betalyra.com/messenger/providers/telegram/>
+<https://effect-uai.com/messenger/providers/telegram/>
 
 ## License
 

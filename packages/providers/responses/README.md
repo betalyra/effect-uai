@@ -38,7 +38,7 @@ provider-agnostic loop bodies).
 
 ## Docs
 
-<https://effect-uai.betalyra.com/providers/responses/>
+<https://effect-uai.com/providers/responses/>
 
 ## License
 

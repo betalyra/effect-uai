@@ -28,7 +28,7 @@ const plausibleHead = isVercelProduction
   : []
 
 export default defineConfig({
-  site: "https://effect-uai.betalyra.com",
+  site: "https://effect-uai.com",
   // Language-model docs moved out of /concepts/ to their own capability
   // section at /language-models/, matching speech / embeddings / etc.
   redirects: {

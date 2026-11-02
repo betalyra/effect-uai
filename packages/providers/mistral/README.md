@@ -69,7 +69,7 @@ dependency.
 
 ## Docs
 
-<https://effect-uai.betalyra.com/providers/mistral/>
+<https://effect-uai.com/providers/mistral/>
 
 ## License
 

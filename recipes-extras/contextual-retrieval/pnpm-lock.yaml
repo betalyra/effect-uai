@@ -27,8 +27,8 @@ importers:
         specifier: link:../../packages/retrieval
         version: link:../../packages/retrieval
       '@effect/sql-libsql':
-        specifier: 4.0.0-rc.111
-        version: 4.0.0-rc.111(effect@..+packages+core+node_modules+effect)
+        specifier: 4.1.2
+        version: 4.1.2(effect@..+packages+core+node_modules+effect)
       effect:
         specifier: link:../../packages/core/node_modules/effect
         version: link:../../packages/core/node_modules/effect
@@ -45,10 +45,10 @@ importers:
 
 packages:
 
-  '@effect/sql-libsql@4.0.0-rc.111':
-    resolution: {integrity: sha512-rm1AopMEaojqA/uNdaH+DQm7kqm7CnHYpjoy0ERA0N6PwyG+otGqX4ADrXJWmJo9nn8pwtuFGmkiIzgPpbc16g==}
+  '@effect/sql-libsql@4.1.2':
+    resolution: {integrity: sha512-1VIaOiP0w8r63hUuNSF5VHoqL2/yrvf7C38FRuSTG7NV21vI5eJx1eo7/11X59SdWSr9Zc4N0B/AAhci/EfzNQ==}
     peerDependencies:
-      effect: ^4.0.0-rc.111
+      effect: ^4.1.2
 
   '@esbuild/aix-ppc64@0.28.2':
     resolution: {integrity: sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==}
@@ -206,11 +206,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@libsql/client@0.17.4':
-    resolution: {integrity: sha512-lYayFWasDV78A+TjlEhr6ubb3odBV6OHjb+wdp8VQcyWWAEIjuwbCHaraEUS4m4yWoo0BvZo96It4VdzZRmRWw==}
+  '@libsql/client@0.18.0':
+    resolution: {integrity: sha512-zMCCo58vv7w27j7+cnt/GW+X6/Rih6cHZ86PKi0AxCMOqMfrVgG9OZ5lW2bDMJhSeOjsv2szH2nJF3A9l36UmA==}
 
-  '@libsql/core@0.17.4':
-    resolution: {integrity: sha512-LqF9gIvnJ38nmAH1y/ChizHqDO/MO1wLgA96XrraulEEbqXxLjleSH92YWTolbuJKgPUmGu4aJk9W3UnAcxLOQ==}
+  '@libsql/core@0.18.0':
+    resolution: {integrity: sha512-N8RR2CIpcgtbKZnXs2KVpw2lJQfinUj3I56e7qRDRpK18Hty0Rr8nr00VmFb4R/DsqOanPB/TaP3+QAQLZeXMg==}
 
   '@libsql/darwin-arm64@0.5.29':
     resolution: {integrity: sha512-K+2RIB1OGFPYQbfay48GakLhqf3ArcbHqPFu7EZiaUcRgFcdw8RoltsMyvbj5ix2fY0HV3Q3Ioa/ByvQdaSM0A==}
@@ -444,9 +444,9 @@ packages:
 
 snapshots:
 
-  '@effect/sql-libsql@4.0.0-rc.111(effect@..+packages+core+node_modules+effect)':
+  '@effect/sql-libsql@4.1.2(effect@..+packages+core+node_modules+effect)':
     dependencies:
-      '@libsql/client': 0.17.4
+      '@libsql/client': 0.18.0
       effect: link:../../packages/core/node_modules/effect
     transitivePeerDependencies:
       - bufferutil
@@ -530,9 +530,9 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@libsql/client@0.17.4':
+  '@libsql/client@0.18.0':
     dependencies:
-      '@libsql/core': 0.17.4
+      '@libsql/core': 0.18.0
       '@libsql/hrana-client': 0.10.0
       js-base64: 3.9.3
       libsql: 0.5.29
@@ -541,7 +541,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@libsql/core@0.17.4':
+  '@libsql/core@0.18.0':
     dependencies:
       js-base64: 3.9.3
 

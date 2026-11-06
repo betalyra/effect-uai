@@ -64,9 +64,9 @@
       "types": "./dist/UiContract.d.mts",
       "import": "./dist/UiContract.mjs"
     },
-    "./Encoding": {
-      "types": "./dist/Encoding.d.mts",
-      "import": "./dist/Encoding.mjs"
+    "./SseEncoding": {
+      "types": "./dist/SseEncoding.d.mts",
+      "import": "./dist/SseEncoding.mjs"
     },
     "./Client": {
       "types": "./dist/Client.d.mts",

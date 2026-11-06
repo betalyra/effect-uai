@@ -4,8 +4,8 @@
  * to `run-started { inputs }`); this module is a preset, and an app with a
  * different shape passes its own schema.
  *
- * A `submit` carries user `messages` (core items, entering the loop's
- * history unchanged) and, with `make(DataSchema)`, typed `data` the server
+ * A `submit` carries user `messages` (core message items: the server appends
+ * them to its history as they are) and, with `make(DataSchema)`, typed `data` the server
  * interprets (template id, model choice). Decode request bodies with the
  * `*Json` codecs: they carry image bytes over JSON.
  *
@@ -135,10 +135,6 @@ export function resolve(
 ): Draft<Resolve> & { readonly data?: unknown } {
   return { ...options, kind: "resolve", decisions }
 }
-
-/** The submit's messages as model history; no translation needed. */
-export const toHistory = (input: Pick<Submit, "messages">): ReadonlyArray<Items.Message> =>
-  input.messages
 
 /** All text of the submit's messages, joined by blank lines. */
 export const text = (input: Pick<Submit, "messages">): string =>

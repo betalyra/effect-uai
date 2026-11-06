@@ -4,24 +4,60 @@ import * as RunView from "@effect-uai/ui/RunView"
 import { createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
 import { chat } from "../chat"
+import type { ChatPayloads } from "../chat-ui"
 
 export const Route = createFileRoute("/")({ component: Chat })
 
-// The answer, or the refusal when the model declined.
-const answer = (run: RunView.RunView) => RunView.text(run) || (RunView.refusal(run) ?? "")
+type Run = RunView.RunView<ChatPayloads>
 
-const note = (run: RunView.RunView): string | undefined => {
-  if (run.status === "stopped") return "stopped"
-  if (run.status === "failed") return `failed: ${run.error?.reason}`
-  return undefined
+// The answer, or the refusal when the model declined.
+const answer = (run: Run) => RunView.text(run) || (RunView.refusal(run) ?? "")
+
+const notes = (run: Run): ReadonlyArray<string> => {
+  if (run.status === "stopped") return ["stopped"]
+  if (run.status === "failed") return [`failed: ${run.error?.reason}`]
+  return []
 }
 
-function Bubble(props: { role: "user" | "assistant"; text: string; note?: string | undefined }) {
+// Tool calls, typed by the contract: narrowing by name gives the tool's output.
+const toolLine = (block: RunView.Block<ChatPayloads>): ReadonlyArray<string> => {
+  if (block.type !== "tool") return []
+  if (block.name === "get_weather" && block.output !== undefined) {
+    const { city, temperatureC, sky } = block.output
+    return [`get_weather: ${city}, ${temperatureC}°C, ${sky}`]
+  }
+  if (block.name === "get_date" && block.output !== undefined) {
+    const { timezone, now } = block.output
+    return [`get_date: ${now.toLocaleString(undefined, { timeZone: timezone })} (${timezone})`]
+  }
+  return [`${block.name}: ${block.status}`]
+}
+
+function Bubble(props: {
+  role: "user" | "assistant"
+  text: string
+  notes?: ReadonlyArray<string>
+}) {
   return (
     <div className={props.role}>
       {props.text}
-      {props.note !== undefined && <small>{props.note}</small>}
+      {props.notes?.map((note) => (
+        <small key={note}>{note}</small>
+      ))}
     </div>
+  )
+}
+
+function Assistant(props: { run: Run; live: boolean }) {
+  const tools = props.run.blocks.flatMap(toolLine)
+  const text = answer(props.run)
+  if (!props.live) {
+    return <Bubble role="assistant" text={text} notes={[...tools, ...notes(props.run)]} />
+  }
+  return text === "" ? (
+    <Bubble role="assistant" text="…" notes={[...tools, "thinking"]} />
+  ) : (
+    <Bubble role="assistant" text={text} notes={[...tools, "streaming"]} />
   )
 }
 
@@ -41,16 +77,10 @@ function Chat() {
           m.role === "user" ? (
             <Bubble key={m.id} role="user" text={Input.text(m.value)} />
           ) : (
-            <Bubble key={m.id} role="assistant" text={answer(m.value)} note={note(m.value)} />
+            <Assistant key={m.id} run={m.value} live={false} />
           ),
         )}
-        {active !== null && (
-          <Bubble
-            role="assistant"
-            text={answer(active) || "…"}
-            note={answer(active) === "" ? "thinking" : "streaming"}
-          />
-        )}
+        {active !== null && <Assistant run={active} live />}
       </div>
       <form
         onSubmit={(e) => {
@@ -64,7 +94,7 @@ function Chat() {
         <input
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Ask anything"
+          placeholder="Ask about the weather, or today's date"
           autoFocus
         />
         <button type="submit" disabled={busy}>

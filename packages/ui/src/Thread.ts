@@ -8,8 +8,6 @@
  * `Atoms.session` and `Atoms.make` take, so `{ ...Thread.make(config) }`
  * plugs in directly.
  */
-import * as Items from "@effect-uai/core/Items"
-import { serializeValue } from "@effect-uai/core/ToolResult"
 import { Option, Schema } from "effect"
 import * as Input from "./Input.js"
 import { type Envelope, InputId, type Payloads, StreamId, type Untyped } from "./RunEvent.js"
@@ -69,7 +67,7 @@ export const State = <U, A, V>(
 
 export type Config<I, U, A, P extends Payloads = Untyped> = {
   /** The user entry for an input; `None` for inputs without one (approvals). */
-  readonly user: (input: I) => Option.Option<U>
+  readonly toUser: (input: I) => Option.Option<U>
   /** The assistant entry a finished run settles into. */
   readonly settle: (run: RunView.RunView<P>) => A
   /** Decodes an `input-accepted` echo into an input; without it, echoes are ignored. */
@@ -114,7 +112,7 @@ export function make<I extends { readonly id: InputId }, U, A>(
 
   const settled = (run: RunView.RunView<Payloads>, fallbackSeq: number): AssistantEntry<A> => ({
     role: "assistant",
-    id: run.messageId ?? run.runId ?? `seq-${fallbackSeq}`,
+    id: run.runId ?? `seq-${fallbackSeq}`,
     value: config.settle(run),
   })
 
@@ -148,7 +146,7 @@ export function make<I extends { readonly id: InputId }, U, A>(
       Option.filter((input) => !hasInput(state, input.id)),
       Option.flatMap((input) =>
         config
-          .user(input)
+          .toUser(input)
           .pipe(Option.map((u): UserEntry<U> => ({ role: "user", id: input.id, value: u }))),
       ),
       Option.match({
@@ -164,7 +162,7 @@ export function make<I extends { readonly id: InputId }, U, A>(
       status: "submitted",
       lastSeq: state.lastSeq,
     }
-    return Option.match(config.user(input), {
+    return Option.match(config.toUser(input), {
       onNone: () => (idle ? { ...state, active: run } : state),
       onSome: (u): S => {
         const entry: UserEntry<U> = { role: "user", id: input.id, value: u }
@@ -206,7 +204,7 @@ export function make<I extends { readonly id: InputId }, U, A>(
     const final: RunView.RunView<Payloads> =
       reason === "stopped"
         ? { ...run, status: "stopped" }
-        : { ...run, status: "failed", error: { reason: "disconnected", retryable: true } }
+        : { ...run, status: "failed", error: { reason: "disconnected" } }
     return { ...state, messages: [...state.messages, settled(final, state.lastSeq)], active: null }
   }
 
@@ -240,7 +238,7 @@ export const presetFor = <P extends Payloads = Untyped>(): Fold<
   P
 > =>
   make<PresetInput, UserContent, RunView.RunView<P>, P>({
-    user: (input) =>
+    toUser: (input) =>
       Option.fromNullishOr(input.messages).pipe(Option.map((messages) => ({ messages }))),
     settle: (run) => run,
     decodeInput: Schema.decodeUnknownOption(Input.InputJson),
@@ -249,29 +247,3 @@ export const presetFor = <P extends Payloads = Untyped>(): Fold<
 export const preset = presetFor()
 
 export const { initial, step, submitted, ended } = preset
-
-const assistantItems = (run: RunView.RunView): ReadonlyArray<Items.HistoryItem> => {
-  const text = RunView.text(run)
-  const tools = run.blocks.flatMap((b): ReadonlyArray<Items.HistoryItem> =>
-    b.type === "tool" && b.status === "done"
-      ? [
-          {
-            type: "function_call",
-            call_id: b.id,
-            name: b.name,
-            arguments: serializeValue(b.input ?? {}),
-          },
-          Items.toolCallOutput(b.id, serializeValue(b.output)),
-        ]
-      : [],
-  )
-  return [...tools, ...(text.length > 0 ? [Items.assistantText(text)] : [])]
-}
-
-/**
- * Preset messages as model history. Lossy by design: `providerData`
- * (encrypted reasoning, signatures) never reaches the client. Keep history on
- * the server; this is an MVP shortcut.
- */
-export const toHistory = (messages: ReadonlyArray<Message>): ReadonlyArray<Items.HistoryItem> =>
-  messages.flatMap((m) => (m.role === "user" ? Input.toHistory(m.value) : assistantItems(m.value)))

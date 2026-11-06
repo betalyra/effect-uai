@@ -151,14 +151,12 @@ export type Status = typeof Status.Type
 
 const RunError = Schema.Struct({
   reason: Schema.String,
-  retryable: Schema.Boolean,
   message: Schema.optionalKey(Schema.String),
 })
 
 export type RunView<P extends Payloads = Untyped> = {
   readonly runId?: RunId
   readonly name?: string
-  readonly messageId?: string
   readonly inputs: ReadonlyArray<InputId>
   readonly status: Status
   readonly blocks: ReadonlyArray<Block<P>>
@@ -228,7 +226,6 @@ export const schema = <
   Schema.Struct({
     runId: Schema.optionalKey(RunId),
     name: Schema.optionalKey(Schema.String),
-    messageId: Schema.optionalKey(Schema.String),
     inputs: Schema.Array(InputId),
     status: Status,
     blocks: Schema.Array(parts.block),
@@ -411,7 +408,6 @@ const apply = (v: View, event: RunEvent<Payloads>): View =>
         ...v,
         status: "streaming",
         runId: e.runId,
-        messageId: e.messageId,
         inputs: e.inputs,
         ...(e.name !== undefined ? { name: e.name } : {}),
       }),
@@ -435,7 +431,6 @@ const apply = (v: View, event: RunEvent<Payloads>): View =>
         status: "failed",
         error: {
           reason: e.reason,
-          retryable: e.retryable,
           ...(e.message !== undefined ? { message: e.message } : {}),
         },
       }),
@@ -569,40 +564,4 @@ export function refusal<P extends Payloads>(view: RunView<P>): string | undefine
 export function refusal(view: View): string | undefined {
   const parts = view.blocks.flatMap((b) => (b.type === "refusal" ? [b.text] : []))
   return parts.length === 0 ? undefined : parts.join("")
-}
-
-/**
- * Object blocks named `name`, decoded with `schema` (without a contract).
- * `value` is set once the object is done and decodes.
- */
-export function objects<A, P extends Payloads>(
-  view: RunView<P>,
-  name: string,
-  schema: Schema.Codec<A, any, never, never>,
-): ReadonlyArray<{
-  readonly id: string
-  readonly status: ObjectStatus
-  readonly value: A | undefined
-}>
-export function objects<A>(
-  view: View,
-  name: string,
-  schema: Schema.Codec<A, any, never, never>,
-): ReadonlyArray<{
-  readonly id: string
-  readonly status: ObjectStatus
-  readonly value: A | undefined
-}> {
-  const decode = Schema.decodeUnknownOption(schema)
-  return view.blocks.flatMap((b) =>
-    b.type === "object" && b.name === name
-      ? [
-          {
-            id: b.id,
-            status: b.status,
-            value: b.status === "done" ? Option.getOrUndefined(decode(b.value)) : undefined,
-          },
-        ]
-      : [],
-  )
 }

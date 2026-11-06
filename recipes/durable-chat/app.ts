@@ -8,12 +8,11 @@
  *   POST /chats/:id/stop                             → 202, `run-stopped` arrives on the stream
  */
 import { streamTurn } from "@effect-uai/core/LanguageModel"
-import * as SSE from "@effect-uai/core/SSE"
 import { flagValue } from "@effect-uai/recipe-kit/argv"
 import { bundleClient } from "@effect-uai/recipe-kit/bundle"
-import * as Encoding from "@effect-uai/ui/Encoding"
 import * as Input from "@effect-uai/ui/Input"
 import { StreamId } from "@effect-uai/ui/RunEvent"
+import * as SseEncoding from "@effect-uai/ui/SseEncoding"
 import { Effect, FileSystem, Layer, Option, Path, Schema, Stdio } from "effect"
 import { SecureRandom } from "effect/crypto"
 import * as HttpRouter from "effect/http/HttpRouter"
@@ -48,10 +47,10 @@ const server = (model: string, page: { readonly html: string; readonly js: strin
     const events = Effect.gen(function* () {
       const { id, after } = yield* HttpRouter.schemaParams(EventParams)
       const request = yield* HttpServerRequest.HttpServerRequest
-      const from = Encoding.lastEventId(request.headers).pipe(Option.getOrElse(() => after ?? 0))
+      const from = SseEncoding.lastEventId(request.headers).pipe(Option.getOrElse(() => after ?? 0))
       const stream = yield* chats.events(id, from)
-      return HttpServerResponse.stream(stream.pipe(Encoding.toSSE, SSE.toBytes), {
-        headers: { ...Encoding.responseHeaders, "x-accel-buffering": "no" },
+      return HttpServerResponse.stream(stream.pipe(SseEncoding.encode), {
+        headers: { ...SseEncoding.responseHeaders, "x-accel-buffering": "no" },
       })
     }).pipe(
       Effect.catchTag("ChatNotFound", () =>

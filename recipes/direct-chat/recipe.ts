@@ -13,7 +13,7 @@ import * as Input from "@effect-uai/ui/Input"
 import * as Projection from "@effect-uai/ui/Projection"
 import * as Run from "@effect-uai/ui/Run"
 import { RunId, StreamId } from "@effect-uai/ui/RunEvent"
-import { Data, Effect, Option, Ref, Stream } from "effect"
+import { Data, Effect, HashMap, Option, Ref, Stream } from "effect"
 import { SecureRandom } from "effect/crypto"
 
 export class ChatNotFound extends Data.TaggedError("ChatNotFound")<{ readonly chatId: StreamId }> {}
@@ -30,11 +30,11 @@ export const makeChats = <E, R>(
 ) =>
   Effect.gen(function* () {
     const random = yield* SecureRandom.SecureRandom
-    const chats = yield* Ref.make<ReadonlyMap<StreamId, Chat>>(new Map())
+    const chats = yield* Ref.make(HashMap.empty<StreamId, Chat>())
 
     const find = (chatId: StreamId) =>
       Ref.get(chats).pipe(
-        Effect.flatMap((m) => Effect.fromOption(Option.fromNullishOr(m.get(chatId)))),
+        Effect.flatMap((m) => Effect.fromOption(HashMap.get(m, chatId))),
         Effect.mapError(() => new ChatNotFound({ chatId })),
       )
 
@@ -45,7 +45,7 @@ export const makeChats = <E, R>(
         history: yield* Ref.make<ReadonlyArray<Items.HistoryItem>>([]),
         lastSeq: yield* Ref.make(0),
       }
-      yield* Ref.update(chats, (m) => new Map(m).set(chat.id, chat))
+      yield* Ref.update(chats, HashMap.set(chat.id, chat))
       return chat
     })
 
@@ -57,10 +57,7 @@ export const makeChats = <E, R>(
       Effect.gen(function* () {
         const chat = yield* Option.match(chatId, { onNone: () => create, onSome: find })
         // The question joins the history even if the run is stopped early.
-        const history = yield* Ref.updateAndGet(chat.history, (h) => [
-          ...h,
-          ...Input.toHistory(input),
-        ])
+        const history = yield* Ref.updateAndGet(chat.history, (h) => [...h, ...input.messages])
         const runId = RunId.make(yield* random.uuidV7())
         return agent(history).pipe(
           // The turn's items join the history for the next message.
@@ -71,7 +68,9 @@ export const makeChats = <E, R>(
           ),
           Projection.toRunEvents(),
           Run.coalesce("30 millis"),
-          Run.withTerminal({ runId, inputs: [input.id] }),
+          Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
+          Run.complete,
+          Run.start({ runId, inputs: [input.id] }),
           Run.sequence(chat.id, { from: yield* Ref.get(chat.lastSeq) }),
           Stream.tap((envelope) => Ref.set(chat.lastSeq, envelope.seq)),
         )

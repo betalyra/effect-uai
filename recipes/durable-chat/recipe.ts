@@ -23,13 +23,14 @@ import {
   type Duration,
   Effect,
   FiberMap,
+  HashMap,
   Option,
   PubSub,
   Queue,
   Ref,
   Schema,
-  Semaphore,
   Stream,
+  SynchronizedRef,
 } from "effect"
 import { SecureRandom } from "effect/crypto"
 
@@ -58,11 +59,11 @@ export const makeChats = <E, R>(
   Effect.gen(function* () {
     const random = yield* SecureRandom.SecureRandom
     const workers = yield* FiberMap.make<StreamId>()
-    const chats = yield* Ref.make<ReadonlyMap<StreamId, Chat>>(new Map())
+    const chats = yield* Ref.make(HashMap.empty<StreamId, Chat>())
 
     const find = (chatId: StreamId) =>
       Ref.get(chats).pipe(
-        Effect.flatMap((m) => Effect.fromOption(Option.fromNullishOr(m.get(chatId)))),
+        Effect.flatMap((m) => Effect.fromOption(HashMap.get(m, chatId))),
         Effect.mapError(() => new ChatNotFound({ chatId })),
       )
 
@@ -74,7 +75,7 @@ export const makeChats = <E, R>(
         // The questions join the history even if the run is stopped early.
         const history = yield* Ref.updateAndGet(chat.history, (h) => [
           ...h,
-          ...inputs.flatMap(Input.toHistory),
+          ...inputs.flatMap((input) => input.messages),
         ])
         const runId = RunId.make(yield* random.uuidV7())
         yield* agent(history).pipe(
@@ -86,11 +87,10 @@ export const makeChats = <E, R>(
           ),
           Projection.toRunEvents(),
           Run.coalesce("30 millis"),
-          Run.withTerminal({
-            runId,
-            inputs: inputs.map((i) => i.id),
-            stopWhen: Deferred.await(stop),
-          }),
+          Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
+          Run.stopWhen(Deferred.await(stop)),
+          Run.complete,
+          Run.start({ runId, inputs: inputs.map((i) => i.id) }),
           Stream.runForEach((event) => chat.publish(event, runId)),
         )
       }).pipe(Effect.ensuring(Ref.set(chat.running, Option.none())))
@@ -100,29 +100,25 @@ export const makeChats = <E, R>(
       const id = StreamId.make(yield* random.uuidV4())
       // Replay everything: a re-opened chat gets every run.
       const events = yield* PubSub.unbounded<Envelope>({ replay: Number.POSITIVE_INFINITY })
-      const lastSeq = yield* Ref.make(0)
-      const lock = yield* Semaphore.make(1)
+      const lastSeq = yield* SynchronizedRef.make(0)
       const chat: Chat = {
         id,
         inbox: yield* Queue.unbounded<Input.Submit>(),
         events,
+        // Atomic: two writers never publish the same seq, or out of order.
         publish: (event, runId) =>
-          Ref.updateAndGet(lastSeq, (n) => n + 1).pipe(
-            Effect.flatMap((seq) =>
-              PubSub.publish(
-                events,
-                runId === undefined
-                  ? { streamId: id, seq, event }
-                  : { streamId: id, seq, runId, event },
-              ),
-            ),
-            Effect.asVoid,
-            Semaphore.withPermit(lock),
-          ),
+          SynchronizedRef.updateEffect(lastSeq, (n) => {
+            const seq = n + 1
+            const envelope: Envelope =
+              runId === undefined
+                ? { streamId: id, seq, event }
+                : { streamId: id, seq, runId, event }
+            return PubSub.publish(events, envelope).pipe(Effect.as(seq))
+          }),
         history: yield* Ref.make<ReadonlyArray<Items.HistoryItem>>([]),
         running: yield* Ref.make(Option.none<Deferred.Deferred<void>>()),
       }
-      yield* Ref.update(chats, (m) => new Map(m).set(id, chat))
+      yield* Ref.update(chats, HashMap.set(id, chat))
       // The chat's worker: one run at a time. Messages sent in a burst, or
       // while a run is going, are answered together by the next run.
       yield* FiberMap.run(

@@ -144,7 +144,7 @@ Decided (the first item is built, see above; the rest is not yet built):
   must hold it on the client, emit the turn's core items itself as `data`.
   `Thread.toHistory` stays as a lossy MVP helper, documented as such.
 - **Generic `Thread<U, A>`.** Entries are `{ role: "user", id, value: U } |
-  { role: "assistant", id, value: A }`; the live run stays a `RunView`.
+{ role: "assistant", id, value: A }`; the live run stays a `RunView`.
   `Thread.make({ user: (input) => U, settle: (run) => A })` returns the fold
   (`initial`, `step`, `submitted`, `ended`, `truncateAfter`); default preset
   `U = Input.Submit`, `A = RunView`. Library keeps: live run, pending inputs,
@@ -165,7 +165,7 @@ Decided (the first item is built, see above; the rest is not yet built):
   `radio-station`) are all audio/media: port in phase 2 when the voice/media
   primitives exist, starting with `voice-loop` and `realtime-voice-agent`.
 - **Generic file input**: core gets one `input_file { source: FileSource,
-  filename? }` user block, the MIME type saying what it is (PDF, docx, audio,
+filename? }` user block, the MIME type saying what it is (PDF, docx, audio,
   video). `FileSource` instantiates core's `MediaSource` shape like
   `ImageSource` does (name kept: "media type" is the IANA term for any MIME
   type). Provider codecs map it (OpenAI `input_file` / `input_audio`,
@@ -208,11 +208,11 @@ the source; don't rebuild core's `dist` before the codecs handle it).
 
 ## Roadmap
 
-| Phase | Scope |
-|---|---|
-| **v1** | Chat: protocol, projection, run fold, optional `Thread`, structured-object streaming, direct + durable transports over SSE/NDJSON, durable server side as a recipe (Effect `PubSub` replay), atoms, React via `@effect/atom-react` (no own package) |
-| **v2** | Live sessions: multi-run streams, session-scoped events (user transcripts, VAD, interruption), a binary side channel for audio and video, upstream media streams, browser audio/camera helpers, `WebSocket` duplex transport. Port the three voice recipes |
-| **v3+** | Generative-UI state channel, rendering MCP Apps tool UIs (MCP work itself is tracked in `plans/backlog.md`), media output blocks beyond images, long-poll and RPC wires, FoldKit recipe, WebMCP if it matures |
+| Phase   | Scope                                                                                                                                                                                                                                                      |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **v1**  | Chat: protocol, projection, run fold, optional `Thread`, structured-object streaming, direct + durable transports over SSE/NDJSON, durable server side as a recipe (Effect `PubSub` replay), atoms, React via `@effect/atom-react` (no own package)        |
+| **v2**  | Live sessions: multi-run streams, session-scoped events (user transcripts, VAD, interruption), a binary side channel for audio and video, upstream media streams, browser audio/camera helpers, `WebSocket` duplex transport. Port the three voice recipes |
+| **v3+** | Generative-UI state channel, rendering MCP Apps tool UIs (MCP work itself is tracked in `plans/backlog.md`), media output blocks beyond images, long-poll and RPC wires, FoldKit recipe, WebMCP if it matures                                              |
 
 ## Design principles
 
@@ -254,14 +254,14 @@ the source; don't rebuild core's `dist` before the codecs handle it).
 
 ## Prior art, in one table
 
-| | Client core | Framework seam | Resume | Takeaway |
-|---|---|---|---|---|
-| AI SDK 7 `useChat` | `AbstractChat` class, mutable `ChatState` | framework injects a reactive state container | `reconnectToStream`, whole stream or nothing, Redis `resumable-stream`; stop needs your own endpoint | Copy the 2-method transport seam. Avoid the hidden accumulator and callback hooks (`onToolCall`, `sendAutomaticallyWhen`). |
-| TanStack AI 1.x | headless `ChatClient` (`getSnapshot`/`subscribeSnapshot`) | thin react/solid/vue/svelte packages | first-class `StreamDurability` adapter, per-run log, opaque offsets as SSE ids, `resumeFrom()` guard | Best layering and durability model. But the client is a god-class (queueing, persistence, paging, BYOK), and its run log competes with an app-owned one. Interrupts (`RUN_FINISHED.outcome = interrupt`) model approvals well. AG-UI events as wire format. |
-| assistant-ui `ExternalStoreRuntime` | you own state; pass `messages`, `isRunning`, `onNew`, `onCancel`, ... | n/a | n/a | Cleanest "UI = state + intents" split. A future adapter target. |
-| Electric Durable Streams | HTTP log protocol, `?offset=`, `Stream-Up-To-Date`, live SSE/long-poll | n/a | the whole point | Mirror its semantics (monotonic offset, catch-up then live tail, explicit end) so a backend swap is server-only. |
-| FoldKit | Elm architecture on Effect: Schema model, `update`, Commands (Effect → Msg), Subscriptions (`Stream<Msg>` keyed by model deps) | n/a | n/a | Needs exactly: a state Schema, a pure step function, "submit" as an Effect, "tail run from seq" as a Stream. Atoms would fight it. |
-| Effect Atom (`effect/reactivity`, stable in 4.x) | `AtomRegistry` is framework-free (`get`/`set`/`subscribe`/`toStream`) | official `@effect/atom-react`, `-vue`, `-solid` at 4.1.2 | n/a | Atoms are our "vanilla JS" layer. Svelte and plain JS bind via `registry.subscribe`. |
+|                                                  | Client core                                                                                                                    | Framework seam                                           | Resume                                                                                               | Takeaway                                                                                                                                                                                                                                                    |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI SDK 7 `useChat`                               | `AbstractChat` class, mutable `ChatState`                                                                                      | framework injects a reactive state container             | `reconnectToStream`, whole stream or nothing, Redis `resumable-stream`; stop needs your own endpoint | Copy the 2-method transport seam. Avoid the hidden accumulator and callback hooks (`onToolCall`, `sendAutomaticallyWhen`).                                                                                                                                  |
+| TanStack AI 1.x                                  | headless `ChatClient` (`getSnapshot`/`subscribeSnapshot`)                                                                      | thin react/solid/vue/svelte packages                     | first-class `StreamDurability` adapter, per-run log, opaque offsets as SSE ids, `resumeFrom()` guard | Best layering and durability model. But the client is a god-class (queueing, persistence, paging, BYOK), and its run log competes with an app-owned one. Interrupts (`RUN_FINISHED.outcome = interrupt`) model approvals well. AG-UI events as wire format. |
+| assistant-ui `ExternalStoreRuntime`              | you own state; pass `messages`, `isRunning`, `onNew`, `onCancel`, ...                                                          | n/a                                                      | n/a                                                                                                  | Cleanest "UI = state + intents" split. A future adapter target.                                                                                                                                                                                             |
+| Electric Durable Streams                         | HTTP log protocol, `?offset=`, `Stream-Up-To-Date`, live SSE/long-poll                                                         | n/a                                                      | the whole point                                                                                      | Mirror its semantics (monotonic offset, catch-up then live tail, explicit end) so a backend swap is server-only.                                                                                                                                            |
+| FoldKit                                          | Elm architecture on Effect: Schema model, `update`, Commands (Effect → Msg), Subscriptions (`Stream<Msg>` keyed by model deps) | n/a                                                      | n/a                                                                                                  | Needs exactly: a state Schema, a pure step function, "submit" as an Effect, "tail run from seq" as a Stream. Atoms would fight it.                                                                                                                          |
+| Effect Atom (`effect/reactivity`, stable in 4.x) | `AtomRegistry` is framework-free (`get`/`set`/`subscribe`/`toStream`)                                                          | official `@effect/atom-react`, `-vue`, `-solid` at 4.1.2 | n/a                                                                                                  | Atoms are our "vanilla JS" layer. Svelte and plain JS bind via `registry.subscribe`.                                                                                                                                                                        |
 
 ## Lessons from `@effect-uai/ai-sdk` and `examples/ai-sdk-next`
 
@@ -292,22 +292,22 @@ Two independent axes. Socket is a wire, not a mode.
 
 **Where generation lives**
 
-| Mode | Generation | Stream | Phase |
-|---|---|---|---|
-| **Direct** | inside the request; dies with it | the response body | v1 |
-| **Durable** | detached from the connection (layer-owned fiber); clients attach | submit returns `streamId`; subscribe replays then tails | v1 |
-| **Local** | same process as the UI, no network (browser agent with BYOK, Electron, tests, Storybook) | the agent's stream, projected in-process | v1 (`Transport.local`, a few lines; doubles as the test transport) |
-| **Live session** | long-lived, bidirectional, many runs, continuous upstream (voice, camera) | one duplex connection | v2 |
+| Mode             | Generation                                                                               | Stream                                                  | Phase                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
+| **Direct**       | inside the request; dies with it                                                         | the response body                                       | v1                                                                 |
+| **Durable**      | detached from the connection (layer-owned fiber); clients attach                         | submit returns `streamId`; subscribe replays then tails | v1                                                                 |
+| **Local**        | same process as the UI, no network (browser agent with BYOK, Electron, tests, Storybook) | the agent's stream, projected in-process                | v1 (`Transport.local`, a few lines; doubles as the test transport) |
+| **Live session** | long-lived, bidirectional, many runs, continuous upstream (voice, camera)                | one duplex connection                                   | v2                                                                 |
 
 **What carries the events**
 
-| Wire | Direct | Durable | Phase |
-|---|---|---|---|
-| SSE (fetch or `EventSource`) | ✓ | ✓ | v1 |
-| NDJSON over fetch | ✓ | ✓ | v1 |
-| WebSocket (JSON + binary side channel) | ✓ | ✓ | v1 JSON only, binary in v2 |
-| Long-poll (`?after=N&live=long-poll`, Durable Streams style) | n/a | ✓ | later |
-| RPC / server functions (Effect RPC streaming, TanStack Start server fns, tRPC subscriptions) | ✓ | ✓ | later |
+| Wire                                                                                         | Direct | Durable | Phase                      |
+| -------------------------------------------------------------------------------------------- | ------ | ------- | -------------------------- |
+| SSE (fetch or `EventSource`)                                                                 | ✓      | ✓       | v1                         |
+| NDJSON over fetch                                                                            | ✓      | ✓       | v1                         |
+| WebSocket (JSON + binary side channel)                                                       | ✓      | ✓       | v1 JSON only, binary in v2 |
+| Long-poll (`?after=N&live=long-poll`, Durable Streams style)                                 | n/a    | ✓       | later                      |
+| RPC / server functions (Effect RPC streaming, TanStack Start server fns, tRPC subscriptions) | ✓      | ✓       | later                      |
 
 Long-poll and RPC need no protocol change: envelopes already carry `seq`, and
 every client source yields `Stream<Envelope>`. The seam is the `Transport`
@@ -323,23 +323,23 @@ server-owned history. Document this; don't paper over it.
 
 ## Lifecycle (v1)
 
-| Intent | Direct | Durable |
-|---|---|---|
-| **submit** | POST; the response body is the run | POST returns `streamId`; the client then tails |
-| **stop** | client aborts the fetch; server `interruptOnAbort(request.signal)`; `withTerminal` emits `run-stopped` (set locally if the connection is already gone) | explicit `stop(streamId)`; the owner completes the run's `stopWhen`; `run-stopped` lands in the run's stream. A disconnect is **never** a stop |
-| **resume** | absent from the transport type; a dropped stream ends as `run-failed { reason: "disconnected", retryable }` locally | `Client.resumable` reconnects from `lastSeq` on a `Schedule`; a fresh page tails from 0 (`step` is idempotent on `seq`) |
-| **resolve** (approvals) | a new submit carrying the decisions plus history | `resolve(streamId, decisions)`; the server continues the loop into a new run |
-| **submit while busy** | client-side choice, explicit on the atom: `busy: "block" \| "stop-then-submit" \| "queue-local"`. A second concurrent POST would run on stale history, so there is no silent default | the server's queue policy decides (queue, batch, interrupt, reject). The client shows the input as pending until `run-started { inputs }` lists it |
+| Intent                  | Direct                                                                                                                                                                               | Durable                                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **submit**              | POST; the response body is the run                                                                                                                                                   | POST returns `streamId`; the client then tails                                                                                                     |
+| **stop**                | client aborts the fetch; server `interruptOnAbort(request.signal)`; `withTerminal` emits `run-stopped` (set locally if the connection is already gone)                               | explicit `stop(streamId)`; the owner completes the run's `stopWhen`; `run-stopped` lands in the run's stream. A disconnect is **never** a stop     |
+| **resume**              | absent from the transport type; a dropped stream ends as `run-failed { reason: "disconnected", retryable }` locally                                                                  | `Client.resumable` reconnects from `lastSeq` on a `Schedule`; a fresh page tails from 0 (`step` is idempotent on `seq`)                            |
+| **resolve** (approvals) | a new submit carrying the decisions plus history                                                                                                                                     | `resolve(streamId, decisions)`; the server continues the loop into a new run                                                                       |
+| **submit while busy**   | client-side choice, explicit on the atom: `busy: "block" \| "stop-then-submit" \| "queue-local"`. A second concurrent POST would run on stale history, so there is no silent default | the server's queue policy decides (queue, batch, interrupt, reject). The client shows the input as pending until `run-started { inputs }` lists it |
 
 ## Streaming structured output
 
 One concept covers the three shapes, so a single object is a special case of
 an object stream:
 
-| Shape | Server source | Wire | Example |
-|---|---|---|---|
-| **Final object** | server-enforced structured output, `Turn.toStructured` at `TurnComplete` | one `object-done` | an extraction result |
-| **Object stream** | JSONL, `StructuredFormat.decodeJsonLines` (existing) | per element: `object-started` → `object-done` | a list of recipes appearing one by one |
+| Shape                                                  | Server source                                                                          | Wire                                               | Example                                                                                                                                |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Final object**                                       | server-enforced structured output, `Turn.toStructured` at `TurnComplete`               | one `object-done`                                  | an extraction result                                                                                                                   |
+| **Object stream**                                      | JSONL, `StructuredFormat.decodeJsonLines` (existing)                                   | per element: `object-started` → `object-done`      | a list of recipes appearing one by one                                                                                                 |
 | **Partial object** (follow-up, see `plans/backlog.md`) | one object growing as the model writes it; needs a tolerant parser for incomplete JSON | `object-started` → `object-delta`* → `object-done` | a form or card filling in (AI SDK `streamObject`); lists under strict structured output (`{"items":[…]}`); live tool-argument previews |
 
 v1 ships the first two, which need no new parser: core already decodes
@@ -427,7 +427,11 @@ export const GetWeather = {
   name: "get_weather",
   description: "Current weather for a city.",
   inputSchema: Schema.Struct({ city: Schema.String }),
-  outputSchema: Schema.Struct({ city: Schema.String, temperatureC: Schema.Number, observedAt: Schema.Date }),
+  outputSchema: Schema.Struct({
+    city: Schema.String,
+    temperatureC: Schema.Number,
+    observedAt: Schema.Date,
+  }),
 } as const
 
 export const ChatUi = UiContract.make({
@@ -445,10 +449,10 @@ export const ChatUi = UiContract.make({
   `ChatUi.live(name, value)` are typed constructors, so a wrong name or
   payload fails to compile.
 - **Client:** `RunView.make(ChatUi)` / `Atoms.thread({ transport, contract:
-  ChatUi })`. Tool blocks are a union generated from the contract: narrowing
+ChatUi })`. Tool blocks are a union generated from the contract: narrowing
   `b.name === "get_weather"` types `b.input` and `b.output` (decoded, e.g.
   `observedAt` is a `Date`). `view.live.metrics`, `RunView.objects(view,
-  "recipe")` are typed without passing Schemas at the call site. The one
+"recipe")` are typed without passing Schemas at the call site. The one
   mapped type lives inside the library, not in user code.
 - **Unknown names stay untyped, not rejected:** a tool, object or data name
   the contract doesn't know becomes an untyped fallback block, so a newer
@@ -489,14 +493,14 @@ front.
 
 **Protocol and projection (shared)**
 
-| Module | Content |
-|---|---|
-| `RunEvent` | Schema union, wire protocol v1. Every frame is an `Envelope { streamId, seq, runId?, event }`; `seq` is per stream, starts at 1, monotonic, never reused. `runId` is set on every run-scoped event and absent on stream-scoped ones, so concurrent runs can interleave in one stream (v1 has one run per stream, but the wire shape is fixed now). Events:<br>**Run lifecycle:** `run-started { runId, name?, messageId, inputs: InputId[], protocol: 1 }` (`name` labels the run's role when a stream carries several, e.g. "assistant" vs a background "reviewer"); terminals, exactly one per run: `run-completed { metadata? }`, `run-interrupted { interrupts }` (approvals, later client tools), `run-failed { reason, retryable }`, `run-stopped { by?: "user" \| "barge-in" }`.<br>**Steps:** `step-started` / `step-finished { usage? }`; `step-reset` (discard the current step's partial output).<br>**Content:** `text-delta { text }`; `reasoning-started`, opt-in `reasoning-delta { text, kind }`; opt-in `citation`, `image`.<br>**Objects:** `object-started { id, name? }`, `object-delta { id, patch }`, `object-done { id, value }`, `object-failed { id, issues }`.<br>**Tools:** `tool-call-started { callId, name }`, opt-in `tool-call-args-delta`, `tool-call-ready { callId, input, ui? }`, `tool-progress { callId, data }`, `tool-result { callId, output, isError, ui? }`, `tool-cancelled { callIds }`. `ui` is reserved for MCP Apps.<br>**App and metrics:** `usage { usage }`; `data { name, value, id? }` (persisted, same id reconciles); `live { name, value }` (transient, latest wins). |
-| `UiContract` | Optional shared contract (see "Shared types between server and client"): `make({ tools, objects, data, live, metadata })`, typed `data` / `live` constructors, and the generated block types used by `RunView.make(contract)`. |
-| `Input` | App-defined; the library only needs `{ id }`. Preset via `Input.make({ data })`: `{ id, kind: "submit", messages: Items.Message[] (user), data? }` \| `{ id, kind: "resolve", decisions, data? }`. `id` is client-generated so optimistic UI reconciles with `run-started { inputs }`. Further kinds (`action`, media streams) are extension points. |
-| `Projection` | Per-event functions `fromTurnEvent`, `fromToolEvent`, `fromInteractionEvent` returning `ReadonlyArray<RunEvent>`, the operator `toRunEvents(options)`, and `objects(format, options)`. Users wrap the per-event function (`Match` over their wider union, `orElse` to ours). Never forwards `TurnComplete.turn` (it carries `providerData`). |
-| `Run` | Server-side stream helpers, piped like the metrics helpers: `sequence(fromSeq?)`, `withTerminal({ runId, inputs })` (brackets with `run-started` and exactly one terminal on every exit path), `interruptOnAbort(signal)`, `coalesce(window)` (merges consecutive text, reasoning and argument deltas within a window; everything else passes through unchanged). Generic over the event schema. |
-| `Encoding` | `toSSE` (`id: seq`, `event: type`, `data: json`), `toNDJSON`, `toWebSocketFrames`. `keepAlive`, `responseHeaders` (only what SSE needs: `content-type`, `cache-control`; deployment headers like `x-accel-buffering: no` are the app's), `lastEventId(headers)` (the standard SSE `Last-Event-ID` header; any URL position like `?after=` is the app's own convention and its fallback). The WebSocket framing reserves binary frames for the v2 side channel. |
+| Module       | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RunEvent`   | Schema union, wire protocol v1. Every frame is an `Envelope { streamId, seq, runId?, event }`; `seq` is per stream, starts at 1, monotonic, never reused. `runId` is set on every run-scoped event and absent on stream-scoped ones, so concurrent runs can interleave in one stream (v1 has one run per stream, but the wire shape is fixed now). Events:<br>**Run lifecycle:** `run-started { runId, name?, messageId, inputs: InputId[], protocol: 1 }` (`name` labels the run's role when a stream carries several, e.g. "assistant" vs a background "reviewer"); terminals, exactly one per run: `run-completed { metadata? }`, `run-interrupted { interrupts }` (approvals, later client tools), `run-failed { reason, retryable }`, `run-stopped { by?: "user" \| "barge-in" }`.<br>**Steps:** `step-started` / `step-finished { usage? }`; `step-reset` (discard the current step's partial output).<br>**Content:** `text-delta { text }`; `reasoning-started`, opt-in `reasoning-delta { text, kind }`; opt-in `citation`, `image`.<br>**Objects:** `object-started { id, name? }`, `object-delta { id, patch }`, `object-done { id, value }`, `object-failed { id, issues }`.<br>**Tools:** `tool-call-started { callId, name }`, opt-in `tool-call-args-delta`, `tool-call-ready { callId, input, ui? }`, `tool-progress { callId, data }`, `tool-result { callId, output, isError, ui? }`, `tool-cancelled { callIds }`. `ui` is reserved for MCP Apps.<br>**App and metrics:** `usage { usage }`; `data { name, value, id? }` (persisted, same id reconciles); `live { name, value }` (transient, latest wins). |
+| `UiContract` | Optional shared contract (see "Shared types between server and client"): `make({ tools, objects, data, live, metadata })`, typed `data` / `live` constructors, and the generated block types used by `RunView.make(contract)`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `Input`      | App-defined; the library only needs `{ id }`. Preset via `Input.make({ data })`: `{ id, kind: "submit", messages: Items.Message[] (user), data? }` \| `{ id, kind: "resolve", decisions, data? }`. `id` is client-generated so optimistic UI reconciles with `run-started { inputs }`. Further kinds (`action`, media streams) are extension points.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `Projection` | Per-event functions `fromTurnEvent`, `fromToolEvent`, `fromInteractionEvent` returning `ReadonlyArray<RunEvent>`, the operator `toRunEvents(options)`, and `objects(format, options)`. Users wrap the per-event function (`Match` over their wider union, `orElse` to ours). Never forwards `TurnComplete.turn` (it carries `providerData`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `Run`        | Server-side stream helpers, piped like the metrics helpers: `sequence(fromSeq?)`, `withTerminal({ runId, inputs })` (brackets with `run-started` and exactly one terminal on every exit path), `interruptOnAbort(signal)`, `coalesce(window)` (merges consecutive text, reasoning and argument deltas within a window; everything else passes through unchanged). Generic over the event schema.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `Encoding`   | `toSSE` (`id: seq`, `event: type`, `data: json`), `toNDJSON`, `toWebSocketFrames`. `keepAlive`, `responseHeaders` (only what SSE needs: `content-type`, `cache-control`; deployment headers like `x-accel-buffering: no` are the app's), `lastEventId(headers)` (the standard SSE `Last-Event-ID` header; any URL position like `?after=` is the app's own convention and its fallback). The WebSocket framing reserves binary frames for the v2 side channel.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 **Durable server side: a recipe, not a module.** Effect already covers the
 in-process case: `PubSub.unbounded({ replay })` hands a late subscriber the
@@ -507,13 +511,19 @@ submit / events / stop endpoints, and cleanup after the terminal:
 
 ```ts
 // writer (generation fiber)
-run.pipe(Projection.toRunEvents(), Run.withTerminal({ runId, inputs, stopWhen }),
-  Run.sequence(streamId), Stream.runForEach((e) => PubSub.publish(events, e)))
+run.pipe(
+  Projection.toRunEvents(),
+  Run.withTerminal({ runId, inputs, stopWhen }),
+  Run.sequence(streamId),
+  Stream.runForEach((e) => PubSub.publish(events, e)),
+)
 // reader (GET /runs/:id/events)
 Stream.fromPubSub(events).pipe(
-  Stream.filter((e) => e.seq > after),   // after = lastEventId(headers), else the app's ?after=, else 0
+  Stream.filter((e) => e.seq > after), // after = lastEventId(headers), else the app's ?after=, else 0
   Stream.takeUntil((e) => RunEvent.isTerminal(e.event)),
-  Encoding.toSSE, SSE.toBytes)
+  Encoding.toSSE,
+  SSE.toBytes,
+)
 ```
 
 The remaining pitfalls are covered by library pieces that already exist:
@@ -526,12 +536,12 @@ recipe README, not abstracted in the library.
 
 **Client** (browser-safe)
 
-| Module | Content |
-|---|---|
-| `Client` | Sources yielding `Stream<Envelope>`: `sse(request)`, `eventSource(url)`, `ndjson(request)`, `webSocket(url)`. `resumable(connect, schedule, { resumeOnVisible? })` reconnects from the last seq, dedupes, completes on the terminal; `resumeOnVisible` re-attaches when `visibilitychange` finds a dead stream (mobile Safari). |
-| `Transport` | Plain values. `direct({ request })`, `durable({ submit, events, stop?, resolve? })`, `local((input) => Stream<RunEvent>)`; anything else (RPC, server functions) is a plain `{ start }` value. Missing capabilities are absent in the type, so the UI knows whether stop or resume exists. |
-| `RunView` | The client's view of one server run, exported as a fold pair (`initial`, `step`) plus pure selectors (`text`, `isBusy`, `toolCalls`, `objects(view, name, Schema)`). Plain data, no actions: `{ streamId, runId, lastSeq, status: idle \| submitted \| streaming \| completed \| interrupted \| failed \| stopped, blocks, toolCalls, objects, interrupts, usage, data, live, metadata, error? }`. Blocks: `text`, `reasoning`, `tool` (`input-streaming → ready → awaiting-approval → running → done \| failed \| denied \| cancelled`), `object`, `data`, `image`, `citation`. Idempotent on `seq`. Generic over app payload schemas. Required. |
-| `Thread` | Optional reference fold, see above. |
+| Module      | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Client`    | Sources yielding `Stream<Envelope>`: `sse(request)`, `eventSource(url)`, `ndjson(request)`, `webSocket(url)`. `resumable(connect, schedule, { resumeOnVisible? })` reconnects from the last seq, dedupes, completes on the terminal; `resumeOnVisible` re-attaches when `visibilitychange` finds a dead stream (mobile Safari).                                                                                                                                                                                                                                                                                                                   |
+| `Transport` | Plain values. `direct({ request })`, `durable({ submit, events, stop?, resolve? })`, `local((input) => Stream<RunEvent>)`; anything else (RPC, server functions) is a plain `{ start }` value. Missing capabilities are absent in the type, so the UI knows whether stop or resume exists.                                                                                                                                                                                                                                                                                                                                                        |
+| `RunView`   | The client's view of one server run, exported as a fold pair (`initial`, `step`) plus pure selectors (`text`, `isBusy`, `toolCalls`, `objects(view, name, Schema)`). Plain data, no actions: `{ streamId, runId, lastSeq, status: idle \| submitted \| streaming \| completed \| interrupted \| failed \| stopped, blocks, toolCalls, objects, interrupts, usage, data, live, metadata, error? }`. Blocks: `text`, `reasoning`, `tool` (`input-streaming → ready → awaiting-approval → running → done \| failed \| denied \| cancelled`), `object`, `data`, `image`, `citation`. Idempotent on `seq`. Generic over app payload schemas. Required. |
+| `Thread`    | Optional reference fold, see above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 **Atoms** (`@effect-uai/ui/Atoms`, framework-neutral)
 
@@ -624,7 +634,7 @@ lines of tool fork/cancel.
   reply is really over. This replaces server-side pacing by sleep: the reply
   stays interruptible until the client reports it finished.
 - **Audio alignment** `audio-alignment { runId, offsetMs, chars | words with
-  start/end ms }` from TTS providers that return it. The fold combines it
+start/end ms }` from TTS providers that return it. The fold combines it
   with played position into `heardText` per run, so subtitles never run ahead
   of the audio; without alignment it falls back to a rate estimate.
 - **Concurrent runs** in one live stream: the main reply plus named side runs
@@ -651,12 +661,12 @@ lines of tool fork/cancel.
   boilerplate in each `app.ts`.
 - **Browser media helpers** (`@effect-uai/ui/Media`, Effect Streams and Sinks,
   worklets shipped as package assets): `micStream({ sampleRate,
-  echoCancellation, autoGainControl }): Stream<Uint8Array>` (owns the worklet,
+echoCancellation, autoGainControl }): Stream<Uint8Array>` (owns the worklet,
   the muted `<audio>` anchor workaround and teardown via scope), shareable
   with `micFrames({ fftSize })` for local analysis (an `AnalyserNode` tap as a
   `Stream<Float32Array>` at frame rate; pitch and loudness detectors stay app
   code), `playbackSink({
-  sampleRate })` with `clear`, `reset` and `played: Stream<ms>`,
+sampleRate })` with `clear`, `reset` and `played: Stream<ms>`,
   `cameraFrames({ fps, maxSide, gate })`, PCM converters, and
   `Transport.live(url)` for the duplex connection.
 - **Core gaps surfaced here (server side, `@effect-uai/core`, not UI):** a

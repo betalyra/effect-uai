@@ -7,7 +7,12 @@
 Because the input and output schemas live in a plain object, a tool's spec can be shared with a client and spread into `Tool.make` next to a server-side `run`:
 
 ```ts
-const GetWeather = { name: "get_weather", description: "…", inputSchema: Input, outputSchema: Weather } as const
+const GetWeather = {
+  name: "get_weather",
+  description: "…",
+  inputSchema: Input,
+  outputSchema: Weather,
+} as const
 const getWeather = Tool.make({ ...GetWeather, run: ({ city }) => fetchWeather(city) })
 ```
 

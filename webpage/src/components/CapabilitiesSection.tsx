@@ -45,7 +45,7 @@ const capabilities: ReadonlyArray<Capability> = [
   {
     title: "Agentic UI",
     description:
-      "Stream runs **into your app**: text and **typed tool results** as plain state, even across a reload.",
+      "Build a **chat UI** for your agent: answers **stream in live**, tool calls show up as they run.",
     href: "/agentic-ui/",
     Icon: PiChatCircleDots,
     // No FoldKit mark in react-icons yet: a text-only chip.

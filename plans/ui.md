@@ -1,6 +1,7 @@
 # Plan: `@effect-uai/ui` (agentic UI primitives: protocol, resumable runs, state, atoms)
 
-Status: **plan, not started** (2026-11-06). Grounded in the
+Status: **in progress** (2026-11-06; see "Implementation status" and "Next
+steps" below). Grounded in the
 `@effect-uai/ai-sdk` compat layer, `examples/ai-sdk-next`, the voice recipes
 (`voice-loop`, `realtime-voice-agent`, `camera-assistant`), the "explicit
 loop" philosophy (`docs/start/why.md`), and prior art (TanStack AI 1.x, AI SDK
@@ -30,11 +31,183 @@ stream and as a durable run that survives a refresh.
 Voice and media (phase 2) and generative UI, MCP Apps, WebMCP (phase 3+) get
 reserved extension points now, so they land additively.
 
+## Implementation status (2026-11-06)
+
+Done and green (repo tests, typecheck, build, effect lint):
+
+- **Core**: optional `outputSchema` on `Tool.make` (validates and encodes tool
+  output in `Toolkit`, `output_validation_error` result, `Tool.withRun` drops
+  it); `Toolkit.test.ts` converted to `@effect/vitest`; `Image.ImageSource`
+  casts removed (`Schema.Codec`, `optionalKey`). Changesets:
+  `tool-output-schema`, `image-source-codec`.
+- **`@effect-uai/ui`** (`packages/ui`, fixed group 0.17.0, changeset
+  `ui-run-event-protocol`): `RunEvent` (+ `EnvelopeJson`), `Input`,
+  `Projection` (fold pair + `toRunEvents`, `Options`/`State` as Schemas),
+  `Run` (`sequence`, `withTerminal` with `stopWhen`, `coalesce`), `RunView`,
+  `Thread` (non-generic; `pending` inputs, per-stream `seq`, `hasInput`,
+  stream-scoped frames stay out of runs), `Encoding` (`toSSE`, `fromSSE`,
+  `responseHeaders` = `content-type` + `cache-control` only,
+  `lastEventId(headers)` = standard header only), `Client` (`sse`, `ndjson`,
+  `resumable` with `until: "terminal" | "never"`), `Transport` (per run:
+  `direct`, `durable`, `local`; per session: `session`), `Atoms` (`make` /
+  `thread` per run, `session` / `chat` per session; every fn atom
+  `keepAlive`, since an unobserved one is disposed and interrupts its run).
+- **Input** (app-defined, preset): generic `I`; `Input.make(DataSchema)`,
+  `Submit { id, kind, messages: core user messages, data? }`, `Resolve`,
+  `SubmitJson` / `InputJson`; constructors build drafts (`Draft<I>`), ids are
+  assigned where sent (`Atoms`, `Input.withId`, UUIDv7 via `effect/crypto`
+  `SecureRandom`, `layerWebCrypto` provided by `Atoms`); transports receive
+  `Input.Sent<I>`.
+- **Branded ids**: `StreamId`, `RunId`, `InputId` (in `RunEvent`); servers mint
+  stream / chat ids with `uuidV4` (unguessable).
+- **Recipe `durable-chat`** (server + page): `makeChats` (a chat = one stream
+  carrying every run; `PubSub` with unlimited replay; server-owned history;
+  per-chat inbox + worker; bursts and messages sent during a run are answered
+  together via core `Settle.drainBurst`; inputs echoed as stream-scoped
+  `data "input"` when queued; one sequencer per chat), routes
+  `POST /chats/messages { chatId?, input }`, `GET /chats/:id/events`,
+  `POST /chats/:id/stop`; vanilla page (`Atoms.chat` + `Transport.session`,
+  chat id in `localStorage`, queued / thinking labels). Verified in the
+  browser with `gpt-5.6-luna`: queued bursts, reload mid-answer, reload with a
+  busy queue, stop with a queue, memory across runs.
+- **recipe-kit**: Bun server gets `gracefulShutdownTimeout: "1 second"` (open
+  SSE streams held Ctrl-C for Bun's default 20 s).
+- **Dropped on review**: `EventLog` module (Effect `PubSub` replay + recipe),
+  `Run.aborted` (Effect: `Stream.toReadableStream({ signal })`, `HttpServer`
+  interrupts), `Transport.fromStream` (a plain `{ start }` is a transport),
+  `Encoding.lastSeq` (URL position is app convention), `x-effect-uai-ui` and
+  `x-accel-buffering` in `responseHeaders` (unused / deployment-specific),
+  partial-JSON object streaming (moved to `plans/backlog.md`).
+
+Lessons from building the page (now in the code above):
+
+- A thread over **one stream per run** broke `seq` dedupe (each stream counts
+  from 1); the durable unit for a chat is the **conversation**, one stream
+  carrying every run, with the chat id as the stream id (app-owned).
+- The server owns the busy policy. Refusing while busy is wrong for a durable
+  chat; queue, and answer bursts together.
+- Echo queued input on the stream, not at run start, or a reload hides
+  queued messages.
+
+Decided (the first item is built, see above; the rest is not yet built):
+
+- **Input is app-defined; the library ships a preset.** Transports, atoms and
+  `Thread` are generic over the input type `I extends { readonly id: string }`.
+  The `id` is the only requirement, because optimistic UI reconciles with
+  `run-started { inputs }`. Prior art splits "what the user said" from "app
+  data the server interprets": AI SDK uses `UIMessage.parts` plus a request
+  `body`, typed `metadata` and data parts; TanStack AI uses `sendMessage(content, body)`
+  plus `forwardedProps`; AG-UI's `RunAgentInput` has `messages[]` plus
+  `context[]`, `state` and `forwardedProps: any`. We keep that split, typed.
+  The preset is `Input.make({ data: DataSchema })`. It returns the `Submit`,
+  `Resolve`, `Input` and `InputJson` schemas:
+  - `Submit { id, kind: "submit", messages, data? }`.
+  - `messages` is plural, so one submit can carry several user messages
+    (a free-text prompt plus a template prompt, say). It holds core
+    `Items.Message`s with role `user` (an array of user messages), whose
+    content is core blocks: text and image today, files and audio as core
+    grows. A client never sends `system`: anything the client sends is user
+    input.
+  - `data` is typed app data that the server interprets, such as a template
+    id and its variables, a model choice or the current UI selection.
+    Server-owned templates travel as id plus variables in `data` and are
+    rendered on the server.
+  - `Resolve { id, kind: "resolve", decisions, data? }` is unchanged apart from
+    `data` replacing `metadata`.
+  - Helpers: `Input.submit(text | messages, { data, attachments })`,
+    `Input.toHistory(submit)` returns `Items.Message[]` (no translation into
+    the loop), and `Input.text(submit)`.
+  - The codec is derived with `Schema.toCodecJson`, so image bytes survive the
+    wire. Uploading first and sending a URL stays the app's choice.
+  - Per-request transport extras (auth headers, chat id) stay in the
+    transport's request builder, not in the input.
+  - An app with a different input shape skips the preset and passes its own
+    schema.
+  - Maps one-to-one onto AG-UI's `RunAgentInput`, so an AG-UI adapter is
+    mechanical: `messages` ↔ `messages` (only the new user messages; history
+    is server-owned by default), `data` ↔ `forwardedProps` (typed), input `id`
+    ↔ client `runId` (the server assigns ours), `threadId` lives in the
+    transport's request builder. `context` (model-visible values) and `state`
+    (shared state) are not in v1: the app puts such values in `data` and
+    renders them on the server. No per-message ids: edit / regenerate replace
+    a whole submit, addressed by its `id`.
+- **Output blocks = core shapes.** `RunView` settled blocks reuse core's
+  `OutputText` (with `annotations`: citations attach to the text they cite),
+  `OutputImage` and `Refusal`, plus an `id`. New `refusal-delta` event
+  (projection maps `RefusalDelta`; today it is wrongly a `text-delta`).
+  `tool`, `object`, `data`, `reasoning` blocks stay UI-specific.
+- **Lossless client-owned history: opt-in `history` event.**
+  `{ type: "history", items: HistoryItem[] }` carries a settled turn's exact
+  core items, `providerData` included (encrypted reasoning, Anthropic thinking
+  signatures, Gemini thought signatures, which some providers require to
+  continue tool use). Emitted only with `Projection.toRunEvents({ history:
+  true })`; server-owned / durable apps leave it off. No lossy
+  `RunView.toItems` reconstruction. Docs caveats: client-owned history can be
+  forged (fine for MVPs; keep it server-side or signed for privileged tools),
+  it grows each turn, and Anthropic thinking text becomes visible to the
+  browser.
+- **Generic `Thread<U, A>`.** Entries are `{ role: "user", id, value: U } |
+  { role: "assistant", id, value: A }` (assistant entries also keep the run's
+  history `items` when present); the live run stays a `RunView`.
+  `Thread.make({ user: (input) => U, settle: (run) => A })` returns the fold
+  (`initial`, `step`, `submitted`, `ended`, `truncateAfter`); default preset
+  `U = Input.Message`, `A = RunView`. Library keeps: live run, settling,
+  `lastSeq` dedupe across runs, `ended`; `toHistory` concatenates stored
+  history items. Server-persisted history loads straight into entries.
+- **Input echo: open.** Today an app-level stream-scoped `data { name:
+  "input" }` (the `durable-chat` page folds it into `thread.pending`). Every
+  session app that queues needs it, so a protocol event (`input-received {
+  input }`, folded by `Thread` itself) may earn its place; decide with the
+  generic `Thread`.
+- **`resume` non-optional** in `Atoms.make`'s result when the transport is
+  durable (typing).
+- **HTTP transport helpers**: `Transport.durableHttp` / `sessionHttp`, taking
+  request builders (no route convention): execute, decode the id, parse SSE,
+  wrap `events` in `Client.resumable`. The `durable-chat` page spells this out
+  in ~25 lines today. The generic `durable` / `session` stay for RPC / gRPC /
+  WebSocket.
+- **Existing front-end recipes** (`voice-loop`, `realtime-voice-agent`,
+  `camera-assistant`, `streaming-synthesis`, `streaming-transcription`,
+  `radio-station`) are all audio/media: port in phase 2 when the voice/media
+  primitives exist, starting with `voice-loop` and `realtime-voice-agent`.
+- **Generic file input**: core gets one `input_file { source: FileSource,
+  filename? }` user block, the MIME type saying what it is (PDF, docx, audio,
+  video). `FileSource` instantiates core's `MediaSource` shape like
+  `ImageSource` does (name kept: "media type" is the IANA term for any MIME
+  type). Provider codecs map it (OpenAI `input_file` / `input_audio`,
+  Anthropic `document`, Gemini `inlineData` / `fileData`) and reject what they
+  can't take. `Input.UserMessage` content picks it up.
+
+## Next steps (in order)
+
+Done: input (app-defined preset), branded ids, the `durable-chat` page with
+chat sessions (see "Implementation status").
+
+1. **Generic file input** in core (`input_file`, `FileSource`, provider
+   codecs for responses, anthropic, google, chat-completions, mistral, the
+   ai-sdk compat; fal / perplexity reject), then `Input.UserMessage` content;
+   codec tests per provider, core changeset.
+2. **Output blocks**: `refusal-delta` event + projection fix; `RunView` blocks
+   in core shapes (`output_text` with attached citations, `output_image`,
+   `refusal`); update tests and changeset.
+3. **History event**: opt-in `history` event (core `HistoryItem`s) and
+   `Projection.toRunEvents({ history })`; conformance test on a real tool loop.
+4. **Generic `Thread<U, A>`** via `Thread.make`, default preset, lossless
+   `toHistory` from stored items; `Atoms.thread` / `Atoms.chat` take the same
+   config. Decide the input echo (protocol event vs app `data`) here.
+5. **HTTP transport helpers** (`durableHttp`, `sessionHttp`) and
+   non-optional `resume` typing; shrink the `durable-chat` page with them.
+6. **`modify-output-stream`**: short pointer to `@effect-uai/ui` in its README.
+7. **`direct-chat` recipe** (client-owned history with the `history` event,
+   minimal vanilla client), then `examples/react-next`, then `UiContract`
+   (typed payloads), docs section "Agentic UI", `docs/coming-from`, and the
+   skill update (deliverables 5 to 7).
+
 ## Roadmap
 
 | Phase | Scope |
 |---|---|
-| **v1** | Chat: protocol, projection, run fold, optional `Thread`, structured-object streaming, direct + durable transports over SSE/NDJSON, `EventLog`, atoms, React via `@effect/atom-react` (no own package) |
+| **v1** | Chat: protocol, projection, run fold, optional `Thread`, structured-object streaming, direct + durable transports over SSE/NDJSON, durable server side as a recipe (Effect `PubSub` replay), atoms, React via `@effect/atom-react` (no own package) |
 | **v2** | Live sessions: multi-run streams, session-scoped events (user transcripts, VAD, interruption), a binary side channel for audio and video, upstream media streams, browser audio/camera helpers, `WebSocket` duplex transport. Port the three voice recipes |
 | **v3+** | Generative-UI state channel, rendering MCP Apps tool UIs (MCP work itself is tracked in `plans/backlog.md`), media output blocks beyond images, long-poll and RPC wires, FoldKit recipe, WebMCP if it matures |
 
@@ -134,10 +307,11 @@ Two independent axes. Socket is a wire, not a mode.
 | RPC / server functions (Effect RPC streaming, TanStack Start server fns, tRPC subscriptions) | ✓ | ✓ | later |
 
 Long-poll and RPC need no protocol change: envelopes already carry `seq`, and
-every client source yields `Stream<Envelope>`. v1 ships the generic seam
-`Transport.fromStream((input) => Stream<Envelope>)`, which RPC and server
-functions plug into directly; a dedicated long-poll source and an Effect RPC
-schema helper come later.
+every client source yields `Stream<Envelope>`. The seam is the `Transport`
+type itself: RPC and server functions are a plain
+`{ start: (input, state) => Stream<Envelope> }` (a `fromStream` helper was
+dropped; it only saved type annotations). A dedicated long-poll source and an
+Effect RPC schema helper come later.
 
 History caveat for client-owned history: `HistoryItem` is a Schema, so the
 client can post it verbatim. But `providerData` (encrypted reasoning, item ids)
@@ -149,7 +323,7 @@ server-owned history. Document this; don't paper over it.
 | Intent | Direct | Durable |
 |---|---|---|
 | **submit** | POST; the response body is the run | POST returns `streamId`; the client then tails |
-| **stop** | client aborts the fetch; server `interruptOnAbort(request.signal)`; `withTerminal` emits `run-stopped` (set locally if the connection is already gone) | explicit `stop(streamId)`; the owner interrupts the fiber; `run-stopped` lands in the log. A disconnect is **never** a stop |
+| **stop** | client aborts the fetch; server `interruptOnAbort(request.signal)`; `withTerminal` emits `run-stopped` (set locally if the connection is already gone) | explicit `stop(streamId)`; the owner completes the run's `stopWhen`; `run-stopped` lands in the run's stream. A disconnect is **never** a stop |
 | **resume** | absent from the transport type; a dropped stream ends as `run-failed { reason: "disconnected", retryable }` locally | `Client.resumable` reconnects from `lastSeq` on a `Schedule`; a fresh page tails from 0 (`step` is idempotent on `seq`) |
 | **resolve** (approvals) | a new submit carrying the decisions plus history | `resolve(streamId, decisions)`; the server continues the loop into a new run |
 | **submit while busy** | client-side choice, explicit on the atom: `busy: "block" \| "stop-then-submit" \| "queue-local"`. A second concurrent POST would run on stale history, so there is no silent default | the server's queue policy decides (queue, batch, interrupt, reject). The client shows the input as pending until `run-started { inputs }` lists it |
@@ -162,8 +336,16 @@ an object stream:
 | Shape | Server source | Wire | Example |
 |---|---|---|---|
 | **Final object** | server-enforced structured output, `Turn.toStructured` at `TurnComplete` | one `object-done` | an extraction result |
-| **Partial object** | one object growing as the model writes it (partial JSON parse) | `object-started` → `object-delta`* → `object-done` | a form or card filling in (AI SDK `streamObject`) |
-| **Object stream** | JSONL, `StructuredFormat.decodeJsonLines` | per element: `object-done`, or `object-started` → `object-delta`* → `object-done` | a list of recipes appearing one by one |
+| **Object stream** | JSONL, `StructuredFormat.decodeJsonLines` (existing) | per element: `object-started` → `object-done` | a list of recipes appearing one by one |
+| **Partial object** (follow-up, see `plans/backlog.md`) | one object growing as the model writes it; needs a tolerant parser for incomplete JSON | `object-started` → `object-delta`* → `object-done` | a form or card filling in (AI SDK `streamObject`); lists under strict structured output (`{"items":[…]}`); live tool-argument previews |
+
+v1 ships the first two, which need no new parser: core already decodes
+complete JSON (`parseJson`, `Turn.toStructured`) and complete JSONL lines
+(`decodeJsonLines`). Partial objects are deferred: core and Effect have no
+tolerant JSON parser, and the plan is to add one behind
+`StructuredFormat.decodePartial` using a small existing library rather than a
+hand-rolled scanner. The wire format below already includes `object-delta`,
+so adding it later is additive.
 
 **Protocol.** Each object has an `id` and an optional `name` (which schema or
 list it belongs to). `object-delta { id, patch }` carries an RFC 6902 JSON
@@ -184,19 +366,17 @@ append), which is all a growing object needs; the server never emits other
 ops. `apply` throws on an invalid patch, so `step` catches it and marks the
 object as needing the next snapshot or `object-done`.
 
-**Server (core addition).** `StructuredFormat.decodePartial(format)`:
-`Stream<string>` → `Stream<Partial | Done | Failed>`, an incremental JSON
-parser yielding deep-partial unvalidated values and the validated final.
-Lives in `@effect-uai/core` (it is useful without any UI), next to
-`decodeJsonLines`. The projection gains `Projection.objects(format, { mode:
-"final" | "partial" | "elements", name })`, which turns text deltas into
-object events and leaves non-object events alone.
+**Server.** The projection gains `Projection.objects(format, { mode:
+"final" | "elements", name })` (a `"partial"` mode joins with the follow-up),
+which turns text deltas into object events via the existing decoders and
+leaves non-object events alone.
 
 **Client.** `RunView` gets `object` blocks `{ id, name, status: partial |
 done | failed, value }`. `step` applies patches; the final value replaces
 the partial. Typed access is opt-in: share the Schema with the client and use
-`RunView.objects(view, name, Schema)` to get `ReadonlyArray<{ status, value:
-DeepPartial<A> | A }>`. The same block powers tool-result-as-component UIs.
+`RunView.objects(view, name, Schema)` to get `ReadonlyArray<{ id, status,
+value: A | undefined }>` (`value` is set once the object is done; partial
+values arrive with the follow-up). The same block powers tool-result-as-component UIs.
 
 ## `Thread`: optional reference model, not core truth
 
@@ -226,9 +406,9 @@ which is why it is optional and replaceable rather than absent:
   with a live run, previously a React hook).
 - **Extra request data.** The transport's request builder is app code:
   `Transport.direct({ request: (input, state) => Request })`, so any body,
-  header or query (model choice, language, chat id, attachments) goes in.
-  Inputs also carry an open `metadata` field for data that should travel with
-  the input itself and be echoed in `run-started`.
+  header or query (auth, chat id) goes in. Data the server interprets per
+  input (template id and variables, model choice) goes in the input's typed
+  `data` (see "Input is app-defined").
 
 ## Shared types between server and client
 
@@ -286,7 +466,7 @@ validates what a tool returns. Add an optional `outputSchema`:
   `O["Type"]` and `run` must return it.
 - `Toolkit` `executeOne`: on success, encode the value through
   `outputSchema` before `okResult`. Encoding validates, so malformed tool
-  output becomes an explicit `output_encoding` failure the model sees and can
+  output becomes an explicit `output_validation_error` failure the model sees and can
   react to, instead of silently passing through (the AI SDK behavior). It also
   fixes serialization of `Date`, `Uint8Array` and branded types for the model.
 - `Tool.toDescriptors`: optionally expose the output JSON Schema (MCP tool
@@ -310,25 +490,43 @@ front.
 |---|---|
 | `RunEvent` | Schema union, wire protocol v1. Every frame is an `Envelope { streamId, seq, runId?, event }`; `seq` is per stream, starts at 1, monotonic, never reused. `runId` is set on every run-scoped event and absent on stream-scoped ones, so concurrent runs can interleave in one stream (v1 has one run per stream, but the wire shape is fixed now). Events:<br>**Run lifecycle:** `run-started { runId, name?, messageId, inputs: InputId[], protocol: 1 }` (`name` labels the run's role when a stream carries several, e.g. "assistant" vs a background "reviewer"); terminals, exactly one per run: `run-completed { metadata? }`, `run-interrupted { interrupts }` (approvals, later client tools), `run-failed { reason, retryable }`, `run-stopped { by?: "user" \| "barge-in" }`.<br>**Steps:** `step-started` / `step-finished { usage? }`; `step-reset` (discard the current step's partial output).<br>**Content:** `text-delta { text }`; `reasoning-started`, opt-in `reasoning-delta { text, kind }`; opt-in `citation`, `image`.<br>**Objects:** `object-started { id, name? }`, `object-delta { id, patch }`, `object-done { id, value }`, `object-failed { id, issues }`.<br>**Tools:** `tool-call-started { callId, name }`, opt-in `tool-call-args-delta`, `tool-call-ready { callId, input, ui? }`, `tool-progress { callId, data }`, `tool-result { callId, output, isError, ui? }`, `tool-cancelled { callIds }`. `ui` is reserved for MCP Apps.<br>**App and metrics:** `usage { usage }`; `data { name, value, id? }` (persisted, same id reconciles); `live { name, value }` (transient, latest wins). |
 | `UiContract` | Optional shared contract (see "Shared types between server and client"): `make({ tools, objects, data, live, metadata })`, typed `data` / `live` constructors, and the generated block types used by `RunView.make(contract)`. |
-| `Input` | Client-to-server Schema: `{ id, kind: "message", text, attachments?, metadata? }` \| `{ id, kind: "resolve", decisions, metadata? }`. `id` is client-generated so optimistic UI reconciles with `run-started { inputs }`. Further kinds (`action`, media streams) are extension points. |
+| `Input` | App-defined; the library only needs `{ id }`. Preset via `Input.make({ data })`: `{ id, kind: "submit", messages: Items.Message[] (user), data? }` \| `{ id, kind: "resolve", decisions, data? }`. `id` is client-generated so optimistic UI reconciles with `run-started { inputs }`. Further kinds (`action`, media streams) are extension points. |
 | `Projection` | Per-event functions `fromTurnEvent`, `fromToolEvent`, `fromInteractionEvent` returning `ReadonlyArray<RunEvent>`, the operator `toRunEvents(options)`, and `objects(format, options)`. Users wrap the per-event function (`Match` over their wider union, `orElse` to ours). Never forwards `TurnComplete.turn` (it carries `providerData`). |
 | `Run` | Server-side stream helpers, piped like the metrics helpers: `sequence(fromSeq?)`, `withTerminal({ runId, inputs })` (brackets with `run-started` and exactly one terminal on every exit path), `interruptOnAbort(signal)`, `coalesce(window)` (merges consecutive text, reasoning and argument deltas within a window; everything else passes through unchanged). Generic over the event schema. |
-| `Encoding` | `toSSE` (`id: seq`, `event: type`, `data: json`), `toNDJSON`, `toWebSocketFrames`. `keepAlive`, `responseHeaders` (incl. `x-effect-uai-ui: 1`), `lastSeq(request)` (`Last-Event-ID` first, then `?after=`). The WebSocket framing reserves binary frames for the v2 side channel. |
+| `Encoding` | `toSSE` (`id: seq`, `event: type`, `data: json`), `toNDJSON`, `toWebSocketFrames`. `keepAlive`, `responseHeaders` (only what SSE needs: `content-type`, `cache-control`; deployment headers like `x-accel-buffering: no` are the app's), `lastEventId(headers)` (the standard SSE `Last-Event-ID` header; any URL position like `?after=` is the app's own convention and its fallback). The WebSocket framing reserves binary frames for the v2 side channel. |
 
-**Durable server pieces** (separate entry point, runtime-neutral)
+**Durable server side: a recipe, not a module.** Effect already covers the
+in-process case: `PubSub.unbounded({ replay })` hands a late subscriber the
+replay buffer plus everything live, atomically, so "subscribe first, then
+replay" needs no code of ours. The `durable-chat` recipe owns a per-run
+`PubSub` with replay next to a `FiberMap` of generation fibers, the
+submit / events / stop endpoints, and cleanup after the terminal:
 
-| Module | Content |
-|---|---|
-| `EventLog` | Service interface keyed by `streamId`: `append`, `readAfter`, `subscribe`. Ships `EventLog.memory`. Storage implementations (Postgres `LISTEN/NOTIFY`, Redis, Durable Streams) live in apps or later packages. |
-| `EventLog.record(streamId)` | Stream sink: persist, then notify. |
-| `EventLog.serve(streamId, after)` | Subscribe first → replay `seq > after` → live tail → dedupe → end after the terminal. |
+```ts
+// writer (generation fiber)
+run.pipe(Projection.toRunEvents(), Run.withTerminal({ runId, inputs, stopWhen }),
+  Run.sequence(streamId), Stream.runForEach((e) => PubSub.publish(events, e)))
+// reader (GET /runs/:id/events)
+Stream.fromPubSub(events).pipe(
+  Stream.filter((e) => e.seq > after),   // after = lastEventId(headers), else the app's ?after=, else 0
+  Stream.takeUntil((e) => RunEvent.isTerminal(e.event)),
+  Encoding.toSSE, SSE.toBytes)
+```
+
+The remaining pitfalls are covered by library pieces that already exist:
+`Encoding.lastSeq` (stale `Last-Event-ID`), `Client.resumable` and the
+idempotent `RunView.step` (duplicates after a reconnect), `Run.withTerminal`
+(always a terminal). Storage-backed variants (Postgres: `LISTEN` before
+`SELECT … WHERE seq > $1`, re-read on `NOTIFY`, persist before notify;
+Redis Streams; multi-replica routing) are app policy and shown in the
+recipe README, not abstracted in the library.
 
 **Client** (browser-safe)
 
 | Module | Content |
 |---|---|
 | `Client` | Sources yielding `Stream<Envelope>`: `sse(request)`, `eventSource(url)`, `ndjson(request)`, `webSocket(url)`. `resumable(connect, schedule, { resumeOnVisible? })` reconnects from the last seq, dedupes, completes on the terminal; `resumeOnVisible` re-attaches when `visibilitychange` finds a dead stream (mobile Safari). |
-| `Transport` | Plain values. `direct({ request })`, `durable({ submit, events, stop?, resolve? })`, `local((input) => Stream<RunEvent>)`, `fromStream((input) => Stream<Envelope>)` (RPC and server functions). Missing capabilities are absent in the type, so the UI knows whether stop or resume exists. |
+| `Transport` | Plain values. `direct({ request })`, `durable({ submit, events, stop?, resolve? })`, `local((input) => Stream<RunEvent>)`; anything else (RPC, server functions) is a plain `{ start }` value. Missing capabilities are absent in the type, so the UI knows whether stop or resume exists. |
 | `RunView` | The client's view of one server run, exported as a fold pair (`initial`, `step`) plus pure selectors (`text`, `isBusy`, `toolCalls`, `objects(view, name, Schema)`). Plain data, no actions: `{ streamId, runId, lastSeq, status: idle \| submitted \| streaming \| completed \| interrupted \| failed \| stopped, blocks, toolCalls, objects, interrupts, usage, data, live, metadata, error? }`. Blocks: `text`, `reasoning`, `tool` (`input-streaming → ready → awaiting-approval → running → done \| failed \| denied \| cancelled`), `object`, `data`, `image`, `citation`. Idempotent on `seq`. Generic over app payload schemas. Required. |
 | `Thread` | Optional reference fold, see above. |
 
@@ -493,9 +691,10 @@ patches, `GET ?offset=` serves bootstrap or replay plus live tail.
   listed by `run-started`, generic payloads; v2 brings multi-run sessions.
 - **Adds:** `state-snapshot { value }` and `state-delta { patch }` (JSON
   Patch, the AG-UI split; the object events already exercise the same patch
-  machinery), `EventLog.serve` options `endOn: "never"` and a snapshot
-  bootstrap for cold joins, an `action { name, data, source? }` input, a
-  `generative-ui` recipe with queue-batch input policy.
+  machinery), a session reader that does not end on a terminal plus a
+  snapshot bootstrap for cold joins (recipe-level, like durable mode), an
+  `action { name, data, source? }` input, a `generative-ui` recipe with
+  queue-batch input policy.
 - **Stays app code:** patch op sets and selectors, component templates,
   `data-action` DOM conventions, validation against a server VDOM.
 
@@ -566,9 +765,9 @@ negligible and that `coalesce` bounds the frame count.
 
 Observed in real durable-stream code (cuttlekit's processor) and the voice recipes:
 
-1. Ignoring `Last-Event-ID` → auto-reconnect replays from the stale URL offset. `lastSeq(request)` reads the header first; `step` dedupes anyway.
+1. Ignoring `Last-Event-ID` → auto-reconnect replays from the stale URL offset. `lastEventId(headers)` reads it, and recipes prefer it over their URL position; `step` dedupes anyway.
 2. Offsets reset after cleanup → clients filter out new events. Seq is per stream and a stream id is never reused.
-3. Publish before persist → a subscriber misses an event. `EventLog.record` persists first; `serve` subscribes first.
+3. Publish before persist → a subscriber misses an event. In-process, `PubSub` replay subscribes and replays atomically; the recipe's storage variant persists before it notifies and listens before it selects.
 4. No terminal on failure → spinner forever. `withTerminal` covers every exit.
 5. Generation tied to the request scope dies with the connection. Shown in the `durable-chat` recipe; not a library runner.
 6. Stop inferred from disconnect (durable mode). Stop is a transport capability.
@@ -578,28 +777,29 @@ Observed in real durable-stream code (cuttlekit's processor) and the voice recip
 ## Tests
 
 - `RunView.step` and `Thread.step` (via `Stream.runFold`): table of envelope sequences → expected state, including duplicate and out-of-order seq, replay from any point, multi-step tool loops, `step-reset`, interrupts, `live` overwrite, input reconciliation, `submitted` → `streaming`, and object streams (partial patches, done replaces partial, failed, lists by `name`).
-- `StructuredFormat.decodePartial`: chunk boundaries inside strings, numbers and escapes; deep partials; validation only on the final.
 - `Projection`: conformance against `MockProvider` scripted turns (text, reasoning, tool loop with progress, approval, refusal, citations, objects in all three modes), mirroring `packages/compat/ai-sdk/src/conformance.test.ts`.
 - `withTerminal`: completed, interrupted, failed and approval-stop each yield exactly one terminal. `interruptOnAbort` with an aborted and a later-aborted signal.
-- `EventLog.serve` with `EventLog.memory`: subscribe mid-run, reconnect with `after`, duplicate notify, terminal during replay, two concurrent readers.
+- `durable-chat` recipe: a reader attached mid-run, a reconnect with `after`, a reader attached after the terminal, and stop via `stopWhen` all deliver each envelope once and end after the terminal.
 - `Client.resumable`: drop mid-run, resume without duplicates; `sse` against a byte stream; `eventSource` with a fake `EventSource`.
 - `Transport.local` drives the fold tests end to end without a network.
-- `outputSchema`: a tool returning malformed output yields an `output_encoding` failure; `Date` / `Uint8Array` outputs encode through the schema; tools without it are unchanged. Type-level tests (`expectTypeOf`) that `run` must return `O["Type"]`.
+- `outputSchema`: a tool returning malformed output yields an `output_validation_error` failure; `Date` / `Uint8Array` outputs encode through the schema; tools without it are unchanged. Type-level tests (`expectTypeOf`) that `run` must return `O["Type"]`.
 - `UiContract`: tool-block narrowing by `name` types `input` / `output` (`expectTypeOf`); unknown names fall back to untyped blocks; settled payloads decode (e.g. ISO string → `Date`), deltas are not decoded.
 - Atoms through `AtomRegistry.make()` with no framework.
 
 ## Deliverables (v1)
 
 1. `@effect-uai/ui` with README and a docs section "Agentic UI" (protocol, modes, lifecycle, objects, `Thread` vs custom folds, atoms, framework snippets).
-2. Core prerequisites in `@effect-uai/core`: `StructuredFormat.decodePartial` and the optional `outputSchema` on `Tool.make` (with output validation in `Toolkit`).
-3. `examples/react-next`: the `ai-sdk-next` app rebuilt on `@effect-uai/ui` + `@effect/atom-react`, with a second route for the durable variant (`EventLog.memory`, resume after a refresh, explicit stop) behind the same UI with only the transport swapped. Side by side with `ai-sdk-next`, it is the basis for the "coming from AI SDK" page.
-4. Recipes, each self-contained: `direct-chat`, `durable-chat`, tool approval over the durable transport, `streaming-objects` (partial object and object list rendered live), and "tool result → component" (the mainstream generative-UI pattern: map tool names to components).
+2. Core prerequisite in `@effect-uai/core`: the optional `outputSchema` on `Tool.make` (with output validation in `Toolkit`). Done.
+3. `examples/react-next`: the `ai-sdk-next` app rebuilt on `@effect-uai/ui` + `@effect/atom-react`, with a second route for the durable variant (per-run `PubSub` replay, resume after a refresh, explicit stop) behind the same UI with only the transport swapped. Side by side with `ai-sdk-next`, it is the basis for the "coming from AI SDK" page.
+4. Recipes, each self-contained: `direct-chat`, `durable-chat`, tool approval over the durable transport, `streaming-objects` (an object list rendered live as each element completes), and "tool result → component" (the mainstream generative-UI pattern: map tool names to components).
 5. `docs/coming-from`: comparison with AI SDK `useChat` / `useObject` and TanStack AI `ChatClient`.
+6. Documentation updates beyond the new section: `outputSchema` in `docs/language-models/tools.md` (shared tool specs, output validation, `output_validation_error`), the structured-output pages pointing to object streaming in the UI, and cross-links from the recipes index.
+7. Skill updates (`skills/effect-uai/SKILL.md`): `@effect-uai/ui` primitives (projection, `Run` helpers, transports, `RunView` / `Thread` folds, atoms) and `Tool` `outputSchema`, so agents using the skill reach for them instead of hand-rolling a protocol.
 
 ## Out of scope for v1
 
 - Everything in phase 2 and 3+.
-- Storage-backed `EventLog` implementations; apps own them first, maybe later `@effect-uai/ui-sql`.
+- A library event-log abstraction. In-process durability is Effect's `PubSub` replay; storage-backed logs (Postgres, Redis) are recipe variants apps adapt.
 - UI components.
 - Client-side tool execution: the `run-interrupted` shape leaves room.
 
@@ -611,14 +811,15 @@ Resolved (2026-11-06):
 - **Plan file**: `plans/ui.md` (was `plans/react-chat.md`).
 - **v1 scope**: agentic chat, direct and durable, plus structured-object streaming. Voice and media are phase 2; generative UI, MCP Apps and WebMCP are phase 3+.
 - **No React package in v1**: `@effect/atom-react` directly.
-- **Modes**: two axes (where generation lives × wire). Long-poll and RPC are considered, plug into `Transport.fromStream`, and ship later.
+- **Modes**: two axes (where generation lives × wire). Long-poll and RPC are considered, plug in as a plain `Transport` value (`{ start }`), and ship later. `Run.aborted` and `Transport.fromStream` were dropped (Effect covers the first; the second only saved type annotations).
 - **Objects**: one concept; a single object is an object stream of length one.
 - **Naming**: `RunView` (client view of a run, was `RunState`), folds as `initial` + `step` pairs (not "reducer"), `thread.active` for the streaming run, `Run.*` for server-side stream helpers.
 - **Performance**: server-side `Run.coalesce`, structural sharing in `step`, per-block derived atoms; no batching inside atoms or `RunView`.
 - **Shared types**: an optional `UiContract` built from Schemas; tool output typing via an optional `outputSchema` on `Tool.make` (option b), which also validates tool output server-side. Unknown names stay untyped (not rejected); the client decodes settled payloads only; everything works without a contract.
 
 - **Protocol**: our own Schema union, event names close to AG-UI; an AG-UI projection is a later additive package (like `@effect-uai/ai-sdk`). AG-UI lacks seq/resume, input ids, typed tool results and object streaming.
-- **Run machinery location**: `sequence`, `withTerminal`, `interruptOnAbort`, `coalesce`, `EventLog`, `Client.resumable` start in `@effect-uai/ui`; move to `@effect-uai/core` once a non-UI consumer needs them.
+- **Durable server side** (2026-11-06): no `EventLog` module. Effect's `PubSub` replay covers in-process replay-then-tail; the `durable-chat` recipe owns run lifetimes, endpoints and storage variants.
+- **Run machinery location**: `sequence`, `withTerminal`, `coalesce`, `Client.resumable` start in `@effect-uai/ui`; move to `@effect-uai/core` once a non-UI consumer needs them.
 - **Reasoning**: default `reasoning: "signal"` (only `reasoning-started`), switchable per projection: `"summary"` forwards `ReasoningDelta { kind: "summary" }` (OpenAI Responses summaries, Anthropic summarized thinking, Gemini thought summaries), `"full"` also forwards raw traces (open models). Provider behavior to be confirmed during implementation.
 - **Object deltas**: JSON Patch (RFC 6902, as AG-UI's `STATE_DELTA`) via `effect/JsonPatch`, no extra library; snapshot fallback mid-stream; `object-done` always carries the full value.
 - **Media utilities**: pure, dependency-free audio format utilities (PCM s16 ↔ f32, resampling, chunk duration, WAV header) go in `@effect-uai/core` next to `domain/Audio.ts`; browser capture and playback (worklets, camera, analyser tap) go in `@effect-uai/ui/Media`. A separate `@effect-uai/media` package only when something needs a codec dependency (OGG/Opus or MP3 transcoding for messenger voice notes, via ffmpeg or a wasm codec).

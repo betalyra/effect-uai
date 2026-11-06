@@ -313,7 +313,7 @@ introducing wrapper services. The patterns below all live in one
 The recipes are the reference implementations, each a small variation on
 the loop body above (or on the parallel capability services). They live
 in `recipes/<name>/` in the repo and, rendered, at
-`https://effect-uai.betalyra.com/recipes/<name>/`. The set grows over
+`https://effect-uai.com/recipes/<name>/`. The set grows over
 time, so treat the docs recipes index as the source of truth rather than
 this table.
 
@@ -457,9 +457,9 @@ saw the history you expected.
 ## Where to read more
 
 - Repo: https://github.com/betalyra/effect-uai
-- Docs: https://effect-uai.betalyra.com (or `docs/` in the repo)
+- Docs: https://effect-uai.com (or `docs/` in the repo)
 - Recipes: `recipes/<name>/` in the repo, one folder per pattern; also
-  rendered at https://effect-uai.betalyra.com/recipes/.
+  rendered at https://effect-uai.com/recipes/.
 - Migrations: `docs/migrations/` (per-version upgrade notes).
 - Language models: `docs/language-models/index.md`,
   `docs/language-models/items-and-turns.md`, `docs/language-models/loop.md`,

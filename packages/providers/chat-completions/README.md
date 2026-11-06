@@ -50,7 +50,7 @@ for endpoints that diverge from the OpenRouter defaults.
 
 ## Docs
 
-<https://effect-uai.betalyra.com/providers/>
+<https://effect-uai.com/providers/>
 
 ## License
 

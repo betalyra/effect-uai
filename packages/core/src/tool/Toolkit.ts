@@ -11,6 +11,7 @@ import {
   Queue,
   Record,
   Ref,
+  Schema,
   Stream,
 } from "effect"
 import * as Loop from "../loop/Loop.js"
@@ -36,6 +37,7 @@ import {
   ToolResult,
   failed,
   nonLocalTool,
+  outputValidationError,
   toToolCallOutput,
   validationError,
 } from "./ToolResult.js"
@@ -397,6 +399,22 @@ export const run = <T extends Toolkit>(
 const okResult = (call: ToolCall, tool: string, value: unknown): ToolResult =>
   ToolResult.Ok({ call_id: call.call_id, tool, value })
 
+// With an `outputSchema`, the wire carries the encoded value (Date → ISO
+// string, …) and a value the schema rejects becomes a model-visible result.
+const successResult = (
+  tool: AnyLocalTool,
+  call: ToolCall,
+  value: unknown,
+): Effect.Effect<ToolResult> =>
+  tool.outputSchema === undefined
+    ? Effect.succeed(okResult(call, tool.name, value))
+    : Schema.encodeUnknownEffect(tool.outputSchema)(value).pipe(
+        Effect.match({
+          onSuccess: (encoded) => okResult(call, tool.name, encoded),
+          onFailure: (error) => outputValidationError(call, error.message.slice(0, 500)),
+        }),
+      )
+
 const outputEvent = (result: ToolResult): Stream.Stream<ToolEvent, never, any> =>
   Stream.succeed(ToolEvent.Output({ result }))
 
@@ -474,7 +492,9 @@ const runValidated = (
         Fiber.join(fiber).pipe(
           Effect.matchCauseEffect({
             onSuccess: (value: unknown) =>
-              Effect.succeed(ToolEvent.Output({ result: okResult(call, tool.name, value) })),
+              successResult(tool, call, value).pipe(
+                Effect.map((result) => ToolEvent.Output({ result })),
+              ),
             onFailure: (cause: Cause.Cause<unknown>) => routeCause(call, cause),
           }),
         ),

@@ -44,7 +44,7 @@ generic `LanguageModel` tag.
 
 ## Docs
 
-<https://effect-uai.betalyra.com/providers/gemini/>
+<https://effect-uai.com/providers/gemini/>
 
 ## License
 

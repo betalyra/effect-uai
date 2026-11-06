@@ -141,8 +141,8 @@ const makeChats = Effect.gen(function* () {
         Stream.catchCause((cause) =>
           Stream.fromEffect(Effect.logError(cause).pipe(Effect.as(Run.failed(cause)))),
         ),
-        Run.complete,
         Run.start({ runId, inputs: [input.id] }),
+        Run.complete,
         Run.sequence(chat.id, { from: yield* Ref.get(chat.lastSeq) }),
         Stream.tap((envelope) => Ref.set(chat.lastSeq, envelope.seq)),
       )

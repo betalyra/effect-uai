@@ -1,9 +1,9 @@
 /**
- * The only effect-uai-specific file in this app. It replaces a typical
+ * The `useChat` page's route (`/`). It replaces a typical
  * `streamText(...).toUIMessageStreamResponse()` handler with an effect-uai
  * agent loop, and showcases what the framework gives you for free:
  *
- *   - an agentic tool loop (a keyless Open-Meteo weather tool)
+ *   - an agentic tool loop (weather from Open-Meteo, the date; `lib/tools.ts`)
  *   - realistic model fallback (primary -> secondary on retryable failures)
  *   - live throughput metrics (tok/s + TTFT) streamed as AI SDK data parts,
  *     with settled usage as message metadata
@@ -19,66 +19,14 @@ import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { loop, next, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Metrics from "@effect-uai/core/Metrics"
 import * as SSE from "@effect-uai/core/SSE"
-import * as Tool from "@effect-uai/core/Tool"
 import * as ToolEvent from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
-import { Duration, Effect, Match, Result, Schema, Stream, pipe } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http"
+import { Duration, Effect, Match, Result, Stream, pipe } from "effect"
+import { FetchHttpClient } from "effect/http"
 import { readProvider } from "../../../lib/model"
-
-// ---------------------------------------------------------------------------
-// Tool: current weather via Open-Meteo (public, no API key).
-// ---------------------------------------------------------------------------
-
-const Geocoding = Schema.Struct({
-  results: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        name: Schema.String,
-        country: Schema.optional(Schema.String),
-        latitude: Schema.Number,
-        longitude: Schema.Number,
-      }),
-    ),
-  ),
-})
-
-const Forecast = Schema.Struct({
-  current: Schema.Struct({ temperature_2m: Schema.Number, wind_speed_10m: Schema.Number }),
-})
-
-const getWeather = Tool.make({
-  name: "get_weather",
-  description: "Look up the current weather for a city by name, e.g. 'Lisbon' or 'Tokyo'.",
-  inputSchema: Tool.fromEffectSchema(Schema.Struct({ city: Schema.String })),
-  run: ({ city }) =>
-    Effect.gen(function* () {
-      const client = yield* HttpClient.HttpClient
-      const geo = yield* client
-        .get(
-          `https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(city)}`,
-        )
-        .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Geocoding)))
-      const place = geo.results?.[0]
-      if (place === undefined) return yield* Effect.fail(new Error(`Unknown city: ${city}`))
-      const forecast = yield* client
-        .get(
-          `https://api.open-meteo.com/v1/forecast?current=temperature_2m,wind_speed_10m&latitude=${place.latitude}&longitude=${place.longitude}`,
-        )
-        .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Forecast)))
-      return {
-        city: place.name,
-        country: place.country ?? "",
-        temperatureC: forecast.current.temperature_2m,
-        windSpeedKmh: forecast.current.wind_speed_10m,
-      }
-    }),
-  strict: true,
-})
-
-const toolkit = Toolkit.make(getWeather)
+import { toolkit } from "../../../lib/tools"
 
 // ---------------------------------------------------------------------------
 // The loop: agentic tool calls, with a realistic model fallback. Each tier is

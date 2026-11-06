@@ -4,8 +4,10 @@ A chat in [FoldKit](https://foldkit.dev) (the Elm architecture on Effect) over
 `@effect-uai/ui`. No atoms and no framework adapter: FoldKit owns the state,
 `@effect-uai/ui` supplies the fold and the transport.
 
-- The chat is a `Thread` inside the Model, and `Thread.step` runs inside
-  `update` for every envelope.
+- The chat is a `Thread` inside the Model, and the `Thread` fold runs inside
+  `update` for every envelope. The Model's schema is `ChatUi.Thread` from the
+  shared contract ([`src/chat-ui.ts`](src/chat-ui.ts)), so tool results are
+  typed and decoded: Effect from the server's Schemas to the view.
 - The open request is a Subscription keyed on the input in flight. Setting it
   sends the message; clearing it (Stop) tears the stream down, which aborts the
   request, and the server stops the model.

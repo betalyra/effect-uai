@@ -24,9 +24,12 @@ whole chat so far and then the live tail.
 Effect.forever(
   Settle.drainBurst(inbox, "300 millis").pipe(
     Effect.flatMap((batch) =>
-      agent([...history, ...batch.flatMap(Input.toHistory)]).pipe(
+      agent([...history, ...batch.flatMap((input) => input.messages)]).pipe(
         Projection.toRunEvents(),
-        Run.withTerminal({ runId, inputs: batch.map((i) => i.id), stopWhen: Deferred.await(stop) }),
+        Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
+        Run.stopWhen(Deferred.await(stop)),
+        Run.start({ runId, inputs: batch.map((i) => i.id) }),
+        Run.complete,
         Stream.runForEach((event) => chat.publish(event, runId)),
       ),
     ),
@@ -34,11 +37,14 @@ Effect.forever(
 )
 ```
 
+Stop completes the `Deferred`; `Run.stopWhen` ends the run with
+`run-stopped` and the worker moves on to the next batch.
+
 The server owns the history, so every answer sees the conversation before
 it. Each message is echoed on the stream as soon as it is queued
 (`input-accepted`), so a reloaded page shows it even before its answer starts.
 
-The page is plain DOM over `@effect-uai/ui`: `Atoms.chat` with
+The page is plain DOM over `@effect-uai/ui`: `Atoms.sessionThread` with
 `Transport.sessionHttp`, which sends messages and follows the chat's stream.
 It keeps the chat id in `localStorage` and re-opens it on load.
 

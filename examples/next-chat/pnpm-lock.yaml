@@ -26,6 +26,12 @@ importers:
       '@effect-uai/responses':
         specifier: link:../../packages/providers/responses
         version: link:../../packages/providers/responses
+      '@effect-uai/ui':
+        specifier: link:../../packages/ui
+        version: link:../../packages/ui
+      '@effect/atom-react':
+        specifier: 4.1.2
+        version: 4.1.2(effect@..+node_modules+.pnpm+effect@4.1.2+node_modules+effect)(react@19.2.7)(scheduler@0.27.0)
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.2
@@ -94,6 +100,13 @@ packages:
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
+
+  '@effect/atom-react@4.1.2':
+    resolution: {integrity: sha512-XRAm4lks2kzNFQIz9QTGKR02CaDTR9VJNRXDjDAR8OzM15ybrK4YkB7OlFZ9U+hxXe3DXJZx7RU1/xI2Em2PGQ==}
+    peerDependencies:
+      effect: ^4.1.2
+      react: '>=19.0.0 <20.0.0'
+      scheduler: '>=0.25.0 <0.29.0'
 
   '@emnapi/runtime@1.11.2':
     resolution: {integrity: sha512-kyOl3X0DuTiT1h2ft8r2fYO8JYtU9a9Xis/zBSiGArNaagCOWx90N1k2wxp18czFDH+OgcWGb5ZP/XMt3dcyPA==}
@@ -716,6 +729,12 @@ snapshots:
       - zod
 
   '@alloc/quick-lru@5.2.0': {}
+
+  '@effect/atom-react@4.1.2(effect@..+node_modules+.pnpm+effect@4.1.2+node_modules+effect)(react@19.2.7)(scheduler@0.27.0)':
+    dependencies:
+      effect: link:../../node_modules/.pnpm/effect@4.1.2/node_modules/effect
+      react: 19.2.7
+      scheduler: 0.27.0
 
   '@emnapi/runtime@1.11.2':
     dependencies:

@@ -5,6 +5,7 @@ import {
   PiBrain,
   PiPhoneTransfer,
   PiBrowser,
+  PiChatCircleDots,
   PiChatsCircle,
   PiCube,
   PiGraph,
@@ -15,6 +16,8 @@ import {
   PiStack,
   PiWaveform,
 } from "react-icons/pi"
+import { RiSlackFill } from "react-icons/ri"
+import { SiDiscord, SiNextdotjs, SiTanstack, SiTelegram } from "react-icons/si"
 import ReactMarkdown, { type Components } from "react-markdown"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,6 +27,11 @@ interface Capability {
   readonly description: string
   readonly href: string
   readonly Icon: IconType
+  /** Integrations with a docs page, shown as chips on the card. */
+  readonly worksWith?: ReadonlyArray<{
+    readonly name: string
+    readonly Icon?: IconType
+  }>
 }
 
 const capabilities: ReadonlyArray<Capability> = [
@@ -35,16 +43,54 @@ const capabilities: ReadonlyArray<Capability> = [
     Icon: PiBrain,
   },
   {
-    title: "Image generation",
-    description: "**Generate** images from a prompt, then **edit** them against references.",
-    href: "/image-generation/",
-    Icon: PiImage,
+    title: "Agentic UI",
+    description:
+      "Stream runs **into your app**: text and **typed tool results** as plain state, even across a reload.",
+    href: "/agentic-ui/",
+    Icon: PiChatCircleDots,
+    // No FoldKit mark in react-icons yet: a text-only chip.
+    worksWith: [
+      { name: "Next.js", Icon: SiNextdotjs },
+      { name: "TanStack Start", Icon: SiTanstack },
+      { name: "FoldKit" },
+    ],
+  },
+  {
+    title: "Embeddings",
+    description: "Vectorize text for **semantic search**, **RAG**, and clustering.",
+    href: "/embeddings/",
+    Icon: PiGraph,
+  },
+  {
+    title: "Web search",
+    description: "**Ground** answers in live web results, with citations.",
+    href: "/search/",
+    Icon: PiMagnifyingGlass,
   },
   {
     title: "Speech",
     description: "**Transcribe** audio and **synthesize** speech, batch or live, for voice agents.",
     href: "/speech/",
     Icon: PiWaveform,
+  },
+  {
+    title: "Messenger",
+    description:
+      "Put your agent **in the chat**: it listens where people talk and streams answers back.",
+    href: "/messenger/",
+    Icon: PiChatsCircle,
+    worksWith: [
+      { name: "Telegram", Icon: SiTelegram },
+      { name: "Discord", Icon: SiDiscord },
+      // Simple Icons dropped Slack's mark; Remix Icon still has it.
+      { name: "Slack", Icon: RiSlackFill },
+    ],
+  },
+  {
+    title: "Image generation",
+    description: "**Generate** images from a prompt, then **edit** them against references.",
+    href: "/image-generation/",
+    Icon: PiImage,
   },
   {
     title: "Realtime",
@@ -54,35 +100,10 @@ const capabilities: ReadonlyArray<Capability> = [
     Icon: PiPhoneTransfer,
   },
   {
-    title: "Music generation",
-    description: "Generate music from prompts, one-shot or **streaming**.",
-    href: "/music-generation/",
-    Icon: PiMusicNotes,
-  },
-  {
-    title: "Embeddings",
-    description: "Vectorize text for **semantic search**, **RAG**, and clustering.",
-    href: "/embeddings/",
-    Icon: PiGraph,
-  },
-  {
     title: "Reranking",
     description: "Cut fifty candidates down to the **five worth putting in the prompt**.",
     href: "/reranking/",
     Icon: PiStack,
-  },
-  {
-    title: "Decision models",
-    description:
-      "Ask **typed questions** about an input and get a **probability per answer**, all in one call.",
-    href: "/decisions/",
-    Icon: PiScales,
-  },
-  {
-    title: "Web search",
-    description: "**Ground** answers in live web results, with citations.",
-    href: "/search/",
-    Icon: PiMagnifyingGlass,
   },
   {
     title: "Web reading",
@@ -103,11 +124,17 @@ const capabilities: ReadonlyArray<Capability> = [
     Icon: PiBrowser,
   },
   {
-    title: "Messenger",
+    title: "Decision models",
     description:
-      "Put your agent **in the chat**: it listens where people talk and streams answers back.",
-    href: "/messenger/",
-    Icon: PiChatsCircle,
+      "Ask **typed questions** about an input and get a **probability per answer**, all in one call.",
+    href: "/decisions/",
+    Icon: PiScales,
+  },
+  {
+    title: "Music generation",
+    description: "Generate music from prompts, one-shot or **streaming**.",
+    href: "/music-generation/",
+    Icon: PiMusicNotes,
   },
 ]
 
@@ -125,13 +152,14 @@ export default function CapabilitiesSection() {
           Build agents that do more than chat
         </h2>
         <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
-          Your agent can speak, listen, draw, remember, search the web, run code, and join the chat.
-          Each capability is one small interface, the same whichever provider you pick.
+          Your agent can speak, listen, draw, remember, search the web, run code, join the chat, and
+          show its work in your app. Each capability is one small interface, the same whichever
+          provider you pick.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
-        {capabilities.map(({ title, description, href, Icon }) => (
+        {capabilities.map(({ title, description, href, Icon, worksWith }) => (
           <a
             key={href}
             href={href}
@@ -150,6 +178,19 @@ export default function CapabilitiesSection() {
                 <CardDescription className="text-sm leading-relaxed">
                   <ReactMarkdown components={markdownComponents}>{description}</ReactMarkdown>
                 </CardDescription>
+                {worksWith !== undefined && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {worksWith.map(({ name, Icon: Mark }) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                      >
+                        {Mark !== undefined && <Mark className="h-3 w-3" aria-hidden />}
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="mt-auto flex items-center gap-1.5 px-7 pt-1 text-sm text-muted-foreground transition-colors group-hover:text-(--color-mark)">
                 <span>Explore</span>

@@ -23,7 +23,10 @@ import { type ChatPayloads, ChatUi } from "./chat-ui.ts"
 
 // TRANSPORT: one request per message (server.ts)
 
-const ChatBody = Schema.Struct({ chatId: Schema.optionalKey(StreamId), input: Input.SubmitJson })
+const ChatBody = Schema.Struct({
+  chatId: Schema.optionalKey(StreamId),
+  input: Input.SubmitJson,
+})
 
 const transport = Transport.direct({
   // No chat id yet: the server starts a chat and names it on its first answer.
@@ -38,7 +41,10 @@ const fold = Thread.presetFor<ChatPayloads>()
 
 // MODEL
 
-const Request = Schema.Struct({ input: Input.Submit, chatId: Schema.NullOr(StreamId) })
+const Request = Schema.Struct({
+  input: Input.Submit,
+  chatId: Schema.NullOr(StreamId),
+})
 
 export const Model = Schema.Struct({
   prompt: Schema.String,
@@ -84,7 +90,10 @@ export const update = (model: Model, message: Message): Return =>
       const text = model.prompt.trim()
       // One run at a time: the next message waits for this answer.
       if (text === "" || model.request !== null) return { model }
-      return { model: { ...model, prompt: "" }, commands: [CreateInput({ text })] }
+      return {
+        model: { ...model, prompt: "" },
+        commands: [CreateInput({ text })],
+      }
     },
     // Optimistic: the message shows before the server answers.
     CreatedInput: ({ input }) => ({
@@ -96,14 +105,22 @@ export const update = (model: Model, message: Message): Return =>
     }),
     // Clearing the request ends its Subscription, which aborts the fetch.
     ClickedStop: () => ({
-      model: { ...model, thread: fold.ended(model.thread, "stopped"), request: null },
+      model: {
+        ...model,
+        thread: fold.ended(model.thread, "stopped"),
+        request: null,
+      },
     }),
     GotEnvelope: ({ envelope }) => ({
       model: { ...model, thread: fold.step(model.thread, envelope) },
     }),
     // Without its terminal (a failed request), the run settles as disconnected.
     EndedRequest: () => ({
-      model: { ...model, thread: fold.ended(model.thread, "disconnected"), request: null },
+      model: {
+        ...model,
+        thread: fold.ended(model.thread, "disconnected"),
+        request: null,
+      },
     }),
   })
 

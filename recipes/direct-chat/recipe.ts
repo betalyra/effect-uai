@@ -69,8 +69,8 @@ export const makeChats = <E, R>(
           Projection.toRunEvents(),
           Run.coalesce("30 millis"),
           Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
-          Run.complete,
           Run.start({ runId, inputs: [input.id] }),
+          Run.complete,
           Run.sequence(chat.id, { from: yield* Ref.get(chat.lastSeq) }),
           Stream.tap((envelope) => Ref.set(chat.lastSeq, envelope.seq)),
         )

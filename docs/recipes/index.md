@@ -41,8 +41,6 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Auto-compaction](/recipes/auto-compaction/)           | Rewrite oversized history as an ordinary state transition.                                                        |
 | [Pause and resume](/recipes/pause-resume/)             | Pause between loop iterations with a latch; no provider call remains open.                                        |
 | [Mid-stream abort](/recipes/mid-stream-abort/)         | Cancel an in-flight turn through stream interruption and scope cleanup.                                           |
-| [Direct chat](/recipes/direct-chat/)                   | A chat page where each message is one request and its response is the answer. The server remembers the chat.      |
-| [Durable chat](/recipes/durable-chat/)                 | A chat that survives a page reload: answers keep going on the server, messages queue, the page re-opens it all.   |
 | [Agentic loop](/recipes/agentic-loop/)                 | Drive a long-lived chat from a user-message queue while continuing model/tool work between clean turn boundaries. |
 | [Sleeper agent](/recipes/sleeper-agent/)               | Wait for a long-running tool call. The agent goes quiet while the work runs and wakes up when it's done.          |
 
@@ -143,3 +141,10 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | Recipe                                       | One-line                                                                                                                            |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | [Messenger agent](/recipes/messenger-agent/) | Put the agent where people already are. Mention it in Telegram; it types, searches, draws, and streams the answer into one message. |
+
+## Agentic UI
+
+| Recipe                                 | One-line                                                                                                        |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [Direct chat](/recipes/direct-chat/)   | A chat page where each message is one request and its response is the answer. The server remembers the chat.    |
+| [Durable chat](/recipes/durable-chat/) | A chat that survives a page reload: answers keep going on the server, messages queue, the page re-opens it all. |

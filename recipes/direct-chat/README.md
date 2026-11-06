@@ -21,14 +21,21 @@ with the next message.
 const send = (chatId: Option<StreamId>, input: Input.Submit) =>
   Effect.gen(function* () {
     const chat = yield* Option.match(chatId, { onNone: () => create, onSome: find })
-    const history = yield* Ref.updateAndGet(chat.history, (h) => [...h, ...Input.toHistory(input)])
+    const history = yield* Ref.updateAndGet(chat.history, (h) => [...h, ...input.messages])
     return agent(history).pipe(
       Projection.toRunEvents(),
-      Run.withTerminal({ runId, inputs: [input.id] }),
+      Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
+      Run.start({ runId, inputs: [input.id] }),
+      Run.complete,
       Run.sequence(chat.id, { from: yield* Ref.get(chat.lastSeq) }),
     )
   })
 ```
+
+Each `Run` operator does one thing: `failed` turns an error into
+`run-failed`, `start` puts `run-started` first, `complete` ends the run with
+`run-completed` unless it already ended, and `sequence` numbers the frames.
+Leave one out or replace it with your own.
 
 The route returns that stream as Server-Sent Events. The page is plain DOM
 over `@effect-uai/ui`: `Atoms.thread` with `Transport.direct`.
@@ -43,11 +50,13 @@ const transport = Transport.direct({
     ),
 })
 const chat = Atoms.thread({
-  runtime: Atom.runtime(FetchHttpClient.layer),
+  runtime: Atom.runtime(Layer.mergeAll(FetchHttpClient.layer, SecureRandom.layerWebCrypto)),
   transport,
   busy: "block",
 })
 ```
+
+`SecureRandom` makes the input ids; a test gives it a seeded one.
 
 A reload starts a new chat, and a dropped connection ends the answer. When
 answers must survive both, use the [Durable chat](/recipes/durable-chat/).

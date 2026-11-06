@@ -89,8 +89,8 @@ export const makeChats = <E, R>(
           Run.coalesce("30 millis"),
           Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
           Run.stopWhen(Deferred.await(stop)),
-          Run.complete,
           Run.start({ runId, inputs: inputs.map((i) => i.id) }),
+          Run.complete,
           Stream.runForEach((event) => chat.publish(event, runId)),
         )
       }).pipe(Effect.ensuring(Ref.set(chat.running, Option.none())))

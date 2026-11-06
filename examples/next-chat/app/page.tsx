@@ -30,8 +30,6 @@ export default function Page() {
 
   return (
     <main className="mx-auto flex h-screen max-w-2xl flex-col gap-3 p-6">
-      <h1 className="shrink-0 font-mono text-sm text-neutral-400">effect-uai × AI SDK</h1>
-
       <div ref={scrollRef} className="flex flex-1 flex-col gap-4 overflow-y-auto">
         {messages.map((message) => (
           <Message key={message.id} message={message} />

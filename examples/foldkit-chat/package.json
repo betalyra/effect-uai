@@ -1,0 +1,26 @@
+{
+  "name": "effect-uai-foldkit-chat-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.ts & vite",
+    "server": "node server.ts",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect-uai/core": "link:../../packages/core",
+    "@effect-uai/responses": "link:../../packages/providers/responses",
+    "@effect-uai/ui": "link:../../packages/ui",
+    "@effect/platform-browser": "4.1.2",
+    "@effect/platform-node": "4.1.2",
+    "effect": "link:../../node_modules/.pnpm/effect@4.1.2/node_modules/effect",
+    "foldkit": "0.170.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^6.0.3",
+    "vite": "8.3.4"
+  }
+}

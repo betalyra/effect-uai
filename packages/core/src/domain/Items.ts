@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { FileSource } from "./File.js"
 import { ImageSource } from "./Image.js"
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,18 @@ export const InputImage = Schema.Struct({
   source: ImageSource,
 })
 export type InputImage = typeof InputImage.Type
+
+/**
+ * User-provided file: a document (PDF, text, docx), audio or video. The
+ * `source` MIME type says which; provider codecs map it to their own file
+ * part, and a provider that cannot read a type rejects the request.
+ */
+export const InputFile = Schema.Struct({
+  type: Schema.Literal("input_file"),
+  source: FileSource,
+  filename: Schema.optionalKey(Schema.String),
+})
+export type InputFile = typeof InputFile.Type
 
 // ---------------------------------------------------------------------------
 // Annotations - source / citation pointers attached to `output_text` blocks.
@@ -116,7 +129,14 @@ export const Refusal = Schema.Struct({
 })
 export type Refusal = typeof Refusal.Type
 
-export const ContentBlock = Schema.Union([InputText, InputImage, OutputText, OutputImage, Refusal])
+export const ContentBlock = Schema.Union([
+  InputText,
+  InputImage,
+  InputFile,
+  OutputText,
+  OutputImage,
+  Refusal,
+])
 export type ContentBlock = typeof ContentBlock.Type
 
 export const Role = Schema.Literals(["user", "assistant", "system"])
@@ -191,6 +211,7 @@ export type HistoryItem = typeof HistoryItem.Type
 
 export const isInputText = Schema.is(InputText)
 export const isInputImage = Schema.is(InputImage)
+export const isInputFile = Schema.is(InputFile)
 export const isOutputText = Schema.is(OutputText)
 export const isOutputImage = Schema.is(OutputImage)
 export const isRefusal = Schema.is(Refusal)

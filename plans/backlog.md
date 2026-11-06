@@ -46,6 +46,47 @@ Done and dropped items are listed at the end so they don't get re-proposed.
   (voice-loop vs realtime recipes) treat them differently. Decide whether to
   align or to document per stream.
 
+### Content types (researched 2026-11-06 against Open Responses, OpenAI, Anthropic, Gemini)
+
+Rule: a shared core type only for what the major providers actually share;
+everything else stays provider-typed.
+
+- [x] **`input_file`** (in progress, `plans/ui.md` step 1): one block for
+  documents, audio and video, the MIME type says which. Gemini already models
+  every medium this way (`inlineData` / `fileData`); Open Responses has
+  `input_file { filename, file_data, file_url }`. Codecs route by MIME prefix
+  with a fixed table (chat-completions: `audio/*` → `input_audio`; OpenRouter:
+  `video/*` → `input_video`; else the provider's file part). `input_image`
+  stays: every provider has it and it carries image-only options.
+- [ ] **Tool outputs with media**: `ToolCallOutput.output` is a string today.
+  Shared by three: OpenAI Responses (`function_call_output.output` = string or
+  `input_text` / `input_image` / `input_file` blocks), Anthropic
+  (`tool_result.content` with `image` / `document` blocks), Gemini 3+
+  (`functionResponse.parts`, images and PDF / text). Not Chat Completions
+  (tool messages are text only; the usual workaround is a follow-up user
+  message, the codec's call). Shape: `output: string | ReadonlyArray<InputText
+  | InputImage | InputFile>`; `Tool.make` lets a tool return content blocks.
+  Highest value of this list (screenshots, charts, rendered pages).
+- [ ] **File references** (`FileRef`, already noted in `Media.ts`): a
+  provider-stored file by id instead of bytes or URL (OpenAI `file_id`,
+  Anthropic file ids, Gemini Files API URIs, needed for large video). A
+  fourth `MediaSource` variant `{ _tag: "ref", provider, id }`; a codec takes
+  only its own provider's refs.
+- [ ] **Compaction**: both OpenAI (Responses `context_management` compaction,
+  automatic or `/responses/compact`; encrypted opaque `compaction` item) and
+  Anthropic (`compact_20260112` beta; readable summary block, custom
+  instructions) offer server-side compaction; Gemini does not. Shapes differ
+  (opaque vs readable), so: a request option per provider plus the item kept
+  as `providerData` round-trip, not a shared core item, until the shapes
+  converge. Our `auto-compaction` recipe stays the portable path.
+- [ ] **Full reasoning text**: only open-weight providers return it
+  (DeepSeek, Qwen, Kimi `reasoning_content`; DeepSeek requires it back on tool
+  turns). OpenAI, Anthropic and Gemini return summaries or nothing. Check how
+  the chat-completions codec carries `reasoning_content` today (summary? or
+  `providerData`); no new core field unless that round-trip is broken.
+- Ignored for now: `detail` on `input_image`, output audio outside realtime,
+  `logprobs`.
+
 ### From earlier plans
 
 - [ ] **`Loop.loopFrom`**: loop seeded by a `Stream<I>`, usable as a stream

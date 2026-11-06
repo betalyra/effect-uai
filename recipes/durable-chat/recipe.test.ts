@@ -89,7 +89,7 @@ describe("durable-chat chats", () => {
       const frames = yield* chats.events(chatId, 0).pipe(Effect.flatMap(readRuns(2)))
 
       // Inputs are echoed when queued, stream-scoped (no runId).
-      expect(frames.filter((f) => f.event.type === "data").map((f) => f.runId)).toEqual([
+      expect(frames.filter((f) => f.event.type === "input-accepted").map((f) => f.runId)).toEqual([
         undefined,
         undefined,
       ])

@@ -99,7 +99,7 @@ export const step =
       ]),
       Match.tags({
         TextDelta: (e) => inStep(s, [{ type: "text-delta", text: e.text }]),
-        RefusalDelta: (e) => inStep(s, [{ type: "text-delta", text: e.text }]),
+        RefusalDelta: (e) => inStep(s, [{ type: "refusal-delta", text: e.text }]),
         ReasoningDelta: (e) => reasoning(options)(s, e),
         ToolCallStart: (e) =>
           inStep(s, [{ type: "tool-call-started", callId: e.call_id, name: e.name }]),

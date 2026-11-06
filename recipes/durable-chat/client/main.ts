@@ -7,14 +7,13 @@
  * up an answer that is still streaming.
  */
 import * as Atoms from "@effect-uai/ui/Atoms"
-import * as Client from "@effect-uai/ui/Client"
 import * as Input from "@effect-uai/ui/Input"
-import { type Envelope, StreamId } from "@effect-uai/ui/RunEvent"
+import { StreamId } from "@effect-uai/ui/RunEvent"
 import * as RunView from "@effect-uai/ui/RunView"
-import * as Thread from "@effect-uai/ui/Thread"
+import type * as Thread from "@effect-uai/ui/Thread"
 import * as Transport from "@effect-uai/ui/Transport"
-import { Effect, Option, Schedule, Schema } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage } from "effect/http"
+import { Option, Schema } from "effect"
+import { FetchHttpClient, HttpClientRequest } from "effect/http"
 import { Atom, AtomRegistry } from "effect/reactivity"
 
 // A module, not a script: recipe clients would otherwise share one global scope.
@@ -23,13 +22,13 @@ export {}
 const STORAGE_KEY = "durable-chat:chat"
 
 // ---------------------------------------------------------------------------
-// Transport: the routes of app.ts
+// The chat: the routes of app.ts as a session transport, state as a Thread
 // ---------------------------------------------------------------------------
 
 const SendBody = Schema.Struct({ chatId: Schema.optionalKey(StreamId), input: Input.SubmitJson })
-const Sent = Schema.Struct({ chatId: StreamId })
 
-const transport = Transport.session({
+const transport = Transport.sessionHttp({
+  // No chat id: the server starts a chat and answers `{ chatId }`.
   send: (chatId, input: Input.Sent<Input.Submit>) =>
     HttpClientRequest.post("/chats/messages").pipe(
       HttpClientRequest.schemaBodyJson(SendBody)(
@@ -38,44 +37,13 @@ const transport = Transport.session({
           onSome: (id) => ({ chatId: id, input }),
         }),
       ),
-      Effect.flatMap(HttpClient.execute),
-      Effect.flatMap(HttpIncomingMessage.schemaBodyJson(Sent)),
-      Effect.map(({ chatId }) => ({ streamId: chatId })),
     ),
-  // The whole chat; reconnects from the last seen `seq` when the connection drops.
-  events: (chatId, after) =>
-    Client.resumable(
-      (from) => Client.sse(HttpClientRequest.get(`/chats/${chatId}/events?after=${from}`)),
-      { from: after, until: "never", schedule: Schedule.spaced("1 second") },
-    ),
-  stop: (chatId) => HttpClient.post(`/chats/${chatId}/stop`).pipe(Effect.asVoid),
+  idField: "chatId",
+  events: (chatId, after) => HttpClientRequest.get(`/chats/${chatId}/events?after=${after}`),
+  stop: (chatId) => HttpClientRequest.post(`/chats/${chatId}/stop`),
 })
 
-// ---------------------------------------------------------------------------
-// State: the Thread fold, plus the server's echo of each input. After a
-// reload the page has lost what the user typed; each run carries it.
-// ---------------------------------------------------------------------------
-
-const decodeInput = Schema.decodeUnknownOption(Input.SubmitJson)
-
-const step = (thread: Thread.Thread, envelope: Envelope): Thread.Thread => {
-  const next = Thread.step(thread, envelope)
-  const event = envelope.event
-  if (event.type !== "data" || event.name !== "input") return next
-  return Option.match(decodeInput(event.value), {
-    onNone: () => next,
-    // Echoed when queued: it waits in `pending` until its run starts.
-    onSome: (input) =>
-      Thread.hasInput(next, input.id)
-        ? next
-        : {
-            ...next,
-            pending: [...next.pending, { role: "user", id: input.id, messages: input.messages }],
-          },
-  })
-}
-
-const chat = Atoms.chat({ runtime: Atom.runtime(FetchHttpClient.layer), transport, step })
+const chat = Atoms.chat({ runtime: Atom.runtime(FetchHttpClient.layer), transport })
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -106,20 +74,23 @@ const note = (run: RunView.RunView): string | undefined => {
   return undefined
 }
 
+// The answer, or the refusal when the model declined.
+const answer = (run: RunView.RunView) => RunView.text(run) || (RunView.refusal(run) ?? "")
+
 const live = (run: RunView.RunView) => {
-  const text = RunView.text(run)
+  const text = answer(run)
   return text === "" ? bubble("assistant", "…", "thinking") : bubble("assistant", text, "streaming")
 }
 
 const render = (thread: Thread.Thread) => {
   const settled = thread.messages.map((m) =>
     m.role === "user"
-      ? bubble("user", Input.text(m))
-      : bubble("assistant", RunView.text(m.run), note(m.run)),
+      ? bubble("user", Input.text(m.value))
+      : bubble("assistant", answer(m.value), note(m.value)),
   )
   const active = thread.active === null ? [] : [live(thread.active)]
-  // Sent while a run was going: the server runs them next, in order.
-  const pending = thread.pending.map((m) => bubble("user", Input.text(m), "queued"))
+  // Waiting for their run: the server answers them next, together.
+  const pending = thread.pending.map((m) => bubble("user", Input.text(m.value), "queued"))
   log.replaceChildren(...settled, ...active, ...pending)
   log.scrollTop = log.scrollHeight
   stopButton.disabled = thread.active === null

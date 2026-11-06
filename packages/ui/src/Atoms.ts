@@ -38,7 +38,7 @@ export type Options<I, S, E, R, ER> = {
   readonly ended?: (state: S, reason: "stopped" | "disconnected") => S
 }
 
-export const make = <I, S, E, R, ER>(options: Options<I, S, E, R, ER>) => {
+const build = <I, S, E, R, ER>(options: Options<I, S, E, R, ER>) => {
   const state = Atom.make(options.initial).pipe(Atom.keepAlive)
   const streamId = Atom.make<StreamId | null>(null).pipe(Atom.keepAlive)
 
@@ -115,13 +115,34 @@ export const make = <I, S, E, R, ER>(options: Options<I, S, E, R, ER>) => {
     /** The current run; `AtomRegistry.getResult` on it waits for the run to finish. */
     run,
     stop,
-    ...(attach !== undefined ? { resume: attach } : {}),
+    /** Re-attach to a run (`{ streamId, after }`); set for durable transports. */
+    resume: attach,
   }
 }
 
+type Built<I, S, E, R, ER> = ReturnType<typeof build<I, S, E, R, ER>>
+
 /**
- * `make` with the `Thread` fold: a message list plus the active run. Takes the
- * `Input` preset, with or without typed `data`.
+ * State over a per-run transport: `state`, `submit`, `stop`, `run`, and
+ * `resume` when the transport can re-attach (`Transport.durable`,
+ * `durableHttp`), typed as present for those.
+ */
+export function make<I, S, E, R, ER>(
+  options: Options<I, S, E, R, ER> & {
+    readonly transport: Transport.Resumable<Input.Sent<I>, S, E, R>
+  },
+): Omit<Built<I, S, E, R, ER>, "resume"> & {
+  readonly resume: NonNullable<Built<I, S, E, R, ER>["resume"]>
+}
+export function make<I, S, E, R, ER>(options: Options<I, S, E, R, ER>): Built<I, S, E, R, ER>
+export function make<I, S, E, R, ER>(options: Options<I, S, E, R, ER>): Built<I, S, E, R, ER> {
+  return build(options)
+}
+
+/**
+ * `make` with the `Thread` preset: a message list plus the active run. Takes
+ * the `Input` preset, with or without typed `data`. For other entry types,
+ * spread a `Thread.make(config)` fold into `make`.
  */
 export const thread = <I extends Input.Input, E, R, ER>(options: {
   readonly runtime: Atom.AtomRuntime<R, ER>
@@ -136,8 +157,7 @@ export const thread = <I extends Input.Input, E, R, ER>(options: {
     initial: options.initial ?? Thread.initial,
     step: Thread.step,
     isBusy: (t) => t.active !== null,
-    submitted: (t: Thread.Thread, input: Input.Sent<I>) =>
-      input.kind === "submit" ? Thread.submitted(t, input) : t,
+    submitted: (t: Thread.Thread, input: Input.Sent<I>) => Thread.submitted(t, input),
     ended: Thread.ended,
   })
 
@@ -223,23 +243,22 @@ export const session = <I, S, E, R, ER>(options: SessionOptions<I, S, E, R, ER>)
 }
 
 /**
- * `session` with the `Thread` fold; `step` can extend it (e.g. with app
- * events). Input sent while a run is active waits in `thread.pending`: the
- * server queues it. Pass `isBusy` for a server that refuses instead.
+ * `session` with the `Thread` preset. Input sent while a run is active, or
+ * echoed by the server (`input-accepted`), waits in `thread.pending`: the
+ * server queues it. Pass `isBusy` for a server that refuses instead. For
+ * other entry types, spread a `Thread.make(config)` fold into `session`.
  */
 export const chat = <I extends Input.Input, E, R, ER>(options: {
   readonly runtime: Atom.AtomRuntime<R, ER>
   readonly transport: Transport.Session<Input.Sent<I>, Thread.Thread, E, R>
-  readonly step?: (thread: Thread.Thread, envelope: Envelope) => Thread.Thread
   readonly isBusy?: (thread: Thread.Thread) => boolean
 }) =>
   session({
     runtime: options.runtime,
     transport: options.transport,
     initial: Thread.initial,
-    step: options.step ?? Thread.step,
+    step: Thread.step,
     ...(options.isBusy !== undefined ? { isBusy: options.isBusy } : {}),
-    submitted: (t: Thread.Thread, input: Input.Sent<I>) =>
-      input.kind === "submit" ? Thread.submitted(t, input) : t,
+    submitted: (t: Thread.Thread, input: Input.Sent<I>) => Thread.submitted(t, input),
     ended: Thread.ended,
   })

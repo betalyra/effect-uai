@@ -136,29 +136,23 @@ Decided (the first item is built, see above; the rest is not yet built):
   `OutputImage` and `Refusal`, plus an `id`. New `refusal-delta` event
   (projection maps `RefusalDelta`; today it is wrongly a `text-delta`).
   `tool`, `object`, `data`, `reasoning` blocks stay UI-specific.
-- **Lossless client-owned history: opt-in `history` event.**
-  `{ type: "history", items: HistoryItem[] }` carries a settled turn's exact
-  core items, `providerData` included (encrypted reasoning, Anthropic thinking
-  signatures, Gemini thought signatures, which some providers require to
-  continue tool use). Emitted only with `Projection.toRunEvents({ history:
-  true })`; server-owned / durable apps leave it off. No lossy
-  `RunView.toItems` reconstruction. Docs caveats: client-owned history can be
-  forged (fine for MVPs; keep it server-side or signed for privileged tools),
-  it grows each turn, and Anthropic thinking text becomes visible to the
-  browser.
+- **History is server-owned; no `history` event.** Client-held history is not
+  a pattern the library promotes: it can be forged, grows every turn, and
+  loses `providerData` (encrypted reasoning, thinking and thought signatures
+  some providers need to continue tool use). The docs get a short hint
+  instead: keep history on the server (as `durable-chat` does); if an app
+  must hold it on the client, emit the turn's core items itself as `data`.
+  `Thread.toHistory` stays as a lossy MVP helper, documented as such.
 - **Generic `Thread<U, A>`.** Entries are `{ role: "user", id, value: U } |
-  { role: "assistant", id, value: A }` (assistant entries also keep the run's
-  history `items` when present); the live run stays a `RunView`.
+  { role: "assistant", id, value: A }`; the live run stays a `RunView`.
   `Thread.make({ user: (input) => U, settle: (run) => A })` returns the fold
   (`initial`, `step`, `submitted`, `ended`, `truncateAfter`); default preset
-  `U = Input.Message`, `A = RunView`. Library keeps: live run, settling,
-  `lastSeq` dedupe across runs, `ended`; `toHistory` concatenates stored
-  history items. Server-persisted history loads straight into entries.
-- **Input echo: open.** Today an app-level stream-scoped `data { name:
-  "input" }` (the `durable-chat` page folds it into `thread.pending`). Every
-  session app that queues needs it, so a protocol event (`input-received {
-  input }`, folded by `Thread` itself) may earn its place; decide with the
-  generic `Thread`.
+  `U = Input.Submit`, `A = RunView`. Library keeps: live run, pending inputs,
+  settling, per-stream `seq` dedupe, `ended`. Server-persisted history loads
+  straight into entries.
+- **Input echo: decided, built.** A stream-scoped protocol event
+  `input-accepted { input }` (the app's encoded input); every queueing
+  server needs it, and `Thread` folds it into `pending` given `decodeInput`.
 - **`resume` non-optional** in `Atoms.make`'s result when the transport is
   durable (typing).
 - **HTTP transport helpers**: `Transport.durableHttp` / `sessionHttp`, taking
@@ -181,27 +175,28 @@ Decided (the first item is built, see above; the rest is not yet built):
 ## Next steps (in order)
 
 Done: input (app-defined preset), branded ids, the `durable-chat` page with
-chat sessions (see "Implementation status").
+chat sessions; output blocks in core shapes (`refusal-delta`, `output_text`
+with citations as annotations, `output_image`, `refusal`); generic
+`Thread.make` (fold spreads into `Atoms.make` / `session`; `input-accepted`
+is a protocol event the fold handles); `durableHttp` / `sessionHttp` and
+`resume` typed as present for durable transports (the page's transport is
+now ~10 lines); the `modify-output-stream` pointer.
 
-1. **Generic file input** in core (`input_file`, `FileSource`, provider
-   codecs for responses, anthropic, google, chat-completions, mistral, the
-   ai-sdk compat; fal / perplexity reject), then `Input.UserMessage` content;
-   codec tests per provider, core changeset.
-2. **Output blocks**: `refusal-delta` event + projection fix; `RunView` blocks
-   in core shapes (`output_text` with attached citations, `output_image`,
-   `refusal`); update tests and changeset.
-3. **History event**: opt-in `history` event (core `HistoryItem`s) and
-   `Projection.toRunEvents({ history })`; conformance test on a real tool loop.
-4. **Generic `Thread<U, A>`** via `Thread.make`, default preset, lossless
-   `toHistory` from stored items; `Atoms.thread` / `Atoms.chat` take the same
-   config. Decide the input echo (protocol event vs app `data`) here.
-5. **HTTP transport helpers** (`durableHttp`, `sessionHttp`) and
-   non-optional `resume` typing; shrink the `durable-chat` page with them.
-6. **`modify-output-stream`**: short pointer to `@effect-uai/ui` in its README.
-7. **`direct-chat` recipe** (client-owned history with the `history` event,
-   minimal vanilla client), then `examples/react-next`, then `UiContract`
-   (typed payloads), docs section "Agentic UI", `docs/coming-from`, and the
-   skill update (deliverables 5 to 7).
+Follow-up (core, separate): content types from `plans/backlog.md`, starting
+with the provider codecs for `input_file` (core `File` / `InputFile` are in
+the source; don't rebuild core's `dist` before the codecs handle it).
+
+1. ~~**`direct-chat` recipe**~~ done. The server names the chat with the
+   run's `streamId` and continues `seq` per chat; the client sends
+   `thread.streamId` back. No new protocol concept.
+2. ~~**Framework examples**~~ done, both standalone (own server, direct mode):
+   - `examples/tanstack-start-chat`: a server route runs the agent,
+     `Atoms.thread` + `@effect/atom-react` on the page.
+   - `examples/foldkit-chat`: `Thread.step` inside `update`; the open request
+     is a Subscription keyed on the input in flight, so Stop is a pure Model
+     change. A small Effect `HttpServer` (`server.ts`) next to Vite.
+3. **Next:** `UiContract` (typed payloads), docs section "Agentic UI" (with the
+   server-owned-history hint), `docs/coming-from`, and the skill update.
 
 ## Roadmap
 

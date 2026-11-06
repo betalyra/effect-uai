@@ -72,6 +72,13 @@ If your product wants those events on the wire, write your own `filterMap`.
 That is the point of the design: the loop emits typed events; the edge decides
 which ones become protocol frames.
 
+Want a ready-made protocol for a chat UI instead? `@effect-uai/ui` projects
+the loop (text, reasoning, tool calls, structured objects, usage) onto a
+resumable event stream and folds it back into plain state on the client:
+`conversation.pipe(Projection.toRunEvents(), Run.withTerminal({ runId }),
+Run.sequence(streamId), Encoding.toSSE, SSE.toBytes)`. See the
+[Durable chat](/recipes/durable-chat/) recipe for a complete server and page.
+
 ## Run it
 
 ```sh

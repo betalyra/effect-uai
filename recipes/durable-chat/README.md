@@ -35,11 +35,11 @@ Effect.forever(
 ```
 
 The server owns the history, so every answer sees the conversation before
-it. Each message is echoed on the stream as soon as it is queued, so a
-reloaded page shows it even before its answer starts.
+it. Each message is echoed on the stream as soon as it is queued
+(`input-accepted`), so a reloaded page shows it even before its answer starts.
 
 The page is plain DOM over `@effect-uai/ui`: `Atoms.chat` with
-`Transport.session`, which sends messages and follows the chat's stream.
+`Transport.sessionHttp`, which sends messages and follows the chat's stream.
 It keeps the chat id in `localStorage` and re-opens it on load.
 
 ## Run it

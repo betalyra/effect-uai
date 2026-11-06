@@ -70,4 +70,29 @@ describe("RunView.step", () => {
       { id: "o1", status: "done", value: { title: "Pastéis de nata", items: ["eggs"] } },
     ])
   })
+
+  it("attaches citations to the text they cite, as core output_text annotations", () => {
+    const source = { type: "url_citation", url: "https://ipma.pt", title: "IPMA" } as const
+    const view = fold([
+      started,
+      { type: "step-started" },
+      { type: "text-delta", text: "Lisbon is " },
+      { type: "text-delta", text: "sunny." },
+      { type: "citation", annotation: source },
+    ])
+    expect(view.blocks).toEqual([
+      { type: "output_text", id: "b0", text: "Lisbon is sunny.", annotations: [source] },
+    ])
+  })
+
+  it("keeps a refusal apart from the answer text", () => {
+    const view = fold([
+      started,
+      { type: "step-started" },
+      { type: "refusal-delta", text: "I can't " },
+      { type: "refusal-delta", text: "help with that." },
+    ])
+    expect(RunView.text(view)).toBe("")
+    expect(RunView.refusal(view)).toBe("I can't help with that.")
+  })
 })

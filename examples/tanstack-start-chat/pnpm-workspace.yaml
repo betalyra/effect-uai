@@ -1,0 +1,3 @@
+# Own workspace root so this example is fully isolated: a repo-wide
+# `pnpm install` never pulls its dependencies. Install from inside this folder.
+packages: []

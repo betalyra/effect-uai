@@ -35,7 +35,9 @@ Client:
   for per-run transports, `session` / `chat` for sessions. React reads them
   with `@effect/atom-react`, plain JS with `AtomRegistry.subscribe`.
 
-See the `durable-chat` recipe for a complete server and page.
+See the `direct-chat` and `durable-chat` recipes for a complete server and
+page, and `examples/tanstack-start-chat` and `examples/foldkit-chat` for
+framework apps.
 
 ## Install
 

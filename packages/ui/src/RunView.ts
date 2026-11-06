@@ -5,9 +5,8 @@
  * `seq`, so replaying a stream from any point is safe. A delta replaces only
  * the block it touches; every other block keeps its identity.
  */
-import * as Img from "@effect-uai/core/Image"
 import * as Items from "@effect-uai/core/Items"
-import { JsonPatch, Match, Option, Predicate, Schema } from "effect"
+import { Array as Arr, JsonPatch, Match, Option, Predicate, Schema } from "effect"
 import { type Envelope, InputId, Interrupt, RunId, type RunEvent } from "./RunEvent.js"
 
 // ---------------------------------------------------------------------------
@@ -26,10 +25,18 @@ export const ToolStatus = Schema.Literals([
 ])
 export type ToolStatus = typeof ToolStatus.Type
 
-const TextBlock = Schema.Struct({
-  type: Schema.Literal("text"),
+// Settled content reuses core's shapes (plus a block `id`), so a view's text,
+// citations, images and refusals read like the turn's own content blocks.
+
+/** Core's `output_text`; citations attach to the text they cite. */
+const TextBlock = Schema.Struct({ ...Items.OutputText.fields, id: Schema.String })
+/** Core's `refusal`: the model declined to answer. */
+const RefusalBlock = Schema.Struct({ ...Items.Refusal.fields, id: Schema.String })
+/** Core's `output_image`; `partialIndex` marks a preview the final image replaces. */
+const ImageBlock = Schema.Struct({
+  ...Items.OutputImage.fields,
   id: Schema.String,
-  text: Schema.String,
+  partialIndex: Schema.optionalKey(Schema.Number),
 })
 const ReasoningBlock = Schema.Struct({
   type: Schema.Literal("reasoning"),
@@ -55,17 +62,6 @@ const ObjectBlock = Schema.Struct({
   value: Schema.optionalKey(Schema.Unknown),
   issues: Schema.optionalKey(Schema.Array(Schema.Unknown)),
 })
-const ImageBlock = Schema.Struct({
-  type: Schema.Literal("image"),
-  id: Schema.String,
-  image: Img.ImageSource,
-  partialIndex: Schema.optionalKey(Schema.Number),
-})
-const CitationBlock = Schema.Struct({
-  type: Schema.Literal("citation"),
-  id: Schema.String,
-  annotation: Items.Annotation,
-})
 const DataBlock = Schema.Struct({
   type: Schema.Literal("data"),
   id: Schema.String,
@@ -75,14 +71,15 @@ const DataBlock = Schema.Struct({
 
 export const Block = Schema.Union([
   TextBlock,
+  RefusalBlock,
+  ImageBlock,
   ReasoningBlock,
   ToolBlock,
   ObjectBlock,
-  ImageBlock,
-  CitationBlock,
   DataBlock,
 ])
 export type Block = typeof Block.Type
+export type TextBlock = typeof TextBlock.Type
 export type ToolBlock = typeof ToolBlock.Type
 export type ObjectBlock = typeof ObjectBlock.Type
 
@@ -142,7 +139,11 @@ export const initial: RunView = {
 const replaceAt = (blocks: ReadonlyArray<Block>, index: number, block: Block) =>
   blocks.map((b, i) => (i === index ? block : b))
 
-const appendText = (v: RunView, kind: "text" | "reasoning", text: string): RunView => {
+const appendText = (
+  v: RunView,
+  kind: "output_text" | "refusal" | "reasoning",
+  text: string,
+): RunView => {
   const index = v.blocks.length - 1
   const last = v.blocks[index]
   if (last !== undefined && last.type === kind && index >= v.stepStart) {
@@ -150,6 +151,29 @@ const appendText = (v: RunView, kind: "text" | "reasoning", text: string): RunVi
   }
   return push(v, (id) => ({ type: kind, id, text }))
 }
+
+// A citation joins the step's latest text; one that arrives before any text
+// starts an empty text block, which the following text extends.
+const cite = (v: RunView, annotation: Items.Annotation): RunView =>
+  Arr.findLastIndex(v.blocks, (b, i) => b.type === "output_text" && i >= v.stepStart).pipe(
+    Option.flatMap((index) =>
+      Option.fromNullishOr(v.blocks[index]).pipe(
+        Option.filter((b): b is TextBlock => b.type === "output_text"),
+        Option.map((b) => ({ index, block: b })),
+      ),
+    ),
+    Option.match({
+      onNone: () =>
+        push(v, (id) => ({ type: "output_text", id, text: "", annotations: [annotation] })),
+      onSome: ({ index, block }) => ({
+        ...v,
+        blocks: replaceAt(v.blocks, index, {
+          ...block,
+          annotations: [...(block.annotations ?? []), annotation],
+        }),
+      }),
+    }),
+  )
 
 const push = (v: RunView, make: (id: string) => Block): RunView => ({
   ...v,
@@ -272,22 +296,23 @@ const apply = (v: RunView, event: RunEvent): RunView =>
       "step-started": (): RunView => ({ ...v, stepStart: v.blocks.length }),
       "step-finished": (e): RunView => withUsage(v, e.usage),
       "step-reset": (): RunView => ({ ...v, blocks: v.blocks.slice(0, v.stepStart) }),
-      "text-delta": (e) => appendText(v, "text", e.text),
+      "text-delta": (e) => appendText(v, "output_text", e.text),
+      "refusal-delta": (e) => appendText(v, "refusal", e.text),
       "reasoning-started": (): RunView =>
         v.blocks.some((b, i) => b.type === "reasoning" && i >= v.stepStart)
           ? v
           : push(v, (id) => ({ type: "reasoning", id, text: "" })),
       "reasoning-delta": (e) => appendText(v, "reasoning", e.text),
-      citation: (e) => push(v, (id) => ({ type: "citation", id, annotation: e.annotation })),
+      citation: (e) => cite(v, e.annotation),
       image: (e): RunView => {
         const index = v.blocks.length - 1
         const last = v.blocks[index]
         const block = (id: string): Block =>
           e.partialIndex === undefined
-            ? { type: "image", id, image: e.image }
-            : { type: "image", id, image: e.image, partialIndex: e.partialIndex }
+            ? { type: "output_image", id, source: e.image }
+            : { type: "output_image", id, source: e.image, partialIndex: e.partialIndex }
         // A preview frame is replaced by the next preview or the final image.
-        return last !== undefined && last.type === "image" && last.partialIndex !== undefined
+        return last !== undefined && last.type === "output_image" && last.partialIndex !== undefined
           ? { ...v, blocks: replaceAt(v.blocks, index, block(last.id)) }
           : push(v, block)
       },
@@ -350,6 +375,8 @@ const apply = (v: RunView, event: RunEvent): RunView =>
           : push(v, (id) => ({ type: "data", id: e.id ?? id, name: e.name, value: e.value }))
       },
       live: (e): RunView => ({ ...v, live: { ...v.live, [e.name]: e.value } }),
+      // Stream-scoped; a chat fold (`Thread`) shows it, a run view has nothing to add.
+      "input-accepted": (): RunView => v,
     }),
   )
 
@@ -375,9 +402,15 @@ export const isTerminal = (view: RunView): boolean => TERMINAL.has(view.status)
 export const isBusy = (view: RunView): boolean =>
   view.status === "submitted" || view.status === "streaming"
 
-/** All assistant text of the run, in order. */
+/** All assistant text of the run, in order (refusals excluded, see `refusal`). */
 export const text = (view: RunView): string =>
-  view.blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("")
+  view.blocks.flatMap((b) => (b.type === "output_text" ? [b.text] : [])).join("")
+
+/** The refusal text, if the model declined; `undefined` otherwise. */
+export const refusal = (view: RunView): string | undefined => {
+  const parts = view.blocks.flatMap((b) => (b.type === "refusal" ? [b.text] : []))
+  return parts.length === 0 ? undefined : parts.join("")
+}
 
 /**
  * Object blocks named `name`, typed by `schema`. `value` is set once the

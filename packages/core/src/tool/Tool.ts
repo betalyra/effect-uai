@@ -153,6 +153,12 @@ export type Tool<Name extends string, Input, Event, Output, E = unknown, R = nev
   readonly name: Name
   readonly description: string
   readonly inputSchema: ToolInputSchema<Input>
+  /**
+   * Validates and encodes `run`'s success value before it reaches the wire.
+   * A value that fails becomes an `output_validation_error` result. Shared
+   * with clients, it also types and decodes the output on the other side.
+   */
+  readonly outputSchema?: Schema.Codec<Output, any, never, never>
   readonly run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output, E, R>
   /**
    * Bound on this tool's emit queue. Unbounded when omitted. Per-tool because
@@ -254,6 +260,22 @@ const resolveInputSchema = (
 
 /** A model-visible tool with a local `Effect` executor. */
 export const make: {
+  <
+    Name extends string,
+    I extends Schema.Codec<any, any, never, any>,
+    O extends Schema.Codec<any, any, never, never>,
+    Event,
+    E = never,
+    R = never,
+  >(
+    spec: Omit<
+      Tool<Name, I["Type"], Event, O["Type"], E, R>,
+      "_tag" | "inputSchema" | "outputSchema"
+    > & {
+      readonly inputSchema: I
+      readonly outputSchema: O
+    },
+  ): Tool<Name, I["Type"], Event, O["Type"], E, R>
   <
     Name extends string,
     S extends Schema.Codec<any, any, never, any>,
@@ -373,7 +395,8 @@ export const withName = <N extends string, T extends AnyTool>(
  *     ({ to }) => Effect.succeed({ status: "dry-run", to })) }
  *
  * Descriptors stay identical to production, so a mocked toolkit can't drift
- * from the contract the model sees.
+ * from the contract the model sees. `outputSchema` is dropped: it describes
+ * the original `run`'s output, not the replacement's.
  */
 export const withRun = <
   Name extends string,
@@ -388,7 +411,10 @@ export const withRun = <
 >(
   tool: Tool<Name, Input, Event, Output, E, R>,
   run: (input: Input, emit: Emit<Event>) => Effect.Effect<Output2, E2, R2>,
-): Tool<Name, Input, Event, Output2, E2, R2> => ({ ...tool, run })
+): Tool<Name, Input, Event, Output2, E2, R2> => {
+  const { outputSchema: _dropped, ...definition } = tool
+  return { ...definition, run }
+}
 
 /** True for provider-hosted tools — the kind a provider renders natively. */
 export const isProviderTool = (tool: AnyTool): tool is ProviderTool<string, any, string, any> =>

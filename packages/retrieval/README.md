@@ -52,11 +52,11 @@ const fused = Rank.rrf([keywordIds, vectorIds], { weights: [1, 2] })
 
 ## Docs
 
-Full docs: <https://effect-uai.betalyra.com/retrieval/>
+Full docs: <https://effect-uai.com/retrieval/>
 
-See [Chunking](https://effect-uai.betalyra.com/retrieval/chunking/),
-[Tokenizers](https://effect-uai.betalyra.com/language-models/tokenizers/), and
-[Agentic search](https://effect-uai.betalyra.com/recipes/agentic-search/) for a
+See [Chunking](https://effect-uai.com/retrieval/chunking/),
+[Tokenizers](https://effect-uai.com/language-models/tokenizers/), and
+[Agentic search](https://effect-uai.com/recipes/agentic-search/) for a
 pipeline using all of it.
 
 ## License

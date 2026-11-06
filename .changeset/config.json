@@ -29,6 +29,7 @@
       "@effect-uai/tavily",
       "@effect-uai/telegram",
       "@effect-uai/typesafe-ai",
+      "@effect-uai/ui",
       "effect-uai"
     ]
   ],

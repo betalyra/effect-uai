@@ -20,7 +20,7 @@ matches, so installing has no token cost until it triggers.
 
 Rather than one skill per recipe (which lagged as the recipes grew), the
 skill points the agent at the recipe library: `recipes/<name>/` in the
-repo, rendered at <https://effect-uai.betalyra.com/recipes/>. Each
+repo, rendered at <https://effect-uai.com/recipes/>. Each
 recipe's `README.md` is the walkthrough and `recipe.ts` / `app.ts` /
 `run-*.ts` are the runnable code. The skill's catalog maps a scenario to
 the recipe to start from; the agent opens (or fetches) that recipe and

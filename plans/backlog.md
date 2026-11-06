@@ -13,11 +13,17 @@ Done and dropped items are listed at the end so they don't get re-proposed.
 
 ### From the UI design (`plans/ui.md`)
 
-- [ ] **`StructuredFormat.decodePartial(format)`**: incremental JSON parser,
-  `Stream<string>` → partial (deep-partial, unvalidated) | done (validated) |
-  failed. Prerequisite for object streaming in `@effect-uai/ui` v1; useful
-  without any UI. Evidence: only `decodeJsonLines` / `decodeJsonLinesRecoverable`
-  exist (`structured-format/StructuredFormat.ts:159-172`).
+- [ ] **Partial JSON streaming (`StructuredFormat.decodePartial(format)`)**:
+  `Stream<string>` → partial (deep-partial, unvalidated) | done (validated),
+  so one JSON value can be shown while it streams. Use a small existing
+  tolerant-parser library, not a hand-rolled scanner (Effect 4.1 has none).
+  Enables three things the UI v1 does without: progressive rendering of one
+  large object (AI SDK `streamObject`), streaming lists under strict
+  structured output (a JSON Schema allows only one document, so lists become
+  `{"items":[…]}`), and live tool-argument previews. The UI protocol already
+  has `object-delta` and `tool-call-args-delta`, so it is additive. Not urgent.
+  Evidence: only `decodeJsonLines` / `decodeJsonLinesRecoverable` exist
+  (`structured-format/StructuredFormat.ts:159-172`).
 - [ ] **AbortSignal → interruption helper** (`interruptOnAbort(signal)`):
   `examples/ai-sdk-next` and the `mid-stream-abort` recipe each roll their own.
   Planned as `@effect-uai/ui/Run`; move to core if non-UI callers want it.

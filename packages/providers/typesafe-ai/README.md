@@ -125,6 +125,6 @@ An answer whose shape does not match the decision that asked for it is
 
 ## See also
 
-- [Decision models](https://effect-uai.betalyra.com/decisions/)
-- [TypeSafe AI usage page](https://effect-uai.betalyra.com/decisions/providers/typesafe-ai/)
+- [Decision models](https://effect-uai.com/decisions/)
+- [TypeSafe AI usage page](https://effect-uai.com/decisions/providers/typesafe-ai/)
 - [`@effect-uai/core/Decision`](https://github.com/betalyra/effect-uai/tree/main/packages/core/src/decision-model)

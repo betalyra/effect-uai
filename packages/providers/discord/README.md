@@ -41,7 +41,7 @@ needs the privileged Message Content intent:
 
 ## Docs
 
-<https://effect-uai.betalyra.com/messenger/providers/discord/>
+<https://effect-uai.com/messenger/providers/discord/>
 
 ## License
 

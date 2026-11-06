@@ -91,6 +91,14 @@ export const nonLocalTool = (call: ToolCall, reason?: string): ToolResult =>
 export const validationError = (call: ToolCall, reason?: string): ToolResult =>
   failed(call, "input_validation_error", reason ?? "Tool input failed schema validation")
 
+/**
+ * The tool's own `run` returned a value its `outputSchema` rejects. A bug in
+ * the tool, not the model's call; still reported as a result so the turn
+ * continues and the caller can see `kind` and fix the tool.
+ */
+export const outputValidationError = (call: ToolCall, reason?: string): ToolResult =>
+  failed(call, "output_validation_error", reason ?? "Tool output failed schema validation")
+
 // ---------------------------------------------------------------------------
 // Wire conversion - the one place structured → string happens.
 // ---------------------------------------------------------------------------

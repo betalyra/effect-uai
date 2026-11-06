@@ -36,7 +36,7 @@ generic `LanguageModel` tag.
 
 ## Docs
 
-<https://effect-uai.betalyra.com/providers/anthropic/>
+<https://effect-uai.com/providers/anthropic/>
 
 ## License
 

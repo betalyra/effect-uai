@@ -35,7 +35,7 @@ No provider deps. Pair with one or more provider packages:
 [`@effect-uai/anthropic`](https://www.npmjs.com/package/@effect-uai/anthropic),
 [`@effect-uai/google`](https://www.npmjs.com/package/@effect-uai/google),
 [`@effect-uai/mistral`](https://www.npmjs.com/package/@effect-uai/mistral)
-and [the rest](https://effect-uai.betalyra.com/providers/).
+and [the rest](https://effect-uai.com/providers/).
 
 ## Install
 
@@ -47,10 +47,10 @@ ESM-only. Requires `effect@>=4.0.1` (Effect 4.0 stable) as a peer.
 
 ## Docs
 
-Full docs: <https://effect-uai.betalyra.com>
+Full docs: <https://effect-uai.com>
 
-Start with [One turn is a stream](https://effect-uai.betalyra.com/start/getting-started/)
-and then [Basic usage](https://effect-uai.betalyra.com/recipes/basic-usage/).
+Start with [One turn is a stream](https://effect-uai.com/start/getting-started/)
+and then [Basic usage](https://effect-uai.com/recipes/basic-usage/).
 
 ## License
 

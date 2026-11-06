@@ -21,17 +21,17 @@ OpenAI Responses, Anthropic, Gemini, and any OpenAI-compatible gateway
 normalize to one `TurnEvent` union. State is yours. The loop is yours.
 
 <p align="center">
-  <a href="https://effect-uai.betalyra.com/intro/?play=1&ref=readme">
-    <img src="https://effect-uai.betalyra.com/media/intro/poster.webp" alt="Intro to effect-uai (video, 47 min)" width="640" />
+  <a href="https://effect-uai.com/intro/?play=1&ref=readme">
+    <img src="https://effect-uai.com/media/intro/poster.webp" alt="Intro to effect-uai (video, 47 min)" width="640" />
   </a>
   <br />
-  <a href="https://effect-uai.betalyra.com/intro/?play=1&ref=readme">&#9654; Watch the 47 minute intro</a>
+  <a href="https://effect-uai.com/intro/?play=1&ref=readme">&#9654; Watch the 47 minute intro</a>
 </p>
 
 ## Status
 
 While we're in `0.x`, minor releases may include breaking changes.
-Each one ships with a [migration guide](https://effect-uai.betalyra.com/migrations/)
+Each one ships with a [migration guide](https://effect-uai.com/migrations/)
 written in operator form ("if you see X, write Y"), so pointing Claude
 Code at the page makes upgrades mechanical.
 
@@ -178,18 +178,18 @@ shape; both are current, and recipes migrate as they're touched.
 
 ## Docs / learn
 
-Full docs: <https://effect-uai.betalyra.com>
+Full docs: <https://effect-uai.com>
 
-Prefer video? [Watch the 47 minute intro](https://effect-uai.betalyra.com/intro/?play=1&ref=readme) first.
+Prefer video? [Watch the 47 minute intro](https://effect-uai.com/intro/?play=1&ref=readme) first.
 
 Recommended reading order:
 
-1. [One turn is a stream](https://effect-uai.betalyra.com/start/getting-started/) - the smallest provider-agnostic primitive.
-2. [Basic usage](https://effect-uai.betalyra.com/recipes/basic-usage/) - the core agent harness: state, stream, tools, continuation.
-3. [The loop primitive](https://effect-uai.betalyra.com/language-models/loop/) - what `loop` is, its shape, and `streamUntilComplete`.
-4. [Items and turns](https://effect-uai.betalyra.com/language-models/items-and-turns/) - the conversation as a flat list, the assembled turn, the event stream.
-5. [Tools and toolkits](https://effect-uai.betalyra.com/language-models/tools/) - `Tool.make` (with progress via `emit`), `Toolkit.make`, approval planners, `ToolEvent`.
-6. [MCP](https://effect-uai.betalyra.com/language-models/mcp/) - point at an MCP server and its tools become a `Toolkit`.
+1. [One turn is a stream](https://effect-uai.com/start/getting-started/) - the smallest provider-agnostic primitive.
+2. [Basic usage](https://effect-uai.com/recipes/basic-usage/) - the core agent harness: state, stream, tools, continuation.
+3. [The loop primitive](https://effect-uai.com/language-models/loop/) - what `loop` is, its shape, and `streamUntilComplete`.
+4. [Items and turns](https://effect-uai.com/language-models/items-and-turns/) - the conversation as a flat list, the assembled turn, the event stream.
+5. [Tools and toolkits](https://effect-uai.com/language-models/tools/) - `Tool.make` (with progress via `emit`), `Toolkit.make`, approval planners, `ToolEvent`.
+6. [MCP](https://effect-uai.com/language-models/mcp/) - point at an MCP server and its tools become a `Toolkit`.
 
 Then dip into recipes for whatever pattern you need.
 

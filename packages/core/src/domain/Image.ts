@@ -28,7 +28,7 @@ export type ImageMimeType =
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
 
-const ImageMimeTypeSchema = Schema.String as unknown as Schema.Schema<ImageMimeType>
+const ImageMimeTypeSchema: Schema.Codec<ImageMimeType> = Schema.String
 
 export type ImageUrlSource = MediaUrl<ImageMimeType>
 export type ImageBase64Source = MediaBase64<ImageMimeType>
@@ -45,7 +45,7 @@ export type ImageSource = MediaSource<ImageMimeType>
 
 export const ImageUrlSource = Schema.TaggedStruct("url", {
   url: Schema.String,
-  mimeType: Schema.optional(ImageMimeTypeSchema),
+  mimeType: Schema.optionalKey(ImageMimeTypeSchema),
 })
 
 export const ImageBase64Source = Schema.TaggedStruct("base64", {
@@ -58,11 +58,11 @@ export const ImageBytesSource = Schema.TaggedStruct("bytes", {
   mimeType: ImageMimeTypeSchema,
 })
 
-export const ImageSource: Schema.Schema<ImageSource> = Schema.Union([
+export const ImageSource: Schema.Codec<ImageSource> = Schema.Union([
   ImageUrlSource,
   ImageBase64Source,
   ImageBytesSource,
-]) as unknown as Schema.Schema<ImageSource>
+])
 
 export const imageUrl = (url: string, mimeType?: ImageMimeType): ImageUrlSource =>
   mimeType !== undefined ? { _tag: "url", url, mimeType } : { _tag: "url", url }

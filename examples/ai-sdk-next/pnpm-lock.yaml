@@ -33,8 +33,8 @@ importers:
         specifier: ^7.0
         version: 7.0.14(zod@4.4.3)
       effect:
-        specifier: link:../../node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect
-        version: link:../../node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect
+        specifier: link:../../node_modules/.pnpm/effect@4.1.2/node_modules/effect
+        version: link:../../node_modules/.pnpm/effect@4.1.2/node_modules/effect
       next:
         specifier: ^16.2
         version: 16.2.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

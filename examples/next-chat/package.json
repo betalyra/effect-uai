@@ -1,5 +1,5 @@
 {
-  "name": "effect-uai-ai-sdk-next-example",
+  "name": "effect-uai-next-chat-example",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,6 +16,8 @@
     "@effect-uai/core": "link:../../packages/core",
     "@effect-uai/google": "link:../../packages/providers/google",
     "@effect-uai/responses": "link:../../packages/providers/responses",
+    "@effect-uai/ui": "link:../../packages/ui",
+    "@effect/atom-react": "4.1.2",
     "@tailwindcss/postcss": "^4",
     "ai": "^7.0",
     "effect": "link:../../node_modules/.pnpm/effect@4.1.2/node_modules/effect",

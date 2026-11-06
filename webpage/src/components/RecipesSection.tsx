@@ -11,6 +11,7 @@ import {
   PiPhoneTransfer,
   PiBrowser,
   PiChartLineUp,
+  PiChatCircle,
   PiChatCircleDots,
   PiChatsCircle,
   PiClockCounterClockwise,
@@ -70,6 +71,7 @@ type Category =
   | "sandboxes"
   | "browser"
   | "messenger"
+  | "ui"
 
 interface Recipe {
   readonly title: string
@@ -96,6 +98,7 @@ const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "sandboxes",
   "browser",
   "messenger",
+  "ui",
 ]
 
 const CATEGORY_LABEL: Record<Category, string> = {
@@ -114,6 +117,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   sandboxes: "Sandboxes",
   browser: "Browser",
   messenger: "Messenger",
+  ui: "Agentic UI",
 }
 
 const CATEGORY_ICON: Record<Category, IconType> = {
@@ -132,6 +136,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   sandboxes: PiCube,
   browser: PiBrowser,
   messenger: PiChatsCircle,
+  ui: PiChatCircleDots,
 }
 
 const recipes: ReadonlyArray<Recipe> = [
@@ -389,6 +394,22 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/messenger-agent/",
     Icon: PiAt,
     category: "messenger",
+  },
+  {
+    title: "Direct chat",
+    description:
+      "**A chat page in one route.** Each message is one request; the answer streams back, the server keeps the history.",
+    href: "/recipes/direct-chat/",
+    Icon: PiChatCircle,
+    category: "ui",
+  },
+  {
+    title: "Durable chat",
+    description:
+      "**Reload mid-answer, lose nothing.** The answer keeps going on the server, messages queue, Stop is a button.",
+    href: "/recipes/durable-chat/",
+    Icon: PiArrowsClockwise,
+    category: "ui",
   },
 ]
 

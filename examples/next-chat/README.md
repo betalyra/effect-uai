@@ -1,14 +1,25 @@
-# effect-uai + AI SDK (Next.js)
+# effect-uai + Next.js
 
-A Next.js App Router chat app whose frontend is the stock `@ai-sdk/react`
-`useChat` client, served by an effect-uai backend instead of `streamText`. The
-point of the example is the one file that changes when you migrate:
-[`app/api/chat/route.ts`](app/api/chat/route.ts).
+One Next.js app, the same tools, two ways to put a chat in front of them:
 
-That one file also shows what effect-uai gives you around the model:
+- **`/`: keep `useChat`.** The stock `@ai-sdk/react` client, served by an
+  effect-uai loop instead of `streamText`. Only the route handler changes:
+  [`app/api/chat/route.ts`](app/api/chat/route.ts).
+- **`/ui`: `@effect-uai/ui`.** The server keeps the history, the page sends
+  only the new message, and tool results arrive typed (a `Date` is a `Date`):
+  [`lib/ui-server.ts`](lib/ui-server.ts) (an Effect `HttpRouter` route served
+  through `HttpRouter.toWebHandler`), [`lib/ui-chat.ts`](lib/ui-chat.ts) (the
+  atoms) and [`app/ui/page.tsx`](app/ui/page.tsx).
 
-- an **agentic tool loop** (a keyless [Open-Meteo](https://open-meteo.com)
-  weather tool) rendered as tool cards on the client;
+Both build their tools from [`lib/chat-ui.ts`](lib/chat-ui.ts), Schemas only,
+so the browser can import them.
+
+## `/`: the `useChat` route
+
+The route also shows what effect-uai gives you around the model:
+
+- an **agentic tool loop** (weather from keyless [Open-Meteo](https://open-meteo.com),
+  and the date) rendered as tool cards on the client;
 - **realistic model fallback** (primary → secondary on retryable failures);
 - **live throughput metrics** (tok/s + time-to-first-token) streamed as AI SDK
   `data-metrics` parts, with settled token usage as message metadata;
@@ -16,9 +27,9 @@ That one file also shows what effect-uai gives you around the model:
   request, and effect-uai interrupts the loop and drops the provider call.
 
 The frontend consumes all of it through stock `useChat` features (`message.parts`,
-`onData`, `message.metadata`, `stop()`) — no effect-uai on the client.
+`onData`, `message.metadata`, `stop()`), with no effect-uai on the client.
 
-## The only file that changes
+### The only file that changes
 
 A typical AI SDK route handler:
 
@@ -55,6 +66,26 @@ return new Response(body, { headers: UIMessageStream.responseHeaders })
 `useChat` hook, the same message `parts`. Swapping the backend does not touch
 the frontend.
 
+## `/ui`: the `@effect-uai/ui` page
+
+The Next.js route is one line; the server is a plain Effect route:
+
+```ts
+// app/api/ui/chat/route.ts
+export const POST = (request: Request) => handler(request)
+
+// lib/ui-server.ts
+export const { handler } = HttpRouter.toWebHandler(ChatRoute.pipe(Layer.provide(...)))
+```
+
+The page reads `Atoms.thread` with `@effect/atom-react`. With
+`contract: ChatUi`, narrowing a tool block by name gives the tool's own types:
+
+```tsx
+if (block.name === "get_weather" && block.output !== undefined)
+  block.output.observedAt.toLocaleTimeString() // a Date, decoded on arrival
+```
+
 ## Run it
 
 This example is fully isolated: it has its own pnpm workspace root, so a
@@ -66,13 +97,14 @@ local packages once, then install and run from this folder:
 pnpm build
 
 # from this folder
-cd examples/ai-sdk-next
+cd examples/next-chat
 cp .env.example .env   # add your LLM_API_KEY
 pnpm install
 pnpm dev
 ```
 
-Open http://localhost:3000 and chat.
+Open http://localhost:3000 for `useChat`, http://localhost:3000/ui for
+`@effect-uai/ui`.
 
 ### Choosing a provider
 

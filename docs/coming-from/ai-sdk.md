@@ -156,6 +156,23 @@ the server. Cancellation is the client's existing `stop()`, which aborts the
 request and, through structured concurrency, tears down the loop and drops the
 provider call. None of this adds effect-uai to the browser.
 
+## When `useChat` stops being enough
+
+Keep `useChat` while it works. Move the frontend to
+[`@effect-uai/ui`](/agentic-ui/) when you hit one of these:
+
+| You want                                       | `useChat`                                    | `@effect-uai/ui`                                     |
+| ---------------------------------------------- | -------------------------------------------- | ---------------------------------------------------- |
+| Tool results typed in the browser             | generic `UIMessage` types; dates are strings | a shared `UiContract`; a `Date` arrives as a `Date` |
+| History on the server                         | sends the whole history by default           | the client sends the new message only               |
+| An answer that survives a reload              | `resume` plus your own stream store          | `Transport.sessionHttp`, replay from the last `seq` |
+| Messages sent mid-answer                      | one request at a time                        | queued, answered together                           |
+| State outside React (FoldKit, Vue, plain DOM) | one hook per framework                       | pure folds and `effect/reactivity` atoms            |
+
+`useObject` maps to object blocks in a run (`partial` while streaming,
+`value` when done); a contract types `value`. [Next.js](/agentic-ui/nextjs/)
+shows both approaches in one app.
+
 ## The rest of the AI SDK
 
 The compat layer on this page exists because the chat UI is a wire protocol you
@@ -182,7 +199,9 @@ row.
 
 ## A full example
 
-[`examples/ai-sdk-next`](https://github.com/betalyra/effect-uai/tree/main/examples/ai-sdk-next)
+[`examples/next-chat`](https://github.com/betalyra/effect-uai/tree/main/examples/next-chat)
 is a Next.js app that does exactly this: a stock `useChat` frontend and one
 effect-uai route with a tool loop, model fallback, live metrics, and a working
-Stop button. Its README has the line-by-line diff for the handler.
+Stop button. Its README has the line-by-line diff for the handler. The same
+app has a second page on `@effect-uai/ui` with the same tools, so you can
+compare both; see [Next.js](/agentic-ui/nextjs/).

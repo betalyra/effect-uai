@@ -69,8 +69,8 @@ const serve = (inputId: InputId) => {
     ),
     Projection.toRunEvents(),
     Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
-    Run.complete,
     Run.start({ runId: RunId.make("r1"), inputs: [inputId] }),
+    Run.complete,
     Run.sequence(StreamId.make("st_1")),
     SseEncoding.encode,
   )

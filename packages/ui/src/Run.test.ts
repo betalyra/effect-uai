@@ -13,8 +13,8 @@ describe("Run frame", () => {
   const frame = <E>(body: Stream.Stream<RunEvent, E>) =>
     body.pipe(
       Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
-      Run.complete,
       Run.start({ runId: r1, inputs: [InputId.make("in_1")] }),
+      Run.complete,
     )
 
   it.effect("brackets a successful body with run-started and run-completed", () =>

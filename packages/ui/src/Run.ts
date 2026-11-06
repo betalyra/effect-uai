@@ -7,8 +7,8 @@
  *     Run.coalesce("30 millis"),
  *     Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
  *     Run.stopWhen(Deferred.await(stop)), // durable runs
- *     Run.complete,
  *     Run.start({ runId, inputs }),
+ *     Run.complete,
  *     Run.sequence(streamId),
  *   )
  *

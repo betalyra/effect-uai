@@ -203,8 +203,19 @@ the source; don't rebuild core's `dist` before the codecs handle it).
    `tool-result` carries `name`, `object-done` an optional `name`; tool errors
    are a block's `error`, an object's stream is `partial`. Typed tool output
    comes from a shared spec's `outputSchema` (core `Tool` types only input).
-4. **Next:** docs section "Agentic UI" (with the server-owned-history hint),
-   `docs/coming-from`, and the skill update.
+4. ~~**Review refactor**~~ done. Policy out of the library: `Run.withTerminal`
+   split into `start` / `complete` / `stopWhen` / `failed`; no `retryable`,
+   `messageId`, `ToolUi`, `barge-in`, `Thread.toHistory`, `RunView.objects`.
+   Effect primitives over our own: `SseEncoding` on `effect/encoding/Sse`,
+   NDJSON on `Ndjson`, `HttpRouter.toWebHandler` in TanStack, `SynchronizedRef`
+   for durable `seq`, `Ref<HashMap>` chat stores. `SecureRandom` comes from
+   the atom runtime. Renames: `Atoms.sessionThread`, `Transport.Durable`,
+   `Thread.Config.toUser`. Examples share a `UiContract` with `get_date` /
+   `get_weather`.
+5. ~~**Docs**~~ done: `docs/agentic-ui`, a `useChat` comparison in
+   `docs/coming-from/ai-sdk.md`, skill, landing card and recipe cards.
+6. **Open:** core emits `{"not":{"type":"null"}}` for a tool with
+   `Schema.Struct({})` input, which OpenAI rejects; fix in `Tool` or document.
 
 ## Roadmap
 

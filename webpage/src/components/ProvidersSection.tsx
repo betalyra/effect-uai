@@ -1,30 +1,45 @@
+import type { IconType } from "react-icons"
 import { PiArrowRight } from "react-icons/pi"
+import { RiOpenaiFill, RiSlackFill } from "react-icons/ri"
+import {
+  SiAnthropic,
+  SiDeno,
+  SiDiscord,
+  SiElevenlabs,
+  SiGooglegemini,
+  SiMistralai,
+  SiPerplexity,
+  SiTelegram,
+} from "react-icons/si"
 
 interface Provider {
   readonly name: string
   readonly href: string
+  /** The brand mark, where an icon set has one. */
+  readonly Icon?: IconType
 }
 
+// Best known first.
 const providers: ReadonlyArray<Provider> = [
-  { name: "OpenAI", href: "/providers/responses/" },
-  { name: "Anthropic", href: "/providers/anthropic/" },
-  { name: "Google", href: "/providers/gemini/" },
-  { name: "Mistral", href: "/providers/mistral/" },
+  { name: "OpenAI", href: "/providers/responses/", Icon: RiOpenaiFill },
+  { name: "Anthropic", href: "/providers/anthropic/", Icon: SiAnthropic },
+  { name: "Google", href: "/providers/gemini/", Icon: SiGooglegemini },
+  { name: "Mistral", href: "/providers/mistral/", Icon: SiMistralai },
+  { name: "Slack", href: "/messenger/providers/slack/", Icon: RiSlackFill },
+  { name: "Discord", href: "/messenger/providers/discord/", Icon: SiDiscord },
+  { name: "Telegram", href: "/messenger/providers/telegram/", Icon: SiTelegram },
+  { name: "Perplexity", href: "/search/providers/perplexity/", Icon: SiPerplexity },
+  { name: "ElevenLabs", href: "/speech/providers/elevenlabs/", Icon: SiElevenlabs },
+  { name: "Deno", href: "/sandboxes/providers/deno/", Icon: SiDeno },
   { name: "Fal", href: "/image-generation/providers/fal/" },
-  { name: "ElevenLabs", href: "/speech/providers/elevenlabs/" },
-  { name: "Inworld", href: "/speech/providers/inworld/" },
-  { name: "Jina", href: "/embeddings/providers/jina/" },
-  { name: "TypeSafe AI", href: "/decisions/providers/typesafe-ai/" },
-  { name: "Perplexity", href: "/search/providers/perplexity/" },
+  { name: "Firecrawl", href: "/web-reading/providers/firecrawl/" },
   { name: "Exa", href: "/search/providers/exa/" },
   { name: "Tavily", href: "/search/providers/tavily/" },
-  { name: "Firecrawl", href: "/web-reading/providers/firecrawl/" },
+  { name: "Jina", href: "/embeddings/providers/jina/" },
+  { name: "Inworld", href: "/speech/providers/inworld/" },
   { name: "Microsandbox", href: "/sandboxes/providers/microsandbox/" },
-  { name: "Deno", href: "/sandboxes/providers/deno/" },
+  { name: "TypeSafe AI", href: "/decisions/providers/typesafe-ai/" },
   { name: "CDP", href: "/browser/providers/cdp/" },
-  { name: "Telegram", href: "/messenger/providers/telegram/" },
-  { name: "Discord", href: "/messenger/providers/discord/" },
-  { name: "Slack", href: "/messenger/providers/slack/" },
 ]
 
 export default function ProvidersSection() {
@@ -49,12 +64,13 @@ export default function ProvidersSection() {
       </div>
 
       <div className="flex flex-wrap gap-2.5">
-        {providers.map(({ name, href }) => (
+        {providers.map(({ name, href, Icon }) => (
           <a
             key={name}
             href={href}
-            className="rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-foreground no-underline transition-colors outline-none hover:border-(--color-mark) hover:text-(--color-mark) focus-visible:ring-1 focus-visible:ring-(--color-border) focus-visible:ring-offset-2 focus-visible:ring-offset-(--sl-color-bg) hover:focus-visible:ring-(--color-mark)"
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-foreground no-underline transition-colors outline-none hover:border-(--color-mark) hover:text-(--color-mark) focus-visible:ring-1 focus-visible:ring-(--color-border) focus-visible:ring-offset-2 focus-visible:ring-offset-(--sl-color-bg) hover:focus-visible:ring-(--color-mark)"
           >
+            {Icon !== undefined && <Icon className="h-3.5 w-3.5" aria-hidden />}
             {name}
           </a>
         ))}

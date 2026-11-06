@@ -150,6 +150,8 @@ export const withTerminal =
 
 const merge = (a: RunEvent, b: RunEvent): RunEvent | undefined => {
   if (a.type === "text-delta" && b.type === "text-delta") return { ...a, text: a.text + b.text }
+  if (a.type === "refusal-delta" && b.type === "refusal-delta")
+    return { ...a, text: a.text + b.text }
   if (a.type === "reasoning-delta" && b.type === "reasoning-delta" && a.kind === b.kind) {
     return { ...a, text: a.text + b.text }
   }

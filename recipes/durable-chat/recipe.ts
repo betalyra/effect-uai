@@ -62,12 +62,8 @@ export const makeChats = <E, R>(
 
     const find = (chatId: StreamId) =>
       Ref.get(chats).pipe(
-        Effect.flatMap((m) =>
-          Option.match(Option.fromNullishOr(m.get(chatId)), {
-            onNone: () => Effect.fail(new ChatNotFound({ chatId })),
-            onSome: Effect.succeed,
-          }),
-        ),
+        Effect.flatMap((m) => Effect.fromOption(Option.fromNullishOr(m.get(chatId)))),
+        Effect.mapError(() => new ChatNotFound({ chatId })),
       )
 
     // One run answers a batch: every message that queued up while the chat was busy.
@@ -143,14 +139,14 @@ export const makeChats = <E, R>(
 
     /**
      * Queue a message, creating the chat when `chatId` is `None`. The input is
-     * echoed on the chat's stream right away (stream-scoped `data "input"`),
+     * echoed on the chat's stream right away (`input-accepted`, stream-scoped),
      * so a reloaded page shows it even while it waits; its run follows.
      */
     const send = (chatId: Option.Option<StreamId>, input: Input.Submit) =>
       Effect.gen(function* () {
         const chat = yield* Option.match(chatId, { onNone: () => create, onSome: find })
         const value = yield* encodeInput(input)
-        yield* chat.publish({ type: "data", name: "input", value })
+        yield* chat.publish({ type: "input-accepted", input: value })
         yield* Queue.offer(chat.inbox, input)
         return chat.id
       })

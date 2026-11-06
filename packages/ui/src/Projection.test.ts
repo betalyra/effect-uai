@@ -87,4 +87,21 @@ describe("Projection.toRunEvents", () => {
         ])
       }),
   )
+
+  it.effect("projects a refusal as refusal-delta, not as text", () =>
+    Stream.make(
+      Turn.TurnEvent.RefusalDelta({ text: "I can't help with that." }),
+      Turn.TurnEvent.TurnComplete({ turn: { stop_reason: "refusal", usage, items: [] } }),
+    ).pipe(
+      Projection.toRunEvents(),
+      Stream.runCollect,
+      Effect.map((events) =>
+        expect(events).toEqual<ReadonlyArray<RunEvent>>([
+          { type: "step-started" },
+          { type: "refusal-delta", text: "I can't help with that." },
+          { type: "step-finished", usage },
+        ]),
+      ),
+    ),
+  )
 })

@@ -6,7 +6,7 @@ import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import { describe, it } from "@effect/vitest"
-import { Effect, pipe, Schema, Stream } from "effect"
+import { Effect, Option, pipe, Schema, Stream } from "effect"
 import { expect } from "vitest"
 import * as Encoding from "./Encoding.js"
 import * as Input from "./Input.js"
@@ -89,8 +89,8 @@ describe("Thread over the wire", () => {
       expect(thread.active).toBeNull()
       expect(thread.messages.map((m) => m.role)).toEqual(["user", "assistant"])
       const assistant = thread.messages[1]
-      expect(assistant?.role === "assistant" && assistant.run.status).toBe("completed")
-      expect(assistant?.role === "assistant" && assistant.run.usage).toEqual({
+      expect(assistant?.role === "assistant" && assistant.value.status).toBe("completed")
+      expect(assistant?.role === "assistant" && assistant.value.usage).toEqual({
         input_tokens: 10,
         output_tokens: 10,
       })
@@ -184,14 +184,56 @@ describe("Thread across streams", () => {
     ].reduce(Thread.step, queued)
     expect(done.pending).toEqual([])
     expect(
-      done.messages.map((m) => (m.role === "user" ? Input.text(m) : RunView.text(m.run))),
+      done.messages.map((m) => (m.role === "user" ? Input.text(m.value) : RunView.text(m.value))),
     ).toEqual(["first", "a", "second", "b"])
+  })
+
+  it("a custom fold rebuilds the conversation from the stream alone (reload): echoes become entries", () => {
+    // Entries as plain text instead of the preset's messages / RunView.
+    const text = Thread.make({
+      user: (input: Input.Submit) => Option.some(Input.text(input)),
+      settle: RunView.text,
+      decodeInput: Schema.decodeUnknownOption(Input.SubmitJson),
+    })
+    const s = StreamId.make("chat")
+    const r = RunId.make("r1")
+    const echo = Schema.encodeSync(Input.SubmitJson)({
+      ...Input.submit("hi"),
+      id: InputId.make("in_1"),
+    })
+    const frames: ReadonlyArray<Envelope> = [
+      { streamId: s, seq: 1, event: { type: "input-accepted", input: echo } },
+      {
+        streamId: s,
+        seq: 2,
+        runId: r,
+        event: {
+          type: "run-started",
+          runId: r,
+          messageId: "m1",
+          inputs: [InputId.make("in_1")],
+          protocol: 1,
+        },
+      },
+      { streamId: s, seq: 3, runId: r, event: { type: "text-delta", text: "Hello" } },
+      { streamId: s, seq: 4, runId: r, event: { type: "run-completed" } },
+    ]
+
+    const afterEcho = text.step(text.initial, frames[0]!)
+    expect(afterEcho.pending.map((m) => m.value)).toEqual(["hi"])
+
+    const done = frames.reduce(text.step, text.initial)
+    expect(done.pending).toEqual([])
+    expect(done.messages.map((m) => [m.role, m.value])).toEqual([
+      ["user", "hi"],
+      ["assistant", "Hello"],
+    ])
   })
 
   it("does not mistake a later run on a new stream for a replay", () => {
     const thread = [...run("a", "first"), ...run("b", "second")].reduce(Thread.step, Thread.initial)
-    expect(thread.messages.map((m) => (m.role === "assistant" ? RunView.text(m.run) : ""))).toEqual(
-      ["first", "second"],
-    )
+    expect(
+      thread.messages.map((m) => (m.role === "assistant" ? RunView.text(m.value) : "")),
+    ).toEqual(["first", "second"])
   })
 })

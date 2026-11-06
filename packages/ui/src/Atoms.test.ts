@@ -53,7 +53,7 @@ describe("Atoms.thread", () => {
 
         expect(thread.active).toBeNull()
         const assistant = thread.messages[1]
-        expect(assistant?.role === "assistant" && assistant.run.status).toBe("completed")
+        expect(assistant?.role === "assistant" && assistant.value.status).toBe("completed")
       }),
   )
 
@@ -75,7 +75,7 @@ describe("Atoms.thread", () => {
       const thread = registry.get(chat.state)
       const assistant = thread.messages[1]
       expect(thread.active).toBeNull()
-      expect(assistant?.role === "assistant" && assistant.run.status).toBe("stopped")
+      expect(assistant?.role === "assistant" && assistant.value.status).toBe("stopped")
     }),
   )
 
@@ -95,9 +95,9 @@ describe("Atoms.thread", () => {
       yield* finished(registry, chat.submit)
 
       const thread = registry.get(chat.state)
-      expect(thread.messages.flatMap((m) => (m.role === "user" ? [Input.text(m)] : []))).toEqual([
-        "first",
-      ])
+      expect(
+        thread.messages.flatMap((m) => (m.role === "user" ? [Input.text(m.value)] : [])),
+      ).toEqual(["first"])
       expect(thread.active?.status).toBe("streaming")
     }),
   )

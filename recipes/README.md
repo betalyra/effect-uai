@@ -63,6 +63,8 @@ across every capability.
   polling fiber resolves a `Deferred` the loop awaits.
 - [`modify-output-stream/`](./modify-output-stream/) - keep the loop
   transport-agnostic; project typed turn events into SSE or JSONL at the edge.
+- [`direct-chat/`](./direct-chat/) - a chat page over `@effect-uai/ui`: one
+  request per message, the response is the answer, the server keeps the history.
 - [`durable-chat/`](./durable-chat/) - a chat that survives a page reload;
   answers keep going on the server, messages queue, and the browser re-opens
   the whole conversation.

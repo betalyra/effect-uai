@@ -74,6 +74,10 @@
       "types": "./dist/browser/BrowserTool.d.mts",
       "import": "./dist/browser/BrowserTool.mjs"
     },
+    "./File": {
+      "types": "./dist/domain/File.d.mts",
+      "import": "./dist/domain/File.mjs"
+    },
     "./Image": {
       "types": "./dist/domain/Image.d.mts",
       "import": "./dist/domain/Image.mjs"

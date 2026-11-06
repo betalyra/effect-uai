@@ -75,6 +75,8 @@ export const StepFinished = event("step-finished", { usage: Schema.optional(Item
 export const StepReset = event("step-reset", {})
 
 export const TextDelta = event("text-delta", { text: Schema.String })
+/** The model declined to answer; distinct from text (core's `refusal` block). */
+export const RefusalDelta = event("refusal-delta", { text: Schema.String })
 export const ReasoningStarted = event("reasoning-started", {})
 export const ReasoningDelta = event("reasoning-delta", {
   text: Schema.String,
@@ -169,6 +171,13 @@ export const Data = event("data", {
 /** Transient app payload (metrics, status); latest value wins, never stored in a message. */
 export const Live = event("live", { name: Schema.String, value: Schema.Unknown })
 
+/**
+ * Stream-scoped: the server accepted an input (queued or about to run). Lets a
+ * reloaded client show inputs that wait for their run. `input` is the app's
+ * encoded input (e.g. `Input.InputJson`); its run's `run-started` lists its id.
+ */
+export const InputAccepted = event("input-accepted", { input: Schema.Unknown })
+
 // ---------------------------------------------------------------------------
 // Unions and envelope
 // ---------------------------------------------------------------------------
@@ -186,6 +195,7 @@ export const RunEvent = Schema.Union([
   StepFinished,
   StepReset,
   TextDelta,
+  RefusalDelta,
   ReasoningStarted,
   ReasoningDelta,
   Citation,
@@ -203,6 +213,7 @@ export const RunEvent = Schema.Union([
   ToolCancelled,
   Usage,
   Data,
+  InputAccepted,
   Live,
 ])
 export type RunEvent = typeof RunEvent.Type

@@ -30,6 +30,8 @@ export type InputImage = typeof InputImage.Type
  * User-provided file: a document (PDF, text, docx), audio or video. The
  * `source` MIME type says which; provider codecs map it to their own file
  * part, and a provider that cannot read a type rejects the request.
+ *
+ * Not in `ContentBlock` yet: it joins once every provider codec encodes it.
  */
 export const InputFile = Schema.Struct({
   type: Schema.Literal("input_file"),
@@ -129,14 +131,7 @@ export const Refusal = Schema.Struct({
 })
 export type Refusal = typeof Refusal.Type
 
-export const ContentBlock = Schema.Union([
-  InputText,
-  InputImage,
-  InputFile,
-  OutputText,
-  OutputImage,
-  Refusal,
-])
+export const ContentBlock = Schema.Union([InputText, InputImage, OutputText, OutputImage, Refusal])
 export type ContentBlock = typeof ContentBlock.Type
 
 export const Role = Schema.Literals(["user", "assistant", "system"])

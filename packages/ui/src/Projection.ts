@@ -9,10 +9,10 @@
  */
 import type * as Items from "@effect-uai/core/Items"
 import type * as ToolEvent from "@effect-uai/core/ToolEvent"
-import { ToolResult } from "@effect-uai/core/ToolResult"
+import { serializeValue, ToolResult } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
 import { Match, Option, Schema, Stream } from "effect"
-import type { RunEvent } from "./RunEvent.js"
+import type { Json, RunEvent } from "./RunEvent.js"
 
 /** What an effect-uai loop emits: turn events, tool events, and plain tool outputs. */
 export type Source = Turn.TurnEvent | ToolEvent.ToolEvent | Items.ToolCallOutput
@@ -28,23 +28,30 @@ export const Options = Schema.Struct({
 })
 export type Options = typeof Options.Type
 
-export const State = Schema.Struct({ inStep: Schema.Boolean, reasoningShown: Schema.Boolean })
+export const State = Schema.Struct({
+  inStep: Schema.Boolean,
+  reasoningShown: Schema.Boolean,
+  /** Tool names by call id, for outputs that arrive as plain `function_call_output` items. */
+  tools: Schema.Record(Schema.String, Schema.String),
+})
 export type State = typeof State.Type
 
-export const initial: State = { inStep: false, reasoningShown: false }
+export const initial: State = { inStep: false, reasoningShown: false, tools: {} }
 
 type Step = readonly [State, ReadonlyArray<RunEvent>]
 
 // Tool arguments and outputs cross effect-uai as JSON strings; hand the client
 // the decoded value, falling back to the raw string when it isn't JSON.
-const parseJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
-const decodeJson = (raw: string): unknown => Option.getOrElse(parseJson(raw), () => raw)
+const parseJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Json))
+const decodeJson = (raw: string): Json => Option.getOrElse(parseJson(raw), () => raw)
+// A tool's value as JSON, the way the model sees it (a `Date` becomes its ISO string).
+const toJson = (value: unknown): Json => decodeJson(serializeValue(value))
 
 // Content belongs to a step (one model turn); open one lazily on its first event.
 const inStep = (s: State, events: ReadonlyArray<RunEvent>): Step =>
   s.inStep
     ? [s, events]
-    : [{ inStep: true, reasoningShown: false }, [{ type: "step-started" }, ...events]]
+    : [{ ...s, inStep: true, reasoningShown: false }, [{ type: "step-started" }, ...events]]
 
 const reasoning =
   (options: Options | undefined) =>
@@ -62,14 +69,16 @@ const reasoning =
   }
 
 const turnComplete = (s: State, turn: Turn.Turn): Step => {
-  const ready = Turn.getToolCalls(turn).map((call): RunEvent => ({
+  const calls = Turn.getToolCalls(turn)
+  const ready = calls.map((call): RunEvent => ({
     type: "tool-call-ready",
     callId: call.call_id,
     name: call.name,
     input: decodeJson(call.arguments),
   }))
   const [, events] = inStep(s, [...ready, { type: "step-finished", usage: turn.usage }])
-  return [initial, events]
+  const tools = { ...s.tools, ...Object.fromEntries(calls.map((c) => [c.call_id, c.name])) }
+  return [{ ...initial, tools }, events]
 }
 
 const toolResult = (result: ToolResult): RunEvent =>
@@ -77,12 +86,14 @@ const toolResult = (result: ToolResult): RunEvent =>
     Ok: (ok): RunEvent => ({
       type: "tool-result",
       callId: ok.call_id,
-      output: ok.value,
+      name: ok.tool,
+      output: toJson(ok.value),
       isError: false,
     }),
     Failure: (f): RunEvent => ({
       type: "tool-result",
       callId: f.call_id,
+      name: f.tool,
       output: f.reason === undefined ? { kind: f.kind } : { kind: f.kind, reason: f.reason },
       isError: true,
     }),
@@ -95,7 +106,15 @@ export const step =
     Match.value(event).pipe(
       Match.when({ type: "function_call_output" }, (o): Step => [
         s,
-        [{ type: "tool-result", callId: o.call_id, output: decodeJson(o.output), isError: false }],
+        [
+          {
+            type: "tool-result",
+            callId: o.call_id,
+            name: s.tools[o.call_id] ?? "",
+            output: decodeJson(o.output),
+            isError: false,
+          },
+        ],
       ]),
       Match.tags({
         TextDelta: (e) => inStep(s, [{ type: "text-delta", text: e.text }]),
@@ -132,7 +151,10 @@ export const step =
             },
           ],
         ],
-        Progress: (e): Step => [s, [{ type: "tool-progress", callId: e.call_id, data: e.data }]],
+        Progress: (e): Step => [
+          s,
+          [{ type: "tool-progress", callId: e.call_id, data: toJson(e.data) }],
+        ],
         Output: (e): Step => [s, [toolResult(e.result)]],
       }),
       Match.exhaustive,

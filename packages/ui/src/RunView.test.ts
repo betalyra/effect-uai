@@ -50,7 +50,7 @@ describe("RunView.step", () => {
       id: "o1",
       name: "recipe",
       status: "streaming",
-      value: { title: "Nata", items: ["eggs", "sugar"] },
+      partial: { title: "Nata", items: ["eggs", "sugar"] },
     })
     expect(RunView.objects(view, "recipe", Recipe)).toEqual([
       { id: "o1", status: "streaming", value: undefined },
@@ -63,6 +63,7 @@ describe("RunView.step", () => {
       event: {
         type: "object-done",
         id: "o1",
+        name: "recipe",
         value: { title: "Pastéis de nata", items: ["eggs"] },
       },
     })

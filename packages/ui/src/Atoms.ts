@@ -1,7 +1,8 @@
 /**
  * Framework-neutral state over a transport, built on `effect/reactivity`.
- * `make` takes any fold (`initial` + `step`); `thread` is the `Thread`
- * preset. React reads them with `@effect/atom-react` (`useAtomValue`,
+ * Per-run transports: `make` takes any fold (`initial` + `step`), `thread`
+ * is the `Thread` preset. Session transports: `session` and
+ * `sessionThread`, likewise. React reads them with `@effect/atom-react` (`useAtomValue`,
  * `useAtomSet`), Vue and Solid with their official bindings, plain JS with
  * `AtomRegistry.subscribe`.
  *
@@ -9,7 +10,7 @@
  * state holds decoded payloads and is typed by the contract.
  */
 import { Effect, Exit, Option, type Schema, Stream } from "effect"
-import { SecureRandom } from "effect/crypto"
+import type { SecureRandom } from "effect/crypto"
 import { Atom } from "effect/reactivity"
 import * as Input from "./Input.js"
 import type { Envelope, Payloads, StreamId, Untyped } from "./RunEvent.js"
@@ -23,6 +24,13 @@ import type { UiContract } from "./UiContract.js"
  * the new one (in durable mode the server-side run keeps going).
  */
 export type Busy = "block" | "stop-then-submit"
+
+/**
+ * The atoms' runtime: the transport's services plus `SecureRandom` for
+ * input ids, e.g. `Atom.runtime(Layer.mergeAll(FetchHttpClient.layer,
+ * SecureRandom.layerWebCrypto))`. A test provides a seeded one.
+ */
+export type Runtime<R, ER> = Atom.AtomRuntime<R | SecureRandom.SecureRandom, ER>
 
 /** Turns a wire envelope into what `step` folds (a contract's `decode`). */
 export type Decode<D> = (envelope: Envelope) => Effect.Effect<D, Schema.SchemaError>
@@ -39,7 +47,7 @@ type WithDecode<D> = [Envelope] extends [D]
  * or a contract's decoded one (then pass `decode`).
  */
 type BaseOptions<I, S, E, R, ER, D> = {
-  readonly runtime: Atom.AtomRuntime<R, ER>
+  readonly runtime: Runtime<R, ER>
   readonly transport: Transport.Transport<Input.Sent<I>, S, E, R>
   readonly initial: S
   readonly step: (state: S, envelope: D) => S
@@ -89,9 +97,9 @@ const build = <I, S, E, R, ER, D>(
   const run = options.runtime
     .fn<Input.Sent<I>>()((input) =>
       Effect.gen(function* () {
-        const next = options.submitted?.(yield* Atom.get(state), input) ?? (yield* Atom.get(state))
-        yield* Atom.set(state, next)
-        yield* follow(options.transport.start(input, next))
+        const submitted = options.submitted
+        if (submitted !== undefined) yield* Atom.update(state, (s) => submitted(s, input))
+        yield* follow(options.transport.start(input, yield* Atom.get(state)))
       }),
     )
     .pipe(Atom.keepAlive)
@@ -103,7 +111,7 @@ const build = <I, S, E, R, ER, D>(
           const blocked =
             options.busy === "block" && options.isBusy?.(yield* Atom.get(state)) === true
           if (blocked) return
-          const input = yield* Input.withId(draft).pipe(Effect.provide(SecureRandom.layerWebCrypto))
+          const input = yield* Input.withId(draft)
           yield* Atom.set(run, input)
         }),
       { concurrent: true },
@@ -154,7 +162,7 @@ type Built<I, S, E, R, ER> = ReturnType<typeof build<I, S, E, R, ER, unknown>>
  */
 export function make<I, S, E, R, ER, D = Envelope>(
   options: Options<I, S, E, R, ER, D> & {
-    readonly transport: Transport.Resumable<Input.Sent<I>, S, E, R>
+    readonly transport: Transport.Durable<Input.Sent<I>, S, E, R>
   },
 ): Omit<Built<I, S, E, R, ER>, "resume"> & {
   readonly resume: NonNullable<Built<I, S, E, R, ER>["resume"]>
@@ -169,7 +177,7 @@ export function make<I, S, E, R, ER>(
 }
 
 type ThreadOptions<I, E, R, ER, P extends Payloads> = {
-  readonly runtime: Atom.AtomRuntime<R, ER>
+  readonly runtime: Runtime<R, ER>
   readonly transport: Transport.Transport<Input.Sent<I>, Thread.Thread<P>, E, R>
   readonly busy: Busy
   readonly initial?: Thread.Thread<P>
@@ -211,7 +219,7 @@ export function thread<I extends Input.Input, E, R, ER>(
 // ---------------------------------------------------------------------------
 
 type BaseSessionOptions<I, S, E, R, ER, D> = {
-  readonly runtime: Atom.AtomRuntime<R, ER>
+  readonly runtime: Runtime<R, ER>
   readonly transport: Transport.Session<Input.Sent<I>, S, E, R>
   readonly initial: S
   readonly step: (state: S, envelope: D) => S
@@ -268,13 +276,12 @@ const buildSession = <I, S, E, R, ER, D>(
       (draft) =>
         Effect.gen(function* () {
           if (options.isBusy?.(yield* Atom.get(state)) === true) return
-          const input = yield* Input.withId(draft).pipe(Effect.provide(SecureRandom.layerWebCrypto))
-          const current = yield* Atom.get(state)
-          const next = options.submitted?.(current, input) ?? current
-          yield* Atom.set(state, next)
-          const open_ = Option.fromNullishOr(yield* Atom.get(streamId))
-          const sent = yield* options.transport.send(open_, input, next)
-          if (Option.isNone(open_)) yield* Atom.set(open, sent.streamId)
+          const input = yield* Input.withId(draft)
+          const submitted = options.submitted
+          if (submitted !== undefined) yield* Atom.update(state, (s) => submitted(s, input))
+          const opened = Option.fromNullishOr(yield* Atom.get(streamId))
+          const sent = yield* options.transport.send(opened, input, yield* Atom.get(state))
+          if (Option.isNone(opened)) yield* Atom.set(open, sent)
         }).pipe(Effect.onExit(settle)),
       { concurrent: true },
     )
@@ -311,8 +318,8 @@ export function session<I, S, E, R, ER>(
   return buildSession({ ...options, decode: options.decode ?? identity })
 }
 
-type ChatOptions<I, E, R, ER, P extends Payloads> = {
-  readonly runtime: Atom.AtomRuntime<R, ER>
+type SessionThreadOptions<I, E, R, ER, P extends Payloads> = {
+  readonly runtime: Runtime<R, ER>
   readonly transport: Transport.Session<Input.Sent<I>, Thread.Thread<P>, E, R>
   readonly isBusy?: (thread: Thread.Thread<P>) => boolean
 }
@@ -324,15 +331,15 @@ type ChatOptions<I, E, R, ER, P extends Payloads> = {
  * `contract`, the state is typed by it. For other entry types, spread a
  * `Thread.make(config)` fold into `session`.
  */
-export function chat<I extends Input.Input, E, R, ER, P extends Payloads>(
-  options: ChatOptions<I, E, R, ER, P> & { readonly contract: UiContract<P> },
+export function sessionThread<I extends Input.Input, E, R, ER, P extends Payloads>(
+  options: SessionThreadOptions<I, E, R, ER, P> & { readonly contract: UiContract<P> },
 ): BuiltSession<I, Thread.Thread<P>, E, R, ER>
-export function chat<I extends Input.Input, E, R, ER>(
-  options: ChatOptions<I, E, R, ER, Untyped>,
+export function sessionThread<I extends Input.Input, E, R, ER>(
+  options: SessionThreadOptions<I, E, R, ER, Untyped>,
 ): BuiltSession<I, Thread.Thread, E, R, ER>
 // `any` for `P` in the implementation only, as in `thread`.
-export function chat<I extends Input.Input, E, R, ER>(
-  options: ChatOptions<I, E, R, ER, any> & { readonly contract?: UiContract<any> },
+export function sessionThread<I extends Input.Input, E, R, ER>(
+  options: SessionThreadOptions<I, E, R, ER, any> & { readonly contract?: UiContract<any> },
 ): BuiltSession<I, Thread.Thread<any>, E, R, ER> {
   const fold = Thread.presetFor<any>()
   return buildSession({

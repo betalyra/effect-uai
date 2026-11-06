@@ -1,5 +1,6 @@
 import { describe, it } from "@effect/vitest"
-import { Effect, Fiber, Layer, Option, PubSub, Ref, Stream } from "effect"
+import { Effect, Fiber, Option, PubSub, Ref, Stream } from "effect"
+import { SecureRandom } from "effect/crypto"
 import { Atom, AtomRegistry } from "effect/reactivity"
 import { expect } from "vitest"
 import * as Atoms from "./Atoms.js"
@@ -9,10 +10,10 @@ import { type Envelope, type InputId, RunId, type RunEvent, StreamId } from "./R
 import type * as Thread from "./Thread.js"
 import * as Transport from "./Transport.js"
 
-const runtime = Atom.runtime(Layer.empty)
+const runtime = Atom.runtime(SecureRandom.layerWebCrypto)
 
 const reply = (inputId: InputId): ReadonlyArray<RunEvent> => [
-  { type: "run-started", runId: RunId.make("r1"), messageId: "m1", inputs: [inputId], protocol: 1 },
+  { type: "run-started", runId: RunId.make("r1"), inputs: [inputId], protocol: 1 },
   { type: "text-delta", text: "Hello" },
   { type: "run-completed" },
 ]
@@ -119,7 +120,7 @@ const fakeSession = Effect.gen(function* () {
             ),
           ),
         ),
-        Effect.as({ streamId: chatId }),
+        Effect.as(chatId),
       ),
     events: (_, after) => Stream.fromPubSub(events).pipe(Stream.filter((e) => e.seq > after)),
   })
@@ -137,11 +138,11 @@ const settledCount = (
     Effect.map(Option.getOrThrow),
   )
 
-describe("Atoms.chat", () => {
+describe("Atoms.sessionThread", () => {
   it.effect("runs of one session land in one thread, and a new client re-opens all of them", () =>
     Effect.gen(function* () {
       const { chatId, transport } = yield* fakeSession
-      const chat = Atoms.chat({ runtime, transport })
+      const chat = Atoms.sessionThread({ runtime, transport })
       const registry = AtomRegistry.make()
 
       registry.set(chat.submit, Input.submit("first"))
@@ -152,7 +153,7 @@ describe("Atoms.chat", () => {
       expect(registry.get(chat.streamId)).toBe(chatId)
 
       // After a reload: the same session, replayed from the start.
-      const reloaded = Atoms.chat({ runtime, transport })
+      const reloaded = Atoms.sessionThread({ runtime, transport })
       const fresh = AtomRegistry.make()
       fresh.set(reloaded.open, chatId)
       const replayed = yield* settledCount(fresh, reloaded.state, 2)

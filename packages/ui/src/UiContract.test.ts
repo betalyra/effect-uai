@@ -1,12 +1,14 @@
 import * as Tool from "@effect-uai/core/Tool"
 import { describe, expectTypeOf, it } from "@effect/vitest"
-import { Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { Effect, Fiber, Option, Schema, Stream } from "effect"
+import { SecureRandom } from "effect/crypto"
 import { Atom, AtomRegistry } from "effect/reactivity"
 import { expect } from "vitest"
 import * as Atoms from "./Atoms.js"
 import * as Input from "./Input.js"
 import { type Envelope, type Json, RunId, type RunEvent, StreamId } from "./RunEvent.js"
 import * as RunView from "./RunView.js"
+import * as Thread from "./Thread.js"
 import * as Transport from "./Transport.js"
 import * as UiContract from "./UiContract.js"
 
@@ -21,6 +23,18 @@ const GetWeather = {
 const Metrics = Schema.Struct({ tokps: Schema.Number, at: Schema.Date })
 
 const ChatUi = UiContract.make({ tools: [GetWeather], live: { metrics: Metrics } })
+type ChatPayloads = UiContract.Payloads<typeof ChatUi>
+
+const initial: RunView.RunView<ChatPayloads> = {
+  inputs: [],
+  status: "idle",
+  blocks: [],
+  interrupts: [],
+  live: {},
+  lastSeq: 0,
+  stepStart: 0,
+  nextBlock: 0,
+}
 
 const at = new Date("2026-11-06T10:00:00.000Z")
 const s = StreamId.make("s1")
@@ -31,7 +45,7 @@ const wire = (events: ReadonlyArray<RunEvent>): ReadonlyArray<Envelope> =>
   events.map((event, i) => ({ streamId: s, seq: i + 1, runId: r1, event }))
 
 const weatherRun: ReadonlyArray<RunEvent> = [
-  { type: "run-started", runId: r1, messageId: "m1", inputs: [], protocol: 1 },
+  { type: "run-started", runId: r1, inputs: [], protocol: 1 },
   { type: "tool-call-ready", callId: "c1", name: "get_weather", input: { city: "Lisbon" } },
   {
     type: "tool-result",
@@ -46,7 +60,7 @@ const weatherRun: ReadonlyArray<RunEvent> = [
 
 const fold = (envelopes: ReadonlyArray<Envelope>) =>
   Effect.forEach(envelopes, ChatUi.decode).pipe(
-    Effect.map((decoded) => decoded.reduce(RunView.step, ChatUi.initial)),
+    Effect.map((decoded) => decoded.reduce(RunView.step, initial)),
   )
 
 describe("UiContract", () => {
@@ -149,25 +163,29 @@ describe("UiContract", () => {
   it.effect("the Thread schema encodes a typed state back to JSON", () =>
     Effect.gen(function* () {
       const view = yield* fold(wire(weatherRun))
-      const state = { ...ChatUi.thread.initial, active: view }
+      const state = { ...Thread.presetFor<ChatPayloads>().initial, active: view }
       const encoded = yield* Schema.encodeEffect(Schema.toCodecJson(ChatUi.Thread))(state)
       expect(JSON.stringify(encoded)).toContain(at.toISOString())
     }),
   )
 
-  it("accepts a core Tool: its input is typed, its output stays JSON", () => {
-    const tool = Tool.make({
-      ...GetWeather,
-      run: () => Effect.succeed({ temperatureC: 1, observedAt: at }),
-    })
-    type Block = Extract<
-      RunView.Block<UiContract.PayloadsOf<{ tools: [typeof tool] }>>,
-      { type: "tool" }
-    >
-    expectTypeOf<Block["input"]>().toEqualTypeOf<{ readonly city: string } | undefined>()
-    expectTypeOf<Block["output"]>().toEqualTypeOf<Json | undefined>()
-    expect(UiContract.make({ tools: [tool] }).initial.blocks).toEqual([])
-  })
+  it.effect("accepts a core Tool: its input is typed, its output stays JSON", () =>
+    Effect.gen(function* () {
+      const tool = Tool.make({
+        ...GetWeather,
+        run: () => Effect.succeed({ temperatureC: 1, observedAt: at }),
+      })
+      type Block = Extract<
+        RunView.Block<UiContract.PayloadsOf<{ tools: [typeof tool] }>>,
+        { type: "tool" }
+      >
+      expectTypeOf<Block["input"]>().toEqualTypeOf<{ readonly city: string } | undefined>()
+      expectTypeOf<Block["output"]>().toEqualTypeOf<Json | undefined>()
+      const [, ready] = wire(weatherRun)
+      const decoded = yield* UiContract.make({ tools: [tool] }).decode(ready!)
+      expect(decoded.event).toMatchObject({ name: "get_weather", input: { city: "Lisbon" } })
+    }),
+  )
 })
 
 describe("Atoms with a contract", () => {
@@ -175,7 +193,7 @@ describe("Atoms with a contract", () => {
     Effect.gen(function* () {
       const chat = Atoms.thread({
         contract: ChatUi,
-        runtime: Atom.runtime(Layer.empty),
+        runtime: Atom.runtime(SecureRandom.layerWebCrypto),
         busy: "block",
         transport: Transport.local(() =>
           Stream.fromIterable(weatherRun).pipe(Stream.tap(() => Effect.yieldNow)),

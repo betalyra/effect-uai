@@ -15,7 +15,6 @@ const fold = (events: ReadonlyArray<RunEvent>): RunView.RunView =>
 const started: RunEvent = {
   type: "run-started",
   runId: r1,
-  messageId: "m1",
   inputs: [],
   protocol: 1,
 }
@@ -36,7 +35,6 @@ describe("RunView.step", () => {
   })
 
   it("builds an object from patches, survives a bad patch, and settles on done", () => {
-    const Recipe = Schema.Struct({ title: Schema.String, items: Schema.Array(Schema.String) })
     const view = fold([
       started,
       { type: "object-started", id: "o1", name: "recipe" },
@@ -52,10 +50,6 @@ describe("RunView.step", () => {
       status: "streaming",
       partial: { title: "Nata", items: ["eggs", "sugar"] },
     })
-    expect(RunView.objects(view, "recipe", Recipe)).toEqual([
-      { id: "o1", status: "streaming", value: undefined },
-    ])
-
     const done = RunView.step(view, {
       streamId: s,
       seq: 100,
@@ -67,9 +61,14 @@ describe("RunView.step", () => {
         value: { title: "Pastéis de nata", items: ["eggs"] },
       },
     })
-    expect(RunView.objects(done, "recipe", Recipe)).toEqual([
-      { id: "o1", status: "done", value: { title: "Pastéis de nata", items: ["eggs"] } },
-    ])
+    expect(done.blocks).toContainEqual({
+      type: "object",
+      id: "o1",
+      name: "recipe",
+      status: "done",
+      partial: { title: "Nata", items: ["eggs", "sugar"] },
+      value: { title: "Pastéis de nata", items: ["eggs"] },
+    })
   })
 
   it("attaches citations to the text they cite, as core output_text annotations", () => {

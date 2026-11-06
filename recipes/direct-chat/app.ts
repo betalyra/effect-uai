@@ -7,12 +7,11 @@
  *   POST /chat   { chatId?, input }      → SSE: the run (no chatId: a new chat)
  */
 import { type LanguageModel, streamTurn } from "@effect-uai/core/LanguageModel"
-import * as SSE from "@effect-uai/core/SSE"
 import { flagValue } from "@effect-uai/recipe-kit/argv"
 import { bundleClient } from "@effect-uai/recipe-kit/bundle"
-import * as Encoding from "@effect-uai/ui/Encoding"
 import * as Input from "@effect-uai/ui/Input"
 import { StreamId } from "@effect-uai/ui/RunEvent"
+import * as SseEncoding from "@effect-uai/ui/SseEncoding"
 import { Effect, FileSystem, Layer, Option, Path, Schema, Stdio, Stream } from "effect"
 import { SecureRandom } from "effect/crypto"
 import * as HttpRouter from "effect/http/HttpRouter"
@@ -33,12 +32,9 @@ const server = (model: string, page: { readonly html: string; readonly js: strin
     const chat = HttpServerRequest.schemaBodyJson(ChatBody).pipe(
       Effect.flatMap(({ chatId, input }) => chats.send(Option.fromNullishOr(chatId), input)),
       Effect.map((run) =>
-        HttpServerResponse.stream(
-          run.pipe(Stream.provideContext(context), Encoding.toSSE, SSE.toBytes),
-          {
-            headers: { ...Encoding.responseHeaders, "x-accel-buffering": "no" },
-          },
-        ),
+        HttpServerResponse.stream(run.pipe(Stream.provideContext(context), SseEncoding.encode), {
+          headers: { ...SseEncoding.responseHeaders, "x-accel-buffering": "no" },
+        }),
       ),
       Effect.catchTag("ChatNotFound", () =>
         Effect.succeed(HttpServerResponse.empty({ status: 404 })),

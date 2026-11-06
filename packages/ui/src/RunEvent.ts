@@ -39,7 +39,6 @@ export const RunStarted = event("run-started", {
   runId: RunId,
   /** Role of the run when a stream carries several, e.g. "assistant", "reviewer". */
   name: Schema.optional(Schema.String),
-  messageId: Schema.String,
   /** Client input ids this run consumed, for optimistic-UI reconciliation. */
   inputs: Schema.Array(InputId),
   protocol: Schema.Literal(PROTOCOL_VERSION),
@@ -55,14 +54,12 @@ export const Interrupt = Schema.Struct({
 
 export const RunCompleted = event("run-completed", { metadata: Schema.optional(Schema.Json) })
 export const RunInterrupted = event("run-interrupted", { interrupts: Schema.Array(Interrupt) })
+/** `reason` is a short code (an error's `_tag`); whether to offer a retry is the client's call. */
 export const RunFailed = event("run-failed", {
   reason: Schema.String,
-  retryable: Schema.Boolean,
   message: Schema.optional(Schema.String),
 })
-export const RunStopped = event("run-stopped", {
-  by: Schema.optional(Schema.Literals(["user", "barge-in"])),
-})
+export const RunStopped = event("run-stopped", {})
 
 // ---------------------------------------------------------------------------
 // Steps (one per model turn) and content
@@ -129,9 +126,6 @@ export const ObjectFailed = event("object-failed", {
 // Tools
 // ---------------------------------------------------------------------------
 
-/** Reference to tool-provided UI (MCP Apps). Reserved; unused in v1. */
-export const ToolUi = Schema.Struct({ server: Schema.String, resourceUri: Schema.String })
-
 export const ToolCallStarted = event("tool-call-started", {
   callId: Schema.String,
   name: Schema.String,
@@ -144,7 +138,6 @@ export const ToolCallReady = event("tool-call-ready", {
   callId: Schema.String,
   name: Schema.String,
   input: Schema.Json,
-  ui: Schema.optional(ToolUi),
 })
 /** The run is waiting in-process for a decision on this call (it keeps running). */
 export const ToolApprovalRequested = event("tool-approval-requested", {
@@ -160,7 +153,6 @@ export const ToolResult = event("tool-result", {
   name: Schema.String,
   output: Schema.Json,
   isError: Schema.Boolean,
-  ui: Schema.optional(ToolUi),
 })
 export const ToolCancelled = event("tool-cancelled", { callIds: Schema.Array(Schema.String) })
 
@@ -273,7 +265,6 @@ export type Untyped = {
 }
 
 type Plain = (typeof plainEvents)[number]["Type"]
-type ToolUi = typeof ToolUi.Type
 
 export type Interrupt<P extends Payloads = Untyped> = {
   readonly callId: string
@@ -296,7 +287,6 @@ type Typed<P extends Payloads> =
       readonly callId: string
       readonly name: P["tool"]["name"]
       readonly input: P["tool"]["input"]
-      readonly ui?: ToolUi | undefined
     }
   | {
       readonly type: "tool-approval-requested"
@@ -310,7 +300,6 @@ type Typed<P extends Payloads> =
       readonly name: P["tool"]["name"]
       readonly isError: false
       readonly output: P["tool"]["output"]
-      readonly ui?: ToolUi | undefined
     }
   | {
       readonly type: "tool-result"
@@ -318,7 +307,6 @@ type Typed<P extends Payloads> =
       readonly name: string
       readonly isError: true
       readonly output: Json
-      readonly ui?: ToolUi | undefined
     }
   | {
       readonly type: "data"

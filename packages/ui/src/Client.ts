@@ -4,12 +4,11 @@
  * any of them. HTTP goes through `effect/http`'s `HttpClient`, so a browser
  * provides `FetchHttpClient.layer` and tests provide a fake client.
  */
-import * as JSONL from "@effect-uai/core/JSONL"
-import * as SSE from "@effect-uai/core/SSE"
 import { Data, Effect, Ref, type Schedule, type Schema, Stream } from "effect"
+import { Ndjson, type Sse } from "effect/encoding"
 import { HttpClient, type HttpClientError, type HttpClientRequest } from "effect/http"
-import * as Encoding from "./Encoding.js"
 import { type Envelope, EnvelopeJson, isTerminal } from "./RunEvent.js"
+import * as SseEncoding from "./SseEncoding.js"
 
 /** The connection ended before the run's terminal event arrived. */
 export class Disconnected extends Data.TaggedError("Disconnected")<{ readonly lastSeq: number }> {}
@@ -18,24 +17,26 @@ export class Disconnected extends Data.TaggedError("Disconnected")<{ readonly la
 export type ClientError =
   | HttpClientError.HttpClientError
   | Schema.SchemaError
-  | JSONL.JsonParseError
+  | Sse.Retry
+  | Sse.SseError
+  | Ndjson.NdjsonError
 
-const responseBody = (request: HttpClientRequest.HttpClientRequest) =>
-  Stream.unwrap(
-    HttpClient.HttpClient.pipe(
-      Effect.map(HttpClient.filterStatusOk),
-      Effect.flatMap((client) => client.execute(request)),
-      Effect.map((response) => response.stream),
-    ),
+/** Run a request, failing on a non-2xx status. */
+export const execute = (request: HttpClientRequest.HttpClientRequest) =>
+  HttpClient.HttpClient.pipe(
+    Effect.flatMap((client) => HttpClient.filterStatusOk(client).execute(request)),
   )
+
+const body = (request: HttpClientRequest.HttpClientRequest) =>
+  Stream.unwrap(Effect.map(execute(request), (response) => response.stream))
 
 /** An SSE response (`text/event-stream`) as envelopes. */
 export const sse = (request: HttpClientRequest.HttpClientRequest) =>
-  responseBody(request).pipe(SSE.fromBytes, Encoding.fromSSE)
+  body(request).pipe(SseEncoding.decode)
 
 /** An NDJSON response (one envelope per line) as envelopes. */
 export const ndjson = (request: HttpClientRequest.HttpClientRequest) =>
-  responseBody(request).pipe(JSONL.fromBytes, JSONL.parse(EnvelopeJson))
+  body(request).pipe(Stream.pipeThroughChannelOrFail(Ndjson.decodeSchema(EnvelopeJson)()))
 
 /**
  * Keep events flowing across dropped connections: `connect(after)` is
@@ -57,27 +58,27 @@ export const resumable = <E, R, X>(
 ): Stream.Stream<Envelope, E | Disconnected, R> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const last = yield* Ref.make(options.from ?? 0)
-      const done = yield* Ref.make(false)
       const untilTerminal = options.until !== "never"
+      const ends = (envelope: Envelope) => untilTerminal && isTerminal(envelope.event)
+      // The last seen seq, and whether the run's terminal arrived.
+      const position = yield* Ref.make({ seq: options.from ?? 0, done: false })
       const attempt = Stream.unwrap(
-        Ref.get(last).pipe(
-          Effect.map((after) =>
+        Ref.get(position).pipe(
+          Effect.map(({ seq: after }) =>
             connect(after).pipe(
               Stream.filterEffect((envelope) =>
-                Ref.modify(last, (seq) =>
-                  envelope.seq > seq ? [true, envelope.seq] : [false, seq],
+                Ref.modify(position, (p) =>
+                  envelope.seq > p.seq
+                    ? [true, { seq: envelope.seq, done: ends(envelope) }]
+                    : [false, p],
                 ),
               ),
-              Stream.takeUntil((envelope) => untilTerminal && isTerminal(envelope.event)),
-              Stream.tap((envelope) =>
-                untilTerminal && isTerminal(envelope.event) ? Ref.set(done, true) : Effect.void,
-              ),
+              Stream.takeUntil(ends),
               Stream.concat(
                 Stream.unwrap(
-                  Effect.all([Ref.get(done), Ref.get(last)]).pipe(
-                    Effect.map(([isDone, seq]) =>
-                      isDone ? Stream.empty : Stream.fail(new Disconnected({ lastSeq: seq })),
+                  Ref.get(position).pipe(
+                    Effect.map((p) =>
+                      p.done ? Stream.empty : Stream.fail(new Disconnected({ lastSeq: p.seq })),
                     ),
                   ),
                 ),

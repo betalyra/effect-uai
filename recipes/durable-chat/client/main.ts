@@ -7,13 +7,15 @@
  * up an answer that is still streaming.
  */
 import * as Atoms from "@effect-uai/ui/Atoms"
+import * as Client from "@effect-uai/ui/Client"
 import * as Input from "@effect-uai/ui/Input"
 import { StreamId } from "@effect-uai/ui/RunEvent"
 import * as RunView from "@effect-uai/ui/RunView"
 import type * as Thread from "@effect-uai/ui/Thread"
 import * as Transport from "@effect-uai/ui/Transport"
-import { Option, Schema } from "effect"
-import { FetchHttpClient, HttpClientRequest } from "effect/http"
+import { Effect, Layer, Option, Schedule, Schema } from "effect"
+import { SecureRandom } from "effect/crypto"
+import { FetchHttpClient, HttpClientRequest, HttpIncomingMessage } from "effect/http"
 import { Atom, AtomRegistry } from "effect/reactivity"
 
 // A module, not a script: recipe clients would otherwise share one global scope.
@@ -26,6 +28,7 @@ const STORAGE_KEY = "durable-chat:chat"
 // ---------------------------------------------------------------------------
 
 const SendBody = Schema.Struct({ chatId: Schema.optionalKey(StreamId), input: Input.SubmitJson })
+const SendResponse = Schema.Struct({ chatId: StreamId })
 
 const transport = Transport.sessionHttp({
   // No chat id: the server starts a chat and answers `{ chatId }`.
@@ -37,13 +40,20 @@ const transport = Transport.sessionHttp({
           onSome: (id) => ({ chatId: id, input }),
         }),
       ),
+      Effect.flatMap(Client.execute),
+      Effect.flatMap(HttpIncomingMessage.schemaBodyJson(SendResponse)),
+      Effect.map((response) => response.chatId),
     ),
-  idField: "chatId",
   events: (chatId, after) => HttpClientRequest.get(`/chats/${chatId}/events?after=${after}`),
   stop: (chatId) => HttpClientRequest.post(`/chats/${chatId}/stop`),
+  // The chat's stream never ends on its own: keep reconnecting.
+  reconnect: Schedule.spaced("1 second"),
 })
 
-const chat = Atoms.chat({ runtime: Atom.runtime(FetchHttpClient.layer), transport })
+const chat = Atoms.sessionThread({
+  runtime: Atom.runtime(Layer.mergeAll(FetchHttpClient.layer, SecureRandom.layerWebCrypto)),
+  transport,
+})
 
 // ---------------------------------------------------------------------------
 // DOM

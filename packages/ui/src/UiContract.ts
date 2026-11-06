@@ -25,7 +25,7 @@
 import type { ToolInputSchema } from "@effect-uai/core/Tool"
 import { Effect, Schema } from "effect"
 import * as Event from "./RunEvent.js"
-import type { Envelope, Json, Payloads, RunEvent } from "./RunEvent.js"
+import type { Envelope, Json, Payloads as AnyPayloads, RunEvent } from "./RunEvent.js"
 import * as RunView from "./RunView.js"
 import * as Thread from "./Thread.js"
 
@@ -77,7 +77,13 @@ type NameOf<T> = T extends { readonly name: infer N } ? N : never
 type ValueOf<T, N> =
   Extract<T, { readonly name: N }> extends { readonly value: infer V } ? V : never
 
-export interface UiContract<P extends Payloads> {
+/**
+ * A contract's payload types, for the generic folds:
+ * `Thread.presetFor<UiContract.Payloads<typeof ChatUi>>()`.
+ */
+export type Payloads<C> = C extends UiContract<infer P> ? P : never
+
+export interface UiContract<P extends AnyPayloads> {
   /** Decode a wire envelope (as `Client` reads it) into a typed one. */
   decode(envelope: Envelope): Effect.Effect<Envelope<P>, Schema.SchemaError>
   /** Typed envelope ⇄ wire envelope. */
@@ -86,9 +92,6 @@ export interface UiContract<P extends Payloads> {
   readonly RunView: Schema.Codec<RunView.RunView<P>, RunView.RunView>
   /** A typed `Thread` ⇄ the untyped one. */
   readonly Thread: Schema.Codec<Thread.Thread<P>, Thread.Thread>
-  readonly initial: RunView.RunView<P>
-  /** The `Thread` preset typed by this contract (what `Atoms.thread` / `Atoms.chat` use). */
-  readonly thread: Thread.Fold<Thread.PresetInput, Thread.UserContent, RunView.RunView<P>, P>
   /** Server: a `data` event with its value encoded for the wire. */
   data<N extends NameOf<P["data"]>>(
     name: N,
@@ -140,8 +143,6 @@ type Loose = {
   readonly Envelope: Schema.Top
   readonly RunView: Schema.Top
   readonly Thread: Schema.Top
-  readonly initial: unknown
-  readonly thread: unknown
   data(
     name: string,
     value: unknown,
@@ -259,8 +260,6 @@ export function make(spec: Spec): Loose {
     Envelope: envelope,
     RunView: view,
     Thread: Thread.State(Thread.UserContent, view, view),
-    initial: RunView.initial,
-    thread: Thread.presetFor<Payloads>(),
     data: (name, value, options) =>
       encode(codecOf(data, name), value).pipe(
         Effect.map((encoded): RunEvent =>

@@ -1,6 +1,5 @@
 import type * as Items from "@effect-uai/core/Items"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
-import * as SSE from "@effect-uai/core/SSE"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
@@ -8,12 +7,12 @@ import * as Turn from "@effect-uai/core/Turn"
 import { describe, it } from "@effect/vitest"
 import { Effect, Option, pipe, Schema, Stream } from "effect"
 import { expect } from "vitest"
-import * as Encoding from "./Encoding.js"
 import * as Input from "./Input.js"
 import * as Projection from "./Projection.js"
 import * as Run from "./Run.js"
 import { type Envelope, InputId, RunId, type RunEvent, StreamId } from "./RunEvent.js"
 import * as RunView from "./RunView.js"
+import * as SseEncoding from "./SseEncoding.js"
 import * as Thread from "./Thread.js"
 
 const getWeather = Tool.make({
@@ -69,15 +68,16 @@ const serve = (inputId: InputId) => {
       ),
     ),
     Projection.toRunEvents(),
-    Run.withTerminal({ runId: RunId.make("r1"), inputs: [inputId] }),
+    Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
+    Run.complete,
+    Run.start({ runId: RunId.make("r1"), inputs: [inputId] }),
     Run.sequence(StreamId.make("st_1")),
-    Encoding.toSSE,
-    SSE.toBytes,
+    SseEncoding.encode,
   )
 }
 
 const receive = (bytes: Stream.Stream<Uint8Array, Schema.SchemaError>) =>
-  bytes.pipe(SSE.fromBytes, Encoding.fromSSE, Stream.runCollect)
+  bytes.pipe(SseEncoding.decode, Stream.runCollect)
 
 describe("Thread over the wire", () => {
   it.effect("folds a served tool run into a settled assistant message", () =>
@@ -94,24 +94,16 @@ describe("Thread over the wire", () => {
         input_tokens: 10,
         output_tokens: 10,
       })
-      expect(Thread.toHistory(thread.messages)).toEqual([
+      expect(assistant?.role === "assistant" && assistant.value.blocks).toMatchObject([
         {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text: "Weather in Lisbon?" }],
-        },
-        {
-          type: "function_call",
-          call_id: "c1",
+          type: "tool",
+          id: "c1",
           name: "get_weather",
-          arguments: `{"city":"Lisbon"}`,
+          status: "done",
+          input: { city: "Lisbon" },
+          output: { city: "Lisbon", temperatureC: 19.4 },
         },
-        {
-          type: "function_call_output",
-          call_id: "c1",
-          output: `{"city":"Lisbon","temperatureC":19.4}`,
-        },
-        { type: "message", role: "assistant", content: [{ type: "output_text", text: "19°C." }] },
+        { type: "output_text", text: "19°C." },
       ])
     }),
   )
@@ -137,7 +129,6 @@ describe("Thread across streams", () => {
         {
           type: "run-started",
           runId: RunId.make(stream),
-          messageId: stream,
           inputs: [],
           protocol: 1,
         },
@@ -164,7 +155,6 @@ describe("Thread across streams", () => {
     const started = (runId: string, input: InputId): RunEvent => ({
       type: "run-started",
       runId: RunId.make(runId),
-      messageId: runId,
       inputs: [input],
       protocol: 1,
     })
@@ -191,7 +181,7 @@ describe("Thread across streams", () => {
   it("a custom fold rebuilds the conversation from the stream alone (reload): echoes become entries", () => {
     // Entries as plain text instead of the preset's messages / RunView.
     const text = Thread.make({
-      user: (input: Input.Submit) => Option.some(Input.text(input)),
+      toUser: (input: Input.Submit) => Option.some(Input.text(input)),
       settle: RunView.text,
       decodeInput: Schema.decodeUnknownOption(Input.SubmitJson),
     })
@@ -210,7 +200,6 @@ describe("Thread across streams", () => {
         event: {
           type: "run-started",
           runId: r,
-          messageId: "m1",
           inputs: [InputId.make("in_1")],
           protocol: 1,
         },

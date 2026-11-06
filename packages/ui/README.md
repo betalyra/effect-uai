@@ -33,7 +33,7 @@ Wire:
 const ChatUi = UiContract.make({ tools: [GetWeather], live: { metrics: Metrics } })
 
 // server
-yield* ChatUi.live("metrics", { tokps: 42 })
+yield * ChatUi.live("metrics", { tokps: 42 })
 
 // client: `chat.state` is typed by the contract
 const chat = Atoms.thread({ contract: ChatUi, runtime, transport, busy: "block" })

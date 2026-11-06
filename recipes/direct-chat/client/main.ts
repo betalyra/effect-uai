@@ -12,7 +12,8 @@ import { StreamId } from "@effect-uai/ui/RunEvent"
 import * as RunView from "@effect-uai/ui/RunView"
 import type * as Thread from "@effect-uai/ui/Thread"
 import * as Transport from "@effect-uai/ui/Transport"
-import { Schema } from "effect"
+import { Layer, Schema } from "effect"
+import { SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClientRequest } from "effect/http"
 import { Atom, AtomRegistry } from "effect/reactivity"
 
@@ -36,7 +37,7 @@ const transport = Transport.direct({
 })
 
 const chat = Atoms.thread({
-  runtime: Atom.runtime(FetchHttpClient.layer),
+  runtime: Atom.runtime(Layer.mergeAll(FetchHttpClient.layer, SecureRandom.layerWebCrypto)),
   transport,
   busy: "block",
 })

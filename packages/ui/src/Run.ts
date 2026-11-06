@@ -1,18 +1,23 @@
 /**
- * Server-side stream helpers for runs, piped like the metrics helpers:
+ * Server-side stream operators for runs. Each does one thing; a run pipes
+ * the ones it needs:
  *
  *   agent(history).pipe(
  *     Projection.toRunEvents(),
- *     Run.coalesce("50 millis"),
- *     Run.withTerminal({ runId, inputs }),
+ *     Run.coalesce("30 millis"),
+ *     Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
+ *     Run.stopWhen(Deferred.await(stop)), // durable runs
+ *     Run.complete,
+ *     Run.start({ runId, inputs }),
  *     Run.sequence(streamId),
  *   )
  *
- * Direct-mode stop needs no helper: `Stream.toReadableStream(body, { signal:
- * request.signal })` and Effect's `HttpServer` interrupt the stream when the
- * client goes away.
+ * In this order they keep the protocol's rule: `run-started` first, exactly
+ * one terminal last. Direct mode needs no stop: when the client goes away,
+ * the server interrupts the stream (Effect's `HttpServer`, or
+ * `HttpRouter.toWebHandler` behind a framework's route).
  */
-import { Array as Arr, Cause, Effect, Predicate, Ref, Schema, Stream } from "effect"
+import { Array as Arr, Cause, Effect, Predicate, Schema, Stream } from "effect"
 import type * as Duration from "effect/Duration"
 import {
   type Envelope,
@@ -23,6 +28,67 @@ import {
   type RunEvent,
   type StreamId,
 } from "./RunEvent.js"
+
+// ---------------------------------------------------------------------------
+// A run's frame: start, stop, failure, completion
+// ---------------------------------------------------------------------------
+
+export type StartOptions = {
+  readonly runId: RunId
+  /** Client input ids the run answers. */
+  readonly inputs?: ReadonlyArray<InputId>
+  /** Role label when a stream carries several kinds of run. */
+  readonly name?: string
+}
+
+/** Prepend `run-started`. */
+export const start =
+  (options: StartOptions) =>
+  <E, R>(self: Stream.Stream<RunEvent, E, R>): Stream.Stream<RunEvent, E, R> => {
+    const started: RunEvent = {
+      type: "run-started",
+      runId: options.runId,
+      inputs: options.inputs ?? [],
+      protocol: PROTOCOL_VERSION,
+      ...(options.name !== undefined ? { name: options.name } : {}),
+    }
+    return Stream.make(started).pipe(Stream.concat(self))
+  }
+
+/** End the run at its first terminal; append `run-completed` if it ends without one. */
+export const complete = <E, R>(
+  self: Stream.Stream<RunEvent, E, R>,
+): Stream.Stream<RunEvent, E, R> =>
+  self.pipe(
+    Stream.takeUntil(isTerminal),
+    Stream.mapAccum(
+      () => false,
+      (ended, event): readonly [boolean, ReadonlyArray<RunEvent>] => [
+        ended || isTerminal(event),
+        [event],
+      ],
+      { onHalt: (ended): ReadonlyArray<RunEvent> => (ended ? [] : [{ type: "run-completed" }]) },
+    ),
+  )
+
+/** End the run with `run-stopped` when `signal` completes (e.g. a stop `Deferred`). */
+export const stopWhen =
+  (signal: Effect.Effect<void>) =>
+  <E, R>(self: Stream.Stream<RunEvent, E, R>): Stream.Stream<RunEvent, E, R> =>
+    self.pipe(
+      Stream.merge(Stream.fromEffect(Effect.as(signal, { type: "run-stopped" } as const)), {
+        haltStrategy: "left",
+      }),
+      Stream.takeUntil((event) => event.type === "run-stopped"),
+    )
+
+/** A `run-failed` for a failed stream: `reason` is the error's `_tag`, else `"internal"`. */
+export const failed = (cause: Cause.Cause<unknown>): RunEvent => {
+  const error = Cause.squash(cause)
+  const reason =
+    Predicate.hasProperty(error, "_tag") && Predicate.isString(error._tag) ? error._tag : "internal"
+  return { type: "run-failed", reason }
+}
 
 // ---------------------------------------------------------------------------
 // sequence
@@ -55,93 +121,6 @@ export const sequence =
   <E, R>(self: Stream.Stream<RunEvent, E, R>): Stream.Stream<Envelope, E, R> =>
     self.pipe(
       Stream.mapAccum((): SequenceState => ({ seq: options?.from ?? 0 }), sequenceStep(streamId)),
-    )
-
-// ---------------------------------------------------------------------------
-// withTerminal
-// ---------------------------------------------------------------------------
-
-export type RunOptions = {
-  readonly runId: RunId
-  readonly messageId?: string
-  /** Client input ids the run consumes. */
-  readonly inputs?: ReadonlyArray<InputId>
-  /** Role label when a stream carries several runs. */
-  readonly name?: string
-  /** When this completes, the run ends with `run-stopped` (e.g. a durable run's stop `Deferred`). */
-  readonly stopWhen?: Effect.Effect<void>
-}
-
-// Transient provider failures (`AiError` tags) a client may retry.
-const RETRYABLE: ReadonlySet<string> = new Set(["RateLimited", "Unavailable", "Timeout"])
-
-const failed = (cause: Cause.Cause<unknown>): RunEvent => {
-  const error = Cause.squash(cause)
-  const tag =
-    Predicate.hasProperty(error, "_tag") && typeof error._tag === "string" ? error._tag : undefined
-  return {
-    type: "run-failed",
-    reason: tag ?? "internal",
-    retryable: tag !== undefined && RETRYABLE.has(tag),
-  }
-}
-
-/**
- * Bracket a run: `run-started` first, then the body, then exactly one
- * terminal on every exit path. The body's own terminal (e.g.
- * `run-interrupted`) wins and ends the run; otherwise success emits
- * `run-completed`, `stopWhen` emits `run-stopped`, interruption emits
- * `run-stopped`, and a failure emits `run-failed` (the error is absorbed).
- */
-export const withTerminal =
-  (options: RunOptions) =>
-  <E, R>(self: Stream.Stream<RunEvent, E, R>): Stream.Stream<RunEvent, never, R> =>
-    Stream.unwrap(
-      Effect.gen(function* () {
-        const ended = yield* Ref.make(false)
-        const stopped = yield* Ref.make(false)
-        const started: RunEvent = {
-          type: "run-started",
-          runId: options.runId,
-          messageId: options.messageId ?? options.runId,
-          inputs: options.inputs ?? [],
-          protocol: PROTOCOL_VERSION,
-          ...(options.name !== undefined ? { name: options.name } : {}),
-        }
-        const watched = self.pipe(
-          Stream.takeUntil(isTerminal),
-          Stream.tap((event) => (isTerminal(event) ? Ref.set(ended, true) : Effect.void)),
-        )
-        const stoppable =
-          options.stopWhen === undefined
-            ? watched
-            : watched.pipe(
-                Stream.interruptWhen(options.stopWhen.pipe(Effect.andThen(Ref.set(stopped, true)))),
-              )
-        const body = stoppable.pipe(
-          Stream.catchCause((cause) =>
-            Stream.fromEffect(
-              Ref.set(ended, true).pipe(
-                Effect.as<RunEvent>(
-                  Cause.hasInterruptsOnly(cause) ? { type: "run-stopped" } : failed(cause),
-                ),
-              ),
-            ),
-          ),
-        )
-        const terminal = Stream.unwrap(
-          Effect.all([Ref.get(ended), Ref.get(stopped)]).pipe(
-            Effect.map(([isEnded, isStopped]) =>
-              isEnded
-                ? Stream.empty
-                : Stream.succeed<RunEvent>(
-                    isStopped ? { type: "run-stopped", by: "user" } : { type: "run-completed" },
-                  ),
-            ),
-          ),
-        )
-        return Stream.succeed(started).pipe(Stream.concat(body), Stream.concat(terminal))
-      }),
     )
 
 // ---------------------------------------------------------------------------

@@ -4,10 +4,26 @@
  * `Stream.runFold` (final state). `step` is pure, total and idempotent on
  * `seq`, so replaying a stream from any point is safe. A delta replaces only
  * the block it touches; every other block keeps its identity.
+ *
+ * `P` types the payloads (see `UiContract`): with a contract, a tool block
+ * narrows by `name` to its decoded input and output. Without one (`Untyped`),
+ * payloads are the JSON the server sent.
  */
 import * as Items from "@effect-uai/core/Items"
 import { Array as Arr, JsonPatch, Match, Option, Predicate, Schema } from "effect"
-import { type Envelope, InputId, Interrupt, RunId, type RunEvent } from "./RunEvent.js"
+import {
+  type Envelope,
+  InputId,
+  Interrupt as InterruptSchema,
+  type Interrupt,
+  type Json,
+  type NamedPayload,
+  type Payloads,
+  RunId,
+  type RunEvent,
+  type ToolPayload,
+  type Untyped,
+} from "./RunEvent.js"
 
 // ---------------------------------------------------------------------------
 // Data
@@ -24,6 +40,9 @@ export const ToolStatus = Schema.Literals([
   "cancelled",
 ])
 export type ToolStatus = typeof ToolStatus.Type
+
+export const ObjectStatus = Schema.Literals(["streaming", "done", "failed"])
+export type ObjectStatus = typeof ObjectStatus.Type
 
 // Settled content reuses core's shapes (plus a block `id`), so a view's text,
 // citations, images and refusals read like the turn's own content blocks.
@@ -43,45 +62,81 @@ const ReasoningBlock = Schema.Struct({
   id: Schema.String,
   text: Schema.String,
 })
-/** `id` is the tool call id. */
-const ToolBlock = Schema.Struct({
-  type: Schema.Literal("tool"),
-  id: Schema.String,
-  name: Schema.String,
-  status: ToolStatus,
-  input: Schema.optionalKey(Schema.Unknown),
-  argsText: Schema.optionalKey(Schema.String),
-  output: Schema.optionalKey(Schema.Unknown),
-  progress: Schema.Array(Schema.Unknown),
-})
-const ObjectBlock = Schema.Struct({
-  type: Schema.Literal("object"),
-  id: Schema.String,
-  name: Schema.optionalKey(Schema.String),
-  status: Schema.Literals(["streaming", "done", "failed"]),
-  value: Schema.optionalKey(Schema.Unknown),
-  issues: Schema.optionalKey(Schema.Array(Schema.Unknown)),
-})
-const DataBlock = Schema.Struct({
-  type: Schema.Literal("data"),
-  id: Schema.String,
-  name: Schema.String,
-  value: Schema.Unknown,
-})
 
-export const Block = Schema.Union([
-  TextBlock,
-  RefusalBlock,
-  ImageBlock,
-  ReasoningBlock,
-  ToolBlock,
-  ObjectBlock,
-  DataBlock,
-])
-export type Block = typeof Block.Type
 export type TextBlock = typeof TextBlock.Type
-export type ToolBlock = typeof ToolBlock.Type
-export type ObjectBlock = typeof ObjectBlock.Type
+export type RefusalBlock = typeof RefusalBlock.Type
+export type ImageBlock = typeof ImageBlock.Type
+export type ReasoningBlock = typeof ReasoningBlock.Type
+
+/** A tool call; `id` is the call id. `error` is set when the tool failed or was denied. */
+export type ToolBlock<P extends Payloads = Untyped> = P["tool"] extends infer T
+  ? T extends ToolPayload
+    ? {
+        readonly type: "tool"
+        readonly id: string
+        readonly name: T["name"]
+        readonly status: ToolStatus
+        readonly input?: T["input"]
+        readonly argsText?: string
+        readonly output?: T["output"]
+        readonly error?: Json
+        readonly progress: ReadonlyArray<Json>
+      }
+    : never
+  : never
+
+type UnnamedObject = {
+  readonly type: "object"
+  readonly id: string
+  readonly name?: undefined
+  readonly status: ObjectStatus
+  readonly partial?: Json
+  readonly value?: Json
+  readonly issues?: ReadonlyArray<Json>
+}
+
+/** A structured object: `partial` while it streams, the typed `value` once done. */
+export type ObjectBlock<P extends Payloads = Untyped> =
+  | UnnamedObject
+  | (P["object"] extends infer T
+      ? T extends NamedPayload
+        ? {
+            readonly type: "object"
+            readonly id: string
+            readonly name: T["name"]
+            readonly status: ObjectStatus
+            readonly partial?: Json
+            readonly value?: T["value"]
+            readonly issues?: ReadonlyArray<Json>
+          }
+        : never
+      : never)
+
+/** A persisted app payload; a repeated id replaces it in place. */
+export type DataBlock<P extends Payloads = Untyped> = P["data"] extends infer T
+  ? T extends NamedPayload
+    ? {
+        readonly type: "data"
+        readonly id: string
+        readonly name: T["name"]
+        readonly value: T["value"]
+      }
+    : never
+  : never
+
+export type Block<P extends Payloads = Untyped> =
+  | TextBlock
+  | RefusalBlock
+  | ImageBlock
+  | ReasoningBlock
+  | ToolBlock<P>
+  | ObjectBlock<P>
+  | DataBlock<P>
+
+/** Transient payloads by name; the latest value wins. A contract's names are optional keys. */
+export type Live<P extends Payloads = Untyped> = string extends P["live"]["name"]
+  ? { readonly [name: string]: P["live"]["value"] }
+  : { readonly [T in P["live"] as T["name"]]?: T["value"] }
 
 export const Status = Schema.Literals([
   "idle",
@@ -94,33 +149,125 @@ export const Status = Schema.Literals([
 ])
 export type Status = typeof Status.Type
 
-export const RunView = Schema.Struct({
-  runId: Schema.optionalKey(RunId),
-  name: Schema.optionalKey(Schema.String),
-  messageId: Schema.optionalKey(Schema.String),
-  inputs: Schema.Array(InputId),
-  status: Status,
-  blocks: Schema.Array(Block),
-  interrupts: Schema.Array(Interrupt),
-  /** Transient payloads by name; latest value wins. */
-  live: Schema.Record(Schema.String, Schema.Unknown),
-  usage: Schema.optionalKey(Items.Usage),
-  metadata: Schema.optionalKey(Schema.Unknown),
-  error: Schema.optionalKey(
-    Schema.Struct({
-      reason: Schema.String,
-      retryable: Schema.Boolean,
-      message: Schema.optionalKey(Schema.String),
-    }),
-  ),
-  /** Highest applied `seq`; envelopes at or below it are ignored. */
-  lastSeq: Schema.Number,
-  /** Index of the current step's first block (for `step-reset`). */
-  stepStart: Schema.Number,
-  nextBlock: Schema.Number,
+const RunError = Schema.Struct({
+  reason: Schema.String,
+  retryable: Schema.Boolean,
+  message: Schema.optionalKey(Schema.String),
 })
-export type RunView = typeof RunView.Type
 
+export type RunView<P extends Payloads = Untyped> = {
+  readonly runId?: RunId
+  readonly name?: string
+  readonly messageId?: string
+  readonly inputs: ReadonlyArray<InputId>
+  readonly status: Status
+  readonly blocks: ReadonlyArray<Block<P>>
+  readonly interrupts: ReadonlyArray<Interrupt<P>>
+  readonly live: Live<P>
+  readonly usage?: Items.Usage
+  readonly metadata?: P["metadata"]
+  readonly error?: typeof RunError.Type
+  /** Highest applied `seq`; envelopes at or below it are ignored. */
+  readonly lastSeq: number
+  /** Index of the current step's first block (for `step-reset`). */
+  readonly stepStart: number
+  readonly nextBlock: number
+}
+
+// ---------------------------------------------------------------------------
+// Schemas: built from payload codecs, so `UiContract` builds the typed ones
+// ---------------------------------------------------------------------------
+
+/** Block schemas for one tool, object or data name; `UiContract` makes one per name. */
+export const toolBlock = <N extends Schema.Top, I extends Schema.Top, O extends Schema.Top>(
+  name: N,
+  input: I,
+  output: O,
+) =>
+  Schema.Struct({
+    type: Schema.Literal("tool"),
+    id: Schema.String,
+    name,
+    status: ToolStatus,
+    input: Schema.optionalKey(input),
+    argsText: Schema.optionalKey(Schema.String),
+    output: Schema.optionalKey(output),
+    error: Schema.optionalKey(Schema.Json),
+    progress: Schema.Array(Schema.Json),
+  })
+
+export const objectBlock = <N extends Schema.Top, V extends Schema.Top>(name: N, value: V) =>
+  Schema.Struct({
+    type: Schema.Literal("object"),
+    id: Schema.String,
+    name,
+    status: ObjectStatus,
+    partial: Schema.optionalKey(Schema.Json),
+    value: Schema.optionalKey(value),
+    issues: Schema.optionalKey(Schema.Array(Schema.Json)),
+  })
+
+export const dataBlock = <N extends Schema.Top, V extends Schema.Top>(name: N, value: V) =>
+  Schema.Struct({ type: Schema.Literal("data"), id: Schema.String, name, value })
+
+/** Blocks without payloads: the same in every view. */
+export const contentBlocks = [TextBlock, RefusalBlock, ImageBlock, ReasoningBlock] as const
+
+/** A view's schema from its payload-dependent parts; `block` is the whole block union. */
+export const schema = <
+  B extends Schema.Top,
+  I extends Schema.Top,
+  L extends Schema.Top,
+  M extends Schema.Top,
+>(parts: {
+  readonly block: B
+  readonly interrupt: I
+  readonly live: L
+  readonly metadata: M
+}) =>
+  Schema.Struct({
+    runId: Schema.optionalKey(RunId),
+    name: Schema.optionalKey(Schema.String),
+    messageId: Schema.optionalKey(Schema.String),
+    inputs: Schema.Array(InputId),
+    status: Status,
+    blocks: Schema.Array(parts.block),
+    interrupts: Schema.Array(parts.interrupt),
+    live: parts.live,
+    usage: Schema.optionalKey(Items.Usage),
+    metadata: Schema.optionalKey(parts.metadata),
+    error: Schema.optionalKey(RunError),
+    lastSeq: Schema.Number,
+    stepStart: Schema.Number,
+    nextBlock: Schema.Number,
+  })
+
+/** An object without a name: no contract entry, so its value stays JSON. */
+export const unnamedObject = Schema.Struct({
+  type: Schema.Literal("object"),
+  id: Schema.String,
+  status: ObjectStatus,
+  partial: Schema.optionalKey(Schema.Json),
+  value: Schema.optionalKey(Schema.Json),
+  issues: Schema.optionalKey(Schema.Array(Schema.Json)),
+})
+
+const untypedObject = Schema.Union([objectBlock(Schema.String, Schema.Json), unnamedObject])
+
+/** The untyped view's schema: payloads are JSON. */
+export const RunView = schema({
+  block: Schema.Union([
+    ...contentBlocks,
+    toolBlock(Schema.String, Schema.Json, Schema.Json),
+    untypedObject,
+    dataBlock(Schema.String, Schema.Json),
+  ]),
+  interrupt: InterruptSchema,
+  live: Schema.Record(Schema.String, Schema.Json),
+  metadata: Schema.Json,
+})
+
+/** An empty view (a contract's `initial` is the typed one). */
 export const initial: RunView = {
   inputs: [],
   status: "idle",
@@ -133,17 +280,25 @@ export const initial: RunView = {
 }
 
 // ---------------------------------------------------------------------------
-// Fold
+// Fold: written once over `Payloads` (names are strings, payloads `unknown`);
+// the exported signatures carry the caller's `P`.
 // ---------------------------------------------------------------------------
 
-const replaceAt = (blocks: ReadonlyArray<Block>, index: number, block: Block) =>
+type View = RunView<Payloads>
+type AnyBlock = Block<Payloads>
+type AnyTool = ToolBlock<Payloads>
+type AnyObject = ObjectBlock<Payloads>
+
+const replaceAt = (blocks: ReadonlyArray<AnyBlock>, index: number, block: AnyBlock) =>
   blocks.map((b, i) => (i === index ? block : b))
 
-const appendText = (
-  v: RunView,
-  kind: "output_text" | "refusal" | "reasoning",
-  text: string,
-): RunView => {
+const push = (v: View, make: (id: string) => AnyBlock): View => ({
+  ...v,
+  blocks: [...v.blocks, make(`b${v.nextBlock}`)],
+  nextBlock: v.nextBlock + 1,
+})
+
+const appendText = (v: View, kind: "output_text" | "refusal" | "reasoning", text: string): View => {
   const index = v.blocks.length - 1
   const last = v.blocks[index]
   if (last !== undefined && last.type === kind && index >= v.stepStart) {
@@ -154,7 +309,7 @@ const appendText = (
 
 // A citation joins the step's latest text; one that arrives before any text
 // starts an empty text block, which the following text extends.
-const cite = (v: RunView, annotation: Items.Annotation): RunView =>
+const cite = (v: View, annotation: Items.Annotation): View =>
   Arr.findLastIndex(v.blocks, (b, i) => b.type === "output_text" && i >= v.stepStart).pipe(
     Option.flatMap((index) =>
       Option.fromNullishOr(v.blocks[index]).pipe(
@@ -175,24 +330,18 @@ const cite = (v: RunView, annotation: Items.Annotation): RunView =>
     }),
   )
 
-const push = (v: RunView, make: (id: string) => Block): RunView => ({
-  ...v,
-  blocks: [...v.blocks, make(`b${v.nextBlock}`)],
-  nextBlock: v.nextBlock + 1,
-})
-
 const updateTool = (
-  v: RunView,
+  v: View,
   callId: string,
   name: string,
-  f: (block: ToolBlock) => ToolBlock,
-): RunView => {
+  f: (block: AnyTool) => AnyTool,
+): View => {
   const index = v.blocks.findIndex((b) => b.type === "tool" && b.id === callId)
   const current = v.blocks[index]
   if (current !== undefined && current.type === "tool") {
     return { ...v, blocks: replaceAt(v.blocks, index, f(current)) }
   }
-  const created: ToolBlock = {
+  const created: AnyTool = {
     type: "tool",
     id: callId,
     name,
@@ -202,7 +351,7 @@ const updateTool = (
   return { ...v, blocks: [...v.blocks, f(created)] }
 }
 
-const updateObject = (v: RunView, id: string, f: (block: ObjectBlock) => ObjectBlock): RunView => {
+const updateObject = (v: View, id: string, f: (block: AnyObject) => AnyObject): View => {
   const index = v.blocks.findIndex((b) => b.type === "object" && b.id === id)
   const current = v.blocks[index]
   if (current !== undefined && current.type === "object") {
@@ -212,19 +361,19 @@ const updateObject = (v: RunView, id: string, f: (block: ObjectBlock) => ObjectB
 }
 
 const applyPatch = Option.liftThrowable(JsonPatch.apply)
-const asJson = Schema.decodeUnknownOption(Schema.Json)
+// An unnamed object has no contract entry, so its value stays JSON.
+const isJson = Schema.is(Schema.Json)
 
-// A bad patch leaves the value as is; the next snapshot or `object-done` repairs it.
+// A bad patch leaves the partial value as is; the next snapshot or `object-done` repairs it.
 const objectDelta = (
-  block: ObjectBlock,
+  block: AnyObject,
   e: Extract<RunEvent, { type: "object-delta" }>,
-): ObjectBlock => {
-  if (e.value !== undefined) return { ...block, value: e.value }
+): AnyObject => {
+  if (e.value !== undefined) return { ...block, partial: e.value }
   const patch = e.patch
   if (patch === undefined) return block
-  return asJson(block.value ?? {}).pipe(
-    Option.flatMap((base) => applyPatch(patch, base)),
-    Option.match({ onNone: () => block, onSome: (value) => ({ ...block, value }) }),
+  return applyPatch(patch, block.partial ?? {}).pipe(
+    Option.match({ onNone: () => block, onSome: (partial) => ({ ...block, partial }) }),
   )
 }
 
@@ -247,20 +396,18 @@ const addUsage = (
   }
 }
 
-const withUsage = (v: RunView, usage: Items.Usage | undefined): RunView => {
+const withUsage = (v: View, usage: Items.Usage | undefined): View => {
   const total = addUsage(v.usage, usage)
   return total === undefined ? v : { ...v, usage: total }
 }
 
-const toolStatusOf = (output: unknown, isError: boolean): ToolStatus => {
-  if (!isError) return "done"
-  return Predicate.hasProperty(output, "kind") && output.kind === "denied" ? "denied" : "failed"
-}
+const failedStatus = (error: Json): ToolStatus =>
+  Predicate.hasProperty(error, "kind") && error.kind === "denied" ? "denied" : "failed"
 
-const apply = (v: RunView, event: RunEvent): RunView =>
+const apply = (v: View, event: RunEvent<Payloads>): View =>
   Match.value(event).pipe(
     Match.discriminatorsExhaustive("type")({
-      "run-started": (e): RunView => ({
+      "run-started": (e): View => ({
         ...v,
         status: "streaming",
         runId: e.runId,
@@ -268,13 +415,13 @@ const apply = (v: RunView, event: RunEvent): RunView =>
         inputs: e.inputs,
         ...(e.name !== undefined ? { name: e.name } : {}),
       }),
-      "run-completed": (e): RunView => ({
+      "run-completed": (e): View => ({
         ...v,
         status: "completed",
         ...(e.metadata !== undefined ? { metadata: e.metadata } : {}),
       }),
-      "run-interrupted": (e): RunView =>
-        e.interrupts.reduce<RunView>(
+      "run-interrupted": (e): View =>
+        e.interrupts.reduce<View>(
           (acc, i) =>
             updateTool(acc, i.callId, i.name, (b) => ({
               ...b,
@@ -283,7 +430,7 @@ const apply = (v: RunView, event: RunEvent): RunView =>
             })),
           { ...v, status: "interrupted", interrupts: e.interrupts },
         ),
-      "run-failed": (e): RunView => ({
+      "run-failed": (e): View => ({
         ...v,
         status: "failed",
         error: {
@@ -292,22 +439,22 @@ const apply = (v: RunView, event: RunEvent): RunView =>
           ...(e.message !== undefined ? { message: e.message } : {}),
         },
       }),
-      "run-stopped": (): RunView => ({ ...v, status: "stopped" }),
-      "step-started": (): RunView => ({ ...v, stepStart: v.blocks.length }),
-      "step-finished": (e): RunView => withUsage(v, e.usage),
-      "step-reset": (): RunView => ({ ...v, blocks: v.blocks.slice(0, v.stepStart) }),
+      "run-stopped": (): View => ({ ...v, status: "stopped" }),
+      "step-started": (): View => ({ ...v, stepStart: v.blocks.length }),
+      "step-finished": (e): View => withUsage(v, e.usage),
+      "step-reset": (): View => ({ ...v, blocks: v.blocks.slice(0, v.stepStart) }),
       "text-delta": (e) => appendText(v, "output_text", e.text),
       "refusal-delta": (e) => appendText(v, "refusal", e.text),
-      "reasoning-started": (): RunView =>
+      "reasoning-started": (): View =>
         v.blocks.some((b, i) => b.type === "reasoning" && i >= v.stepStart)
           ? v
           : push(v, (id) => ({ type: "reasoning", id, text: "" })),
       "reasoning-delta": (e) => appendText(v, "reasoning", e.text),
       citation: (e) => cite(v, e.annotation),
-      image: (e): RunView => {
+      image: (e): View => {
         const index = v.blocks.length - 1
         const last = v.blocks[index]
-        const block = (id: string): Block =>
+        const block = (id: string): AnyBlock =>
           e.partialIndex === undefined
             ? { type: "output_image", id, source: e.image }
             : { type: "output_image", id, source: e.image, partialIndex: e.partialIndex }
@@ -316,11 +463,15 @@ const apply = (v: RunView, event: RunEvent): RunView =>
           ? { ...v, blocks: replaceAt(v.blocks, index, block(last.id)) }
           : push(v, block)
       },
-      "object-started": (e): RunView =>
+      "object-started": (e): View =>
         updateObject(v, e.id, (b) => (e.name === undefined ? b : { ...b, name: e.name })),
       "object-delta": (e) => updateObject(v, e.id, (b) => objectDelta(b, e)),
       "object-done": (e) =>
-        updateObject(v, e.id, (b) => ({ ...b, status: "done", value: e.value })),
+        updateObject(v, e.id, (b) =>
+          b.name === undefined
+            ? { ...b, status: "done", ...(isJson(e.value) ? { value: e.value } : {}) }
+            : { ...b, status: "done", value: e.value },
+        ),
       "object-failed": (e) =>
         updateObject(v, e.id, (b) => ({ ...b, status: "failed", issues: e.issues })),
       "tool-call-started": (e) => updateTool(v, e.callId, e.name, (b) => b),
@@ -346,19 +497,19 @@ const apply = (v: RunView, event: RunEvent): RunView =>
           progress: [...b.progress, e.data],
         })),
       "tool-result": (e) =>
-        updateTool(v, e.callId, "", (b) => ({
-          ...b,
-          status: toolStatusOf(e.output, e.isError),
-          output: e.output,
-        })),
+        updateTool(v, e.callId, e.name, (b) =>
+          e.isError
+            ? { ...b, status: failedStatus(e.output), error: e.output }
+            : { ...b, status: "done", output: e.output },
+        ),
       "tool-cancelled": (e) =>
         e.callIds.reduce(
           (acc, callId) =>
             updateTool(acc, callId, "", (b) => ({ ...b, status: "cancelled" as const })),
           v,
         ),
-      usage: (e): RunView => ({ ...v, usage: e.usage }),
-      data: (e): RunView => {
+      usage: (e): View => ({ ...v, usage: e.usage }),
+      data: (e): View => {
         const index =
           e.id === undefined ? -1 : v.blocks.findIndex((b) => b.type === "data" && b.id === e.id)
         const existing = v.blocks[index]
@@ -374,9 +525,9 @@ const apply = (v: RunView, event: RunEvent): RunView =>
             }
           : push(v, (id) => ({ type: "data", id: e.id ?? id, name: e.name, value: e.value }))
       },
-      live: (e): RunView => ({ ...v, live: { ...v.live, [e.name]: e.value } }),
+      live: (e): View => ({ ...v, live: { ...v.live, [e.name]: e.value } }),
       // Stream-scoped; a chat fold (`Thread`) shows it, a run view has nothing to add.
-      "input-accepted": (): RunView => v,
+      "input-accepted": (): View => v,
     }),
   )
 
@@ -384,7 +535,11 @@ const apply = (v: RunView, event: RunEvent): RunView =>
  * Fold one envelope into the view. Ignores envelopes already applied
  * (`seq <= lastSeq`) and run-scoped envelopes of a different run.
  */
-export const step = (view: RunView, envelope: Envelope): RunView => {
+export function step<P extends Payloads = Untyped>(
+  view: RunView<P>,
+  envelope: Envelope<P>,
+): RunView<P>
+export function step(view: View, envelope: Envelope<Payloads>): View {
   if (envelope.seq <= view.lastSeq) return view
   const otherRun =
     view.runId !== undefined && envelope.runId !== undefined && envelope.runId !== view.runId
@@ -397,34 +552,47 @@ export const step = (view: RunView, envelope: Envelope): RunView => {
 
 const TERMINAL: ReadonlySet<Status> = new Set(["completed", "interrupted", "failed", "stopped"])
 
-export const isTerminal = (view: RunView): boolean => TERMINAL.has(view.status)
+export const isTerminal = <P extends Payloads>(view: RunView<P>): boolean =>
+  TERMINAL.has(view.status)
 
-export const isBusy = (view: RunView): boolean =>
+export const isBusy = <P extends Payloads>(view: RunView<P>): boolean =>
   view.status === "submitted" || view.status === "streaming"
 
 /** All assistant text of the run, in order (refusals excluded, see `refusal`). */
-export const text = (view: RunView): string =>
-  view.blocks.flatMap((b) => (b.type === "output_text" ? [b.text] : [])).join("")
+export function text<P extends Payloads>(view: RunView<P>): string
+export function text(view: View): string {
+  return view.blocks.flatMap((b) => (b.type === "output_text" ? [b.text] : [])).join("")
+}
 
 /** The refusal text, if the model declined; `undefined` otherwise. */
-export const refusal = (view: RunView): string | undefined => {
+export function refusal<P extends Payloads>(view: RunView<P>): string | undefined
+export function refusal(view: View): string | undefined {
   const parts = view.blocks.flatMap((b) => (b.type === "refusal" ? [b.text] : []))
   return parts.length === 0 ? undefined : parts.join("")
 }
 
 /**
- * Object blocks named `name`, typed by `schema`. `value` is set once the
- * object is done and decodes; failed or unparseable objects carry `undefined`.
+ * Object blocks named `name`, decoded with `schema` (without a contract).
+ * `value` is set once the object is done and decodes.
  */
-export const objects = <A>(
-  view: RunView,
+export function objects<A, P extends Payloads>(
+  view: RunView<P>,
   name: string,
   schema: Schema.Codec<A, any, never, never>,
 ): ReadonlyArray<{
   readonly id: string
-  readonly status: ObjectBlock["status"]
+  readonly status: ObjectStatus
   readonly value: A | undefined
-}> => {
+}>
+export function objects<A>(
+  view: View,
+  name: string,
+  schema: Schema.Codec<A, any, never, never>,
+): ReadonlyArray<{
+  readonly id: string
+  readonly status: ObjectStatus
+  readonly value: A | undefined
+}> {
   const decode = Schema.decodeUnknownOption(schema)
   return view.blocks.flatMap((b) =>
     b.type === "object" && b.name === name

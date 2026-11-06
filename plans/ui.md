@@ -195,8 +195,16 @@ the source; don't rebuild core's `dist` before the codecs handle it).
    - `examples/foldkit-chat`: `Thread.step` inside `update`; the open request
      is a Subscription keyed on the input in flight, so Stop is a pure Model
      change. A small Effect `HttpServer` (`server.ts`) next to Vite.
-3. **Next:** `UiContract` (typed payloads), docs section "Agentic UI" (with the
-   server-owned-history hint), `docs/coming-from`, and the skill update.
+3. ~~**`UiContract`**~~ done, as a boundary codec (the Effect `HttpApi`
+   pattern), decided over typed selectors: JSON on the wire, decoded once on
+   arrival, typed state (`RunView<P>`, `Thread<P>`, atoms infer `P` from
+   `contract`). Types list listed names only (narrowing by `name` is exact;
+   unlisted names arrive as JSON, untyped). Protocol: payloads are `Json`,
+   `tool-result` carries `name`, `object-done` an optional `name`; tool errors
+   are a block's `error`, an object's stream is `partial`. Typed tool output
+   comes from a shared spec's `outputSchema` (core `Tool` types only input).
+4. **Next:** docs section "Agentic UI" (with the server-owned-history hint),
+   `docs/coming-from`, and the skill update.
 
 ## Roadmap
 

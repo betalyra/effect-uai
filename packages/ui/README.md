@@ -23,6 +23,23 @@ Wire:
 - `Input`: what a client sends. A preset (`Input.submit(text | messages, { data })`,
   `Input.resolve(decisions)`) with core user messages and typed app `data` via
   `Input.make(DataSchema)`; any schema with an `id` works instead.
+- `UiContract`: optional types shared by server and client, from Schemas only
+  (tools with `inputSchema` / `outputSchema`, objects, data, live, metadata).
+  Payloads travel as JSON; with a contract, the client decodes each envelope
+  once on arrival, so the state holds typed values (a `Date` is a `Date`).
+
+```ts
+// shared: Schemas only
+const ChatUi = UiContract.make({ tools: [GetWeather], live: { metrics: Metrics } })
+
+// server
+yield* ChatUi.live("metrics", { tokps: 42 })
+
+// client: `chat.state` is typed by the contract
+const chat = Atoms.thread({ contract: ChatUi, runtime, transport, busy: "block" })
+for (const b of thread.active?.blocks ?? [])
+  if (b.type === "tool" && b.name === "get_weather") b.output?.observedAt // Date
+```
 
 Client:
 

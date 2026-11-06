@@ -77,6 +77,7 @@ describe("Projection.toRunEvents", () => {
           {
             type: "tool-result",
             callId: "c1",
+            name: "get_weather",
             output: { city: "Lisbon", temperatureC: 19.4 },
             isError: false,
           },

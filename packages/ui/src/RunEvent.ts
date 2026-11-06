@@ -50,11 +50,10 @@ export const Interrupt = Schema.Struct({
   callId: Schema.String,
   reason: Schema.Literal("approval"),
   name: Schema.String,
-  input: Schema.Unknown,
+  input: Schema.Json,
 })
-export type Interrupt = typeof Interrupt.Type
 
-export const RunCompleted = event("run-completed", { metadata: Schema.optional(Schema.Unknown) })
+export const RunCompleted = event("run-completed", { metadata: Schema.optional(Schema.Json) })
 export const RunInterrupted = event("run-interrupted", { interrupts: Schema.Array(Interrupt) })
 export const RunFailed = event("run-failed", {
   reason: Schema.String,
@@ -110,7 +109,12 @@ export const ObjectDelta = event("object-delta", {
   patch: Schema.optional(Schema.Array(JsonPatchOperation)),
   value: Schema.optional(Schema.Json),
 })
-export const ObjectDone = event("object-done", { id: Schema.String, value: Schema.Unknown })
+export const ObjectDone = event("object-done", {
+  id: Schema.String,
+  /** The object's name again, so a client can decode `value` without state. */
+  name: Schema.optional(Schema.String),
+  value: Schema.Json,
+})
 export const ObjectFailed = event("object-failed", {
   id: Schema.String,
   issues: Schema.Array(
@@ -126,7 +130,7 @@ export const ObjectFailed = event("object-failed", {
 // ---------------------------------------------------------------------------
 
 /** Reference to tool-provided UI (MCP Apps). Reserved; unused in v1. */
-const ToolUi = Schema.Struct({ server: Schema.String, resourceUri: Schema.String })
+export const ToolUi = Schema.Struct({ server: Schema.String, resourceUri: Schema.String })
 
 export const ToolCallStarted = event("tool-call-started", {
   callId: Schema.String,
@@ -139,19 +143,22 @@ export const ToolCallArgsDelta = event("tool-call-args-delta", {
 export const ToolCallReady = event("tool-call-ready", {
   callId: Schema.String,
   name: Schema.String,
-  input: Schema.Unknown,
+  input: Schema.Json,
   ui: Schema.optional(ToolUi),
 })
 /** The run is waiting in-process for a decision on this call (it keeps running). */
 export const ToolApprovalRequested = event("tool-approval-requested", {
   callId: Schema.String,
   name: Schema.String,
-  input: Schema.Unknown,
+  input: Schema.Json,
 })
-export const ToolProgress = event("tool-progress", { callId: Schema.String, data: Schema.Unknown })
+export const ToolProgress = event("tool-progress", { callId: Schema.String, data: Schema.Json })
+/** `output` is the tool's output, or the error (`{ kind, reason? }`) when `isError`. */
 export const ToolResult = event("tool-result", {
   callId: Schema.String,
-  output: Schema.Unknown,
+  /** The tool's name, so a client can decode `output` without state. */
+  name: Schema.String,
+  output: Schema.Json,
   isError: Schema.Boolean,
   ui: Schema.optional(ToolUi),
 })
@@ -165,30 +172,38 @@ export const Usage = event("usage", { usage: Items.Usage })
 /** Persisted app payload; a repeated `id` replaces the earlier one in place. */
 export const Data = event("data", {
   name: Schema.String,
-  value: Schema.Unknown,
+  value: Schema.Json,
   id: Schema.optional(Schema.String),
 })
 /** Transient app payload (metrics, status); latest value wins, never stored in a message. */
-export const Live = event("live", { name: Schema.String, value: Schema.Unknown })
+export const Live = event("live", { name: Schema.String, value: Schema.Json })
 
 /**
  * Stream-scoped: the server accepted an input (queued or about to run). Lets a
  * reloaded client show inputs that wait for their run. `input` is the app's
  * encoded input (e.g. `Input.InputJson`); its run's `run-started` lists its id.
  */
-export const InputAccepted = event("input-accepted", { input: Schema.Unknown })
+export const InputAccepted = event("input-accepted", { input: Schema.Json })
 
 // ---------------------------------------------------------------------------
 // Unions and envelope
 // ---------------------------------------------------------------------------
 
-export const Terminal = Schema.Union([RunCompleted, RunInterrupted, RunFailed, RunStopped])
-export type Terminal = typeof Terminal.Type
-
-export const RunEvent = Schema.Union([
-  RunStarted,
+/** Events whose payloads a contract types (see `UiContract`). */
+export const payloadEvents = [
   RunCompleted,
   RunInterrupted,
+  ObjectDone,
+  ToolCallReady,
+  ToolApprovalRequested,
+  ToolResult,
+  Data,
+  Live,
+] as const
+
+/** Events a contract leaves as they are. */
+export const plainEvents = [
+  RunStarted,
   RunFailed,
   RunStopped,
   StepStarted,
@@ -202,39 +217,139 @@ export const RunEvent = Schema.Union([
   Image,
   ObjectStarted,
   ObjectDelta,
-  ObjectDone,
   ObjectFailed,
   ToolCallStarted,
   ToolCallArgsDelta,
-  ToolCallReady,
-  ToolApprovalRequested,
   ToolProgress,
-  ToolResult,
   ToolCancelled,
   Usage,
-  Data,
   InputAccepted,
-  Live,
-])
-export type RunEvent = typeof RunEvent.Type
+] as const
 
-export const Envelope = Schema.Struct({
+/** The protocol as sent: payloads are JSON. A contract decodes them (`UiContract`). */
+export const RunEvent = Schema.Union([...plainEvents, ...payloadEvents])
+
+export const envelopeFields = {
   streamId: StreamId,
   seq: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
   /** Set on run-scoped events; absent on stream-scoped ones. */
   runId: Schema.optional(RunId),
-  event: RunEvent,
-})
-export type Envelope = typeof Envelope.Type
+}
+
+export const Envelope = Schema.Struct({ ...envelopeFields, event: RunEvent })
 
 /** JSON codec for the wire: `Uint8Array` image bytes and other non-JSON values encode safely. */
 export const EnvelopeJson = Schema.toCodecJson(Envelope)
 
-const terminalTypes: ReadonlySet<RunEvent["type"]> = new Set([
+// ---------------------------------------------------------------------------
+// Payload types: what a contract types. `P` defaults to `Untyped` (JSON as sent).
+// ---------------------------------------------------------------------------
+
+export type Json = Schema.Json
+
+export type ToolPayload = {
+  readonly name: string
+  readonly input: unknown
+  readonly output: unknown
+}
+export type NamedPayload = { readonly name: string; readonly value: unknown }
+
+/** Typed payloads: each field is a union with one member per name. */
+export type Payloads = {
+  readonly tool: ToolPayload
+  readonly object: NamedPayload
+  readonly data: NamedPayload
+  readonly live: NamedPayload
+  readonly metadata: unknown
+}
+
+/** No contract: any name, payloads as sent. */
+export type Untyped = {
+  readonly tool: { readonly name: string; readonly input: Json; readonly output: Json }
+  readonly object: { readonly name: string; readonly value: Json }
+  readonly data: { readonly name: string; readonly value: Json }
+  readonly live: { readonly name: string; readonly value: Json }
+  readonly metadata: Json
+}
+
+type Plain = (typeof plainEvents)[number]["Type"]
+type ToolUi = typeof ToolUi.Type
+
+export type Interrupt<P extends Payloads = Untyped> = {
+  readonly callId: string
+  readonly reason: "approval"
+  readonly name: P["tool"]["name"]
+  readonly input: P["tool"]["input"]
+}
+
+type Typed<P extends Payloads> =
+  | { readonly type: "run-completed"; readonly metadata?: P["metadata"] | undefined }
+  | { readonly type: "run-interrupted"; readonly interrupts: ReadonlyArray<Interrupt<P>> }
+  | {
+      readonly type: "object-done"
+      readonly id: string
+      readonly name?: P["object"]["name"] | undefined
+      readonly value: P["object"]["value"]
+    }
+  | {
+      readonly type: "tool-call-ready"
+      readonly callId: string
+      readonly name: P["tool"]["name"]
+      readonly input: P["tool"]["input"]
+      readonly ui?: ToolUi | undefined
+    }
+  | {
+      readonly type: "tool-approval-requested"
+      readonly callId: string
+      readonly name: P["tool"]["name"]
+      readonly input: P["tool"]["input"]
+    }
+  | {
+      readonly type: "tool-result"
+      readonly callId: string
+      readonly name: P["tool"]["name"]
+      readonly isError: false
+      readonly output: P["tool"]["output"]
+      readonly ui?: ToolUi | undefined
+    }
+  | {
+      readonly type: "tool-result"
+      readonly callId: string
+      readonly name: string
+      readonly isError: true
+      readonly output: Json
+      readonly ui?: ToolUi | undefined
+    }
+  | {
+      readonly type: "data"
+      readonly name: P["data"]["name"]
+      readonly value: P["data"]["value"]
+      readonly id?: string | undefined
+    }
+  | { readonly type: "live"; readonly name: P["live"]["name"]; readonly value: P["live"]["value"] }
+
+/** One event; with a contract's `P`, its payloads are decoded. */
+export type RunEvent<P extends Payloads = Untyped> = Plain | Typed<P>
+
+export type Envelope<P extends Payloads = Untyped> = {
+  readonly streamId: StreamId
+  readonly seq: number
+  readonly runId?: RunId | undefined
+  readonly event: RunEvent<P>
+}
+
+export type Terminal<P extends Payloads = Untyped> = Extract<
+  RunEvent<P>,
+  { readonly type: "run-completed" | "run-interrupted" | "run-failed" | "run-stopped" }
+>
+
+const terminalTypes: ReadonlySet<string> = new Set([
   "run-completed",
   "run-interrupted",
   "run-failed",
   "run-stopped",
 ])
 
-export const isTerminal = (event: RunEvent): event is Terminal => terminalTypes.has(event.type)
+export const isTerminal = <P extends Payloads = Untyped>(
+  event: RunEvent<P>,
+): event is Terminal<P> => terminalTypes.has(event.type)

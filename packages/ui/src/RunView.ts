@@ -18,6 +18,8 @@ import {
   type Interrupt,
   type Json,
   type NamedPayload,
+  outcome,
+  type Outcome,
   type Payloads,
   RunId,
   type RunEvent,
@@ -67,9 +69,8 @@ export type ImageBlock = typeof ImageBlock.Type
 export type ReasoningBlock = typeof ReasoningBlock.Type
 
 /**
- * A tool call; `id` is the call id. A failed call (denied, cancelled, an error)
- * is `failed` with the server's `error`, e.g. `{ kind: "denied" }`: what a kind
- * means is the app's call.
+ * A tool call; `id` is the call id. `partial` is the latest intermediate value
+ * of a streaming tool; `outcome` is how the call ended (`done` or `failed`).
  */
 export type ToolBlock<P extends Payloads = Untyped> = P["tool"] extends infer T
   ? T extends ToolPayload
@@ -80,9 +81,8 @@ export type ToolBlock<P extends Payloads = Untyped> = P["tool"] extends infer T
         readonly status: ToolStatus
         readonly input?: T["input"]
         readonly argsText?: string
-        readonly output?: T["output"]
-        readonly error?: Json
-        readonly progress: ReadonlyArray<Json>
+        readonly partial?: T["output"]
+        readonly outcome?: Outcome<T["output"], T["failure"]>
       }
     : never
   : never
@@ -179,10 +179,16 @@ export type RunView<P extends Payloads = Untyped> = {
 // ---------------------------------------------------------------------------
 
 /** Block schemas for one tool, object or data name; `UiContract` makes one per name. */
-export const toolBlock = <N extends Schema.Top, I extends Schema.Top, O extends Schema.Top>(
+export const toolBlock = <
+  N extends Schema.Top,
+  I extends Schema.Top,
+  O extends Schema.Top,
+  F extends Schema.Top,
+>(
   name: N,
   input: I,
   output: O,
+  failure: F,
 ) =>
   Schema.Struct({
     type: Schema.Literal("tool"),
@@ -191,9 +197,8 @@ export const toolBlock = <N extends Schema.Top, I extends Schema.Top, O extends 
     status: ToolStatus,
     input: Schema.optionalKey(input),
     argsText: Schema.optionalKey(Schema.String),
-    output: Schema.optionalKey(output),
-    error: Schema.optionalKey(Schema.Json),
-    progress: Schema.Array(Schema.Json),
+    partial: Schema.optionalKey(output),
+    outcome: Schema.optionalKey(outcome(output, failure)),
   })
 
 export const objectBlock = <N extends Schema.Top, V extends Schema.Top>(name: N, value: V) =>
@@ -257,7 +262,7 @@ const untypedObject = Schema.Union([objectBlock(Schema.String, Schema.Json), unn
 export const RunView = schema({
   block: Schema.Union([
     ...contentBlocks,
-    toolBlock(Schema.String, Schema.Json, Schema.Json),
+    toolBlock(Schema.String, Schema.Json, Schema.Json, Schema.Json),
     untypedObject,
     dataBlock(Schema.String, Schema.Json),
   ]),
@@ -345,7 +350,6 @@ const updateTool = (
     id: callId,
     name,
     status: "input-streaming",
-    progress: [],
   }
   return { ...v, blocks: [...v.blocks, f(created)] }
 }
@@ -484,18 +488,14 @@ const apply = (v: View, event: RunEvent<Payloads>): View =>
           status: "awaiting-approval",
           input: e.input,
         })),
-      "tool-progress": (e) =>
-        updateTool(v, e.callId, "", (b) => ({
-          ...b,
-          status: "running",
-          progress: [...b.progress, e.data],
-        })),
+      "tool-partial": (e) =>
+        updateTool(v, e.callId, e.name, (b) => ({ ...b, status: "running", partial: e.value })),
       "tool-result": (e) =>
-        updateTool(v, e.callId, e.name, (b) =>
-          e.isError
-            ? { ...b, status: "failed", error: e.output }
-            : { ...b, status: "done", output: e.output },
-        ),
+        updateTool(v, e.callId, e.name, (b) => ({
+          ...b,
+          status: e.result._tag === "Success" ? "done" : "failed",
+          outcome: e.result,
+        })),
       usage: (e): View => ({ ...v, usage: e.usage }),
       data: (e): View => {
         const index =
@@ -537,11 +537,11 @@ export function step(view: View, envelope: Envelope<Payloads>): View {
 /** A tool event that can answer a call made in an earlier run (after an approval). */
 export type ToolUpdate<P extends Payloads = Untyped> = Extract<
   RunEvent<P>,
-  { readonly type: "tool-result" | "tool-progress" }
+  { readonly type: "tool-result" | "tool-partial" }
 >
 
 export const isToolUpdate = <P extends Payloads>(event: RunEvent<P>): event is ToolUpdate<P> =>
-  event.type === "tool-result" || event.type === "tool-progress"
+  event.type === "tool-result" || event.type === "tool-partial"
 
 /**
  * Apply a tool event to the view if it holds that call; `None` if it doesn't.

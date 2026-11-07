@@ -77,7 +77,7 @@ describe("Run.sequence", () => {
   it.effect("numbers frames per stream and tags run-scoped ones with the open run", () =>
     Stream.fromIterable<RunEvent>([
       { type: "data", name: "before", value: 1 },
-      { type: "run-started", runId: r1, inputs: [], protocol: 1 },
+      { type: "run-started", runId: r1, inputs: [], protocol: 2 },
       text("hi"),
       { type: "run-completed" },
       { type: "live", name: "after", value: 2 },

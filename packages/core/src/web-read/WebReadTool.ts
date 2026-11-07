@@ -65,7 +65,7 @@ export type WebReadToolOptions = {
  */
 export const webReadTool = (
   options?: WebReadToolOptions,
-): Tool.Tool<string, WebReadToolArgs, never, string, AiError.AiError, WebRead> => {
+): Tool.Tool<string, WebReadToolArgs, string, never, AiError.AiError, WebRead> => {
   const name = options?.name ?? "web_read"
   const format = options?.format ?? "markdown"
   const maxChars = options?.maxChars ?? 20_000

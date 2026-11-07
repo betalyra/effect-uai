@@ -145,20 +145,59 @@ export const TextContent = Schema.Struct({
 })
 export type TextContent = typeof TextContent.Type
 
-/** Non-text blocks (image / audio / resource) are placeholder-summarized in v1. */
+export const ImageContent = Schema.Struct({
+  type: Schema.Literal("image"),
+  data: Schema.String,
+  mimeType: Schema.String,
+})
+
+export const AudioContent = Schema.Struct({
+  type: Schema.Literal("audio"),
+  data: Schema.String,
+  mimeType: Schema.String,
+})
+
+export const ResourceLink = Schema.Struct({
+  type: Schema.Literal("resource_link"),
+  uri: Schema.String,
+  name: Schema.optional(Schema.String),
+  mimeType: Schema.optional(Schema.String),
+})
+
+export const EmbeddedResource = Schema.Struct({
+  type: Schema.Literal("resource"),
+  resource: Schema.Union([
+    Schema.Struct({ uri: Schema.String, text: Schema.String }),
+    Schema.Struct({
+      uri: Schema.String,
+      blob: Schema.String,
+      mimeType: Schema.optional(Schema.String),
+    }),
+  ]),
+})
+
+/** A block type this client does not know; summarized for the model. */
 export const OtherContent = Schema.Struct({
   type: Schema.String,
 })
 
-export const ContentBlock = Schema.Union([TextContent, OtherContent])
-export type ContentBlock = typeof ContentBlock.Type
+export const KnownContent = Schema.Union([
+  TextContent,
+  ImageContent,
+  AudioContent,
+  ResourceLink,
+  EmbeddedResource,
+])
+export type KnownContent = typeof KnownContent.Type
+export const isKnownContent = Schema.is(KnownContent)
 
-export const isTextContent = Schema.is(TextContent)
+export const ContentBlock = Schema.Union([KnownContent, OtherContent])
+export type ContentBlock = typeof ContentBlock.Type
 
 export const CallToolResult = Schema.Struct({
   content: Schema.optionalKey(Schema.Array(ContentBlock)),
   isError: Schema.optional(Schema.Boolean),
-  structuredContent: Schema.optional(Schema.Unknown),
+  structuredContent: Schema.optional(Schema.Json),
   // Required on modern results; absent on legacy ones.
   resultType: Schema.optional(Schema.String),
 })

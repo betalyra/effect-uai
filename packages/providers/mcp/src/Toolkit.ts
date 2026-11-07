@@ -1,9 +1,12 @@
 /**
- * Turn a connected MCP server into a core `Toolkit`, one `LocalTool` per MCP
+ * Turn a connected MCP server into a core `Toolkit`, one local tool per MCP
  * tool. Effectful because the tool list is fetched; composes with
  * `Toolkit.compose` like any other kit.
  */
-import { Effect, Option } from "effect"
+import { Effect, Match, Option, Schema } from "effect"
+import * as Content from "@effect-uai/core/Content"
+import { fileBase64, fileUrl } from "@effect-uai/core/File"
+import { imageBase64 } from "@effect-uai/core/Image"
 import * as Tool from "@effect-uai/core/Tool"
 import * as CoreToolkit from "@effect-uai/core/Toolkit"
 import type { McpClient } from "./Client.js"
@@ -11,7 +14,8 @@ import { type McpError, McpProtocolError } from "./McpError.js"
 import {
   type CallToolResult,
   type ContentBlock,
-  isTextContent,
+  isKnownContent,
+  type KnownContent,
   type ToolInfo,
 } from "./internal/schema.js"
 
@@ -19,6 +23,11 @@ export type McpToolkitOptions = {
   /** Namespace every tool as `<prefix>__<name>`; recommended when composing servers. */
   readonly prefix?: string
 }
+
+/** The server reported an error (`isError`); the model sees its content as `message`. */
+export class McpToolFailed extends Schema.TaggedError<McpToolFailed>(
+  "@betalyra/effect-uai/mcp/McpToolFailed",
+)("McpToolFailed", { message: Schema.String }) {}
 
 /**
  * The server owns validation, so the input schema is a passthrough: it carries
@@ -38,59 +47,81 @@ const passthroughSchema = (tool: ToolInfo): Tool.ToolInputSchema<unknown> => ({
   },
 })
 
-const textOf = (block: ContentBlock): string =>
-  isTextContent(block) ? block.text : `[${block.type} content omitted]`
+// A blob without a MIME type is opaque bytes.
+const knownValue = Match.type<KnownContent>().pipe(
+  Match.discriminatorsExhaustive("type")({
+    text: (b): string | Content.Media => b.text,
+    image: (b) => Content.image(imageBase64(b.data, b.mimeType)),
+    audio: (b) => Content.file(fileBase64(b.data, b.mimeType)),
+    resource_link: (b) => Content.file(fileUrl(b.uri, b.mimeType), b.name),
+    resource: ({ resource }) =>
+      "text" in resource
+        ? resource.text
+        : Content.file(fileBase64(resource.blob, resource.mimeType ?? "application/octet-stream")),
+  }),
+)
+
+const valueOf = (block: ContentBlock): string | Content.Media =>
+  isKnownContent(block) ? knownValue(block) : `[${block.type} content omitted]`
+
+const single = (values: ReadonlyArray<Schema.Json | Content.Media>): Content.Value =>
+  values.length === 1 && values[0] !== undefined ? values[0] : values
 
 /**
- * Serialize a successful result for the model: `structuredContent` when the
- * server provides it, otherwise the joined text blocks. Non-text blocks become
- * a short placeholder until the loop grows a multimodal tool-output path.
+ * A result as the tool's value: `structuredContent` when the server provides it
+ * (its text blocks usually repeat it), plus any media; otherwise every block.
  */
-const outputOf = (result: CallToolResult): unknown =>
-  result.structuredContent ?? (result.content ?? []).map(textOf).join("\n")
+const outputOf = (result: CallToolResult): Content.Value => {
+  const values = (result.content ?? []).map(valueOf)
+  return Option.match(Option.fromNullishOr(result.structuredContent), {
+    onNone: () => single(values),
+    onSome: (structured) => single([structured, ...values.filter(Content.isMedia)]),
+  })
+}
+
+const messageOf = (result: CallToolResult): string =>
+  (result.content ?? [])
+    .map(valueOf)
+    .filter((v): v is string => typeof v === "string")
+    .join("\n")
 
 /**
  * Two failure channels, deliberately: `isError` is the server telling the
- * model it went wrong, so it becomes a model-visible `ToolFailed`; an
+ * model it went wrong, so it becomes the declared `McpToolFailed`; an
  * `input_required` result is a protocol capability gap the model cannot fix,
- * so it stays a typed `McpError`.
+ * so it stays a typed `McpError` and fails the run.
  */
 const interpret = (
   name: string,
   result: CallToolResult,
-): Effect.Effect<unknown, McpError | Tool.ToolFailed> => {
-  if (result.isError === true) {
-    return Tool.fail(String(outputOf(result)), { kind: "tool_failed" })
-  }
-  if (result.resultType === "input_required") {
-    return Effect.fail(
-      new McpProtocolError({
-        method: "tools/call",
-        reason: `${name} requires interactive input (MRTR), unsupported by this client`,
-      }),
-    )
-  }
-  return Effect.succeed(outputOf(result))
-}
-
-const runTool =
-  (client: McpClient, name: string) =>
-  (input: unknown): Effect.Effect<unknown, McpError | Tool.ToolFailed> =>
-    client.callTool(name, input).pipe(Effect.flatMap((result) => interpret(name, result)))
+): Effect.Effect<Content.Value, McpError | McpToolFailed> =>
+  Match.value(result).pipe(
+    Match.when({ isError: true }, (r) => Effect.fail(new McpToolFailed({ message: messageOf(r) }))),
+    Match.when({ resultType: "input_required" }, () =>
+      Effect.fail(
+        new McpProtocolError({
+          method: "tools/call",
+          reason: `${name} requires interactive input (MRTR), unsupported by this client`,
+        }),
+      ),
+    ),
+    Match.orElse((r) => Effect.succeed(outputOf(r))),
+  )
 
 const toLocalTool = (client: McpClient, info: ToolInfo) =>
   Tool.make({
     name: info.name,
     description: info.description ?? info.name,
     inputSchema: passthroughSchema(info),
-    run: runTool(client, info.name),
+    failureSchema: McpToolFailed,
+    run: (input) =>
+      client.callTool(info.name, input).pipe(Effect.flatMap((r) => interpret(info.name, r))),
     strict: false,
   })
 
 /**
  * Build a `Toolkit` from the server's advertised tools. The list is snapshotted
- * here; a tool that later vanishes surfaces through `Toolkit.run`'s graceful
- * `unknown_tool` path.
+ * here; a tool that later vanishes surfaces as `Toolkit.run`'s `UnknownTool`.
  */
 export const mcpToolkit = (
   client: McpClient,

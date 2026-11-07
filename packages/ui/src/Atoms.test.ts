@@ -13,7 +13,7 @@ import * as Transport from "./Transport.js"
 const runtime = Atom.runtime(SecureRandom.layerWebCrypto)
 
 const reply = (inputId: InputId): ReadonlyArray<RunEvent> => [
-  { type: "run-started", runId: RunId.make("r1"), inputs: [inputId], protocol: 1 },
+  { type: "run-started", runId: RunId.make("r1"), inputs: [inputId], protocol: 2 },
   { type: "text-delta", text: "Hello" },
   { type: "run-completed" },
 ]

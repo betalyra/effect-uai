@@ -36,7 +36,7 @@ import {
 } from "@effect-uai/core/Realtime"
 import type { RealtimeSessionHandle } from "@effect-uai/core/RealtimeSession"
 import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
-import { parsedResponse, toolDescriptorsToTools } from "./codec.js"
+import { functionResponseBody, toolDescriptorsToTools } from "./codec.js"
 import type { GeminiLiveModel } from "./models.js"
 
 const PROVIDER = "gemini-live"
@@ -635,7 +635,7 @@ const handleInput = (
                 {
                   id: i.output.call_id,
                   name,
-                  response: parsedResponse(i.output.output),
+                  ...functionResponseBody(i.output),
                   scheduling: options.scheduling,
                 },
               ],

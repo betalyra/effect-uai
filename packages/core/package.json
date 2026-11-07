@@ -226,6 +226,10 @@
       "types": "./dist/tokenizer/Tokenizer.d.mts",
       "import": "./dist/tokenizer/Tokenizer.mjs"
     },
+    "./Content": {
+      "types": "./dist/tool/Content.d.mts",
+      "import": "./dist/tool/Content.mjs"
+    },
     "./Tool": {
       "types": "./dist/tool/Tool.d.mts",
       "import": "./dist/tool/Tool.mjs"
@@ -234,13 +238,13 @@
       "types": "./dist/tool/Toolkit.d.mts",
       "import": "./dist/tool/Toolkit.mjs"
     },
-    "./ToolResult": {
-      "types": "./dist/tool/ToolResult.d.mts",
-      "import": "./dist/tool/ToolResult.mjs"
-    },
     "./ToolEvent": {
       "types": "./dist/tool/ToolEvent.d.mts",
       "import": "./dist/tool/ToolEvent.mjs"
+    },
+    "./ToolOutput": {
+      "types": "./dist/tool/ToolOutput.d.mts",
+      "import": "./dist/tool/ToolOutput.mjs"
     },
     "./Approval": {
       "types": "./dist/tool/Approval.d.mts",

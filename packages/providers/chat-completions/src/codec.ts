@@ -1,10 +1,15 @@
-import { Array as Arr, Match, Option, Result, Schema } from "effect"
+import { Array as Arr, Effect, Match, Option, Result, Schema } from "effect"
 import { Base64 } from "effect/encoding"
+import * as AiError from "@effect-uai/core/AiError"
 import type {
   ContentBlock,
   HistoryItem,
   InputImage,
+  InputJson,
+  InputText,
   StopReason,
+  ToolCallOutput,
+  ToolOutputContent,
   Usage,
 } from "@effect-uai/core/Items"
 import type { StructuredFormat } from "@effect-uai/core/StructuredFormat"
@@ -70,6 +75,37 @@ const encodeContent = (
         return part === undefined ? Result.failVoid : Result.succeed(part)
       })
 
+const isTextual = (p: ToolOutputContent): p is InputText | InputJson =>
+  p.type === "input_text" || p.type === "input_json"
+
+const hasMedia = (item: HistoryItem): boolean =>
+  item.type === "function_call_output" && !Arr.every(item.output, isTextual)
+
+/**
+ * A tool message's content: text and JSON, joined. Tool messages carry text only
+ * on this dialect; `rejectToolOutputMedia` fails a request with media first.
+ */
+export const toolOutputText = (output: ToolCallOutput): string =>
+  output.output
+    .filter(isTextual)
+    .map((p) => (p.type === "input_text" ? p.text : JSON.stringify(p.value)))
+    .join("\n")
+
+/** Fails when a tool output in `history` carries an image or file, rather than drop it. */
+export const rejectToolOutputMedia = (
+  provider: string,
+  history: ReadonlyArray<HistoryItem>,
+): Effect.Effect<void, AiError.Unsupported> =>
+  Arr.some(history, hasMedia)
+    ? Effect.fail(
+        new AiError.Unsupported({
+          provider,
+          capability: "tool_output_media",
+          reason: "Tool messages carry text only on the chat-completions wire.",
+        }),
+      )
+    : Effect.void
+
 const toolCallWire = (call_id: string, name: string, args: string): Record<string, unknown> => ({
   id: call_id,
   type: "function",
@@ -99,7 +135,7 @@ const foldItem = (acc: ReadonlyArray<WireMessage>, item: HistoryItem): ReadonlyA
       function_call: (f) => appendToolCall(acc, f.call_id, f.name, f.arguments),
       function_call_output: (o) => [
         ...acc,
-        { role: "tool", tool_call_id: o.call_id, content: o.output },
+        { role: "tool", tool_call_id: o.call_id, content: toolOutputText(o) },
       ],
       // Reasoning items are not replayed to the chat-completions endpoint.
       reasoning: () => acc,

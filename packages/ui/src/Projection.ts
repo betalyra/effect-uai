@@ -9,10 +9,11 @@
  */
 import type * as Items from "@effect-uai/core/Items"
 import type * as ToolEvent from "@effect-uai/core/ToolEvent"
-import { serializeValue, ToolResult } from "@effect-uai/core/ToolResult"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as Turn from "@effect-uai/core/Turn"
-import { Match, Option, Schema, Stream } from "effect"
-import type { Json, RunEvent } from "./RunEvent.js"
+import { Effect, Match, Option, Schema, Stream } from "effect"
+import { type Json, Outcome, type RunEvent } from "./RunEvent.js"
+import type { UiContract } from "./UiContract.js"
 
 /** What an effect-uai loop emits: turn events, tool events, and plain tool outputs. */
 export type Source = Turn.TurnEvent | ToolEvent.ToolEvent | Items.ToolCallOutput
@@ -28,6 +29,9 @@ export const Options = Schema.Struct({
 })
 export type Options = typeof Options.Type
 
+/** `Options` plus the contract whose schemas encode tool values. */
+export type Config = Options & { readonly contract: Pick<UiContract<any>, "toolEvent"> }
+
 export const State = Schema.Struct({
   inStep: Schema.Boolean,
   reasoningShown: Schema.Boolean,
@@ -40,12 +44,11 @@ export const initial: State = { inStep: false, reasoningShown: false, tools: {} 
 
 type Step = readonly [State, ReadonlyArray<RunEvent>]
 
-// Tool arguments and outputs cross effect-uai as JSON strings; hand the client
-// the decoded value, falling back to the raw string when it isn't JSON.
+// Tool arguments are a JSON string; hand the client the decoded value, falling
+// back to the raw string when it isn't JSON.
 const parseJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Json))
 const decodeJson = (raw: string): Json => Option.getOrElse(parseJson(raw), () => raw)
-// A tool's value as JSON, the way the model sees it (a `Date` becomes its ISO string).
-const toJson = (value: unknown): Json => decodeJson(serializeValue(value))
+const decodeOutcome = Schema.decodeUnknownEffect(Outcome)
 
 // Content belongs to a step (one model turn); open one lazily on its first event.
 const inStep = (s: State, events: ReadonlyArray<RunEvent>): Step =>
@@ -81,42 +84,39 @@ const turnComplete = (s: State, turn: Turn.Turn): Step => {
   return [{ ...initial, tools }, events]
 }
 
-const toolResult = (result: ToolResult): RunEvent =>
-  ToolResult.$match(result, {
-    Ok: (ok): RunEvent => ({
-      type: "tool-result",
-      callId: ok.call_id,
-      name: ok.tool,
-      output: toJson(ok.value),
-      isError: false,
-    }),
-    Failure: (f): RunEvent => ({
-      type: "tool-result",
-      callId: f.call_id,
-      name: f.tool,
-      output: f.reason === undefined ? { kind: f.kind } : { kind: f.kind, reason: f.reason },
-      isError: true,
-    }),
-  })
+// A history item already holds the encoded value: read it back from its parts.
+const outputResult = (s: State, o: Items.ToolCallOutput) =>
+  ToolOutput.encoded(o.output).pipe(
+    Effect.map((encoded) =>
+      o.isError === true
+        ? { _tag: "Failure", error: encoded }
+        : { _tag: "Success", value: encoded },
+    ),
+    Effect.flatMap(decodeOutcome),
+    Effect.map((result): Step => [
+      s,
+      [{ type: "tool-result", callId: o.call_id, name: s.tools[o.call_id] ?? "", result }],
+    ]),
+  )
 
-/** Map one loop event onto zero or more `RunEvent`s. */
+/** Map one loop event onto zero or more `RunEvent`s; tool values are encoded by the contract. */
 export const step =
-  (options?: Options) =>
-  (s: State, event: Source): Step =>
+  (config: Config) =>
+  (s: State, event: Source): Effect.Effect<Step, Schema.SchemaError> =>
     Match.value(event).pipe(
-      Match.when({ type: "function_call_output" }, (o): Step => [
-        s,
-        [
-          {
-            type: "tool-result",
-            callId: o.call_id,
-            name: s.tools[o.call_id] ?? "",
-            output: decodeJson(o.output),
-            isError: false,
-          },
-        ],
-      ]),
+      Match.when({ type: "function_call_output" }, (o) => outputResult(s, o)),
       Match.tags({
+        Partial: (e) => Effect.map(config.contract.toolEvent(e), (r): Step => [s, [r]]),
+        Output: (e) => Effect.map(config.contract.toolEvent(e), (r): Step => [s, [r]]),
+      }),
+      Match.orElse((e) => Effect.succeed(turnStep(config)(s, e))),
+    )
+
+const turnStep =
+  (options: Options) =>
+  (s: State, event: Turn.TurnEvent): Step =>
+    Match.value(event).pipe(
+      Match.tagsExhaustive({
         TextDelta: (e) => inStep(s, [{ type: "text-delta", text: e.text }]),
         RefusalDelta: (e) => inStep(s, [{ type: "refusal-delta", text: e.text }]),
         ReasoningDelta: (e) => reasoning(options)(s, e),
@@ -140,28 +140,14 @@ export const step =
         UsageUpdate: (): Step => [s, []],
         WebSearchCall: (): Step => [s, []],
         TurnComplete: (e) => turnComplete(s, e.turn),
-        ApprovalRequested: (e): Step => [
-          s,
-          [
-            {
-              type: "tool-approval-requested",
-              callId: e.call_id,
-              name: e.tool,
-              input: decodeJson(e.arguments),
-            },
-          ],
-        ],
-        Progress: (e): Step => [
-          s,
-          [{ type: "tool-progress", callId: e.call_id, data: toJson(e.data) }],
-        ],
-        Output: (e): Step => [s, [toolResult(e.result)]],
       }),
-      Match.exhaustive,
     )
 
-/** Stream operator: project a loop's events onto `RunEvent`s. */
+/**
+ * Stream operator: project a loop's events onto `RunEvent`s. A tool value the
+ * contract can't encode fails the stream: a contract violation, not data to show.
+ */
 export const toRunEvents =
-  (options?: Options) =>
-  <E, R>(self: Stream.Stream<Source, E, R>): Stream.Stream<RunEvent, E, R> =>
-    self.pipe(Stream.mapAccum(() => initial, step(options)))
+  (config: Config) =>
+  <E, R>(self: Stream.Stream<Source, E, R>): Stream.Stream<RunEvent, E | Schema.SchemaError, R> =>
+    self.pipe(Stream.mapAccumEffect(() => initial, step(config)))

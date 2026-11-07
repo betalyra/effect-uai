@@ -1,3 +1,4 @@
+import * as Approval from "@effect-uai/core/Approval"
 import type * as Items from "@effect-uai/core/Items"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
@@ -14,6 +15,7 @@ import { type Envelope, InputId, RunId, type RunEvent, StreamId } from "./RunEve
 import * as RunView from "./RunView.js"
 import * as SseEncoding from "./SseEncoding.js"
 import * as Thread from "./Thread.js"
+import * as UiContract from "./UiContract.js"
 
 const getWeather = Tool.make({
   name: "get_weather",
@@ -60,14 +62,12 @@ const serve = (inputId: InputId) => {
             const calls = Turn.getToolCalls(turn)
             return calls.length === 0
               ? stop()
-              : Toolkit.run(toolkit, calls).pipe(
-                  Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
-                )
+              : Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
           }),
         ),
       ),
     ),
-    Projection.toRunEvents(),
+    Projection.toRunEvents({ contract: UiContract.make({ tools: [getWeather] }) }),
     Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
     Run.start({ runId: RunId.make("r1"), inputs: [inputId] }),
     Run.complete,
@@ -101,7 +101,7 @@ describe("Thread over the wire", () => {
           name: "get_weather",
           status: "done",
           input: { city: "Lisbon" },
-          output: { city: "Lisbon", temperatureC: 19.4 },
+          outcome: { _tag: "Success", value: { city: "Lisbon", temperatureC: 19.4 } },
         },
         { type: "output_text", text: "19°C." },
       ])
@@ -130,7 +130,7 @@ describe("Thread across streams", () => {
           type: "run-started",
           runId: RunId.make(stream),
           inputs: [],
-          protocol: 1,
+          protocol: 2,
         },
         { type: "text-delta", text },
         { type: "run-completed" },
@@ -156,7 +156,7 @@ describe("Thread across streams", () => {
       type: "run-started",
       runId: RunId.make(runId),
       inputs: [input],
-      protocol: 1,
+      protocol: 2,
     })
 
     const streaming = [
@@ -201,7 +201,7 @@ describe("Thread across streams", () => {
           type: "run-started",
           runId: r,
           inputs: [InputId.make("in_1")],
-          protocol: 1,
+          protocol: 2,
         },
       },
       { streamId: s, seq: 3, runId: r, event: { type: "text-delta", text: "Hello" } },
@@ -240,20 +240,24 @@ describe("Thread approvals", () => {
 
   // The first run asks for approval and ends interrupted.
   const interrupted = [
-    frame(1, "r1", { type: "run-started", runId: RunId.make("r1"), inputs: [ask.id], protocol: 1 }),
+    frame(1, "r1", { type: "run-started", runId: RunId.make("r1"), inputs: [ask.id], protocol: 2 }),
     frame(2, "r1", { type: "tool-call-ready", ...call }),
     frame(3, "r1", { type: "run-interrupted", interrupts: [{ ...call, reason: "approval" }] }),
   ].reduce(Thread.step, Thread.submitted(Thread.initial, ask))
 
   // The answer runs the call (or not) in the next run.
   const answer = (approved: boolean, result: RunEvent) => {
-    const resolve = { ...Input.resolve([{ callId: "call_1", approved }]), id: InputId.make("in_2") }
+    const decision = approved ? Approval.Default.Approve() : Approval.Default.Deny()
+    const resolve = {
+      ...Input.resolve([{ callId: "call_1", decision }]),
+      id: InputId.make("in_2"),
+    }
     return [
       frame(4, "r2", {
         type: "run-started",
         runId: RunId.make("r2"),
         inputs: [resolve.id],
-        protocol: 1,
+        protocol: 2,
       }),
       frame(5, "r2", result),
       frame(6, "r2", { type: "text-delta", text: approved ? "Booked." : "Not booked." }),
@@ -271,25 +275,29 @@ describe("Thread approvals", () => {
       type: "tool-result",
       callId: "call_1",
       name: "book_table",
-      output: { booked: true },
-      isError: false,
+      result: { _tag: "Success", value: { booked: true } },
     })
     expect(blocksOf(thread, 1)).toMatchObject([
-      { type: "tool", id: "call_1", status: "done", output: { booked: true } },
+      {
+        type: "tool",
+        id: "call_1",
+        status: "done",
+        outcome: { _tag: "Success", value: { booked: true } },
+      },
     ])
     expect(blocksOf(thread, 2)).toEqual([{ type: "output_text", id: "b0", text: "Booked." }])
   })
 
-  it("a denied call fails on the same card, with the server's kind", () => {
+  it("a denied call fails on the same card, with the server's error", () => {
+    const error = { _tag: "Denied", message: "not tonight" }
     const thread = answer(false, {
       type: "tool-result",
       callId: "call_1",
       name: "book_table",
-      output: { kind: "denied" },
-      isError: true,
+      result: { _tag: "Failure", error },
     })
     expect(blocksOf(thread, 1)).toMatchObject([
-      { type: "tool", id: "call_1", status: "failed", error: { kind: "denied" } },
+      { type: "tool", id: "call_1", status: "failed", outcome: { _tag: "Failure", error } },
     ])
     expect(blocksOf(thread, 2)).toEqual([{ type: "output_text", id: "b0", text: "Not booked." }])
   })

@@ -1,46 +1,26 @@
 /**
- * The event type emitted while handling tool calls.
- *
- *   - ApprovalRequested : gated calls waiting for approval
- *   - Progress          : per-element passthrough from a streaming tool's run
- *   - Output            : terminal result (carries a structured ToolResult)
- *
- * Recipes thread `ToolEvent.Output.result` through `continueWithResults` and
- * apply `toToolCallOutput` when appending to history.
- *
- * Demux note: `Progress` carries `call_id` / `tool` at the top level, while
- * `Output` nests them inside `result` (the `ToolResult` already carries both).
- * A consumer grouping events by call reads `e.call_id` for `Progress` and
- * `e.result.call_id` for `Output`.
+ * What `Toolkit.run` emits, typed per tool: `tool` is the discriminant, so
+ * `e.tool === "search"` narrows `value` / `result` to that tool's types. Values
+ * are decoded (the tool's own types); `Toolkit.output` encodes them for history.
  */
-import { Data } from "effect"
-import type { ToolResult } from "./ToolResult.js"
+import type { Result } from "effect"
 
-export type ToolEvent = Data.TaggedEnum<{
-  ApprovalRequested: {
-    readonly call_id: string
-    readonly tool: string
-    readonly arguments: string
-  }
-  Progress: {
-    readonly call_id: string
-    readonly tool: string
-    readonly data: unknown
-  }
-  Output: {
-    readonly result: ToolResult
-  }
-}>
+/** An intermediate value of a `Stream` tool. */
+export type Partial<Name extends string = string, Output = unknown> = {
+  readonly _tag: "Partial"
+  readonly call_id: string
+  readonly tool: Name
+  readonly value: Output
+}
 
-/**
- * Namespace of constructors, type guards, and matchers for `ToolEvent`,
- * provided by `Data.taggedEnum`. Use `ToolEvent.Output({ result })` to build
- * an event, `ToolEvent.$is("Output")` for type narrowing,
- * `ToolEvent.$match({ ApprovalRequested, Progress, Output })` for
- * exhaustive pattern matching.
- */
-export const ToolEvent = Data.taggedEnum<ToolEvent>()
+/** The call ended: `Success` with its value, or `Failure` with a declared or core error. */
+export type Output<Name extends string = string, Out = unknown, E = unknown> = {
+  readonly _tag: "Output"
+  readonly call_id: string
+  readonly tool: Name
+  readonly result: Result.Result<Out, E>
+}
 
-export const isApprovalRequested = ToolEvent.$is("ApprovalRequested")
-export const isProgress = ToolEvent.$is("Progress")
-export const isOutput = ToolEvent.$is("Output")
+export type ToolEvent<Name extends string = string, Out = unknown, E = unknown> =
+  | Partial<Name, Out>
+  | Output<Name, Out, E>

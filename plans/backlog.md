@@ -26,7 +26,7 @@ Done and dropped items are listed at the end so they don't get re-proposed.
       `tool-result` keeps `{ kind, reason }`. Second step: a typed `value` per
       tool via `ToolResultOf<Toolkit>` (narrow by `tool`). Breaking: core,
       recipes (approval, sleeper, …), provider tests; needs a migration note.
-- [ ] **Move `Approval.fromQueue` into the `tool-call-approval` recipe**: it is
+- [x] **Move `Approval.fromQueue` into the `tool-call-approval` recipe**: it is
       a pattern (an in-process wait, a verdict `Queue`, a router fiber, a
       timeout), not a primitive, and that recipe is its only user. Keep
       `fromMap` (a pure `(predicate, verdicts) => plan`). Update the skill row

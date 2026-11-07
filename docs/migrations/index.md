@@ -15,6 +15,9 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.19](/migrations/v0-19/): `Approval.fromQueue` moves out of
+  core into the tool call approval recipe; copy it into your app if you use
+  it. `Approval.fromMap` is unchanged.
 - [Migrating to 0.18](/migrations/v0-18/): one required action, upgrade to
   Effect 4.0 stable (`effect` peer `>=4.0.1 <5.0.0`); effect-uai renames
   nothing. Realtime transcription and synthesis streams now fail on a

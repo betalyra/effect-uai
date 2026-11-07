@@ -21,15 +21,26 @@
  * queue variant (more visual demo).
  */
 import * as Approval from "@effect-uai/core/Approval"
-import { type ApprovalMapEntry, type Verdict } from "@effect-uai/core/Approval"
+import { type ApprovalMapEntry } from "@effect-uai/core/Approval"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
 import { ToolEvent } from "@effect-uai/core/ToolEvent"
+import * as ToolResult from "@effect-uai/core/ToolResult"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
-import { Effect, Queue, Schema, Stream, pipe } from "effect"
+import {
+  Deferred,
+  type Duration,
+  Effect,
+  Queue,
+  Ref,
+  type Scope,
+  Schema,
+  Stream,
+  pipe,
+} from "effect"
 
 // ---------------------------------------------------------------------------
 // Tools - one safe, two sensitive.
@@ -90,6 +101,102 @@ const decisionEvents = (decision: Approval.ApprovalDecision): Stream.Stream<Tool
 const SENSITIVE_TOOLS: ReadonlySet<string> = new Set(["send_email", "delete_user"])
 export const isSensitive: (call: Items.ToolCall) => boolean = (call) =>
   SENSITIVE_TOOLS.has(call.name)
+
+// ---------------------------------------------------------------------------
+// Verdict queue planner. Safe calls are approved at once; each gated call
+// announces `ApprovalRequested` and resolves when its verdict arrives (or as
+// `cancelled` after `timeout`). Single consumer: one round at a time per
+// queue, since the router retires once every gated call is resolved.
+// ---------------------------------------------------------------------------
+
+export type Verdict = {
+  readonly call_id: string
+  readonly decision: "approve" | "deny"
+  readonly reason?: string
+}
+
+export const fromQueue =
+  (
+    predicate: (call: Items.ToolCall) => boolean,
+    verdicts: Queue.Dequeue<Verdict>,
+    options?: { readonly timeout?: Duration.Input },
+  ) =>
+  (
+    calls: ReadonlyArray<Items.ToolCall>,
+  ): Effect.Effect<
+    {
+      readonly approved: ReadonlyArray<Items.ToolCall>
+      readonly decisions: Stream.Stream<Approval.ApprovalDecision>
+      readonly approvalRequests: Stream.Stream<ToolEvent>
+    },
+    never,
+    Scope.Scope
+  > =>
+    Effect.gen(function* () {
+      const gated = calls.filter(predicate)
+      const approved = calls.filter((call) => !predicate(call))
+      const pending = new Map(
+        yield* Effect.forEach(gated, (call) =>
+          Deferred.make<Approval.ApprovalDecision>().pipe(
+            Effect.map((d) => [call.call_id, { call, d }] as const),
+          ),
+        ),
+      )
+      const outstanding = yield* Ref.make(gated.length)
+
+      // Count only the winning completion, so a late verdict is a no-op.
+      const resolve = (id: string, decide: (call: Items.ToolCall) => Approval.ApprovalDecision) => {
+        const entry = pending.get(id)
+        return entry === undefined
+          ? Effect.void
+          : Deferred.succeed(entry.d, decide(entry.call)).pipe(
+              Effect.flatMap((won) => (won ? Ref.update(outstanding, (n) => n - 1) : Effect.void)),
+            )
+      }
+
+      const verdictOf = (v: Verdict) => (call: Items.ToolCall) =>
+        v.decision === "approve"
+          ? Approval.approve(call)
+          : Approval.reject(ToolResult.denied(call, v.reason))
+
+      const route: Effect.Effect<void> = Ref.get(outstanding).pipe(
+        Effect.flatMap((n) =>
+          n <= 0
+            ? Effect.void
+            : Queue.take(verdicts).pipe(
+                Effect.flatMap((v) => resolve(v.call_id, verdictOf(v))),
+                Effect.andThen(Effect.suspend(() => route)),
+              ),
+        ),
+      )
+
+      if (gated.length > 0) {
+        yield* Effect.forkScoped(route)
+        if (options?.timeout !== undefined) {
+          yield* Effect.forkScoped(
+            Effect.sleep(options.timeout).pipe(
+              Effect.andThen(
+                Effect.forEach(gated, (call) =>
+                  resolve(call.call_id, (c) =>
+                    Approval.reject(ToolResult.cancelled(c, "approval timed out")),
+                  ),
+                ),
+              ),
+            ),
+          )
+        }
+      }
+
+      return {
+        approved,
+        decisions: Stream.fromIterable(pending.values()).pipe(
+          Stream.flatMap(({ d }) => Stream.fromEffect(Deferred.await(d)), {
+            concurrency: "unbounded",
+          }),
+        ),
+        approvalRequests: Stream.fromIterable(gated.map(Approval.approvalRequested)),
+      }
+    })
 
 // ---------------------------------------------------------------------------
 // State
@@ -196,7 +303,7 @@ export const queueConversation = (
                 // consumer is pulling from `events`.
                 const events = Stream.unwrap(
                   Effect.gen(function* () {
-                    const { approved, decisions, approvalRequests } = yield* Approval.fromQueue(
+                    const { approved, decisions, approvalRequests } = yield* fromQueue(
                       isSensitive,
                       verdicts,
                     )(calls)

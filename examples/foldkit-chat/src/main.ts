@@ -8,12 +8,13 @@
  * Envelopes are decoded with the shared `ChatUi` contract on arrival, so the
  * thread is typed: a tool block narrowed by name has its tool's output.
  */
+import * as Approval from "@effect-uai/core/Approval"
 import * as Input from "@effect-uai/ui/Input"
-import { StreamId } from "@effect-uai/ui/RunEvent"
+import { type Outcome, StreamId } from "@effect-uai/ui/RunEvent"
 import * as RunView from "@effect-uai/ui/RunView"
 import * as Thread from "@effect-uai/ui/Thread"
 import * as Transport from "@effect-uai/ui/Transport"
-import { Effect, Option, Schema, Stream } from "effect"
+import { Effect, Match, Option, Schema, Stream } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { type HttpClient, HttpClientRequest } from "effect/http"
 import { Command, type Runtime, Subscription, type Update } from "foldkit"
@@ -58,7 +59,7 @@ export const Message = defineMessageUnion({
   ChangedPrompt: { prompt: Schema.String },
   SubmittedPrompt: {},
   /** Approve or Deny on a call that waits for the user. */
-  ClickedVerdict: { callId: Schema.String, approved: Schema.Boolean },
+  ClickedVerdict: { callId: Schema.String, decision: Approval.Default.schema },
   CreatedInput: { input: Input.Input },
   ClickedStop: {},
   GotEnvelope: { envelope: ChatUi.Envelope },
@@ -82,9 +83,9 @@ const CreateMessage = Command.define("CreateMessage", {
 
 // The page only votes; the server checks the call is waiting, and decides.
 const CreateVerdict = Command.define("CreateVerdict", {
-  args: { callId: Schema.String, approved: Schema.Boolean },
+  args: { callId: Schema.String, decision: Approval.Default.schema },
   messages: [Message.CreatedInput],
-  execute: ({ callId, approved }) => withId(Input.resolve([{ callId, approved }])),
+  execute: ({ callId, decision }) => withId(Input.resolve([{ callId, decision }])),
 })
 
 // UPDATE
@@ -100,10 +101,10 @@ export const update = (model: Model, message: Message): Return =>
       if (text === "" || model.request !== null) return { model }
       return { model: { ...model, prompt: "" }, commands: [CreateMessage({ text })] }
     },
-    ClickedVerdict: ({ callId, approved }) =>
+    ClickedVerdict: ({ callId, decision }) =>
       model.request !== null
         ? { model }
-        : { model, commands: [CreateVerdict({ callId, approved })] },
+        : { model, commands: [CreateVerdict({ callId, decision })] },
     // Optimistic: a message shows before the server answers.
     CreatedInput: ({ input }) => ({
       model: {
@@ -157,6 +158,7 @@ export const init: Runtime.ApplicationInit<Model, Message> = () => ({
 
 type Run = RunView.RunView<ChatPayloads>
 type ToolBlock = Extract<RunView.Block<ChatPayloads>, { type: "tool" }>
+type Failure = ChatPayloads["tool"]["failure"]
 
 // The answer, or the refusal when the model declined.
 const answer = (run: Run) => RunView.text(run) || (RunView.refusal(run) ?? "")
@@ -167,36 +169,43 @@ const runNote = (run: Run): string | undefined => {
   return undefined
 }
 
-// A failed call carries the server's `kind`; what it means is ours to word.
-const kindOf = Schema.decodeUnknownOption(Schema.Struct({ kind: Schema.String }))
+// A failed call carries a typed error: the tool's own, core's, or the app's closing.
+const failure = (error: Failure): string =>
+  Match.value(error).pipe(
+    Match.tag("Denied", () => "you declined"),
+    Match.tag("Superseded", () => "skipped: you asked something else"),
+    Match.tag("CityNotFound", (e) => `no city called ${e.city}`),
+    Match.tag("UnknownTimezone", (e) => `unknown timezone ${e.timezone}`),
+    Match.orElse((e) => `failed: ${e.message}`),
+  )
 
-const failure = (block: ToolBlock): string => {
-  const kind = Option.match(kindOf(block.error), { onNone: () => "error", onSome: (e) => e.kind })
-  if (kind === "denied") return "you declined"
-  if (kind === "superseded") return "skipped: you asked something else"
-  return `failed: ${kind}`
-}
+// The value of a successful call, typed by the (narrowed) block's tool.
+const valueOf = <V, E>(block: { readonly outcome?: Outcome<V, E> }): V | undefined =>
+  block.outcome?._tag === "Success" ? block.outcome.value : undefined
 
 // Narrowing by name gives the tool's own types: `observedAt`, `now`, `sentAt` are Dates.
 const toolSummary = (block: ToolBlock): string => {
-  if (block.status === "failed") return `${block.name}: ${failure(block)}`
-  if (block.name === "get_weather" && block.output !== undefined) {
-    const { city, country, temperatureC, windSpeedKmh, observedAt } = block.output
+  if (block.outcome?._tag === "Failure") return `${block.name}: ${failure(block.outcome.error)}`
+  if (block.name === "get_weather") {
+    const weather = valueOf(block)
+    if (weather === undefined) return `weather: ${block.status}`
+    const { city, country, temperatureC, windSpeedKmh, observedAt } = weather
     return `${city}, ${country}: ${temperatureC}°C, wind ${windSpeedKmh} km/h (${observedAt.toLocaleTimeString()})`
   }
-  if (block.name === "get_date" && block.output !== undefined) {
-    const { timezone, now } = block.output
-    return `${now.toLocaleString(undefined, { timeZone: timezone })} (${timezone})`
+  if (block.name === "get_date") {
+    const date = valueOf(block)
+    if (date === undefined) return `date: ${block.status}`
+    return `${date.now.toLocaleString(undefined, { timeZone: date.timezone })} (${date.timezone})`
   }
   if (block.name === "send_email" && block.input !== undefined) {
-    const sent = block.output?.sentAt
+    const sent = valueOf(block)?.sentAt
     return sent === undefined
       ? `email to ${block.input.to}: "${block.input.subject}"`
       : `email sent to ${block.input.to} at ${sent.toLocaleTimeString()}`
   }
   if (block.name === "book_table" && block.input !== undefined) {
     const { restaurant, time, guests } = block.input
-    return `${restaurant}, ${time}, ${guests} guests${block.output === undefined ? "" : ": booked"}`
+    return `${restaurant}, ${time}, ${guests} guests${valueOf(block) === undefined ? "" : ": booked"}`
   }
   return `${block.name}: ${block.status}`
 }
@@ -211,14 +220,21 @@ const toolCard = (h: HtmlBuilder<Message>, block: ToolBlock): Html =>
             h.button(
               [
                 h.Type("button"),
-                h.OnClick(Message.ClickedVerdict({ callId: block.id, approved: true })),
+                h.OnClick(
+                  Message.ClickedVerdict({
+                    callId: block.id,
+                    decision: Approval.Default.Approve(),
+                  }),
+                ),
               ],
               ["Approve"],
             ),
             h.button(
               [
                 h.Type("button"),
-                h.OnClick(Message.ClickedVerdict({ callId: block.id, approved: false })),
+                h.OnClick(
+                  Message.ClickedVerdict({ callId: block.id, decision: Approval.Default.Deny() }),
+                ),
               ],
               ["Deny"],
             ),

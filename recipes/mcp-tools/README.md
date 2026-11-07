@@ -93,9 +93,9 @@ const kit =
 
 ## Failure model
 
-Two channels, no new concepts. A tool that reports an error becomes a
-model-visible `ToolResult.Failure` the model reads and adapts to, usually by
-fixing its arguments and trying again. A connection or protocol failure
+Two channels, no new concepts. A tool that reports an error (`isError`) becomes
+the declared `McpToolFailed`, a model-visible failure the model reads and adapts
+to, usually by fixing its arguments and trying again. A connection or protocol failure
 propagates typed as `McpError` on `Toolkit.run`. To show the model those too:
 
 ```ts

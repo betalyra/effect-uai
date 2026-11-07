@@ -13,7 +13,7 @@ import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as Turn from "@effect-uai/core/Turn"
 import { Effect, Match, Option, Schema, Stream } from "effect"
 import { type Json, Outcome, type RunEvent } from "./RunEvent.js"
-import type { UiContract } from "./UiContract.js"
+import * as UiContract from "./UiContract.js"
 
 /** What an effect-uai loop emits: turn events, tool events, and plain tool outputs. */
 export type Source = Turn.TurnEvent | ToolEvent.ToolEvent | Items.ToolCallOutput
@@ -30,7 +30,13 @@ export const Options = Schema.Struct({
 export type Options = typeof Options.Type
 
 /** `Options` plus the contract whose schemas encode tool values. */
-export type Config = Options & { readonly contract: Pick<UiContract<any>, "toolEvent"> }
+export type Config = Options & {
+  /** Without one, tool values are encoded as `Content.Value` and errors as core's. */
+  readonly contract?: Pick<UiContract.UiContract<any>, "toolEvent">
+}
+
+const noContract = UiContract.make({})
+const contractOf = (config: Config) => config.contract ?? noContract
 
 export const State = Schema.Struct({
   inStep: Schema.Boolean,
@@ -106,8 +112,8 @@ export const step =
     Match.value(event).pipe(
       Match.when({ type: "function_call_output" }, (o) => outputResult(s, o)),
       Match.tags({
-        Partial: (e) => Effect.map(config.contract.toolEvent(e), (r): Step => [s, [r]]),
-        Output: (e) => Effect.map(config.contract.toolEvent(e), (r): Step => [s, [r]]),
+        Partial: (e) => Effect.map(contractOf(config).toolEvent(e), (r): Step => [s, [r]]),
+        Output: (e) => Effect.map(contractOf(config).toolEvent(e), (r): Step => [s, [r]]),
       }),
       Match.orElse((e) => Effect.succeed(turnStep(config)(s, e))),
     )
@@ -148,6 +154,6 @@ const turnStep =
  * contract can't encode fails the stream: a contract violation, not data to show.
  */
 export const toRunEvents =
-  (config: Config) =>
+  (config: Config = {}) =>
   <E, R>(self: Stream.Stream<Source, E, R>): Stream.Stream<RunEvent, E | Schema.SchemaError, R> =>
     self.pipe(Stream.mapAccumEffect(() => initial, step(config)))

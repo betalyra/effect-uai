@@ -63,7 +63,7 @@ describe("toUIMessageStream", () => {
         Turn.TurnEvent.ToolCallStart({ call_id: "c1", name: "search" }),
         Turn.TurnEvent.ToolCallArgsDelta({ call_id: "c1", delta: `{"q":"lisbon"}` }),
         Turn.TurnEvent.TurnComplete({ turn: turn([call], "tool_calls") }),
-        Items.toolCallOutput("c1", `{"hits":3}`),
+        { type: "function_call_output", call_id: "c1", output: [Items.json({ hits: 3 })] },
       ])
 
       expect(types(parts)).toEqual([
@@ -87,6 +87,39 @@ describe("toUIMessageStream", () => {
         toolCallId: "c1",
         output: { hits: 3 },
       })
+    }),
+  )
+
+  it.effect("maps a failed call to tool-output-error and media to a data URL", () =>
+    Effect.gen(function* () {
+      const parts = yield* encode([
+        {
+          type: "function_call_output",
+          call_id: "c1",
+          output: [Items.json({ _tag: "CityNotFound", city: "Atlantis" })],
+          isError: true,
+        },
+        {
+          type: "function_call_output",
+          call_id: "c2",
+          output: [
+            Items.text("Home"),
+            Items.image({ _tag: "bytes", bytes: new Uint8Array([1, 2, 3]), mimeType: "image/png" }),
+          ],
+        },
+      ])
+      expect(parts.slice(1, 3)).toEqual([
+        {
+          type: "tool-output-error",
+          toolCallId: "c1",
+          errorText: '{"_tag":"CityNotFound","city":"Atlantis"}',
+        },
+        {
+          type: "tool-output-available",
+          toolCallId: "c2",
+          output: ["Home", { type: "image", url: "data:image/png;base64,AQID" }],
+        },
+      ])
     }),
   )
 
@@ -192,7 +225,8 @@ describe("decodeMessages", () => {
     expect(items).toEqual([
       Items.assistantText("Here"),
       { type: "function_call", call_id: "c1", name: "search", arguments: `{"q":"lisbon"}` },
-      Items.toolCallOutput("c1", `{"hits":3}`),
+      // The output stays a value; the provider codec serializes it.
+      { type: "function_call_output", call_id: "c1", output: [Items.json({ hits: 3 })] },
     ])
   })
 

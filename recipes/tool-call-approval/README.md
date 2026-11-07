@@ -1,73 +1,107 @@
 ---
 title: Tool call approval
-description: Pause the loop on sensitive tool calls, wait for a human verdict, then approve, deny, or cancel each one before continuing.
+description: Pause the loop on sensitive tool calls, wait for a human answer, then approve, deny, or cancel each one before continuing.
 source: recipes/tool-call-approval
 icon: PiShieldCheck
 ---
 
 **Scenario.** The model wants to call sensitive tools (`send_email`,
-`delete_user`). Before they run, we ask the user. The reply is either
+`delete_user`). Before they run, we ask the user. The answer is either
 "approve" (run it), "deny" (don't run it; surface why), or nothing at all
-(treat as cancelled). Whatever the verdict, every `function_call` ends up
+(treat as cancelled). Whatever the answer, every `function_call` ends up
 with a matching `function_call_output` in history, the wire-protocol
 invariant every modern provider enforces.
 
-The HITL integration is explicit stream composition. Approval helpers split
-calls into "run this" and "return this synthetic result"; the recipe then
-chooses how to combine `Toolkit.run` with those rejected outputs.
-Nothing in the executor knows about approval policy.
+The HITL integration is explicit stream composition. `Approval` groups the
+waiting calls by answer; the recipe then runs the approved ones with
+`Toolkit.run` and closes the rest with typed errors. Nothing in the executor
+knows about approval policy.
 
 ## Two transport flavors
 
 Same primitives, different approval planner:
 
-- **HTTP (primary)**: approvals arrive synchronously bundled with the
-  next request. `Approval.fromMap(predicate, approvals)(calls)` returns
-  `{ approved, rejected }`; missing entries synthesize `cancelled`.
-  Pure function. No queue, no router fiber. The simplest path.
+- **HTTP (primary)**: answers arrive synchronously bundled with the
+  next request. `Approval.Default.resolve(waiting, answers)` returns
+  `{ Approve, Deny, unanswered }`; unanswered calls are closed as
+  cancelled. Pure function. No queue, no router fiber. The simplest path.
 - **Queue (enhancement)**: long-lived channel (WebSocket / SSE).
-  `fromQueue(predicate, queue)(calls)`, defined in this recipe, returns
-  safe calls up front, emits `ApprovalRequested` events, and exposes a
-  decision stream for gated calls as verdicts arrive. It is app code built
-  from `Approval.approve` / `reject` / `approvalRequested`: copy it and
-  change the wait (a database, a Slack button, a timeout policy).
+  `fromQueue(predicate, answers, { timeout? })(calls)`, defined in this
+  recipe, runs safe calls up front, announces each gated call with the
+  recipe's own `ApprovalRequested` event, and runs or closes it once its
+  answer (or the timeout) arrives. It is app code: copy it and change the
+  wait (a database, a Slack button, a timeout policy).
 
 Pick HTTP if your transport is request-shaped. Pick the queue variant if
 you've got a persistent connection and want a streaming UI.
 
-## HTTP variant (primary)
+## Answers and closings
+
+An answer is an `Approval.Default` decision for one call: approve, or deny
+with an optional reason.
 
 ```ts
 import * as Approval from "@effect-uai/core/Approval"
-import { type ApprovalMapEntry } from "@effect-uai/core/Approval"
-import * as Toolkit from "@effect-uai/core/Toolkit"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 
+export type Decision = typeof Approval.Default.schema.Type
+export type Answer = Approval.Answer<Decision>
+// { callId, decision: Approval.Default.Approve() | Approval.Default.Deny({ reason? }) }
+
+// The errors this app closes calls with; they encode into history with this schema.
+export const Closings = Schema.Union([Approval.Denied, ToolOutput.Cancelled])
+```
+
+A denied or cancelled call becomes an `Output` event whose `result` is a
+`Result.fail` with `Approval.Denied` or `ToolOutput.Cancelled`. The model
+sees it like any failed call. When appending to history, closings encode
+with `Closings` and everything else with its tool's schemas:
+
+```ts
+const toHistory = (outcome: Toolkit.Outcome) =>
+  Result.isFailure(outcome.result) && isClosing(outcome.result.failure)
+    ? ToolOutput.failure(outcome, Closings, outcome.result.failure)
+    : Toolkit.output(toolkit, outcome)
+
+const appendAll = (state: State, turn: Turn.Turn) => (outcomes: ReadonlyArray<Toolkit.Outcome>) =>
+  Effect.map(Effect.forEach(outcomes, toHistory), (items) =>
+    Turn.appendToHistory(state, turn, items),
+  )
+```
+
+## HTTP variant (primary)
+
+```ts
 onTurnComplete((turn) =>
   Effect.sync(() => {
     const calls = Turn.getToolCalls(turn)
     // No requested tools means there is nothing to approve or execute.
     if (calls.length === 0) return stop()
 
-    const plan = Approval.fromMap(isSensitive, approvals)(calls)
-    return Stream.merge(
-      // Approved calls run; denied/missing approvals still become outputs.
-      Toolkit.run(toolkit, plan.approved),
-      Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
-    ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
+    const { Approve, Deny, unanswered } = Approval.Default.resolve(
+      calls.filter(isSensitive),
+      answers,
+    )
+    const closed = [
+      ...Deny.map(({ call, decision }) => close(call, denied(decision.reason))),
+      ...unanswered.map((call) =>
+        close(call, new ToolOutput.Cancelled({ message: "No approval was given." })),
+      ),
+    ]
+    const run = [...calls.filter((c) => !isSensitive(c)), ...Approve.map((a) => a.call)]
+    return Stream.merge(Toolkit.run(toolkit, run), Stream.fromIterable(closed)).pipe(
+      Toolkit.continueWith(appendAll(current, turn)),
+    )
   }),
 )
 ```
 
-`approvals` is a `ReadonlyMap<string, ApprovalMapEntry>` keyed by
-`call_id`. Entries are either `{ decision: "approve" }` or
-`{ decision: "deny", reason?: string }`. A gated call without an entry
-is placed in `plan.rejected` as a `cancelled` result. The
-`Stream.fromIterable(...ToolEvent.Output(...))` line turns those
-results into `Output` events, and `continueWithResults` keeps them in
-history so the next provider request stays well-formed.
-`Toolkit.appendToolResults(current, turn)` collapses the collect, the
-`toToolCallOutput` conversion, and the `Turn.appendToHistory` append into
-one step.
+`answers` is a `ReadonlyArray<Answer>`, matched to calls by `callId`. A gated call
+without an answer lands in `unanswered` and is closed as `Cancelled`.
+`close(call, error)` builds the `Output` event for a closed call, and
+`Toolkit.continueWith(appendAll(current, turn))` forwards every event, then
+appends the turn plus one output per call so the next provider request
+stays well-formed.
 
 ### Reconciling history before the next request
 
@@ -77,86 +111,67 @@ synthesize closure outputs before submitting. That's an entry-point
 concern, not the recipe's:
 
 ```ts
-import { cancelAllPending, findUnansweredCalls } from "@effect-uai/core/HistoryCheck"
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
+import * as HistoryCheck from "@effect-uai/core/HistoryCheck"
 
 // In your HTTP route handler, before invoking httpConversation:
-const stored = await store.load(req.sessionId)
-const closures = cancelAllPending(stored, "user moved on")
-const reconciledHistory = [
-  ...stored,
-  ...closures.map(toToolCallOutput),
-  Items.userText(req.body.message),
-]
-return httpConversation(req.body.approvals, { history: reconciledHistory })
+const answers = yield * Schema.decodeUnknownEffect(Schema.Array(Answer))(req.body.answers)
+const closing = yield * HistoryCheck.cancelAllPending(storedHistory, "user moved on")
+return httpConversation(answers, {
+  history: [...storedHistory, ...closing, Items.userText(req.body.message)],
+})
 ```
 
-Use whenever a checkpoint, timeout, or new user message could leave
-`function_call`s without matching outputs.
+`cancelAllPending` returns ready-to-append outputs, a `Cancelled` error
+each. Use it whenever a checkpoint, timeout, or new user message could
+leave `function_call`s without matching outputs.
 
 ## Queue variant (enhancement)
 
-For long-lived connections where verdicts arrive over time. Safe calls
+For long-lived connections where answers arrive over time. Safe calls
 start immediately. Gated calls emit `ApprovalRequested`, then each one
-waits until its specific verdict lands on the queue.
+waits until its specific answer lands on the queue.
 
 ```ts
-import * as Approval from "@effect-uai/core/Approval"
-
-// Approved decisions run; denied/cancelled decisions become synthetic outputs.
-const decisionEvents = (decision: Approval.ApprovalDecision): Stream.Stream<ToolEvent> =>
-  decision._tag === "Approved"
-    ? Toolkit.run(toolkit, [decision.call])
-    : Stream.succeed(ToolEvent.Output({ result: decision.result }))
+// Inside fromQueue: once a gated call's answer (or the timeout) arrives.
+Match.value(settled).pipe(
+  Match.tagsExhaustive({
+    Approve: () => Toolkit.run(toolkit, [call]),
+    Deny: ({ reason }) => Stream.succeed(close(call, denied(reason))),
+    Cancelled: (cancelled) => Stream.succeed(close(call, cancelled)),
+  }),
+)
 
 onTurnComplete((turn) =>
   Effect.sync(() => {
     const calls = Turn.getToolCalls(turn)
-    // No requested tools means there is nothing to approve or execute.
     if (calls.length === 0) return stop()
-
-    // `Stream.unwrap` supplies the Scope that fromQueue's router
-    // fiber lives in. Router stays alive as long as the consumer pulls
-    // events.
-    const events = Stream.unwrap(
-      Effect.gen(function* () {
-        const { approved, decisions, approvalRequests } = yield* fromQueue(
-          isSensitive,
-          verdicts,
-        )(calls)
-        return Stream.merge(
-          approvalRequests,
-          Stream.merge(
-            // Safe calls start immediately; gated calls resume as verdicts arrive.
-            Toolkit.run(toolkit, approved),
-            decisions.pipe(Stream.flatMap(decisionEvents)),
-          ),
-        )
-      }),
+    // Stream.unwrap supplies the Scope the router fiber lives in: it
+    // stays alive as long as the consumer pulls.
+    return Stream.unwrap(fromQueue(isSensitive, answers)(calls)).pipe(
+      Toolkit.continueWith(appendAll(current, turn)),
     )
-
-    return events.pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
   }),
 )
 ```
 
-The consumer side typically taps `ApprovalRequested` events, posts
-verdicts onto the same queue, and renders `Output` results as they arrive.
+The consumer side typically taps `ApprovalRequested` events, offers
+answers onto the same queue (the demo uses `demoAnswer`), and renders
+`Output` results as they arrive.
 
 ## What you get in `state.history`
 
 Whatever the path (approved, denied, cancelled), every gated call ends up
-with a `function_call_output` carrying a structured payload:
+with a `function_call_output` carrying typed parts:
 
-| Verdict / outcome    | `output` JSON                                   |
-| -------------------- | ----------------------------------------------- |
-| Approved + executed  | The tool's own structured return value.         |
-| Denied               | `{ "kind": "denied", "reason": "..." }`         |
-| Cancelled (HTTP)     | `{ "kind": "cancelled" }`                       |
-| Tool execution error | `{ "kind": "execution_error", "reason": "..."}` |
+| Answer / outcome      | `output`                                                     |
+| --------------------- | ------------------------------------------------------------ |
+| Approved + executed   | The tool's own return value.                                 |
+| Denied                | `{ "_tag": "Denied", "message": "..." }`, `isError: true`    |
+| Cancelled / timed out | `{ "_tag": "Cancelled", "message": "..." }`, `isError: true` |
+| Undeclared tool error | Fails `Toolkit.run`'s stream (declare it in `failureSchema`) |
 
-History stays well-formed; the model reads the synthesized outputs on
-the next turn and self-corrects if needed.
+History stays well-formed; the model reads the closing outputs on the next
+turn and self-corrects if needed.
 
 ## Run it
 
@@ -165,7 +180,7 @@ OPENAI_API_KEY=sk-... pnpm tsx recipes/tool-call-approval/run.ts
 ```
 
 The runner drives the queue variant since it's the more visual demo
-(simulated user posting verdicts after a delay). The HTTP variant is
+(simulated user offering answers after a delay). The HTTP variant is
 better exercised by tests or in a real HTTP handler.
 
 The full source lives next to this README at

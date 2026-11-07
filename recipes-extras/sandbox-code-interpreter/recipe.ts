@@ -14,7 +14,6 @@ import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import type { SandboxInstance } from "@effect-uai/core/Sandbox"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
 import { Array as Arr, Effect, Schema, pipe } from "effect"
 
@@ -79,13 +78,7 @@ export const conversation = (service: LanguageModelService, model: string, sb: S
       onEmpty: () => stop(),
       onNonEmpty: (calls) =>
         Toolkit.run(toolkit, calls).pipe(
-          Toolkit.continueWithResults((results) =>
-            Turn.appendToHistory(
-              { ...state, index: state.index + 1 },
-              turn,
-              results.map(toToolCallOutput),
-            ),
-          ),
+          Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
         ),
     })
 

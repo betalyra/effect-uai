@@ -100,9 +100,7 @@ export const groundedAnswer = (cfg: GroundedAnswerConfig) => {
             // Tool calls: stream tool events to the consumer, then continue
             // the loop with the appended turn + results.
             return Toolkit.run(toolkit, calls).pipe(
-              Toolkit.continueWithResults(
-                Toolkit.appendToolResults({ ...state, round: state.round + 1 }, turn),
-              ),
+              Toolkit.next(toolkit, { ...state, round: state.round + 1 }, turn),
             )
           }),
         ),

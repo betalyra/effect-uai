@@ -1,6 +1,8 @@
 # Tool output redesign: typed results, multimodal parts, typed UI
 
-Status: planned. Source of truth for the design: `experiments/tool-api-spike/`
+Status: implemented (phases 1 to 4; open: a multimodal recipe). Deviations
+found while implementing are listed under "Changes during implementation" at
+the end. Source of truth for the design: `experiments/tool-api-spike/`
 (`NOTES.md`, `TYPED-HISTORY.md`, `app/`). This plan moves it into `@effect-uai/core`,
 the provider packages and `@effect-uai/ui`, plus recipes, examples and docs.
 
@@ -217,3 +219,24 @@ Each phase ends green before the next starts; nothing is committed by me.
 - `Projection`: takes the contract.
 - Tools without `outputSchema` on the UI wire: `Content.Value` on both sides.
 - `Tool.execute`: removed.
+
+## Changes during implementation
+
+- `ToolOutput.CoreError` (`RunError` plus `Cancelled`): what `Toolkit.output` /
+  `decode` and the UI always encode and decode.
+- A string inside a mixed array becomes an `input_text` part, like a top-level
+  string (MCP surfaced it: models saw quoted JSON strings).
+- If an `outputSchema` reshapes an array with media, its JSON is kept whole as
+  one part instead of dropping elements.
+- `describeFailures`: `describe` may return `undefined` to keep an error fatal
+  (browser-usability: stale click to the model, dead session ends the run).
+- `Toolkit.isOutcome` / `continueWith` accept any tagged stream (loops carry
+  their own events); `Output` is reserved.
+- `Loop.loop` / `onTurnComplete`: the body's outer Effect infers error and
+  requirements separately from its stream (needed once `next` adds
+  `SchemaError`, and for helpers generic over a toolkit).
+- `Projection.toRunEvents`: contract optional (default `Content.Value`).
+- Decisions live on `Input.make(data, decisions)`, not on the contract.
+- `UiContract` types a core `Tool` by its own `Output` / `Failure`.
+- `@effect-uai/ai-sdk`: outputs as JSON (media as data URLs), failures as
+  `tool-output-error`.

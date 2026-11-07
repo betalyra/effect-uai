@@ -59,9 +59,7 @@ loop((state) =>
           }
 
           // Tools mean the model needs their outputs before the user speaks again.
-          return Toolkit.run(toolkit, calls).pipe(
-            Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
-          )
+          return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, { history }, turn))
         }),
       ),
     )

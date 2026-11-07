@@ -334,6 +334,33 @@ describe("Toolkit.wrap and Toolkit.describeFailures", () => {
         ])
       }),
   )
+
+  it.effect("describeFailures keeps an error fatal when describe returns undefined", () =>
+    Effect.gen(function* () {
+      class SessionGone extends Schema.TaggedError<SessionGone>()("SessionGone", {}) {}
+      const click = Tool.make({
+        name: "click",
+        description: "",
+        inputSchema: Schema.Struct({ ref: Schema.String }),
+        run: ({ ref }) =>
+          Effect.gen(function* () {
+            if (ref === "gone") return yield* new SessionGone()
+            return yield* new ApiDown()
+          }),
+      })
+      const kit = Toolkit.describeFailures(Toolkit.make(click), (e) =>
+        e._tag === "ApiDown" ? "the button did nothing" : undefined,
+      )
+      expectTypeOf<Toolkit.ToolkitE<typeof kit>>().toEqualTypeOf<ApiDown | SessionGone>()
+
+      const [stale] = yield* outcomes(kit, [call("click", "1", '{"ref":"b1"}')])
+      expect(failureOf(stale!.result)).toEqual(
+        new Tool.ToolFailed({ message: "the button did nothing" }),
+      )
+      const gone = yield* Effect.flip(collect(kit, [call("click", "2", '{"ref":"gone"}')]))
+      expect(gone).toEqual(new SessionGone())
+    }),
+  )
 })
 
 describe("Toolkit.make, namespace and compose", () => {

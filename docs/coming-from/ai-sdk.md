@@ -108,9 +108,7 @@ const agent = (history: ReadonlyArray<HistoryItem>) =>
             Effect.sync(() => {
               const calls = Turn.getToolCalls(turn)
               if (calls.length === 0) return stop() // no tool calls -> answer is done
-              return Toolkit.run(tools, calls).pipe(
-                Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
-              )
+              return Toolkit.run(tools, calls).pipe(Toolkit.next(tools, state, turn))
             }),
           ),
         )

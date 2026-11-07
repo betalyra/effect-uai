@@ -2,10 +2,25 @@
  * The contract both sides import: the tools as Schemas only (no `run`, so it
  * is safe in the browser). The server builds its tools from these specs; the
  * client's `Thread` is typed by `ChatUi`, so a tool block narrowed by name
- * has its tool's input and output (`observedAt` is a `Date`).
+ * has its tool's input and outcome (`observedAt` is a `Date`, a failure is
+ * the tool's own error class).
  */
+import * as Approval from "@effect-uai/core/Approval"
 import * as UiContract from "@effect-uai/ui/UiContract"
 import { Schema } from "effect"
+
+export class CityNotFound extends Schema.TaggedError<CityNotFound>()("CityNotFound", {
+  city: Schema.String,
+}) {}
+
+export class UnknownTimezone extends Schema.TaggedError<UnknownTimezone>()("UnknownTimezone", {
+  timezone: Schema.String,
+}) {}
+
+/** A waiting call the user moved past by sending a new message. */
+export class Superseded extends Schema.TaggedError<Superseded>()("Superseded", {
+  message: Schema.String,
+}) {}
 
 export const GetWeather = {
   name: "get_weather",
@@ -16,15 +31,17 @@ export const GetWeather = {
     country: Schema.String,
     temperatureC: Schema.Number,
     windSpeedKmh: Schema.Number,
-    observedAt: Schema.Date,
+    observedAt: Schema.DateFromString,
   }),
+  failureSchema: CityNotFound,
 } as const
 
 export const GetDate = {
   name: "get_date",
   description: "The current date and time in an IANA timezone, e.g. 'Europe/Lisbon'.",
   inputSchema: Schema.Struct({ timezone: Schema.String }),
-  outputSchema: Schema.Struct({ timezone: Schema.String, now: Schema.Date }),
+  outputSchema: Schema.Struct({ timezone: Schema.String, now: Schema.DateFromString }),
+  failureSchema: UnknownTimezone,
 } as const
 
 // The two below need the user's approval before they run (see the server).
@@ -33,7 +50,7 @@ export const SendEmail = {
   name: "send_email",
   description: "Send an email. The user approves it before it is sent.",
   inputSchema: Schema.Struct({ to: Schema.String, subject: Schema.String, body: Schema.String }),
-  outputSchema: Schema.Struct({ to: Schema.String, sentAt: Schema.Date }),
+  outputSchema: Schema.Struct({ to: Schema.String, sentAt: Schema.DateFromString }),
 } as const
 
 export const BookTable = {
@@ -51,8 +68,12 @@ export const BookTable = {
   }),
 } as const
 
+/** How the app closes calls itself: the user denied one, or moved past it. */
+export const Closings = Schema.Union([Approval.Denied, Superseded])
+
 export const ChatUi = UiContract.make({
   tools: [GetWeather, GetDate, SendEmail, BookTable],
+  failures: Closings,
   // Live metrics while an answer streams; the latest value of each wins.
   live: { ttftMs: Schema.Number, tokensPerSecond: Schema.Number },
 })

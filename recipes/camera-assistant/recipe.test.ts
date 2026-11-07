@@ -115,7 +115,7 @@ describe("camera assistant", () => {
 
       const [result] = sentOf(sent, "ToolResult")
       expect(result?.output.call_id).toBe("fc_1")
-      expect(result?.output.output).toContain("a result")
+      expect(JSON.stringify(result?.output.output)).toContain("a result")
       expect(status.map((e) => e.type)).toEqual(["assistant-started", "tool-call", "tool-done"])
     }),
   )

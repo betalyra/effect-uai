@@ -27,7 +27,8 @@ type HistoryItem = Message | ToolCall | ToolCallOutput | Reasoning
 - **`ToolCall`** - the assistant asking for a tool, with `call_id`,
   `name`, and a JSON `arguments` string.
 - **`ToolCallOutput`** - the result you feed back, keyed by
-  `call_id`.
+  `call_id`: an `output` array of parts (`input_text`, `input_json`,
+  `input_image`, `input_file`) plus `isError` for a failed call.
 - **`Reasoning`** - extended-thinking blocks (Anthropic, OpenAI o-series).
   Surfaced by providers that emit them; a no-op for those that don't.
 
@@ -93,19 +94,17 @@ const next = Turn.appendToHistory(state, turn, toolOutputs)
 // { ...state, history: [...state.history, ...turn.items, ...toolOutputs] }
 ```
 
-The third argument is usually the tool outputs collected by
-`Toolkit.continueWithResults`, after applying `toToolCallOutput` at the wire
-boundary:
+The third argument is usually the tool outputs. `Toolkit.next` collects the
+outcomes of `Toolkit.run`, encodes each with the tool's schemas, and calls
+`appendToHistory` for you:
 
 ```ts
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
-
-return Toolkit.run(toolkit, calls).pipe(
-  Toolkit.continueWithResults((results) =>
-    Turn.appendToHistory(state, turn, results.map(toToolCallOutput)),
-  ),
-)
+return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
 ```
+
+To build outputs yourself, `Items.toolCallOutput(call_id, text)` makes a
+one-text-part output, and `Items.text`, `Items.json`, `Items.image`,
+`Items.file` make single parts.
 
 ## `TurnEvent` - the stream
 
@@ -149,11 +148,10 @@ deltas) and `ToolEvent` (executor signals). The `ToolEvent` variants:
 
 ```ts
 type ToolEvent =
-  | { _tag: "ApprovalRequested"; call_id; tool; arguments } // gated, before resolution
-  | { _tag: "Progress"; call_id; tool; data } // streaming-tool element
-  | { _tag: "Output"; result: ToolResult } // terminal per-call result
+  | { _tag: "Partial"; call_id; tool; value } // a Stream tool's intermediate value
+  | { _tag: "Output"; call_id; tool; result } // terminal per-call Result (Success | Failure)
 ```
 
-A consumer pattern-matches on `type` (TurnEvent) or `_tag` (ToolEvent)
-to drive UI / persistence / observability. See [Tools and toolkits](/language-models/tools/)
-for `ToolEvent` and `ToolResult` details.
+A consumer pattern-matches on `_tag` to drive UI / persistence /
+observability. See [Tools and toolkits](/language-models/tools/#outcomes)
+for `ToolEvent` and outcome details.

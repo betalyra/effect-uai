@@ -21,8 +21,8 @@ The core harness has four moving parts:
 
 - **State is a record.** Here it is just `{ history, index }`.
 - **One turn is a stream.** Provider deltas flow out immediately.
-- **Tools are Effects.** The model asks; you validate, execute, and append
-  structured results.
+- **Tools are Effects (or Streams).** The model asks; you validate, execute,
+  and append typed results.
 - **Continuation is explicit.** No lifecycle hook decides the next step for
   you.
 
@@ -44,9 +44,7 @@ pipe(
 
             // Append the model's tool_call items and the matching outputs.
             return Toolkit.run(toolkit, calls).pipe(
-              Toolkit.continueWithResults(
-                Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
-              ),
+              Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
             )
           }),
         ),
@@ -63,10 +61,9 @@ Read it from top to bottom:
   hands you the assembled `Turn`.
 - `Turn.getToolCalls(turn)` extracts what the model asked tools to do.
 - `Toolkit.run` runs those calls and streams `ToolEvent`s.
-- `continueWithResults` collects terminal `ToolResult`s and feeds them into the
-  continuation.
-- `Toolkit.appendToolResults` appends both model items and tool outputs to
-  history.
+- `Toolkit.next` forwards those events, encodes each tool's outcome with the
+  toolkit's schemas, and continues with the turn plus the tool outputs
+  appended to history.
 - `stop()` ends the loop when the model no longer asks for tools.
 
 The important part is not the helper names. The important part is that every
@@ -84,7 +81,7 @@ if you want to recover.
 This same harness is used by the rest of the recipes:
 
 - tool approval gates calls before `Toolkit.run`;
-- streaming tools add `Progress` events without changing the loop;
+- streaming tools add `Partial` events without changing the loop;
 - model fallback catches provider errors and continues with a new layer;
 - compaction rewrites history before the next turn.
 

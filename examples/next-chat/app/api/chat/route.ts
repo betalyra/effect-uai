@@ -19,11 +19,10 @@ import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { loop, next, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Metrics from "@effect-uai/core/Metrics"
 import * as SSE from "@effect-uai/core/SSE"
-import * as ToolEvent from "@effect-uai/core/ToolEvent"
+import type * as ToolEvent from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
-import { Duration, Effect, Match, Result, Stream, pipe } from "effect"
+import { Array as Arr, Duration, Effect, Match, Result, Schema, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/http"
 import { readProvider } from "../../../lib/model"
 import { basicToolkit as toolkit } from "../../../lib/tools"
@@ -61,9 +60,7 @@ const conversation = (tiers: ReadonlyArray<Tier>, history: ReadonlyArray<Items.H
               Effect.sync(() => {
                 const calls = Turn.getToolCalls(turn)
                 if (calls.length === 0) return stop()
-                return Toolkit.run(toolkit, calls).pipe(
-                  Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
-                )
+                return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
               }),
             ),
             Stream.catchTag("RateLimited", () => Stream.unwrap(advance)),
@@ -106,15 +103,19 @@ const fromMetric = (event: Metrics.MetricEvent): Result.Result<UIMessageStream.E
   )
 
 // Normalize the loop's wide event stream into encoder emissions: TurnEvents
-// pass through, a tool `Output` becomes a `function_call_output`, tool
-// progress/approval are dropped, and metrics become data parts / metadata.
-const toEmission = (
+// pass through, a tool's outcome becomes its `function_call_output`, partials
+// are dropped, and metrics become data parts / metadata.
+const toEmissions = (
   event: Turn.TurnEvent | ToolEvent.ToolEvent | Metrics.MetricEvent,
-): Result.Result<UIMessageStream.Emission, void> => {
-  if (Metrics.isMetricEvent(event)) return fromMetric(event)
-  if (ToolEvent.isOutput(event)) return Result.succeed(toToolCallOutput(event.result))
-  if (ToolEvent.isProgress(event) || ToolEvent.isApprovalRequested(event)) return Result.failVoid
-  return Result.succeed(event)
+): Effect.Effect<ReadonlyArray<UIMessageStream.Emission>, Schema.SchemaError> => {
+  if (Metrics.isMetricEvent(event)) {
+    return Effect.succeed(
+      Result.match(fromMetric(event), { onSuccess: Arr.of, onFailure: () => [] }),
+    )
+  }
+  if (event._tag === "Output") return Effect.map(Toolkit.output(toolkit, event), Arr.of)
+  if (event._tag === "Partial") return Effect.succeed([])
+  return Effect.succeed([event])
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +154,8 @@ export async function POST(request: Request): Promise<Response> {
     Metrics.allMetrics({
       throughput: { every: "500 millis", unit: "token", tokenizer: estimateTokens },
     }),
-    Stream.filterMap(toEmission),
+    Stream.mapEffect(toEmissions),
+    Stream.flattenIterable,
     Stream.interruptWhen(whenAborted(request.signal)),
     Stream.provide(FetchHttpClient.layer),
   )

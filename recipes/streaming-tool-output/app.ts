@@ -22,11 +22,9 @@ const initial: State = {
 const render = (model: string) =>
   Stream.runForEach(buildConversation(toolkit, initial, model), (event) =>
     Match.value(event).pipe(
-      Match.when({ _tag: "Progress" }, (e) =>
-        Effect.logInfo("download progress", { call_id: e.call_id, data: e.data }),
-      ),
-      Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("download result", { result })),
       Match.discriminators("_tag")({
+        Partial: ({ value }) => Effect.logInfo("download progress", { pct: value.pct }),
+        Output: ({ result }) => Effect.logInfo("download result", { result }),
         TurnComplete: ({ turn }) =>
           Effect.logInfo("turn complete", {
             stop_reason: turn.stop_reason,

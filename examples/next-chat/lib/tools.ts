@@ -6,7 +6,7 @@ import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import { DateTime, Effect, Option, Schema } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
-import { BookTable, GetDate, GetWeather, SendEmail } from "./chat-ui"
+import { BookTable, CityNotFound, GetDate, GetWeather, SendEmail, UnknownTimezone } from "./chat-ui"
 
 // A tool over a REST API: Open-Meteo (public, no key). Geocode the city, then
 // read its current weather; each response is decoded with a Schema.
@@ -38,7 +38,7 @@ const getWeather = Tool.make({
         })
         .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Geocoding)))
       const place = geo.results?.[0]
-      if (place === undefined) return yield* Effect.fail(`Unknown city: ${city}`)
+      if (place === undefined) return yield* new CityNotFound({ city })
       const forecast = yield* client
         .get("https://api.open-meteo.com/v1/forecast", {
           urlParams: {
@@ -58,14 +58,15 @@ const getWeather = Tool.make({
     }),
 })
 
-// An unknown timezone fails the call; the model sees the error and can retry.
+// An unknown timezone fails the call with the declared error; the model sees it and can retry.
 const getDate = Tool.make({
   ...GetDate,
   run: ({ timezone }) =>
-    Option.match(DateTime.zoneMakeNamed(timezone), {
-      onNone: () => Effect.fail(`Unknown IANA timezone: ${timezone}`),
-      onSome: () =>
-        DateTime.now.pipe(Effect.map((now) => ({ timezone, now: DateTime.toDate(now) }))),
+    Effect.gen(function* () {
+      if (Option.isNone(DateTime.zoneMakeNamed(timezone))) {
+        return yield* new UnknownTimezone({ timezone })
+      }
+      return { timezone, now: DateTime.toDate(yield* DateTime.now) }
     }),
 })
 

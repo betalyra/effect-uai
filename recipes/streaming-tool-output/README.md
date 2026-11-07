@@ -1,6 +1,6 @@
 ---
 title: Streaming tool output
-description: "Two flavors of a tool whose `run` emits events: sub-agent text streaming and progress + terminal result."
+description: "Two flavors of a tool whose `run` returns a Stream: sub-agent text streaming and progress snapshots."
 source: recipes/streaming-tool-output
 icon: PiPulse
 ---
@@ -8,29 +8,29 @@ icon: PiPulse
 Streaming tools let the user see inner work without leaking the whole event
 log back to the model.
 
-The tool's `run` receives `(input, emit)`. It emits each inner event to the
-consumer in real time via `emit`, and returns the single structured `Output`
-the model sees. Each emitted event reaches the consumer as a
-`ToolEvent.Progress`; the outer model only ever sees the value `run` returns.
-Rich UI for the user, clean data for the model.
+The tool's `run` returns a `Stream` of snapshots of its own output type. Every
+element but the last reaches the consumer as a `ToolEvent.Partial`; the last is
+the result the model sees. Because a partial has the tool's output type, a UI
+decodes and renders it with the same schema as the result. Rich UI for the
+user, clean data for the model.
 
 This recipe shows two patterns side-by-side:
 
-| Pattern           | Inner stream                   | What `run` returns                       |
-| ----------------- | ------------------------------ | ---------------------------------------- |
-| Sub-agent         | `Stream<Turn.TurnEvent>`       | Folds text deltas into the answer string |
-| Progress + result | `Stream<{progress \| result}>` | Counts progress; takes the result bytes  |
+| Pattern   | Inner stream             | What each snapshot holds               |
+| --------- | ------------------------ | -------------------------------------- |
+| Sub-agent | `Stream<Turn.TurnEvent>` | The answer so far                      |
+| Progress  | one element per chunk    | `status`, `pct` and, at the end, bytes |
 
 A third pattern (each event IS a result item: recipe streamer, search
-hits, transcoded chunks) follows the same shape; just have `run` fold
-events into a list.
+hits, transcoded chunks) follows the same shape; just have `run` scan
+events into a growing list.
 
 ## Pattern 1: sub-agent
 
 The outer model calls `ask_subagent`; an inner agent runs (its own
-conversation), streaming `TextDelta`s back through the executor as
-`ToolEvent.Progress`s. The user sees the sub-agent reasoning unfold
-live; the outer model receives the joined answer.
+conversation). `run` scans its text deltas into the answer so far, so the
+user sees the sub-agent's answer grow as `ToolEvent.Partial`s while the
+outer model receives only the final, full answer.
 
 ```ts
 export const makeSubAgent = (
@@ -39,67 +39,69 @@ export const makeSubAgent = (
   Tool.make({
     name: "ask_subagent",
     description: "Ask a specialist sub-agent for help with a hard question.",
-    inputSchema: Tool.fromEffectSchema(SubAgentInput),
-    // Emit each inner event to the consumer in real time while folding the
-    // text deltas into the model-facing answer (single pass, no buffering).
-    run: ({ question }, emit) =>
+    inputSchema: SubAgentInput,
+    outputSchema: SubAgentOutput,
+    // The answer so far, one snapshot per text delta; the last is the full answer.
+    run: ({ question }) =>
       runInner(question).pipe(
-        Stream.runFoldEffect(
+        Turn.textDeltas,
+        Stream.scan(
           () => "",
-          (answer, event) =>
-            emit(event).pipe(Effect.as(event._tag === "TextDelta" ? answer + event.text : answer)),
+          (answer, text: string) => answer + text,
         ),
-        Effect.map((answer): SubAgentOutput => ({ answer })),
+        Stream.map((answer): SubAgentOutput => ({ answer })),
       ),
     strict: true,
   })
 ```
 
 `run` is parametrized over `runInner` so tests inject a mocked stream
-and production passes a real inner-loop stream. The fold emits each event
-and joins the deltas in one pass: the model gets a clean string, not the
-raw event log.
+and production passes a real inner-loop stream. The model gets a clean
+string, not the raw event log.
 
-## Pattern 2: progress + terminal result
+## Pattern 2: progress snapshots
 
 The model calls `download_artifact` (or sandboxed exec, web search,
-transcoding, ...). The tool emits one `progress` event per chunk and a
-single terminal `result` event. Progress events drive a UI progress
-bar; the model receives one structured value at the end.
+transcoding, ...). Progress is part of the output type: the tool emits one
+`running` snapshot per chunk, then one `completed` snapshot with the bytes.
+Partials drive a UI progress bar; the model receives the completed value.
 
 ```ts
-type DownloadEvent =
-  | { type: "progress"; pct: number; chunk: number }
-  | { type: "result"; bytes: string }
+export const DownloadOutput = Schema.Struct({
+  status: Schema.Literals(["running", "completed"]),
+  pct: Schema.Number,
+  chunks: Schema.Number,
+  bytes: Schema.String,
+})
 
 export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =>
   Tool.make({
     name: "download_artifact",
     description: "Download bytes from a URL...",
-    inputSchema: Tool.fromEffectSchema(DownloadInput),
-    run: ({ url, chunks }, emit) => {
-      const events = Stream.unfold(0, (i) => /* `chunks` progress events, then one result */)
-      // Emit each event to the consumer while folding to the model-facing
-      // output: the result event carries the bytes, progress events are counted.
-      return events.pipe(
-        Stream.runFoldEffect(
-          () => ({ bytes: "", chunks: 0, completed: false }),
-          (acc, event) =>
-            emit(event).pipe(
-              Effect.as(
-                event.type === "result"
-                  ? { ...acc, bytes: event.bytes, completed: true }
-                  : { ...acc, chunks: acc.chunks + 1 },
-              ),
-            ),
-        ),
-        Effect.map(
-          (acc): DownloadOutput =>
-            acc.completed
-              ? { status: "completed", bytes: acc.bytes, chunks: acc.chunks }
-              : { status: "failed", bytes: "", chunks: acc.chunks },
+    inputSchema: DownloadInput,
+    outputSchema: DownloadOutput,
+    run: ({ url, chunks }) => {
+      const total = chunks ?? 4
+      const running = Stream.range(1, total).pipe(
+        Stream.mapEffect((chunk) =>
+          Effect.delay(
+            Effect.succeed<DownloadOutput>({
+              status: "running",
+              pct: Math.round((chunk / total) * 100),
+              chunks: chunk,
+              bytes: "",
+            }),
+            perChunkDelay,
+          ),
         ),
       )
+      const completed = Stream.succeed<DownloadOutput>({
+        status: "completed",
+        pct: 100,
+        chunks: total,
+        bytes: `bytes-of-${url}`,
+      })
+      return Stream.concat(running, completed)
     },
     strict: true,
   })
@@ -116,17 +118,14 @@ onTurnComplete((turn) =>
     if (calls.length === 0) return stop()
 
     return Toolkit.run(toolkit, calls).pipe(
-      Toolkit.continueWithResults(
-        Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
-      ),
+      Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
     )
   }),
 )
 ```
 
-`Toolkit.appendToolResults(state, turn)` is shorthand for
-`Turn.appendToHistory(state, turn, results.map(toToolCallOutput))`, with
-`toToolCallOutput` imported from `@effect-uai/core/ToolResult`. Streaming
+`Toolkit.next` forwards every event, encodes each outcome with the tool's
+`outputSchema`, and appends the turn plus the outputs to history. Streaming
 and plain tools dispatch uniformly inside `Toolkit.run`.
 
 ## What the consumer sees
@@ -134,15 +133,15 @@ and plain tools dispatch uniformly inside `Toolkit.run`.
 For a single download with 3 chunks:
 
 ```
-Progress { tool: "download_artifact", data: { type: "progress", pct: 33, ... } }
-Progress { ...                         data: { type: "progress", pct: 67, ... } }
-Progress { ...                         data: { type: "progress", pct: 100, ... } }
-Progress { ...                         data: { type: "result",   bytes: "..." } }
-Output   { result: ToolResult.Ok({ call_id, tool: "download_artifact", value: { status: "completed", ... } }) }
+Partial { tool: "download_artifact", value: { status: "running", pct: 33, chunks: 1, bytes: "" } }
+Partial { ...                        value: { status: "running", pct: 67, chunks: 2, bytes: "" } }
+Partial { ...                        value: { status: "running", pct: 100, chunks: 3, bytes: "" } }
+Output  { call_id, tool: "download_artifact", result: Success({ status: "completed", pct: 100, ... }) }
 ```
 
-For the sub-agent: one `Progress` per inner `TextDelta` followed by
-the final `Output` carrying the joined answer.
+`e.tool === "download_artifact"` narrows `value` and `result` to
+`DownloadOutput`. For the sub-agent: one `Partial` per inner `TextDelta`
+carrying the answer so far, followed by the `Output` with the full answer.
 
 ## Run it
 

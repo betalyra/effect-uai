@@ -1,158 +1,161 @@
 "use client"
 
-import { useChat } from "@ai-sdk/react"
-import { useEffect, useRef, useState } from "react"
-import type { UIMessage } from "ai"
+import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import * as Input from "@effect-uai/ui/Input"
+import * as RunView from "@effect-uai/ui/RunView"
+import type * as Thread from "@effect-uai/ui/Thread"
+import { Option, Schema } from "effect"
+import { useState } from "react"
+import { Streamdown } from "streamdown"
+import type { ChatPayloads } from "../lib/chat-ui"
+import { chat } from "../lib/ui-chat"
 
-// The live-metrics badge is fed by transient `data-metrics` parts (server →
-// onData); usage lands on message.metadata. Everything else is stock useChat.
-type Metrics = { readonly ttftMs?: number; readonly tokps?: number }
-type Usage = { readonly input_tokens?: number; readonly output_tokens?: number }
+type Run = RunView.RunView<ChatPayloads>
+type ToolBlock = Extract<RunView.Block<ChatPayloads>, { type: "tool" }>
 
+// The answer, or the refusal when the model declined.
+const answer = (run: Run) => RunView.text(run) || (RunView.refusal(run) ?? "")
+
+const runNote = (run: Run): string | undefined => {
+  if (run.status === "stopped") return "stopped"
+  if (run.status === "failed") return `failed: ${run.error?.reason}`
+  return undefined
+}
+
+// A failed call carries the server's `kind`; what it means is ours to word.
+const kindOf = Schema.decodeUnknownOption(Schema.Struct({ kind: Schema.String }))
+
+const failure = (block: ToolBlock): string => {
+  const kind = Option.match(kindOf(block.error), { onNone: () => "error", onSome: (e) => e.kind })
+  if (kind === "denied") return "you declined"
+  if (kind === "superseded") return "skipped: you asked something else"
+  return `failed: ${kind}`
+}
+
+// Narrowing by name gives the tool's own types: `observedAt`, `now`, `sentAt` are Dates.
+const toolSummary = (block: ToolBlock): string => {
+  if (block.status === "failed") return `${block.name}: ${failure(block)}`
+  if (block.name === "get_weather" && block.output !== undefined) {
+    const { city, country, temperatureC, windSpeedKmh, observedAt } = block.output
+    return `${city}, ${country}: ${temperatureC}°C, wind ${windSpeedKmh} km/h (${observedAt.toLocaleTimeString()})`
+  }
+  if (block.name === "get_date" && block.output !== undefined) {
+    const { timezone, now } = block.output
+    return `${now.toLocaleString(undefined, { timeZone: timezone })} (${timezone})`
+  }
+  if (block.name === "send_email" && block.input !== undefined) {
+    const sent = block.output?.sentAt
+    return sent === undefined
+      ? `email to ${block.input.to}: "${block.input.subject}"`
+      : `email sent to ${block.input.to} at ${sent.toLocaleTimeString()}`
+  }
+  if (block.name === "book_table" && block.input !== undefined) {
+    const { restaurant, time, guests } = block.input
+    return `${restaurant}, ${time}, ${guests} guests${block.output === undefined ? "" : ": booked"}`
+  }
+  return `${block.name}: ${block.status}`
+}
+
+function ToolCard(props: { block: ToolBlock }) {
+  const submit = useAtomSet(chat.submit)
+  const { block } = props
+  // The page only votes; the server checks the call is waiting, and decides.
+  const vote = (approved: boolean) => submit(Input.resolve([{ callId: block.id, approved }]))
+  return (
+    <div className="tool">
+      <span>{toolSummary(block)}</span>
+      {block.status === "awaiting-approval" && (
+        <>
+          <button type="button" onClick={() => vote(true)}>
+            Approve
+          </button>
+          <button type="button" onClick={() => vote(false)}>
+            Deny
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+const liveNote = (text: string) => (text === "" ? "thinking" : "streaming")
+
+// A verdict has no text; only messages show as bubbles.
+function UserBubble(props: { value: Thread.UserContent }) {
+  const text = Input.text(props.value)
+  return text === "" ? null : <div className="user">{text}</div>
+}
+
+// Live metrics (the contract's `live` values) while it streams; token usage once known.
+const stats = (run: Run): ReadonlyArray<string> => [
+  ...(run.live.ttftMs === undefined ? [] : [`TTFT ${run.live.ttftMs} ms`]),
+  ...(run.live.tokensPerSecond === undefined ? [] : [`${run.live.tokensPerSecond} tok/s`]),
+  ...(run.usage?.output_tokens === undefined
+    ? []
+    : [`${run.usage.input_tokens ?? "?"} in / ${run.usage.output_tokens} out tokens`]),
+]
+
+function Assistant(props: { run: Run; live: boolean }) {
+  const text = answer(props.run)
+  const note = props.live ? liveNote(text) : runNote(props.run)
+  const line = [...(note === undefined ? [] : [note]), ...stats(props.run)].join(" · ")
+  return (
+    <div className="assistant">
+      {text === "" && props.live ? "…" : <Streamdown className="markdown">{text}</Streamdown>}
+      {props.run.blocks.flatMap((b) =>
+        b.type === "tool" ? [<ToolCard key={b.id} block={b} />] : [],
+      )}
+      {line !== "" && <small>{line}</small>}
+    </div>
+  )
+}
+
+// On `@effect-uai/ui`: the server keeps the history, tool blocks arrive decoded
+// by the shared contract, and some need approval. `/ai-sdk` is the same chat on useChat.
 export default function Page() {
-  const [input, setInput] = useState("")
-  const [metrics, setMetrics] = useState<Metrics>({})
-
-  const { messages, sendMessage, status, stop } = useChat({
-    onData: (part) => {
-      if (part.type === "data-metrics") setMetrics((m) => ({ ...m, ...(part.data as Metrics) }))
-    },
-  })
-
-  const busy = status === "submitted" || status === "streaming"
-
-  // Keep the latest content in view as the answer streams in.
-  const scrollRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [messages, metrics])
+  const thread = useAtomValue(chat.state)
+  const submit = useAtomSet(chat.submit)
+  const stop = useAtomSet(chat.stop)
+  const [prompt, setPrompt] = useState("")
+  const busy = thread.active !== null
 
   return (
-    <main className="mx-auto flex h-screen max-w-2xl flex-col gap-3 p-6">
-      <div ref={scrollRef} className="flex flex-1 flex-col gap-4 overflow-y-auto">
-        {messages.map((message) => (
-          <Message key={message.id} message={message} />
-        ))}
+    <main>
+      <h1>Next.js chat · @effect-uai/ui</h1>
+      <div id="log">
+        <div>
+          {thread.messages.map((m) =>
+            m.role === "user" ? (
+              <UserBubble key={m.id} value={m.value} />
+            ) : (
+              <Assistant key={m.id} run={m.value} live={false} />
+            ),
+          )}
+          {thread.active !== null && <Assistant run={thread.active} live />}
+        </div>
       </div>
-
-      {busy && <MetricsBadge metrics={metrics} />}
-
       <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (input.trim().length === 0 || busy) return
-          sendMessage({ text: input })
-          setInput("")
+        onSubmit={(e) => {
+          e.preventDefault()
+          const text = prompt.trim()
+          if (text === "") return
+          submit(Input.submit(text))
+          setPrompt("")
         }}
-        className="flex gap-2"
       >
         <input
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Ask about the weather somewhere…"
-          className="flex-1 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Ask about the weather, or to send an email or book a table"
+          autoFocus
         />
-        {busy ? (
-          <button
-            type="button"
-            onClick={stop}
-            className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium hover:bg-red-500"
-          >
-            Stop
-          </button>
-        ) : (
-          <button
-            type="submit"
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500"
-          >
-            Send
-          </button>
-        )}
+        <button type="submit" disabled={busy}>
+          Send
+        </button>
+        <button type="button" disabled={!busy} onClick={() => stop()}>
+          Stop
+        </button>
       </form>
     </main>
-  )
-}
-
-function Message({ message }: { readonly message: UIMessage }) {
-  const usage = (message.metadata as { usage?: Usage } | undefined)?.usage
-  const mine = message.role === "user"
-
-  return (
-    <div className={mine ? "self-end text-right" : "self-start"}>
-      <div className="mb-1 font-mono text-[10px] uppercase tracking-wide text-neutral-500">
-        {message.role}
-      </div>
-      <div className="flex flex-col gap-2">
-        {message.parts.map((part, i) => (
-          <Part key={i} part={part} />
-        ))}
-      </div>
-      {usage && <UsageFooter usage={usage} />}
-    </div>
-  )
-}
-
-function Part({ part }: { readonly part: UIMessage["parts"][number] }) {
-  if (part.type === "text") {
-    return <p className="whitespace-pre-wrap text-sm leading-relaxed">{part.text}</p>
-  }
-  if (part.type === "reasoning") {
-    return (
-      <details className="text-sm text-neutral-400">
-        <summary className="cursor-pointer select-none">💭 reasoning</summary>
-        <p className="mt-1 whitespace-pre-wrap">{part.text}</p>
-      </details>
-    )
-  }
-  if (part.type.startsWith("tool-")) {
-    return <ToolCard part={part as ToolPart} />
-  }
-  return null
-}
-
-type ToolPart = {
-  readonly type: string
-  readonly state: string
-  readonly input?: unknown
-  readonly output?: unknown
-}
-
-function ToolCard({ part }: { readonly part: ToolPart }) {
-  const name = part.type.replace(/^tool-/, "")
-  return (
-    <div className="rounded-md border border-neutral-700 bg-neutral-900 p-2 text-left">
-      <div className="flex items-center gap-2 font-mono text-xs">
-        <span>🔧 {name}</span>
-        <span className="text-neutral-500">{part.state}</span>
-      </div>
-      {part.input !== undefined && (
-        <pre className="mt-1 overflow-x-auto text-xs text-neutral-400">
-          {JSON.stringify(part.input)}
-        </pre>
-      )}
-      {part.output !== undefined && (
-        <pre className="mt-1 overflow-x-auto text-xs text-emerald-300">
-          {JSON.stringify(part.output)}
-        </pre>
-      )}
-    </div>
-  )
-}
-
-function MetricsBadge({ metrics }: { readonly metrics: Metrics }) {
-  return (
-    <div className="flex gap-3 font-mono text-xs text-neutral-500">
-      {metrics.ttftMs !== undefined && <span>TTFT {metrics.ttftMs}ms</span>}
-      {metrics.tokps !== undefined && <span>~{metrics.tokps} tok/s</span>}
-    </div>
-  )
-}
-
-function UsageFooter({ usage }: { readonly usage: Usage }) {
-  return (
-    <div className="mt-1 font-mono text-[10px] text-neutral-600">
-      tokens in={usage.input_tokens ?? "?"} out={usage.output_tokens ?? "?"}
-    </div>
   )
 }

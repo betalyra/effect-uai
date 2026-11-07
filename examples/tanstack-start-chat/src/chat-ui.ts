@@ -7,6 +7,19 @@
 import * as UiContract from "@effect-uai/ui/UiContract"
 import { Schema } from "effect"
 
+export const GetWeather = {
+  name: "get_weather",
+  description: "The weather right now in a city, e.g. 'Lisbon' or 'Tokyo'.",
+  inputSchema: Schema.Struct({ city: Schema.String }),
+  outputSchema: Schema.Struct({
+    city: Schema.String,
+    country: Schema.String,
+    temperatureC: Schema.Number,
+    windSpeedKmh: Schema.Number,
+    observedAt: Schema.Date,
+  }),
+} as const
+
 export const GetDate = {
   name: "get_date",
   description: "The current date and time in an IANA timezone, e.g. 'Europe/Lisbon'.",
@@ -14,17 +27,33 @@ export const GetDate = {
   outputSchema: Schema.Struct({ timezone: Schema.String, now: Schema.Date }),
 } as const
 
-export const GetWeather = {
-  name: "get_weather",
-  description: "The weather right now in a city.",
-  inputSchema: Schema.Struct({ city: Schema.String }),
+// The two below need the user's approval before they run (see the server).
+
+export const SendEmail = {
+  name: "send_email",
+  description: "Send an email. The user approves it before it is sent.",
+  inputSchema: Schema.Struct({ to: Schema.String, subject: Schema.String, body: Schema.String }),
+  outputSchema: Schema.Struct({ to: Schema.String, sentAt: Schema.Date }),
+} as const
+
+export const BookTable = {
+  name: "book_table",
+  description: "Book a restaurant table. The user approves it before it is booked.",
+  inputSchema: Schema.Struct({
+    restaurant: Schema.String,
+    time: Schema.String,
+    guests: Schema.Number,
+  }),
   outputSchema: Schema.Struct({
-    city: Schema.String,
-    temperatureC: Schema.Number,
-    sky: Schema.Literals(["sunny", "cloudy", "rainy"]),
-    observedAt: Schema.Date,
+    restaurant: Schema.String,
+    time: Schema.String,
+    guests: Schema.Number,
   }),
 } as const
 
-export const ChatUi = UiContract.make({ tools: [GetDate, GetWeather] })
+export const ChatUi = UiContract.make({
+  tools: [GetWeather, GetDate, SendEmail, BookTable],
+  // Live metrics while an answer streams; the latest value of each wins.
+  live: { ttftMs: Schema.Number, tokensPerSecond: Schema.Number },
+})
 export type ChatPayloads = UiContract.Payloads<typeof ChatUi>

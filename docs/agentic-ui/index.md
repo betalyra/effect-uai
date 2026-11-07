@@ -107,6 +107,15 @@ if (block.type === "tool" && block.name === "get_weather") {
 A tool the contract doesn't list still arrives, as JSON. A listed tool whose
 payload doesn't decode fails the stream: that's a contract bug, not data.
 
+## Approvals
+
+When your loop stops on a call that needs a human, it ends the run with
+`run-interrupted` and the card shows `awaiting-approval`. The page sends the
+answer as an input, `chat.submit(Input.resolve([{ callId, approved }]))`, and
+your server decides: it takes the pending calls from its own history, checks
+who may approve them, and runs or denies each one with `Approval.fromMap`.
+The result updates the card it was asked from.
+
 ## Direct or durable
 
 **Direct**: one request per message, the response is the run. Simple, and a

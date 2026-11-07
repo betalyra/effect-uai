@@ -21,6 +21,23 @@ atoms. Tool results arrive typed through a shared contract
 Stop aborts the request; the server sees the request go away and stops the
 model. A reload starts a new chat.
 
+## Approvals
+
+`send_email` and `book_table` (stubs) need your yes. The model's call ends the
+run as interrupted, and the card shows Approve / Deny. All of it is app code in
+`src/server/chat.ts`: `needsApproval` picks the tools, and `onFollowUp` decides
+what a new message does to a call still waiting:
+
+- `book_table` is denied (`kind: "superseded"`): ask something else and the
+  booking is skipped.
+- `send_email` stays open: ask a follow-up, then approve the email.
+
+The page only votes (`Input.resolve`); the server runs a call only if it is
+waiting for it, through `Approval.fromMap`.
+
+Try: "Email bob@example.com that I'm late", then "What will the email say?",
+then Approve.
+
 ## Run it
 
 Build the linked packages once from the repo root (`pnpm build`), then:
@@ -31,7 +48,7 @@ pnpm install
 OPENAI_API_KEY=sk-... pnpm dev
 ```
 
-Open http://localhost:5173.
+Open http://localhost:4310.
 
 The packages come from the monorepo via `link:`, and `effect` is linked to the
 monorepo's copy so everything shares one instance. A copy using published

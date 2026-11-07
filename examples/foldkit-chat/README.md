@@ -18,6 +18,20 @@ A chat in [FoldKit](https://foldkit.dev) (the Elm architecture on Effect) over
 Events and keeps the history. The chat id is the envelopes' `streamId`, so the
 page learns it from the first answer and sends it back.
 
+## Tools and approvals
+
+The same four tools as the TanStack Start and Next.js examples, from one shared
+contract: `get_weather` (a REST call to Open-Meteo), `get_date`, and two stubs
+that need your yes, `send_email` and `book_table`. A call that needs approval
+ends the run as interrupted; its card shows Approve / Deny, which are plain
+messages (`ClickedVerdict`) whose Command sends `Input.resolve`. In
+[`server.ts`](server.ts), `needsApproval` picks the tools and `onFollowUp`
+decides what a new message does to a waiting call: `book_table` is skipped,
+`send_email` stays open.
+
+Try: "Email bob@example.com that I'm late", then "What will the email say?",
+then Approve.
+
 ## Run it
 
 Build the linked packages once from the repo root (`pnpm build`), then:
@@ -28,8 +42,8 @@ pnpm install
 OPENAI_API_KEY=sk-... pnpm dev
 ```
 
-`pnpm dev` starts the server on :3001 and Vite on :5173, which proxies `/api`
-to the server. Open http://localhost:5173.
+`pnpm dev` starts the server on :4321 and Vite on :4320, which proxies `/api`
+to the server. Open http://localhost:4320.
 
 The packages come from the monorepo via `link:`, and `effect` is linked to the
 monorepo's copy so everything shares one instance. A copy using published

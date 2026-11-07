@@ -144,7 +144,7 @@ describe("UiContract", () => {
         ]),
       )
       expect(view.blocks).toContainEqual(
-        expect.objectContaining({ status: "denied", error: { kind: "denied" } }),
+        expect.objectContaining({ status: "failed", error: { kind: "denied" } }),
       )
     }),
   )

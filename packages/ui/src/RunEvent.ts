@@ -146,7 +146,11 @@ export const ToolApprovalRequested = event("tool-approval-requested", {
   input: Schema.Json,
 })
 export const ToolProgress = event("tool-progress", { callId: Schema.String, data: Schema.Json })
-/** `output` is the tool's output, or the error (`{ kind, reason? }`) when `isError`. */
+/**
+ * `output` is the tool's output, or the error (`{ kind, reason? }`) when
+ * `isError`. Every outcome is a `tool-result`: denied, cancelled or superseded
+ * calls too, told apart by `kind`.
+ */
 export const ToolResult = event("tool-result", {
   callId: Schema.String,
   /** The tool's name, so a client can decode `output` without state. */
@@ -154,7 +158,6 @@ export const ToolResult = event("tool-result", {
   output: Schema.Json,
   isError: Schema.Boolean,
 })
-export const ToolCancelled = event("tool-cancelled", { callIds: Schema.Array(Schema.String) })
 
 // ---------------------------------------------------------------------------
 // Usage and app payloads
@@ -213,7 +216,6 @@ export const plainEvents = [
   ToolCallStarted,
   ToolCallArgsDelta,
   ToolProgress,
-  ToolCancelled,
   Usage,
   InputAccepted,
 ] as const

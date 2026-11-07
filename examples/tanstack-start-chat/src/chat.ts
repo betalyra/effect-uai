@@ -15,10 +15,11 @@ import { FetchHttpClient, HttpClientRequest } from "effect/http"
 import { Atom } from "effect/reactivity"
 import { type ChatPayloads, ChatUi } from "./chat-ui"
 
-const ChatBody = Schema.Struct({ chatId: Schema.optionalKey(StreamId), input: Input.SubmitJson })
+// A message (`Input.submit`) or a verdict on a waiting call (`Input.resolve`).
+const ChatBody = Schema.Struct({ chatId: Schema.optionalKey(StreamId), input: Input.InputJson })
 
 const transport = Transport.direct({
-  request: (input: Input.Sent<Input.Submit>, thread: Thread.Thread<ChatPayloads>) =>
+  request: (input: Input.Sent<Input.Input>, thread: Thread.Thread<ChatPayloads>) =>
     HttpClientRequest.post("/api/chat").pipe(
       HttpClientRequest.schemaBodyJson(ChatBody)(
         thread.streamId === null ? { input } : { chatId: thread.streamId, input },

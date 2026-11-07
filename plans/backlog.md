@@ -13,6 +13,24 @@ Done and dropped items are listed at the end so they don't get re-proposed.
 
 ### From the UI design (`plans/ui.md`)
 
+- [ ] **Next up (high): typed `ToolResult` failures.** Keep the flat
+      `Ok | Failure` tagged union (no nested `Result`; a `ToolResult.toResult`
+      helper for interop), but replace `kind: string` / `reason?: string` with
+      `error: E`, a tagged error. Core defines only the errors it produces, each
+      where it is produced: `Toolkit.run` emits `InputInvalid`, `OutputInvalid`,
+      `UnknownTool` / `NonLocalTool` and `ExecutionError { cause }` (the tool's
+      own typed failure, no longer flattened to a string); `Denied` /
+      `Cancelled` move to `Approval`, whose `fromMap` can take the app's own
+      rejection constructor. Apps use any tagged error (`failed(call, error)`).
+      Wire unchanged: the model sees `{"error":{"kind":_tag,"message"}}`, the UI
+      `tool-result` keeps `{ kind, reason }`. Second step: a typed `value` per
+      tool via `ToolResultOf<Toolkit>` (narrow by `tool`). Breaking: core,
+      recipes (approval, sleeper, …), provider tests; needs a migration note.
+- [ ] **Move `Approval.fromQueue` into the `tool-call-approval` recipe**: it is
+      a pattern (an in-process wait, a verdict `Queue`, a router fiber, a
+      timeout), not a primitive, and that recipe is its only user. Keep
+      `fromMap` (a pure `(predicate, verdicts) => plan`). Update the skill row
+      and the migration note.
 - [ ] **Partial JSON streaming (`StructuredFormat.decodePartial(format)`)**:
       `Stream<string>` → partial (deep-partial, unvalidated) | done (validated),
       so one JSON value can be shown while it streams. Use a small existing
@@ -51,7 +69,11 @@ Done and dropped items are listed at the end so they don't get re-proposed.
 Rule: a shared core type only for what the major providers actually share;
 everything else stays provider-typed.
 
-- [x] **`input_file`** (in progress, `plans/ui.md` step 1): one block for
+- [ ] **`input_file`** (core `File` / `InputFile` exist but are held out of
+      `ContentBlock` until every codec encodes them; add the union member and
+      the codecs in one change: Anthropic `document`, Chat Completions `file` /
+      `input_audio`, Responses `input_file`, Gemini `inlineData` (URL needs the
+      Files API, refuse like images), Mistral `document_url` / `input_audio`): one block for
       documents, audio and video, the MIME type says which. Gemini already models
       every medium this way (`inlineData` / `fileData`); Open Responses has
       `input_file { filename, file_data, file_url }`. Codecs route by MIME prefix

@@ -1,13 +1,15 @@
 /**
- * The tools both routes run: the shared specs from `chat-ui.ts` plus a `run`.
- * Weather comes from Open-Meteo (public, no API key).
+ * The tools: the shared specs from `chat-ui.ts` plus a `run`. Both pages get
+ * weather and the date; the main page also gets the two that need approval.
  */
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import { DateTime, Effect, Option, Schema } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
-import { GetDate, GetWeather } from "./chat-ui"
+import { BookTable, GetDate, GetWeather, SendEmail } from "./chat-ui"
 
+// A tool over a REST API: Open-Meteo (public, no key). Geocode the city, then
+// read its current weather; each response is decoded with a Schema.
 const Geocoding = Schema.Struct({
   results: Schema.optional(
     Schema.Array(
@@ -31,16 +33,20 @@ const getWeather = Tool.make({
     Effect.gen(function* () {
       const client = yield* HttpClient.HttpClient
       const geo = yield* client
-        .get(
-          `https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(city)}`,
-        )
+        .get("https://geocoding-api.open-meteo.com/v1/search", {
+          urlParams: { name: city, count: 1 },
+        })
         .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Geocoding)))
       const place = geo.results?.[0]
-      if (place === undefined) return yield* Effect.fail(new Error(`Unknown city: ${city}`))
+      if (place === undefined) return yield* Effect.fail(`Unknown city: ${city}`)
       const forecast = yield* client
-        .get(
-          `https://api.open-meteo.com/v1/forecast?current=temperature_2m,wind_speed_10m&latitude=${place.latitude}&longitude=${place.longitude}`,
-        )
+        .get("https://api.open-meteo.com/v1/forecast", {
+          urlParams: {
+            latitude: place.latitude,
+            longitude: place.longitude,
+            current: "temperature_2m,wind_speed_10m",
+          },
+        })
         .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Forecast)))
       return {
         city: place.name,
@@ -50,7 +56,6 @@ const getWeather = Tool.make({
         observedAt: DateTime.toDate(yield* DateTime.now),
       }
     }),
-  strict: true,
 })
 
 // An unknown timezone fails the call; the model sees the error and can retry.
@@ -58,11 +63,25 @@ const getDate = Tool.make({
   ...GetDate,
   run: ({ timezone }) =>
     Option.match(DateTime.zoneMakeNamed(timezone), {
-      onNone: () => Effect.fail(new Error(`Unknown IANA timezone: ${timezone}`)),
+      onNone: () => Effect.fail(`Unknown IANA timezone: ${timezone}`),
       onSome: () =>
         DateTime.now.pipe(Effect.map((now) => ({ timezone, now: DateTime.toDate(now) }))),
     }),
-  strict: true,
 })
 
-export const toolkit = Toolkit.make(getWeather, getDate)
+// Stubs: a real app sends the email and books the table here.
+const sendEmail = Tool.make({
+  ...SendEmail,
+  run: ({ to }) => DateTime.now.pipe(Effect.map((now) => ({ to, sentAt: DateTime.toDate(now) }))),
+})
+
+const bookTable = Tool.make({
+  ...BookTable,
+  run: ({ restaurant, time, guests }) => Effect.succeed({ restaurant, time, guests }),
+})
+
+/** The `useChat` page (`/ai-sdk`): no approval flow there, so only the tools that run freely. */
+export const basicToolkit = Toolkit.make(getWeather, getDate)
+
+/** The main page: all four; `lib/ui-server.ts` decides which need approval. */
+export const toolkit = Toolkit.make(getWeather, getDate, sendEmail, bookTable)

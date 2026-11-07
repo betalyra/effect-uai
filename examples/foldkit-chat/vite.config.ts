@@ -1,9 +1,10 @@
 import { defineConfig } from "vite"
 
-// server.ts serves the chat on :3001; the page proxies to it.
+// The page on :4320, server.ts on :4321 (off the usual dev ports); the page proxies to it.
 export default defineConfig({
   server: {
-    proxy: { "/api": "http://localhost:3001" },
+    port: 4320,
+    proxy: { "/api": "http://localhost:4321" },
     // Follow the `link:`ed packages out of this folder.
     fs: { allow: ["../.."] },
   },

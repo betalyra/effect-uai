@@ -10,7 +10,7 @@
  * payloads are the JSON the server sent.
  */
 import * as Items from "@effect-uai/core/Items"
-import { Array as Arr, JsonPatch, Match, Option, Predicate, Schema } from "effect"
+import { Array as Arr, JsonPatch, Match, Option, Schema } from "effect"
 import {
   type Envelope,
   InputId,
@@ -36,8 +36,6 @@ export const ToolStatus = Schema.Literals([
   "running",
   "done",
   "failed",
-  "denied",
-  "cancelled",
 ])
 export type ToolStatus = typeof ToolStatus.Type
 
@@ -68,7 +66,11 @@ export type RefusalBlock = typeof RefusalBlock.Type
 export type ImageBlock = typeof ImageBlock.Type
 export type ReasoningBlock = typeof ReasoningBlock.Type
 
-/** A tool call; `id` is the call id. `error` is set when the tool failed or was denied. */
+/**
+ * A tool call; `id` is the call id. A failed call (denied, cancelled, an error)
+ * is `failed` with the server's `error`, e.g. `{ kind: "denied" }`: what a kind
+ * means is the app's call.
+ */
 export type ToolBlock<P extends Payloads = Untyped> = P["tool"] extends infer T
   ? T extends ToolPayload
     ? {
@@ -398,9 +400,6 @@ const withUsage = (v: View, usage: Items.Usage | undefined): View => {
   return total === undefined ? v : { ...v, usage: total }
 }
 
-const failedStatus = (error: Json): ToolStatus =>
-  Predicate.hasProperty(error, "kind") && error.kind === "denied" ? "denied" : "failed"
-
 const apply = (v: View, event: RunEvent<Payloads>): View =>
   Match.value(event).pipe(
     Match.discriminatorsExhaustive("type")({
@@ -494,14 +493,8 @@ const apply = (v: View, event: RunEvent<Payloads>): View =>
       "tool-result": (e) =>
         updateTool(v, e.callId, e.name, (b) =>
           e.isError
-            ? { ...b, status: failedStatus(e.output), error: e.output }
+            ? { ...b, status: "failed", error: e.output }
             : { ...b, status: "done", output: e.output },
-        ),
-      "tool-cancelled": (e) =>
-        e.callIds.reduce(
-          (acc, callId) =>
-            updateTool(acc, callId, "", (b) => ({ ...b, status: "cancelled" as const })),
-          v,
         ),
       usage: (e): View => ({ ...v, usage: e.usage }),
       data: (e): View => {
@@ -539,6 +532,29 @@ export function step(view: View, envelope: Envelope<Payloads>): View {
   const otherRun =
     view.runId !== undefined && envelope.runId !== undefined && envelope.runId !== view.runId
   return { ...(otherRun ? view : apply(view, envelope.event)), lastSeq: envelope.seq }
+}
+
+/** A tool event that can answer a call made in an earlier run (after an approval). */
+export type ToolUpdate<P extends Payloads = Untyped> = Extract<
+  RunEvent<P>,
+  { readonly type: "tool-result" | "tool-progress" }
+>
+
+export const isToolUpdate = <P extends Payloads>(event: RunEvent<P>): event is ToolUpdate<P> =>
+  event.type === "tool-result" || event.type === "tool-progress"
+
+/**
+ * Apply a tool event to the view if it holds that call; `None` if it doesn't.
+ * For a run that already ended (an interrupted run whose call was approved
+ * later), so `seq` and the run id are not checked.
+ */
+export function applyToolUpdate<P extends Payloads>(
+  view: RunView<P>,
+  event: ToolUpdate<P>,
+): Option.Option<RunView<P>>
+export function applyToolUpdate(view: View, event: ToolUpdate<Payloads>): Option.Option<View> {
+  const holds = view.blocks.some((b) => b.type === "tool" && b.id === event.callId)
+  return holds ? Option.some(apply(view, event)) : Option.none()
 }
 
 // ---------------------------------------------------------------------------

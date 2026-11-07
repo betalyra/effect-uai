@@ -161,8 +161,8 @@ provider call. None of this adds effect-uai to the browser.
 Keep `useChat` while it works. Move the frontend to
 [`@effect-uai/ui`](/agentic-ui/) when you hit one of these:
 
-| You want                                       | `useChat`                                    | `@effect-uai/ui`                                     |
-| ---------------------------------------------- | -------------------------------------------- | ---------------------------------------------------- |
+| You want                                      | `useChat`                                    | `@effect-uai/ui`                                    |
+| --------------------------------------------- | -------------------------------------------- | --------------------------------------------------- |
 | Tool results typed in the browser             | generic `UIMessage` types; dates are strings | a shared `UiContract`; a `Date` arrives as a `Date` |
 | History on the server                         | sends the whole history by default           | the client sends the new message only               |
 | An answer that survives a reload              | `resume` plus your own stream store          | `Transport.sessionHttp`, replay from the last `seq` |

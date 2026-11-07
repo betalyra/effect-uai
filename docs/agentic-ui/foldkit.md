@@ -24,7 +24,11 @@ export const GetWeather = {
   name: "get_weather",
   description: "The weather right now in a city.",
   inputSchema: Schema.Struct({ city: Schema.String }),
-  outputSchema: Schema.Struct({ city: Schema.String, temperatureC: Schema.Number, observedAt: Schema.Date }),
+  outputSchema: Schema.Struct({
+    city: Schema.String,
+    temperatureC: Schema.Number,
+    observedAt: Schema.Date,
+  }),
 } as const
 
 export const ChatUi = UiContract.make({ tools: [GetWeather, GetDate] })
@@ -95,4 +99,4 @@ pnpm install
 OPENAI_API_KEY=sk-... pnpm dev
 ```
 
-The server runs on :3001; Vite on :5173 proxies `/api` to it.
+Open http://localhost:4320; the server runs on :4321 and Vite proxies `/api` to it.

@@ -1,5 +1,5 @@
 /**
- * The `/ui` page's chat state: `Atoms.thread` over a direct transport, typed
+ * The main page's chat state: `Atoms.thread` over a direct transport, typed
  * by the shared `ChatUi` contract (envelopes are decoded on arrival). The
  * thread keeps the chat id the server named on its first answer and sends it
  * back. Stop aborts the request.
@@ -15,10 +15,11 @@ import { FetchHttpClient, HttpClientRequest } from "effect/http"
 import { Atom } from "effect/reactivity"
 import { type ChatPayloads, ChatUi } from "./chat-ui"
 
-const ChatBody = Schema.Struct({ chatId: Schema.optionalKey(StreamId), input: Input.SubmitJson })
+// A message (`Input.submit`) or a verdict on a waiting call (`Input.resolve`).
+const ChatBody = Schema.Struct({ chatId: Schema.optionalKey(StreamId), input: Input.InputJson })
 
 const transport = Transport.direct({
-  request: (input: Input.Sent<Input.Submit>, thread: Thread.Thread<ChatPayloads>) =>
+  request: (input: Input.Sent<Input.Input>, thread: Thread.Thread<ChatPayloads>) =>
     HttpClientRequest.post("/api/ui/chat").pipe(
       HttpClientRequest.schemaBodyJson(ChatBody)(
         thread.streamId === null ? { input } : { chatId: thread.streamId, input },

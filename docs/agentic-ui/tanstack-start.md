@@ -75,3 +75,5 @@ cd examples/tanstack-start-chat
 pnpm install
 OPENAI_API_KEY=sk-... pnpm dev
 ```
+
+Open http://localhost:4310.

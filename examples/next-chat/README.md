@@ -2,19 +2,56 @@
 
 One Next.js app, the same tools, two ways to put a chat in front of them:
 
-- **`/`: keep `useChat`.** The stock `@ai-sdk/react` client, served by an
+- **`/`: `@effect-uai/ui`.** The server keeps the history, the page sends
+  only the new message, tool results arrive typed (a `Date` is a `Date`), and
+  some tools need your approval: [`lib/ui-server.ts`](lib/ui-server.ts) (an
+  Effect `HttpRouter` route served through `HttpRouter.toWebHandler`),
+  [`lib/ui-chat.ts`](lib/ui-chat.ts) (the atoms) and [`app/page.tsx`](app/page.tsx).
+- **`/ai-sdk`: keep `useChat`.** The stock `@ai-sdk/react` client, served by an
   effect-uai loop instead of `streamText`. Only the route handler changes:
   [`app/api/chat/route.ts`](app/api/chat/route.ts).
-- **`/ui`: `@effect-uai/ui`.** The server keeps the history, the page sends
-  only the new message, and tool results arrive typed (a `Date` is a `Date`):
-  [`lib/ui-server.ts`](lib/ui-server.ts) (an Effect `HttpRouter` route served
-  through `HttpRouter.toWebHandler`), [`lib/ui-chat.ts`](lib/ui-chat.ts) (the
-  atoms) and [`app/ui/page.tsx`](app/ui/page.tsx).
 
 Both build their tools from [`lib/chat-ui.ts`](lib/chat-ui.ts), Schemas only,
-so the browser can import them.
+so the browser can import them, and render answers as markdown with
+[Streamdown](https://github.com/vercel/streamdown).
 
-## `/`: the `useChat` route
+## `/`: the `@effect-uai/ui` page
+
+The Next.js route is one line; the server is a plain Effect route:
+
+```ts
+// app/api/ui/chat/route.ts
+export const POST = (request: Request) => handler(request)
+
+// lib/ui-server.ts
+export const { handler } = HttpRouter.toWebHandler(ChatRoute.pipe(Layer.provide(...)))
+```
+
+The page reads `Atoms.thread` with `@effect/atom-react`. With
+`contract: ChatUi`, narrowing a tool block by name gives the tool's own types:
+
+```tsx
+if (block.name === "get_weather" && block.output !== undefined)
+  block.output.observedAt.toLocaleTimeString() // a Date, decoded on arrival
+```
+
+Live metrics (time to first token, tok/s) are the contract's typed `live`
+values, and each answer shows its token usage.
+
+### Approvals
+
+The same four tools as the TanStack Start and FoldKit examples: `get_weather`
+(a REST call to Open-Meteo), `get_date`, and two stubs that need your yes,
+`send_email` and `book_table`. A call that needs approval ends the run as
+interrupted and its card shows Approve / Deny. In
+[`lib/ui-server.ts`](lib/ui-server.ts), `needsApproval` picks the tools and
+`onFollowUp` decides what a new message does to a waiting call: `book_table` is
+skipped, `send_email` stays open.
+
+Try: "Email bob@example.com that I'm late", then "What will the email say?",
+then Approve.
+
+## `/ai-sdk`: the `useChat` route
 
 The route also shows what effect-uai gives you around the model:
 
@@ -62,29 +99,9 @@ const body = events.pipe(
 return new Response(body, { headers: UIMessageStream.responseHeaders })
 ```
 
-[`app/page.tsx`](app/page.tsx) is unchanged from any AI SDK app: the same
-`useChat` hook, the same message `parts`. Swapping the backend does not touch
-the frontend.
-
-## `/ui`: the `@effect-uai/ui` page
-
-The Next.js route is one line; the server is a plain Effect route:
-
-```ts
-// app/api/ui/chat/route.ts
-export const POST = (request: Request) => handler(request)
-
-// lib/ui-server.ts
-export const { handler } = HttpRouter.toWebHandler(ChatRoute.pipe(Layer.provide(...)))
-```
-
-The page reads `Atoms.thread` with `@effect/atom-react`. With
-`contract: ChatUi`, narrowing a tool block by name gives the tool's own types:
-
-```tsx
-if (block.name === "get_weather" && block.output !== undefined)
-  block.output.observedAt.toLocaleTimeString() // a Date, decoded on arrival
-```
+[`app/ai-sdk/page.tsx`](app/ai-sdk/page.tsx) is unchanged from any AI SDK app:
+the same `useChat` hook, the same message `parts`. Swapping the backend does not
+touch the frontend. This page keeps weather and the date only.
 
 ## Run it
 
@@ -103,8 +120,8 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:3000 for `useChat`, http://localhost:3000/ui for
-`@effect-uai/ui`.
+Open http://localhost:4330 for `@effect-uai/ui`, http://localhost:4330/ai-sdk
+for `useChat`.
 
 ### Choosing a provider
 

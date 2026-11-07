@@ -7,8 +7,12 @@
  * A fold's fields (`initial`, `step`, `submitted`, `ended`) are what
  * `Atoms.session` and `Atoms.make` take, so `{ ...Thread.make(config) }`
  * plugs in directly.
+ *
+ * A settled assistant entry with a call awaiting approval still changes when
+ * that call is answered (`updateTool`): save entries when they change, not
+ * only when they settle.
  */
-import { Option, Schema } from "effect"
+import { Array as Arr, Option, Schema } from "effect"
 import * as Input from "./Input.js"
 import { type Envelope, InputId, type Payloads, StreamId, type Untyped } from "./RunEvent.js"
 import * as RunView from "./RunView.js"
@@ -72,6 +76,12 @@ export type Config<I, U, A, P extends Payloads = Untyped> = {
   readonly settle: (run: RunView.RunView<P>) => A
   /** Decodes an `input-accepted` echo into an input; without it, echoes are ignored. */
   readonly decodeInput?: (value: unknown) => Option.Option<I>
+  /**
+   * Applies a tool event to a settled entry that holds the call (`None` if it
+   * doesn't). An approved call's result arrives in the next run; with this,
+   * it updates the card it was asked from. Without it, it lands in the new run.
+   */
+  readonly updateTool?: (entry: A, event: RunView.ToolUpdate<P>) => Option.Option<A>
 }
 
 export type Fold<I, U, A, P extends Payloads = Untyped> = {
@@ -173,6 +183,26 @@ export function make<I extends { readonly id: InputId }, U, A>(
     })
   }
 
+  // The latest settled entry that holds the call, updated by `config.updateTool`.
+  const updateSettled = (
+    messages: ReadonlyArray<Entry<U, A>>,
+    event: RunView.ToolUpdate<Payloads>,
+  ): Option.Option<ReadonlyArray<Entry<U, A>>> =>
+    Option.fromNullishOr(config.updateTool).pipe(
+      Option.flatMap((update) =>
+        Arr.findLast(messages, (m, index) =>
+          m.role === "assistant"
+            ? update(m.value, event).pipe(
+                Option.map((value) => ({ index, entry: { ...m, value } })),
+              )
+            : Option.none(),
+        ),
+      ),
+      Option.map(({ index, entry }) =>
+        messages.map((m, i): Entry<U, A> => (i === index ? entry : m)),
+      ),
+    )
+
   const step = (current: S, envelope: Envelope<Payloads>): S => {
     const fresh = onStream(current, envelope)
     if (envelope.seq <= fresh.lastSeq) return current
@@ -183,6 +213,12 @@ export function make<I extends { readonly id: InputId }, U, A>(
     // Stream-scoped frames (no `runId`) and frames outside a run are not a run's content.
     if (envelope.runId === undefined || (state.active === null && event.type !== "run-started")) {
       return { ...state, lastSeq: envelope.seq }
+    }
+    // A call made in an earlier run (approved after it was interrupted) updates that run.
+    if (RunView.isToolUpdate(event)) {
+      const updated = updateSettled(state.messages, event)
+      if (Option.isSome(updated))
+        return { ...state, messages: updated.value, lastSeq: envelope.seq }
     }
     const active: RunView.RunView<Payloads> = state.active ?? {
       ...RunView.initial,
@@ -242,6 +278,7 @@ export const presetFor = <P extends Payloads = Untyped>(): Fold<
       Option.fromNullishOr(input.messages).pipe(Option.map((messages) => ({ messages }))),
     settle: (run) => run,
     decodeInput: Schema.decodeUnknownOption(Input.InputJson),
+    updateTool: RunView.applyToolUpdate,
   })
 
 export const preset = presetFor()

@@ -6,14 +6,10 @@ import "./globals.css"
 export default function RootLayout({ children }: { readonly children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-neutral-950 text-neutral-100">
-        <nav className="mx-auto flex max-w-2xl gap-4 px-6 pt-4 font-mono text-xs text-neutral-400">
-          <Link href="/" className="hover:text-neutral-100">
-            AI SDK useChat
-          </Link>
-          <Link href="/ui" className="hover:text-neutral-100">
-            @effect-uai/ui
-          </Link>
+      <body>
+        <nav>
+          <Link href="/">@effect-uai/ui</Link>
+          <Link href="/ai-sdk">AI SDK useChat</Link>
         </nav>
         {children}
       </body>

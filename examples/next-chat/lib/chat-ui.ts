@@ -1,14 +1,15 @@
 /**
- * The tools as Schemas only (no `run`), so the browser can import them. Both
- * routes build their tools from these specs; the `/ui` page types its state
- * with `ChatUi`, so a tool block narrowed by name has its tool's output.
+ * The contract both sides import: the tools as Schemas only (no `run`, so it
+ * is safe in the browser). The server builds its tools from these specs; the
+ * client's `Thread` is typed by `ChatUi`, so a tool block narrowed by name
+ * has its tool's input and output (`observedAt` is a `Date`).
  */
 import * as UiContract from "@effect-uai/ui/UiContract"
 import { Schema } from "effect"
 
 export const GetWeather = {
   name: "get_weather",
-  description: "Look up the current weather for a city by name, e.g. 'Lisbon' or 'Tokyo'.",
+  description: "The weather right now in a city, e.g. 'Lisbon' or 'Tokyo'.",
   inputSchema: Schema.Struct({ city: Schema.String }),
   outputSchema: Schema.Struct({
     city: Schema.String,
@@ -26,5 +27,33 @@ export const GetDate = {
   outputSchema: Schema.Struct({ timezone: Schema.String, now: Schema.Date }),
 } as const
 
-export const ChatUi = UiContract.make({ tools: [GetWeather, GetDate] })
+// The two below need the user's approval before they run (see the server).
+
+export const SendEmail = {
+  name: "send_email",
+  description: "Send an email. The user approves it before it is sent.",
+  inputSchema: Schema.Struct({ to: Schema.String, subject: Schema.String, body: Schema.String }),
+  outputSchema: Schema.Struct({ to: Schema.String, sentAt: Schema.Date }),
+} as const
+
+export const BookTable = {
+  name: "book_table",
+  description: "Book a restaurant table. The user approves it before it is booked.",
+  inputSchema: Schema.Struct({
+    restaurant: Schema.String,
+    time: Schema.String,
+    guests: Schema.Number,
+  }),
+  outputSchema: Schema.Struct({
+    restaurant: Schema.String,
+    time: Schema.String,
+    guests: Schema.Number,
+  }),
+} as const
+
+export const ChatUi = UiContract.make({
+  tools: [GetWeather, GetDate, SendEmail, BookTable],
+  // Live metrics while an answer streams; the latest value of each wins.
+  live: { ttftMs: Schema.Number, tokensPerSecond: Schema.Number },
+})
 export type ChatPayloads = UiContract.Payloads<typeof ChatUi>

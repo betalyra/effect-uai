@@ -226,3 +226,71 @@ describe("Thread across streams", () => {
     ).toEqual(["first", "second"])
   })
 })
+
+describe("Thread approvals", () => {
+  const s = StreamId.make("chat")
+  const frame = (seq: number, runId: string, event: RunEvent): Envelope => ({
+    streamId: s,
+    seq,
+    runId: RunId.make(runId),
+    event,
+  })
+  const ask = { ...Input.submit("Book a table for 8"), id: InputId.make("in_1") }
+  const call = { callId: "call_1", name: "book_table", input: { time: "20:00" } }
+
+  // The first run asks for approval and ends interrupted.
+  const interrupted = [
+    frame(1, "r1", { type: "run-started", runId: RunId.make("r1"), inputs: [ask.id], protocol: 1 }),
+    frame(2, "r1", { type: "tool-call-ready", ...call }),
+    frame(3, "r1", { type: "run-interrupted", interrupts: [{ ...call, reason: "approval" }] }),
+  ].reduce(Thread.step, Thread.submitted(Thread.initial, ask))
+
+  // The answer runs the call (or not) in the next run.
+  const answer = (approved: boolean, result: RunEvent) => {
+    const resolve = { ...Input.resolve([{ callId: "call_1", approved }]), id: InputId.make("in_2") }
+    return [
+      frame(4, "r2", {
+        type: "run-started",
+        runId: RunId.make("r2"),
+        inputs: [resolve.id],
+        protocol: 1,
+      }),
+      frame(5, "r2", result),
+      frame(6, "r2", { type: "text-delta", text: approved ? "Booked." : "Not booked." }),
+      frame(7, "r2", { type: "run-completed" }),
+    ].reduce(Thread.step, Thread.submitted(interrupted, resolve))
+  }
+
+  const blocksOf = (thread: Thread.Thread, index: number) => {
+    const m = thread.messages[index]
+    return m?.role === "assistant" ? m.value.blocks : []
+  }
+
+  it("an approved call's result updates the card it was asked from", () => {
+    const thread = answer(true, {
+      type: "tool-result",
+      callId: "call_1",
+      name: "book_table",
+      output: { booked: true },
+      isError: false,
+    })
+    expect(blocksOf(thread, 1)).toMatchObject([
+      { type: "tool", id: "call_1", status: "done", output: { booked: true } },
+    ])
+    expect(blocksOf(thread, 2)).toEqual([{ type: "output_text", id: "b0", text: "Booked." }])
+  })
+
+  it("a denied call fails on the same card, with the server's kind", () => {
+    const thread = answer(false, {
+      type: "tool-result",
+      callId: "call_1",
+      name: "book_table",
+      output: { kind: "denied" },
+      isError: true,
+    })
+    expect(blocksOf(thread, 1)).toMatchObject([
+      { type: "tool", id: "call_1", status: "failed", error: { kind: "denied" } },
+    ])
+    expect(blocksOf(thread, 2)).toEqual([{ type: "output_text", id: "b0", text: "Not booked." }])
+  })
+})

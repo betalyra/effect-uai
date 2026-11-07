@@ -26,7 +26,7 @@ import * as Turn from "@effect-uai/core/Turn"
 import { Duration, Effect, Match, Result, Stream, pipe } from "effect"
 import { FetchHttpClient } from "effect/http"
 import { readProvider } from "../../../lib/model"
-import { toolkit } from "../../../lib/tools"
+import { basicToolkit as toolkit } from "../../../lib/tools"
 
 // ---------------------------------------------------------------------------
 // The loop: agentic tool calls, with a realistic model fallback. Each tier is

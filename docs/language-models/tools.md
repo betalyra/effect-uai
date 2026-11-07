@@ -447,23 +447,14 @@ const events = Stream.merge(
 )
 ```
 
-Long-lived queue flows use `fromQueue(predicate, verdicts)(calls)`,
-which returns safe calls up front, an `approvalRequests` stream of
-`ApprovalRequested` events, and a decision stream for gated calls as
-verdicts arrive:
-
-```ts
-const { approved, decisions, approvalRequests } = yield * fromQueue(isSensitive, verdicts)(calls)
-
-const events = Stream.merge(
-  approvalRequests,
-  Stream.merge(Toolkit.run(toolkit, approved), decisions.pipe(Stream.flatMap(decisionToEvents))),
-)
-```
+For a long-lived connection, where verdicts arrive while the run waits,
+build the wait yourself: emit `approvalRequested(call)` for each gated
+call, then turn each verdict into `approve(call)` or `reject(result)`. The
+[Tool call approval recipe](/recipes/tool-call-approval/) has a
+copyable verdict-queue version, `fromQueue`, with a timeout.
 
 Either way, every model-requested call receives a matching tool result
-in history. Full walkthrough in the
-[Tool call approval recipe](/recipes/tool-call-approval/).
+in history.
 
 ## History reconciliation
 

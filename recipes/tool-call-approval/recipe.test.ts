@@ -1,10 +1,19 @@
+import { describe, it } from "@effect/vitest"
 import { Effect, Fiber, Queue, Stream } from "effect"
-import { describe, expect, it } from "vitest"
-import type { ApprovalMapEntry, Verdict } from "@effect-uai/core/Approval"
+import { TestClock } from "effect/testing"
+import { expect } from "vitest"
+import type { ApprovalMapEntry } from "@effect-uai/core/Approval"
+import type * as Items from "@effect-uai/core/Items"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import { isApprovalRequested, isOutput } from "@effect-uai/core/ToolEvent"
 import type * as Turn from "@effect-uai/core/Turn"
-import { httpConversation, queueConversation } from "./recipe.js"
+import {
+  type Verdict,
+  fromQueue,
+  httpConversation,
+  isSensitive,
+  queueConversation,
+} from "./recipe.js"
 
 /** One turn asking for the safe tool and both sensitive ones. */
 const askingForAll: Turn.Turn = {
@@ -30,57 +39,80 @@ const done: Turn.Turn = {
 
 const scripted = MockProvider.layer([askingForAll, done])
 
-describe("tool-call-approval: queue variant", () => {
-  it("gates the sensitive calls on verdicts and still returns a result for a denial", async () => {
-    const program = Effect.gen(function* () {
-      const verdicts = yield* Queue.unbounded<Verdict>()
+const deleteCall = (call_id: string): Items.ToolCall => ({
+  type: "function_call",
+  call_id,
+  name: "delete_user",
+  arguments: '{"user_id":"u"}',
+})
 
-      // Collect in the background: the stream cannot finish until the
-      // verdicts below arrive, so joining first would deadlock.
+describe("tool-call-approval: queue variant", () => {
+  it.effect("gates the sensitive calls on verdicts and still returns a result for a denial", () =>
+    Effect.gen(function* () {
+      const verdicts = yield* Queue.unbounded<Verdict>()
+      // Collect in the background: the stream cannot finish until the verdicts arrive.
       const fiber = yield* Effect.forkChild(
         Stream.runCollect(queueConversation(verdicts, undefined, "mock")),
       )
-
       yield* Queue.offerAll(verdicts, [
         { call_id: "send", decision: "approve" },
         { call_id: "del", decision: "deny", reason: "not allowed" },
       ])
+      const events = yield* Fiber.join(fiber)
 
-      return yield* Fiber.join(fiber)
-    })
+      const asked = events.filter(isApprovalRequested).map((e) => e.call_id)
+      expect([...asked].sort()).toEqual(["del", "send"])
 
-    const events = await Effect.runPromise(program.pipe(Effect.provide(scripted), Effect.scoped))
+      const outputs = events.filter(isOutput).map((e) => e.result)
+      expect(outputs.find((r) => r.call_id === "safe")?._tag).toBe("Ok")
+      expect(outputs.find((r) => r.call_id === "send")?._tag).toBe("Ok")
+      // A denial still returns a result to the model, so the turn stays valid.
+      expect(outputs.find((r) => r.call_id === "del")?._tag).toBe("Failure")
+    }).pipe(Effect.provide(scripted), Effect.scoped),
+  )
 
-    // Only the sensitive calls are announced for approval.
-    const asked = events.filter(isApprovalRequested).map((e) => e.call_id)
-    expect([...asked].sort()).toEqual(["del", "send"])
+  it.effect("the router retires per round, so sequential rounds over one queue both resolve", () =>
+    Effect.gen(function* () {
+      const verdicts = yield* Queue.unbounded<Verdict>()
 
-    const outputs = events.filter(isOutput).map((e) => e.result)
-    expect(outputs.find((r) => r.call_id === "safe")?._tag).toBe("Ok")
-    expect(outputs.find((r) => r.call_id === "send")?._tag).toBe("Ok")
+      const r1 = yield* fromQueue(isSensitive, verdicts)([deleteCall("c1")])
+      yield* Queue.offer(verdicts, { call_id: "c1", decision: "approve" })
+      const d1 = yield* Stream.runCollect(r1.decisions)
 
-    // A denial still returns a result to the model, so the turn stays valid.
-    expect(outputs.find((r) => r.call_id === "del")?._tag).toBe("Failure")
-  })
+      const r2 = yield* fromQueue(isSensitive, verdicts)([deleteCall("c2")])
+      yield* Queue.offer(verdicts, { call_id: "c2", decision: "deny", reason: "no" })
+      const d2 = yield* Stream.runCollect(r2.decisions)
+
+      expect(d1[0]).toMatchObject({ _tag: "Approved" })
+      expect(d2[0]).toMatchObject({ _tag: "Rejected", result: { kind: "denied", reason: "no" } })
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("a timeout resolves an unanswered gated call as cancelled", () =>
+    Effect.gen(function* () {
+      const verdicts = yield* Queue.unbounded<Verdict>()
+      const { decisions } = yield* fromQueue(isSensitive, verdicts, { timeout: "1 minute" })([
+        deleteCall("c1"),
+      ])
+      const fiber = yield* Effect.forkChild(Stream.runCollect(decisions))
+      yield* TestClock.adjust("1 minute")
+      const [decision] = yield* Fiber.join(fiber)
+
+      expect(decision).toMatchObject({ _tag: "Rejected", result: { kind: "cancelled" } })
+    }).pipe(Effect.scoped),
+  )
 })
 
 describe("tool-call-approval: http variant", () => {
-  it("turns a missing approval entry into a cancelled result rather than running it", async () => {
-    const approvals = new Map<string, ApprovalMapEntry>([["send", { decision: "approve" }]])
+  it.effect("turns a missing approval entry into a cancelled result rather than running it", () =>
+    Effect.gen(function* () {
+      const approvals = new Map<string, ApprovalMapEntry>([["send", { decision: "approve" }]])
+      const events = yield* Stream.runCollect(httpConversation(approvals, undefined, "mock"))
 
-    const events = await Effect.runPromise(
-      Stream.runCollect(httpConversation(approvals, undefined, "mock")).pipe(
-        Effect.provide(scripted),
-        Effect.scoped,
-      ),
-    )
-
-    const outputs = events.filter(isOutput).map((e) => e.result)
-    expect(outputs.find((r) => r.call_id === "send")?._tag).toBe("Ok")
-
-    // `delete_user` was sensitive and unmentioned by the request payload.
-    const missing = outputs.find((r) => r.call_id === "del")
-    expect(missing?._tag).toBe("Failure")
-    if (missing?._tag === "Failure") expect(missing.kind).toBe("cancelled")
-  })
+      const outputs = events.filter(isOutput).map((e) => e.result)
+      expect(outputs.find((r) => r.call_id === "send")?._tag).toBe("Ok")
+      // `delete_user` was sensitive and unmentioned by the request payload.
+      expect(outputs.find((r) => r.call_id === "del")).toMatchObject({ kind: "cancelled" })
+    }).pipe(Effect.provide(scripted), Effect.scoped),
+  )
 })

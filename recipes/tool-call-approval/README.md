@@ -26,9 +26,11 @@ Same primitives, different approval planner:
   `{ approved, rejected }`; missing entries synthesize `cancelled`.
   Pure function. No queue, no router fiber. The simplest path.
 - **Queue (enhancement)**: long-lived channel (WebSocket / SSE).
-  `Approval.fromQueue(predicate, queue)(calls)` returns safe calls up
-  front, emits `ApprovalRequested` events, and exposes a decision stream
-  for gated calls as verdicts arrive.
+  `fromQueue(predicate, queue)(calls)`, defined in this recipe, returns
+  safe calls up front, emits `ApprovalRequested` events, and exposes a
+  decision stream for gated calls as verdicts arrive. It is app code built
+  from `Approval.approve` / `reject` / `approvalRequested`: copy it and
+  change the wait (a database, a Slack button, a timeout policy).
 
 Pick HTTP if your transport is request-shaped. Pick the queue variant if
 you've got a persistent connection and want a streaming UI.
@@ -118,7 +120,7 @@ onTurnComplete((turn) =>
     // events.
     const events = Stream.unwrap(
       Effect.gen(function* () {
-        const { approved, decisions, approvalRequests } = yield* Approval.fromQueue(
+        const { approved, decisions, approvalRequests } = yield* fromQueue(
           isSensitive,
           verdicts,
         )(calls)

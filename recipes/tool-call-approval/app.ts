@@ -4,10 +4,9 @@
  * request, tool result and completed turn.
  */
 import { Effect, Match, Option, Queue, Stdio, Stream } from "effect"
-import type { Verdict } from "@effect-uai/core/Approval"
 import { flagValue } from "@effect-uai/recipe-kit/argv"
 import { languageModelLayer, parseModelSpec } from "../_shared/model.js"
-import { DEFAULT_MODEL, demoVerdict, queueConversation } from "./recipe.js"
+import { DEFAULT_MODEL, type Verdict, demoVerdict, queueConversation } from "./recipe.js"
 
 export const main = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio

@@ -10,18 +10,12 @@
  *
  * Plus: hallucinated tool name (graceful Failure), unknown_tool kind.
  */
-import { Effect, Queue, Schema, Stream } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Items from "../domain/Items.js"
 import { findUnansweredCalls, cancelAllPending, isReconciled } from "./HistoryCheck.js"
 import { type ToolResult, isFailure, isOk, toToolCallOutput } from "./ToolResult.js"
-import {
-  type ApprovalMapEntry,
-  type ApprovalDecision,
-  type Verdict,
-  fromMap,
-  fromQueue,
-} from "./Approval.js"
+import { type ApprovalMapEntry, fromMap } from "./Approval.js"
 import { fromEffectSchema, make as makeTool } from "./Tool.js"
 import { make as makeToolkit, run } from "./Toolkit.js"
 import { ToolEvent, isApprovalRequested, isProgress, isOutput } from "./ToolEvent.js"
@@ -100,11 +94,6 @@ const eventsFromApprovalMap = (approvals: ReadonlyMap<string, ApprovalMapEntry>)
   const plan = fromMap(isSensitive, approvals)(calls)
   return Stream.merge(run(allTools, plan.approved), rejectedStream(plan.rejected))
 }
-
-const eventsFromDecision = (decision: ApprovalDecision): Stream.Stream<ToolEvent> =>
-  decision._tag === "Approved"
-    ? run(allTools, [decision.call])
-    : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
 // ---------------------------------------------------------------------------
 // fromMap: HTTP-style scenarios
@@ -202,102 +191,6 @@ describe("run: graceful degradation", () => {
     expect(by.get("c1")).toMatchObject({ _tag: "Ok" })
     expect(by.get("c2")).toMatchObject({ _tag: "Failure", kind: "unknown_tool" })
     expect(by.get("c3")).toMatchObject({ _tag: "Ok", value: { status: "dropped" } })
-  })
-})
-
-// ---------------------------------------------------------------------------
-// fromQueue: WebSocket-style scenarios
-// ---------------------------------------------------------------------------
-
-describe("fromQueue + run", () => {
-  it("queue-driven: approve + deny resolve correctly with ApprovalRequested events", async () => {
-    const collected = await Effect.runPromise(
-      Effect.gen(function* () {
-        const verdicts = yield* Queue.unbounded<{
-          readonly call_id: string
-          readonly decision: "approve" | "deny"
-          readonly reason?: string
-        }>()
-        yield* Queue.offer(verdicts, { call_id: "c2", decision: "approve" })
-        yield* Queue.offer(verdicts, {
-          call_id: "c3",
-          decision: "deny",
-          reason: "too risky",
-        })
-
-        // Stream.unwrap supplies the Scope for fromQueue's router.
-        const events = Stream.unwrap(
-          Effect.gen(function* () {
-            const { approved, decisions, approvalRequests } = yield* fromQueue(
-              isSensitive,
-              verdicts,
-            )(calls)
-            return Stream.merge(
-              approvalRequests,
-              Stream.merge(
-                run(allTools, approved),
-                decisions.pipe(Stream.flatMap(eventsFromDecision)),
-              ),
-            )
-          }),
-        )
-        return yield* Stream.runCollect(events)
-      }),
-    )
-
-    expect(collected.filter(isApprovalRequested)).toHaveLength(2)
-
-    const by = byCallId(resultsFrom(collected))
-    expect(by.get("c2")).toMatchObject({ _tag: "Ok", value: { status: "sent" } })
-    expect(by.get("c3")).toMatchObject({
-      _tag: "Failure",
-      kind: "denied",
-      reason: "too risky",
-    })
-  })
-
-  it("router retires per round, so sequential rounds over one queue both resolve", async () => {
-    // A verdict-per-round over one shared queue and scope. The old
-    // never-terminating router would still be alive for round 1 and steal
-    // round 2's verdict (not in its map), hanging round 2.
-    const decisions = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const verdicts = yield* Queue.unbounded<Verdict>()
-          const round = (id: string) => [fc(id, "delete_database", { name: "prod" })]
-
-          const r1 = yield* fromQueue(isSensitive, verdicts)(round("c1"))
-          yield* Queue.offer(verdicts, { call_id: "c1", decision: "approve" })
-          const d1 = Array.from(yield* Stream.runCollect(r1.decisions))
-
-          const r2 = yield* fromQueue(isSensitive, verdicts)(round("c2"))
-          yield* Queue.offer(verdicts, { call_id: "c2", decision: "deny", reason: "no" })
-          const d2 = Array.from(yield* Stream.runCollect(r2.decisions))
-
-          return { d1, d2 }
-        }),
-      ),
-    )
-    expect(decisions.d1[0]).toMatchObject({ _tag: "Approved" })
-    expect(decisions.d2[0]).toMatchObject({ _tag: "Rejected", result: { kind: "denied" } })
-  })
-
-  it("timeout resolves an unanswered gated call as cancelled", async () => {
-    const decisions = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const verdicts = yield* Queue.unbounded<Verdict>()
-          const { decisions } = yield* fromQueue(isSensitive, verdicts, { timeout: "10 millis" })([
-            fc("c1", "delete_database", { name: "prod" }),
-          ])
-          return Array.from(yield* Stream.runCollect(decisions))
-        }),
-      ),
-    )
-    expect(decisions[0]).toMatchObject({
-      _tag: "Rejected",
-      result: { _tag: "Failure", kind: "cancelled" },
-    })
   })
 })
 

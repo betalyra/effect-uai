@@ -42,9 +42,7 @@ const runLoop = (model: string, toolkit: Toolkit.Toolkit, prompt: string) =>
               const calls = Turn.getToolCalls(turn)
               if (calls.length === 0) return stop()
               return Toolkit.run(toolkit, calls).pipe(
-                Toolkit.continueWithResults(
-                  Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
-                ),
+                Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
               )
             }),
           ),

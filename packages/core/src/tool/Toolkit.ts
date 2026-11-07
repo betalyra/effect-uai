@@ -255,30 +255,45 @@ export const wrap: {
     })),
 )
 
-type DescribeTool<T extends AnyTool> =
-  T extends Tool<infer N, infer I, infer O, infer F, any, infer R>
-    ? Tool<N, I, O, F | ToolFailed, F | ToolFailed, R>
+// `D` is what `describe` returns: with `undefined` possible, some errors stay on the stream.
+type DescribeTool<T extends AnyTool, D> =
+  T extends Tool<infer N, infer I, infer O, infer F, infer E, infer R>
+    ? Tool<N, I, O, F | ToolFailed, F | ToolFailed | (undefined extends D ? E : never), R>
     : T
 
-type DescribeToolkit<T extends ToolMap> = {
-  readonly [K in keyof T]: T[K] extends AnyTool ? DescribeTool<T[K]> : T[K]
+type DescribeToolkit<T extends ToolMap, D> = {
+  readonly [K in keyof T]: T[K] extends AnyTool ? DescribeTool<T[K], D> : T[K]
 }
 
 /**
- * Every undeclared error becomes a `ToolFailed` the model reads, e.g. with
- * `AiError.describe`. Declared failures pass through unchanged.
+ * Undeclared errors become a `ToolFailed` the model reads, e.g. with
+ * `AiError.describe`. Declared failures pass through unchanged. Return
+ * `undefined` for an error that should still fail the run (a dead session).
  */
 export const describeFailures: {
-  <E>(describe: (e: E) => string): <T extends Toolkit>(toolkit: T) => DescribeToolkit<T>
-  <T extends Toolkit>(toolkit: T, describe: (e: ToolkitE<T>) => string): DescribeToolkit<T>
+  <E, D extends string | undefined>(
+    describe: (e: E) => D,
+  ): <T extends Toolkit>(toolkit: T) => DescribeToolkit<T, D>
+  <T extends Toolkit, D extends string | undefined>(
+    toolkit: T,
+    describe: (e: ToolkitE<T>) => D,
+  ): DescribeToolkit<T, D>
 } = Function.dual(
   2,
-  <T extends Toolkit>(toolkit: T, describe: (e: unknown) => string): DescribeToolkit<T> =>
+  <T extends Toolkit>(
+    toolkit: T,
+    describe: (e: unknown) => string | undefined,
+  ): DescribeToolkit<T, string | undefined> =>
     mapLocal(toolkit, (tool) => {
       const isDeclared: (e: unknown) => boolean =
         tool.failureSchema === undefined ? () => false : Schema.is(tool.failureSchema)
       const toFailed = (e: unknown) =>
-        isDeclared(e) ? e : new ToolFailed({ message: describe(e) })
+        isDeclared(e)
+          ? e
+          : Option.match(Option.fromNullishOr(describe(e)), {
+              onNone: () => e,
+              onSome: (message) => new ToolFailed({ message }),
+            })
       return {
         ...tool,
         failureSchema:
@@ -455,9 +470,10 @@ const failures = (tool: AnyLocalTool | undefined): Schema.Codec<unknown, Schema.
 /** Any call's outcome, as `run` emits it. */
 export type Outcome = ToolEvent.Output<string, unknown, unknown>
 
-/** Narrows `Event<T>` to its `Output` members, keeping the per-tool types. */
-export const isOutcome = <A extends AnyEvent>(e: A): e is Extract<A, { readonly _tag: "Output" }> =>
-  e._tag === "Output"
+/** Narrows to the `Output` members (also in a loop's mixed stream), keeping the per-tool types. */
+export const isOutcome = <A extends { readonly _tag: string }>(
+  e: A,
+): e is Extract<A, { readonly _tag: "Output" }> => e._tag === "Output"
 
 const toOutput = (
   toolkit: Toolkit,
@@ -514,23 +530,29 @@ export function decode(
 // Into the loop
 // ---------------------------------------------------------------------------
 
+type Tagged = { readonly _tag: string }
+
+// An app's own events may travel alongside; `Output` is reserved for outcomes.
+const isOutcomeOf = <A extends Tagged>(e: A): e is A & Outcome => e._tag === "Output"
+
 /**
  * Forward every event as a `Loop.value`, then continue the loop with
- * `build(outcomes)`. `build` is an Effect, so it can encode.
+ * `build(outcomes)`. `build` is an Effect, so it can encode. The stream may
+ * carry the app's own tagged events too (any tag but `Output`).
  */
 export const continueWith: {
   <S, E2, R2>(
     build: (outcomes: ReadonlyArray<Outcome>) => Effect.Effect<S, E2, R2>,
-  ): <A extends AnyEvent, E, R>(
+  ): <A extends Tagged, E, R>(
     stream: Stream.Stream<A, E, R>,
   ) => Stream.Stream<Loop.Step<A, S>, E | E2, R | R2>
-  <A extends AnyEvent, E, R, S, E2, R2>(
+  <A extends Tagged, E, R, S, E2, R2>(
     stream: Stream.Stream<A, E, R>,
     build: (outcomes: ReadonlyArray<Outcome>) => Effect.Effect<S, E2, R2>,
   ): Stream.Stream<Loop.Step<A, S>, E | E2, R | R2>
 } = Function.dual(
   2,
-  <A extends AnyEvent, E, R, S, E2, R2>(
+  <A extends Tagged, E, R, S, E2, R2>(
     stream: Stream.Stream<A, E, R>,
     build: (outcomes: ReadonlyArray<Outcome>) => Effect.Effect<S, E2, R2>,
   ): Stream.Stream<Loop.Step<A, S>, E | E2, R | R2> =>
@@ -539,7 +561,7 @@ export const continueWith: {
         Stream.concat(
           stream.pipe(
             Stream.tap((e) =>
-              isOutcome(e) ? Ref.update(outcomes, Arr.append<Outcome>(e)) : Effect.void,
+              isOutcomeOf(e) ? Ref.update(outcomes, Arr.append<Outcome>(e)) : Effect.void,
             ),
             Stream.map(Loop.value),
           ),

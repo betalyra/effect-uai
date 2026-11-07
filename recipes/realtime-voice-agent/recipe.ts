@@ -16,8 +16,6 @@ import { Cause, Effect, Fiber, Match, Ref, Stream } from "effect"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import { RealtimeInput } from "@effect-uai/core/Realtime"
 import * as RealtimeSession from "@effect-uai/core/RealtimeSession"
-import { isOutput } from "@effect-uai/core/ToolEvent"
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 
 /** What the browser is told. Rendering is the client's business. */
@@ -126,20 +124,14 @@ export const runAgent = <T extends Toolkit.Toolkit>(cfg: AgentConfig, toolkit: T
             // Forked, so the conversation stays live while the tool works.
             const fiber = yield* Effect.forkScoped(
               Toolkit.run(toolkit, [e.call]).pipe(
-                Stream.runForEach((toolEvent) =>
-                  isOutput(toolEvent)
-                    ? Effect.gen(function* () {
-                        yield* session.send(
-                          RealtimeInput.ToolResult({
-                            output: toToolCallOutput(toolEvent.result),
-                          }),
-                        )
-                        yield* Ref.update(pending, (xs) =>
-                          xs.filter(([id]) => id !== e.call.call_id),
-                        )
-                        yield* io.sendStatus({ type: "tool-done", name: e.call.name })
-                      })
-                    : Effect.void,
+                Stream.filter(Toolkit.isOutcome),
+                Stream.mapEffect(Toolkit.output(toolkit)),
+                Stream.runForEach((output) =>
+                  Effect.gen(function* () {
+                    yield* session.send(RealtimeInput.ToolResult({ output }))
+                    yield* Ref.update(pending, (xs) => xs.filter(([id]) => id !== e.call.call_id))
+                    yield* io.sendStatus({ type: "tool-done", name: e.call.name })
+                  }),
                 ),
                 // A rejected result is invisible otherwise: the model simply
                 // never answers, and the page shows a call that never lands.

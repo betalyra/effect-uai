@@ -13,9 +13,8 @@ import * as Items from "@effect-uai/core/Items"
 import type { ToolCall } from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop, value } from "@effect-uai/core/Loop"
-import * as ToolEvent from "@effect-uai/core/ToolEvent"
-import * as ToolResult from "@effect-uai/core/ToolResult"
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
+import type * as ToolEvent from "@effect-uai/core/ToolEvent"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import * as Metrics from "@effect-uai/core/Metrics"
@@ -47,7 +46,7 @@ import {
   HttpServerRequest,
   HttpServerResponse,
 } from "effect/http"
-import { BookTable, ChatUi, SendEmail } from "./chat-ui"
+import { BookTable, ChatUi, Closings, SendEmail, Superseded } from "./chat-ui"
 import { readProvider } from "./model"
 import { toolkit } from "./tools"
 
@@ -79,9 +78,7 @@ const makeAgent =
             if (calls.length === 0) return stop()
             const gated = calls.filter(needsApproval)
             if (gated.length === 0) {
-              return Toolkit.run(toolkit, calls).pipe(
-                Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
-              )
+              return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, { history }, turn))
             }
             // Run the calls that need no approval, park the rest, and end the run.
             yield* Ref.set(parked, gated)
@@ -107,11 +104,31 @@ const interrupted = (calls: ReadonlyArray<ToolCall>): RunEvent => ({
   })),
 })
 
+/** A call the app closes itself: the model and the page see it like a failed call. */
+const close = (
+  call: ToolCall,
+  error: typeof Closings.Type,
+): ToolEvent.Output<string, never, typeof Closings.Type> => ({
+  _tag: "Output",
+  call_id: call.call_id,
+  tool: call.name,
+  result: Result.fail(error),
+})
+
+const isClosing = Schema.is(Closings)
+
+// An outcome as history: a closing with the app's schema, the rest with its tool's.
+const outputOf = (outcome: Toolkit.Outcome) =>
+  Result.isFailure(outcome.result) && isClosing(outcome.result.failure)
+    ? ToolOutput.failure(outcome, Closings, outcome.result.failure)
+    : Toolkit.output(toolkit, outcome)
+
 // What one loop event adds to the chat's history: the turn's items, a tool's output.
-const historyOf = (source: Projection.Source): History => {
-  if (Turn.isTurnComplete(source)) return source.turn.items
-  if (ToolEvent.isOutput(source)) return [toToolCallOutput(source.result)]
-  return []
+const historyOf = (source: Projection.Source): Effect.Effect<History, Schema.SchemaError> => {
+  if (Items.isToolCallOutput(source)) return Effect.succeed([source])
+  if (Turn.isTurnComplete(source)) return Effect.succeed(source.turn.items)
+  if (Toolkit.isOutcome(source)) return Effect.map(outputOf(source), Arr.of)
+  return Effect.succeed([])
 }
 
 // METRICS: time to first token and throughput, sent as the contract's `live` values
@@ -145,7 +162,7 @@ const toRunEvents = <E, R>(self: Stream.Stream<Projection.Source | Metrics.Metri
       (state, event) =>
         Metrics.isMetricEvent(event)
           ? liveMetric(event).pipe(Effect.map((events) => [state, events] as const))
-          : Effect.succeed(Projection.step()(state, event)),
+          : Projection.step({ contract: ChatUi })(state, event),
     ),
   )
 
@@ -202,14 +219,15 @@ const makeChats = Effect.gen(function* () {
       const superseded = awaiting
         .filter((call) => onFollowUp(call) === "deny")
         .map((call) =>
-          ToolResult.failed(call, "superseded", "The user sent a new message instead."),
+          close(call, new Superseded({ message: "The user sent a new message instead." })),
         )
       const placeholders = kept
         .filter((call) => !HashSet.has(held, call.call_id))
         .map((call) => Items.toolCallOutput(call.call_id, PLACEHOLDER))
+      const closings = yield* Effect.forEach(superseded, outputOf)
       yield* Ref.update(chat.history, (h) => [
         ...h,
-        ...superseded.map(toToolCallOutput),
+        ...closings,
         ...placeholders,
         ...input.messages,
       ])
@@ -226,37 +244,28 @@ const makeChats = Effect.gen(function* () {
     Effect.gen(function* () {
       const awaiting = yield* Ref.get(chat.awaiting)
       const held = yield* Ref.get(chat.held)
-      const verdicts = new Map(
-        input.decisions.map((d): readonly [string, Approval.ApprovalMapEntry] => [
-          d.callId,
-          d.approved
-            ? { decision: "approve" }
-            : { decision: "deny", ...(d.reason !== undefined ? { reason: d.reason } : {}) },
-        ]),
+      // Groups only the calls this chat waits for; a stale answer is ignored.
+      const { Approve, Deny, unanswered } = Approval.Default.resolve(awaiting, input.decisions)
+      const ran = yield* Toolkit.run(
+        toolkit,
+        Approve.map((a) => a.call),
+      ).pipe(Stream.filter(Toolkit.isOutcome), Stream.runCollect, Effect.provideContext(http))
+      const denied = Deny.map(({ call, decision }) =>
+        close(call, new Approval.Denied({ message: decision.reason ?? "The user declined." })),
       )
-      const decided = awaiting.filter((call) => verdicts.has(call.call_id))
-      const plan = Approval.fromMap(needsApproval, verdicts)(decided)
-      const ran = yield* Toolkit.run(toolkit, plan.approved).pipe(
-        Stream.filterMap((event) =>
-          ToolEvent.isOutput(event) ? Result.succeed(event.result) : Result.failVoid,
-        ),
-        Stream.runCollect,
-        Effect.provideContext(http),
-      )
-      const results = [...ran, ...plan.rejected]
+      const results: ReadonlyArray<Toolkit.Outcome> = [...ran, ...denied]
       // A call with a placeholder already has its output; it learns the verdict from a note.
-      const items = results.map((result) =>
-        HashSet.has(held, result.call_id)
-          ? Items.userText(
-              `[${ToolResult.isOk(result) ? "approved" : "not run"}] ${result.tool} (${result.call_id}): ${toToolCallOutput(result).output}`,
-            )
-          : toToolCallOutput(result),
+      const items = yield* Effect.forEach(results, (outcome) =>
+        Effect.map(outputOf(outcome), (item) =>
+          HashSet.has(held, outcome.call_id)
+            ? Items.userText(
+                `[${outcome.result._tag === "Success" ? "approved" : "not run"}] ${outcome.tool} (${outcome.call_id}): ${JSON.stringify(ToolOutput.value(item.output))}`,
+              )
+            : item,
+        ),
       )
       yield* Ref.update(chat.history, (h) => [...h, ...items])
-      yield* Ref.set(
-        chat.awaiting,
-        awaiting.filter((call) => !verdicts.has(call.call_id)),
-      )
+      yield* Ref.set(chat.awaiting, unanswered)
       return results
     })
 
@@ -274,7 +283,11 @@ const makeChats = Effect.gen(function* () {
         input.kind === "resolve" && results.length === 0
           ? Stream.empty
           : agent(history, parked).pipe(
-              Stream.tap((source) => Ref.update(chat.history, (h) => [...h, ...historyOf(source)])),
+              Stream.tap((source) =>
+                Effect.flatMap(historyOf(source), (items) =>
+                  Ref.update(chat.history, (h) => [...h, ...items]),
+                ),
+              ),
               Metrics.allMetrics({
                 throughput: { every: "500 millis", unit: "token", tokenizer: estimateTokens },
               }),
@@ -289,9 +302,7 @@ const makeChats = Effect.gen(function* () {
         ),
       )
       // The settled calls' results go first, so their cards update.
-      return Stream.fromIterable(
-        results.map((result) => ToolEvent.ToolEvent.Output({ result })),
-      ).pipe(
+      return Stream.fromIterable<Projection.Source>(results).pipe(
         Stream.concat(answer),
         toRunEvents,
         Run.coalesce("30 millis"),

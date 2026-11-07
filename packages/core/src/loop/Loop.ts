@@ -125,26 +125,27 @@ export const stop = <S = never>(state?: S): Stream.Stream<Step<never, S>> =>
  * Dual: data-first `onTurnComplete(deltas, then)` and data-last
  * `deltas.pipe(onTurnComplete(then))` both work.
  */
-type TurnContinuation<S, A, E2, R2> =
+// The Effect and the stream it returns infer their errors separately.
+type TurnContinuation<S, A, E2, R2, E3, R3> =
   | Stream.Stream<Step<A, S>, E2, R2>
-  | Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E2, R2>
+  | Effect.Effect<Stream.Stream<Step<A, S>, E2, R2>, E3, R3>
 
 export const onTurnComplete: {
-  <S, A, E2 = never, R2 = never>(
-    then: (turn: Turn) => TurnContinuation<S, A, E2, R2>,
+  <S, A, E2 = never, R2 = never, E3 = never, R3 = never>(
+    then: (turn: Turn) => TurnContinuation<S, A, E2, R2, E3, R3>,
   ): <E, R>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-  ) => Stream.Stream<Step<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2>
-  <S, A, E, R, E2 = never, R2 = never>(
+  ) => Stream.Stream<Step<TurnEvent | A, S>, E | E2 | E3 | IncompleteTurn, R | R2 | R3>
+  <S, A, E, R, E2 = never, R2 = never, E3 = never, R3 = never>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-    then: (turn: Turn) => TurnContinuation<S, A, E2, R2>,
-  ): Stream.Stream<Step<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2>
+    then: (turn: Turn) => TurnContinuation<S, A, E2, R2, E3, R3>,
+  ): Stream.Stream<Step<TurnEvent | A, S>, E | E2 | E3 | IncompleteTurn, R | R2 | R3>
 } = Function.dual(
   2,
-  <S, A, E, R, E2, R2>(
+  <S, A, E, R, E2, R2, E3, R3>(
     deltas: Stream.Stream<TurnEvent, E, R>,
-    then: (turn: Turn) => TurnContinuation<S, A, E2, R2>,
-  ): Stream.Stream<Step<TurnEvent | A, S>, E | E2 | IncompleteTurn, R | R2> =>
+    then: (turn: Turn) => TurnContinuation<S, A, E2, R2, E3, R3>,
+  ): Stream.Stream<Step<TurnEvent | A, S>, E | E2 | E3 | IncompleteTurn, R | R2 | R3> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const turnRef = yield* Ref.make<Option.Option<Turn>>(Option.none())
@@ -217,6 +218,11 @@ type LoopBody<S, A, E, R> = (
   state: S,
 ) => Stream.Stream<Step<A, S>, E, R> | Effect.Effect<Stream.Stream<Step<A, S>, E, R>, E, R>
 
+// What callers pass: the Effect and its stream infer errors and requirements separately.
+type LoopBodyIn<S, A, E, R, E2, R2> = (
+  state: S,
+) => Stream.Stream<Step<A, S>, E, R> | Effect.Effect<Stream.Stream<Step<A, S>, E, R>, E2, R2>
+
 /**
  * Drive a state-threaded loop body. Each iteration runs `body(state)` to get
  * a `Stream<Step<A, S>>`; values flow downstream, `next(s)` continues with
@@ -227,8 +233,13 @@ type LoopBody<S, A, E, R> = (
  * (or `pipe(initial, loop(body))`) both work.
  */
 export const loop: {
-  <S, A, E, R>(body: LoopBody<S, A, E, R>): (initial: S) => Stream.Stream<A, E, R>
-  <S, A, E, R>(initial: S, body: LoopBody<S, A, E, R>): Stream.Stream<A, E, R>
+  <S, A, E, R, E2 = never, R2 = never>(
+    body: LoopBodyIn<S, A, E, R, E2, R2>,
+  ): (initial: S) => Stream.Stream<A, E | E2, R | R2>
+  <S, A, E, R, E2 = never, R2 = never>(
+    initial: S,
+    body: LoopBodyIn<S, A, E, R, E2, R2>,
+  ): Stream.Stream<A, E | E2, R | R2>
 } = Function.dual(2, <S, A, E, R>(initial: S, body: LoopBody<S, A, E, R>): Stream.Stream<A, E, R> =>
   Stream.scoped(
     Stream.fromPull(

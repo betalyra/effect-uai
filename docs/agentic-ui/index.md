@@ -25,7 +25,7 @@ import * as Run from "@effect-uai/ui/Run"
 import * as SseEncoding from "@effect-uai/ui/SseEncoding"
 
 const body = agent(history).pipe(
-  Projection.toRunEvents(),
+  Projection.toRunEvents({ contract: ChatUi }),
   Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
   Run.start({ runId, inputs: [input.id] }),
   Run.complete,
@@ -84,37 +84,50 @@ share a contract built from Schemas only:
 
 ```ts
 // chat-ui.ts: imported by server and client
+export class CityNotFound extends Schema.TaggedError<CityNotFound>()("CityNotFound", {
+  city: Schema.String,
+}) {}
+
 export const GetWeather = {
   name: "get_weather",
   description: "The weather right now in a city.",
   inputSchema: Schema.Struct({ city: Schema.String }),
-  outputSchema: Schema.Struct({ temperatureC: Schema.Number, observedAt: Schema.Date }),
+  outputSchema: Schema.Struct({ temperatureC: Schema.Number, observedAt: Schema.DateFromString }),
+  failureSchema: CityNotFound,
 } as const
 
-export const ChatUi = UiContract.make({ tools: [GetWeather] })
+export const ChatUi = UiContract.make({ tools: [GetWeather], failures: Approval.Denied })
 ```
 
-The server builds the tool from the spec (`Tool.make({ ...GetWeather, run })`).
-The client passes `contract: ChatUi` to `Atoms.thread`, and each envelope is
-decoded once on arrival:
+The server builds the tool from the spec (`Tool.make({ ...GetWeather, run })`)
+and passes the contract to `Projection.toRunEvents({ contract: ChatUi })`.
+`failures` lists the errors the app closes calls with itself; each tool's
+`failureSchema` and core's errors are always included. The client passes
+`contract: ChatUi` to `Atoms.thread`, and each envelope is decoded once on
+arrival. A tool block carries the latest `partial` of a streaming tool and,
+once the call ends, its `outcome`:
 
 ```ts
 if (block.type === "tool" && block.name === "get_weather") {
-  block.output?.observedAt // Date, not a string
+  if (block.outcome?._tag === "Success") block.outcome.value.observedAt // Date, not a string
+  if (block.outcome?._tag === "Failure") block.outcome.error // CityNotFound | core error | Denied
 }
 ```
 
-A tool the contract doesn't list still arrives, as JSON. A listed tool whose
-payload doesn't decode fails the stream: that's a contract bug, not data.
+A tool the contract doesn't list still arrives, as a `Content.Value` (an image
+arrives as a `Content.Image`). A listed tool whose payload doesn't decode fails
+the stream: that's a contract bug, not data.
 
 ## Approvals
 
 When your loop stops on a call that needs a human, it ends the run with
 `run-interrupted` and the card shows `awaiting-approval`. The page sends the
-answer as an input, `chat.submit(Input.resolve([{ callId, approved }]))`, and
-your server decides: it takes the pending calls from its own history, checks
-who may approve them, and runs or denies each one with `Approval.fromMap`.
-The result updates the card it was asked from.
+answer as an input,
+`chat.submit(Input.resolve([{ callId, decision: Approval.Default.Approve() }]))`,
+and your server decides: it takes the pending calls from its own history,
+checks who may approve them, groups them with `Approval.Default.resolve`, runs
+the approved ones and closes the denied ones with `Approval.Denied`. The result
+updates the card it was asked from.
 
 ## Direct or durable
 

@@ -13,7 +13,11 @@ Done and dropped items are listed at the end so they don't get re-proposed.
 
 ### From the UI design (`plans/ui.md`)
 
-- [ ] **Next up (high): typed `ToolResult` failures.** Keep the flat
+- [x] **Done in 0.19, differently (`plans/tool-output-redesign.md`):** `ToolResult`
+      is gone; a call that ran gets Effect's `Result` with the tool's typed error
+      (`failureSchema`) or core's `InputInvalid` / `OutputInvalid` / `UnknownTool`,
+      and the UI `tool-result` carries a typed `Success | Failure`. Original note:
+      **typed `ToolResult` failures.** Keep the flat
       `Ok | Failure` tagged union (no nested `Result`; a `ToolResult.toResult`
       helper for interop), but replace `kind: string` / `reason?: string` with
       `error: E`, a tagged error. Core defines only the errors it produces, each
@@ -80,7 +84,9 @@ everything else stays provider-typed.
       with a fixed table (chat-completions: `audio/*` → `input_audio`; OpenRouter:
       `video/*` → `input_video`; else the provider's file part). `input_image`
       stays: every provider has it and it carries image-only options.
-- [ ] **Tool outputs with media**: `ToolCallOutput.output` is a string today.
+- [x] **Tool outputs with media** (done in 0.19: typed parts, `Content.Image` /
+      `Content.File`, native per codec, `AiError.Unsupported` on text-only tool
+      messages). Original note: `ToolCallOutput.output` is a string today.
       Shared by three: OpenAI Responses (`function_call_output.output` = string or
       `input_text` / `input_image` / `input_file` blocks), Anthropic
       (`tool_result.content` with `image` / `document` blocks), Gemini 3+
@@ -123,10 +129,10 @@ everything else stays provider-typed.
 - [ ] **`Embedding.asFloat32` / `embedFloat32`**: typed accessor in core; a
       local copy lives in `recipes/multimodal-embedding/recipe.ts:96`. Source:
       roadmap:41.
-- [ ] **`isFailure` on `ToolCallOutput`**, mapped to Anthropic's native
+- [x] **`isFailure` on `ToolCallOutput`** (done in 0.19 as `isError`), mapped to Anthropic's native
       `is_error`. Source: `plans/tool-refactoring2.md:250`. Evidence:
       `domain/Items.ts:162`.
-- [ ] **Multimodal tool-call output**: `ToolCallOutput.output` is a string
+- [x] **Multimodal tool-call output** (done in 0.19): `ToolCallOutput.output` is a string
       only; MCP rich content depends on this. Source: `plans/mcp.md:153`.
 - [ ] **`Turn.imagesAsInput` → per-item, renamed (e.g. `mediaAsInput`)**.
       Source: `plans/image-generation.md` (~506). Evidence: `domain/Turn.ts:152`.
@@ -191,7 +197,8 @@ update of `plans/mcp.md`). `@effect-uai/mcp` is client-only today.
       transports and inputs (lean: a module in `@effect-uai/ui`), while the
       protocol work above stays in the MCP package. The protocol field is already
       reserved in `plans/ui.md`.
-- [ ] **Rich content blocks in MCP tool results** (only `structuredContent`
+- [x] **Rich content blocks in MCP tool results** (done in 0.19: images, audio and
+      resources map to `Content` media) (only `structuredContent`
       or text today, `mcp/src/Toolkit.ts:50`). Depends on multimodal tool output.
       Source: `plans/mcp.md:153`.
 - [ ] **Interactive OAuth** (`authorizationCode`, PKCE, dynamic client

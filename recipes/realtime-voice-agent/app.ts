@@ -131,8 +131,9 @@ const getWeather = Tool.make({
         place: [place.name, place.country].filter(Boolean).join(", "),
         celsius: Math.round(current.temperature_2m),
         sky: skyOf(current.weather_code),
-        windKph:
-          current.wind_speed_10m === undefined ? undefined : Math.round(current.wind_speed_10m),
+        ...(current.wind_speed_10m !== undefined && {
+          windKph: Math.round(current.wind_speed_10m),
+        }),
       }
     }),
   strict: true,

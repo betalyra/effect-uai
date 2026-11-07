@@ -209,11 +209,9 @@ export const conversation = (
                   const calls = Turn.getToolCalls(turn)
                   if (calls.length === 0) return Loop.stop()
 
-                  // `continueWithResults` streams tool events to the consumer and
+                  // `Toolkit.next` streams tool events to the consumer and
                   // folds their outputs into the next state's history.
-                  return Toolkit.run(toolkit, calls).pipe(
-                    Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
-                  )
+                  return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, { history }, turn))
                 }),
               ),
             )

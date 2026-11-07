@@ -84,9 +84,7 @@ export const conversation = (
               // emit one `Loop.next` carrying the appended turn. The
               // next iteration runs the model again to incorporate
               // the outputs, skipping the queue check.
-              return Toolkit.run(toolkit, calls).pipe(
-                Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
-              )
+              return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, { history }, turn))
             }),
           ),
         )

@@ -1,9 +1,11 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import * as Approval from "@effect-uai/core/Approval"
 import * as Input from "@effect-uai/ui/Input"
+import type { Outcome } from "@effect-uai/ui/RunEvent"
 import * as RunView from "@effect-uai/ui/RunView"
 import type * as Thread from "@effect-uai/ui/Thread"
 import { createFileRoute } from "@tanstack/react-router"
-import { Option, Schema } from "effect"
+import { Match } from "effect"
 import { useState } from "react"
 import { Streamdown } from "streamdown"
 import { chat } from "../chat"
@@ -13,6 +15,7 @@ export const Route = createFileRoute("/")({ component: Chat })
 
 type Run = RunView.RunView<ChatPayloads>
 type ToolBlock = Extract<RunView.Block<ChatPayloads>, { type: "tool" }>
+type Failure = ChatPayloads["tool"]["failure"]
 
 // The answer, or the refusal when the model declined.
 const answer = (run: Run) => RunView.text(run) || (RunView.refusal(run) ?? "")
@@ -23,36 +26,43 @@ const runNote = (run: Run): string | undefined => {
   return undefined
 }
 
-// A failed call carries the server's `kind`; what it means is ours to word.
-const kindOf = Schema.decodeUnknownOption(Schema.Struct({ kind: Schema.String }))
+// A failed call carries a typed error: the tool's own, core's, or the app's closing.
+const failure = (error: Failure): string =>
+  Match.value(error).pipe(
+    Match.tag("Denied", () => "you declined"),
+    Match.tag("Superseded", () => "skipped: you asked something else"),
+    Match.tag("CityNotFound", (e) => `no city called ${e.city}`),
+    Match.tag("UnknownTimezone", (e) => `unknown timezone ${e.timezone}`),
+    Match.orElse((e) => `failed: ${e.message}`),
+  )
 
-const failure = (block: ToolBlock): string => {
-  const kind = Option.match(kindOf(block.error), { onNone: () => "error", onSome: (e) => e.kind })
-  if (kind === "denied") return "you declined"
-  if (kind === "superseded") return "skipped: you asked something else"
-  return `failed: ${kind}`
-}
+// The value of a successful call, typed by the (narrowed) block's tool.
+const valueOf = <V, E>(block: { readonly outcome?: Outcome<V, E> }): V | undefined =>
+  block.outcome?._tag === "Success" ? block.outcome.value : undefined
 
 // Narrowing by name gives the tool's own types: `observedAt`, `now`, `sentAt` are Dates.
 const toolSummary = (block: ToolBlock): string => {
-  if (block.status === "failed") return `${block.name}: ${failure(block)}`
-  if (block.name === "get_weather" && block.output !== undefined) {
-    const { city, country, temperatureC, windSpeedKmh, observedAt } = block.output
+  if (block.outcome?._tag === "Failure") return `${block.name}: ${failure(block.outcome.error)}`
+  if (block.name === "get_weather") {
+    const weather = valueOf(block)
+    if (weather === undefined) return `weather: ${block.status}`
+    const { city, country, temperatureC, windSpeedKmh, observedAt } = weather
     return `${city}, ${country}: ${temperatureC}°C, wind ${windSpeedKmh} km/h (${observedAt.toLocaleTimeString()})`
   }
-  if (block.name === "get_date" && block.output !== undefined) {
-    const { timezone, now } = block.output
-    return `${now.toLocaleString(undefined, { timeZone: timezone })} (${timezone})`
+  if (block.name === "get_date") {
+    const date = valueOf(block)
+    if (date === undefined) return `date: ${block.status}`
+    return `${date.now.toLocaleString(undefined, { timeZone: date.timezone })} (${date.timezone})`
   }
   if (block.name === "send_email" && block.input !== undefined) {
-    const sent = block.output?.sentAt
+    const sent = valueOf(block)?.sentAt
     return sent === undefined
       ? `email to ${block.input.to}: "${block.input.subject}"`
       : `email sent to ${block.input.to} at ${sent.toLocaleTimeString()}`
   }
   if (block.name === "book_table" && block.input !== undefined) {
     const { restaurant, time, guests } = block.input
-    return `${restaurant}, ${time}, ${guests} guests${block.output === undefined ? "" : ": booked"}`
+    return `${restaurant}, ${time}, ${guests} guests${valueOf(block) === undefined ? "" : ": booked"}`
   }
   return `${block.name}: ${block.status}`
 }
@@ -61,7 +71,15 @@ function ToolCard(props: { block: ToolBlock }) {
   const submit = useAtomSet(chat.submit)
   const { block } = props
   // The page only votes; the server checks the call is waiting, and decides.
-  const vote = (approved: boolean) => submit(Input.resolve([{ callId: block.id, approved }]))
+  const vote = (approved: boolean) =>
+    submit(
+      Input.resolve([
+        {
+          callId: block.id,
+          decision: approved ? Approval.Default.Approve() : Approval.Default.Deny(),
+        },
+      ]),
+    )
   return (
     <div className="tool">
       <span>{toolSummary(block)}</span>

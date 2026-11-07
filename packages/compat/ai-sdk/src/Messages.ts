@@ -11,7 +11,9 @@
  */
 import * as Image from "@effect-uai/core/Image"
 import * as Items from "@effect-uai/core/Items"
-import { Match, Schema } from "effect"
+import { Match, Option, Predicate, Schema } from "effect"
+
+const asJson = Schema.decodeUnknownOption(Schema.Json)
 
 // The inbound part variants we understand. Tool parts are identified
 // structurally by `toolCallId` - their wire `type` is a dynamic `tool-<name>`
@@ -97,8 +99,17 @@ const toolItems = (part: ToolPart): ReadonlyArray<Items.HistoryItem> => {
     arguments: JSON.stringify(part.input ?? {}),
   }
   if (part.state !== "output-available") return [call]
-  const output = typeof part.output === "string" ? part.output : JSON.stringify(part.output)
-  return [call, Items.toolCallOutput(part.toolCallId, output)]
+  // Text stays text; any other JSON stays a value (the provider codec serializes it).
+  const output: Items.ToolOutputContent = Match.value(part.output).pipe(
+    Match.when(Predicate.isString, (text) => Items.text(text)),
+    Match.orElse((value) =>
+      Option.match(asJson(value), {
+        onNone: () => Items.text(String(value)),
+        onSome: (json) => Items.json(json),
+      }),
+    ),
+  )
+  return [call, { type: "function_call_output", call_id: part.toolCallId, output: [output] }]
 }
 
 const assistantItems = (message: UIMessage): ReadonlyArray<Items.HistoryItem> => {

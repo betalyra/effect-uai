@@ -76,7 +76,7 @@ describe("AI SDK conformance (readUIMessageStream)", () => {
         Turn.TurnEvent.ToolCallStart({ call_id: "c1", name: "search" }),
         Turn.TurnEvent.ToolCallArgsDelta({ call_id: "c1", delta: `{"q":"lisbon"}` }),
         Turn.TurnEvent.TurnComplete({ turn: turn([call], "tool_calls") }),
-        Items.toolCallOutput("c1", `{"hits":3}`),
+        { type: "function_call_output", call_id: "c1", output: [Items.json({ hits: 3 })] },
       ])
 
       const tool = Option.flatMap(message, (m) => Arr.findFirst(m.parts, isToolUIPart))

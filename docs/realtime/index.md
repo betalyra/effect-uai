@@ -89,11 +89,9 @@ silence on a call.
 Match.tag("ToolCall", (e) =>
   Effect.forkScoped(
     Toolkit.run(toolkit, [e.call]).pipe(
-      Stream.runForEach((event) =>
-        isOutput(event)
-          ? session.send(RealtimeInput.ToolResult({ output: toToolCallOutput(event.result) }))
-          : Effect.void,
-      ),
+      Stream.filter(Toolkit.isOutcome),
+      Stream.mapEffect(Toolkit.output(toolkit)),
+      Stream.runForEach((output) => session.send(RealtimeInput.ToolResult({ output }))),
     ),
   ),
 )

@@ -79,9 +79,7 @@ export const nativeGrounding = (cfg: NativeGroundingConfig) => {
             const calls = lastRound ? [] : Turn.getToolCalls(turn)
             if (calls.length === 0) return stop()
             return Toolkit.run(toolkit, calls).pipe(
-              Toolkit.continueWithResults(
-                Toolkit.appendToolResults({ ...state, round: state.round + 1 }, turn),
-              ),
+              Toolkit.next(toolkit, { ...state, round: state.round + 1 }, turn),
             )
           }),
         ),

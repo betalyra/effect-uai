@@ -244,9 +244,7 @@ export const conversation = (inbox: Queue.Queue<Incoming>, options: Options) =>
                   })
                   return calls.length === 0
                     ? next(Turn.appendToHistory({ history }, turn))
-                    : Toolkit.run(tools, calls).pipe(
-                        Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn)),
-                      )
+                    : Toolkit.run(tools, calls).pipe(Toolkit.next(tools, { history }, turn))
                 }),
               ),
             )

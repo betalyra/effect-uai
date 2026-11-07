@@ -24,19 +24,23 @@ const GetCurrentTimeInput = Schema.Struct({
   timezone: Schema.String,
 })
 
-const InvalidTimeZone = (timezone: string) => new Error(`Invalid IANA timezone: ${timezone}`)
+// Declared in `failureSchema`, so the model sees it and can retry with a valid zone.
+class InvalidTimeZone extends Schema.TaggedError<InvalidTimeZone>()("InvalidTimeZone", {
+  timezone: Schema.String,
+}) {}
 
 const getCurrentTime = Tool.make({
   name: "get_current_time",
   description:
     "Look up the current local time for an IANA timezone, e.g. 'Europe/Lisbon' or 'Asia/Tokyo'.",
-  inputSchema: Tool.fromEffectSchema(GetCurrentTimeInput),
+  inputSchema: GetCurrentTimeInput,
+  failureSchema: InvalidTimeZone,
   run: ({ timezone }) =>
     DateTime.now.pipe(
       Effect.flatMap((now) =>
         DateTime.setZoneNamed(now, timezone).pipe(
           Option.match({
-            onNone: () => Effect.fail(InvalidTimeZone(timezone)),
+            onNone: () => Effect.fail(new InvalidTimeZone({ timezone })),
             onSome: (zoned) =>
               Effect.succeed({
                 timezone,
@@ -100,9 +104,7 @@ export const makeConversation = (model: string) =>
                 // Stream tool events to the consumer; on end-of-stream emit one
                 // `Loop.next` carrying the appended turn.
                 return Toolkit.run(toolkit, calls).pipe(
-                  Toolkit.continueWithResults(
-                    Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
-                  ),
+                  Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
                 )
               }),
             ),

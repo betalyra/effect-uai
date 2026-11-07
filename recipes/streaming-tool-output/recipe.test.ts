@@ -1,24 +1,15 @@
 /**
- * Tests for both streaming-tool patterns: sub-agent (text concat) and
- * progress + terminal result (download). Both go through the same
- * recipe shape, only the tools differ.
+ * Tests for both streaming tools: the sub-agent (answer so far) and the
+ * download (progress snapshots). Both go through the same recipe shape,
+ * only the tools differ.
  */
-import { Effect, Stream } from "effect"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
+import { Effect, Result, Stream } from "effect"
 import * as Items from "@effect-uai/core/Items"
-import { type ToolResult, toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-import { isProgress, isOutput } from "@effect-uai/core/ToolEvent"
 import * as Turn from "@effect-uai/core/Turn"
-import {
-  type DownloadEvent,
-  type DownloadOutput,
-  type State,
-  buildConversation,
-  makeDownloadTool,
-  makeSubAgent,
-} from "./recipe.js"
+import { type State, buildConversation, makeDownloadTool, makeSubAgent } from "./recipe.js"
 
 const fc = (call_id: string, name: string, args: unknown): Items.ToolCall => ({
   type: "function_call",
@@ -31,127 +22,64 @@ const finalTurn: Turn.Turn = {
   stop_reason: "stop",
   usage: { input_tokens: 25, output_tokens: 15, total_tokens: 40 },
   items: [
-    {
-      type: "message",
-      role: "assistant",
-      content: [{ type: "output_text", text: "All done." }],
-    },
+    { type: "message", role: "assistant", content: [{ type: "output_text", text: "Done." }] },
   ],
 }
 
-describe("streaming-tool-output: sub-agent pattern", () => {
-  it("inner deltas flow through; outer model sees joined answer", async () => {
-    const mockedInner = (question: string): Stream.Stream<Turn.TurnEvent> =>
-      Stream.fromIterable<Turn.TurnEvent>([
-        Turn.TurnEvent.TextDelta({ text: `Hmm, "${question}"... ` }),
-        Turn.TurnEvent.TextDelta({ text: "let me reason... " }),
-        Turn.TurnEvent.TextDelta({ text: "the answer is 42." }),
-        Turn.TurnEvent.TurnComplete({
-          turn: {
-            stop_reason: "stop",
-            usage: { input_tokens: 5, output_tokens: 8, total_tokens: 13 },
-            items: [
-              {
-                type: "message",
-                role: "assistant",
-                content: [
-                  {
-                    type: "output_text",
-                    text: `Hmm, "${question}"... let me reason... the answer is 42.`,
-                  },
-                ],
-              },
-            ],
-          },
-        }),
-      ])
-
-    const subAgent = makeSubAgent(mockedInner)
-    const toolkit = Toolkit.make(subAgent)
-
-    const turn1: Turn.Turn = {
-      stop_reason: "tool_calls",
-      usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
-      items: [fc("c1", "ask_subagent", { question: "What is the meaning of life?" })],
-    }
-
-    const initial: State = {
-      history: [Items.userText("ask the subagent")],
-      index: 0,
-    }
-
-    const collected = await Effect.runPromise(
-      Stream.runCollect(buildConversation(toolkit, initial)).pipe(
-        Effect.provide(MockProvider.layer([turn1, finalTurn])),
-      ),
-    )
-
-    // 4 inner-stream events flow through as Intermediates.
-    const intermediates = collected.filter(isProgress)
-    expect(intermediates).toHaveLength(4)
-
-    const textDeltas = intermediates.filter((e) => (e.data as Turn.TurnEvent)._tag === "TextDelta")
-    expect(textDeltas).toHaveLength(3)
-
-    // One Output carrying the joined SubAgentOutput.
-    const outputs: ReadonlyArray<ToolResult> = collected.filter(isOutput).map((e) => e.result)
-    expect(outputs).toHaveLength(1)
-    expect(outputs[0]).toMatchObject({
-      _tag: "Ok",
-      tool: "ask_subagent",
-      value: {
-        answer: 'Hmm, "What is the meaning of life?"... let me reason... the answer is 42.',
-      },
-    })
-  })
+const callTurn = (call: Items.ToolCall): Turn.Turn => ({
+  stop_reason: "tool_calls",
+  usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
+  items: [call],
 })
 
-describe("streaming-tool-output: progress + result pattern", () => {
-  it("progress events flow through; finalize picks the result", async () => {
-    // Zero per-chunk delay for fast test execution.
-    const downloadArtifact = makeDownloadTool("0 millis")
-    const toolkit = Toolkit.make(downloadArtifact)
+const initial: State = { history: [Items.userText("go")], index: 0 }
 
-    const turn1: Turn.Turn = {
-      stop_reason: "tool_calls",
-      usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
-      items: [fc("c1", "download_artifact", { url: "example.com/file", chunks: 3 })],
-    }
+describe("streaming-tool-output", () => {
+  it.effect("sub-agent: partials grow with the inner text; the model gets the full answer", () =>
+    Effect.gen(function* () {
+      const inner = Stream.fromIterable<Turn.TurnEvent>([
+        Turn.TurnEvent.TextDelta({ text: "Let me reason... " }),
+        Turn.TurnEvent.TextDelta({ text: "42." }),
+      ])
+      const toolkit = Toolkit.make(makeSubAgent(() => inner))
 
-    const initial: State = {
-      history: [Items.userText("download the artifact")],
-      index: 0,
-    }
+      const events = yield* Stream.runCollect(buildConversation(toolkit, initial)).pipe(
+        Effect.provide(
+          MockProvider.layer([callTurn(fc("c1", "ask_subagent", { question: "?" })), finalTurn]),
+        ),
+      )
 
-    const collected = await Effect.runPromise(
-      Stream.runCollect(buildConversation(toolkit, initial)).pipe(
-        Effect.provide(MockProvider.layer([turn1, finalTurn])),
-      ),
-    )
+      const partials = events.flatMap((e) => (e._tag === "Partial" ? [e.value.answer] : []))
+      expect(partials).toEqual(["", "Let me reason... "])
+      const [outcome] = events.filter(Toolkit.isOutcome)
+      expect(outcome?.result).toEqual(Result.succeed({ answer: "Let me reason... 42." }))
+    }),
+  )
 
-    // Intermediates: 3 progress + 1 result = 4.
-    const intermediates = collected.filter(isProgress)
-    expect(intermediates).toHaveLength(4)
+  it.effect("download: one snapshot per chunk, then the completed download", () =>
+    Effect.gen(function* () {
+      const toolkit = Toolkit.make(makeDownloadTool("0 millis"))
 
-    const progressEvents = intermediates.filter(
-      (e) => (e.data as DownloadEvent).type === "progress",
-    )
-    expect(progressEvents).toHaveLength(3)
-    expect(
-      progressEvents.map((e) => (e.data as Extract<DownloadEvent, { type: "progress" }>).pct),
-    ).toEqual([33, 67, 100])
+      const events = yield* Stream.runCollect(buildConversation(toolkit, initial)).pipe(
+        Effect.provide(
+          MockProvider.layer([
+            callTurn(fc("c1", "download_artifact", { url: "example.com/file", chunks: 3 })),
+            finalTurn,
+          ]),
+        ),
+      )
 
-    // One Output carrying the structured DownloadOutput.
-    const outputs: ReadonlyArray<ToolResult> = collected.filter(isOutput).map((e) => e.result)
-    expect(outputs).toHaveLength(1)
-    expect(outputs[0]).toMatchObject({
-      _tag: "Ok",
-      tool: "download_artifact",
-      value: {
-        status: "completed",
-        bytes: "bytes-of-example.com/file",
-        chunks: 3,
-      } satisfies DownloadOutput,
-    })
-  })
+      const progress = events.flatMap((e) => (e._tag === "Partial" ? [e.value.pct] : []))
+      expect(progress).toEqual([33, 67, 100])
+      const [outcome] = events.filter(Toolkit.isOutcome)
+      expect(outcome?.result).toEqual(
+        Result.succeed({
+          status: "completed",
+          pct: 100,
+          chunks: 3,
+          bytes: "bytes-of-example.com/file",
+        }),
+      )
+    }),
+  )
 })

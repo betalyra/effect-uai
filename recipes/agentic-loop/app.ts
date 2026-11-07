@@ -112,9 +112,9 @@ const renderConversation = (queue: Queue.Queue<string>, streaming: Ref.Ref<boole
   Stream.runForEach(conversation(queue, toolkit, "1500 millis"), (event) =>
     Match.value(event).pipe(
       Match.discriminators("_tag")({
-        Output: ({ result }) =>
-          result._tag === "Ok"
-            ? write(`\n  [${result.tool} → ${JSON.stringify(result.value)}]\n`)
+        Output: ({ tool, result }) =>
+          result._tag === "Success"
+            ? write(`\n  [${tool} → ${JSON.stringify(result.success)}]\n`)
             : Effect.void,
         TextDelta: ({ text }) => Ref.set(streaming, true).pipe(Effect.andThen(write(text))),
         ToolCallStart: ({ name }) =>

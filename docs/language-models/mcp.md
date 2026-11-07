@@ -81,8 +81,12 @@ const kit =
 ```
 
 The tool list is read once, when you build the toolkit. If the server drops a
-tool afterwards, calling it comes back as an ordinary `unknown_tool` result the
+tool afterwards, calling it comes back as an ordinary `UnknownTool` failure the
 model can react to, not a crash.
+
+A tool's result arrives as a `Content.Value`: `structuredContent` becomes the
+JSON value, and images, audio and resources arrive as `Content.Image` and
+`Content.File` media.
 
 ## Transports
 
@@ -171,8 +175,9 @@ connect({ transport: "http", url, protocol: "2026-07-28" })
 Two channels, matching the [tool failure model](/language-models/tools/#failures).
 
 **A tool reporting an error** is the server telling the model it went wrong.
-That arrives as a model-visible `ToolResult.Failure`, and models generally read
-it and retry with corrected arguments.
+That arrives as the declared, model-visible `McpToolFailed` (from
+`@effect-uai/mcp/Toolkit`), and models generally read it and retry with
+corrected arguments.
 
 **Connection and protocol failures** propagate typed as `McpError` on
 `Toolkit.run`: `McpConnectFailed`, `McpUnsupportedProtocol`,

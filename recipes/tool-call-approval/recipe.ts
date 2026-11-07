@@ -1,41 +1,46 @@
 /**
  * Human-in-the-loop tool approval. Sensitive tool calls (`send_email`,
- * `delete_user`) require a verdict before they run; safe ones run
+ * `delete_user`) require a decision before they run; safe ones run
  * immediately.
  *
- * Two transport flavors. Same primitives, different approval planner:
+ * Two transport flavors, same pieces:
  *
- *   - HTTP (primary)         : approvals arrive synchronously bundled
- *                              with the next request. `fromMap`
- *                              splits calls into `approved` and `rejected`;
- *                              missing entries synthesize `cancelled`
- *                              outputs.
+ *   - HTTP (primary)         : decisions arrive bundled with the next
+ *                              request. `Approval.Default.resolve` groups the
+ *                              waiting calls; a call without an answer is
+ *                              closed as cancelled.
  *
  *   - Queue (enhancement)    : long-lived channel (WebSocket / SSE).
- *                              `fromQueue` returns safe calls
- *                              immediately and a stream of later decisions
- *                              for gated calls; `ApprovalRequested` events
- *                              drive the UI.
+ *                              `fromQueue` runs safe calls at once and each
+ *                              gated call when its answer arrives (or closes
+ *                              it as cancelled after `timeout`).
+ *                              `ApprovalRequested` events drive the UI.
+ *
+ * A denied or cancelled call still gets an output, so the model's next turn is
+ * valid: an `Output` failure with `Approval.Denied` or `ToolOutput.Cancelled`,
+ * encoded into history with the app's own schema (`Closings`).
  *
  * This file exports the building blocks for both. `app.ts` drives the
  * queue variant (more visual demo).
  */
 import * as Approval from "@effect-uai/core/Approval"
-import { type ApprovalMapEntry } from "@effect-uai/core/Approval"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
-import { ToolEvent } from "@effect-uai/core/ToolEvent"
-import * as ToolResult from "@effect-uai/core/ToolResult"
+import type * as ToolEvent from "@effect-uai/core/ToolEvent"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 import {
   Deferred,
   type Duration,
   Effect,
+  Match,
+  Option,
   Queue,
   Ref,
+  Result,
   type Scope,
   Schema,
   Stream,
@@ -46,11 +51,10 @@ import {
 // Tools - one safe, two sensitive.
 // ---------------------------------------------------------------------------
 
-const SearchEmailsInput = Schema.Struct({ query: Schema.String })
 const searchEmails = Tool.make({
   name: "search_emails",
   description: "Search the user's recent emails. Returns up to three subject lines.",
-  inputSchema: Tool.fromEffectSchema(SearchEmailsInput),
+  inputSchema: Schema.Struct({ query: Schema.String }),
   run: ({ query }) =>
     Effect.succeed({
       query,
@@ -63,35 +67,24 @@ const searchEmails = Tool.make({
   strict: true,
 })
 
-const SendEmailInput = Schema.Struct({
-  to: Schema.String,
-  subject: Schema.String,
-  body: Schema.String,
-})
 const sendEmail = Tool.make({
   name: "send_email",
   description: "Send an email on behalf of the user.",
-  inputSchema: Tool.fromEffectSchema(SendEmailInput),
+  inputSchema: Schema.Struct({ to: Schema.String, subject: Schema.String, body: Schema.String }),
   run: ({ to, subject }) =>
     Effect.succeed({ status: "sent", to, subject, sent_at: new Date().toISOString() }),
   strict: true,
 })
 
-const DeleteUserInput = Schema.Struct({ user_id: Schema.String })
 const deleteUser = Tool.make({
   name: "delete_user",
   description: "Permanently delete a user account.",
-  inputSchema: Tool.fromEffectSchema(DeleteUserInput),
+  inputSchema: Schema.Struct({ user_id: Schema.String }),
   run: ({ user_id }) => Effect.succeed({ status: "deleted", user_id }),
   strict: true,
 })
 
 export const toolkit = Toolkit.make(searchEmails, sendEmail, deleteUser)
-
-const decisionEvents = (decision: Approval.ApprovalDecision): Stream.Stream<ToolEvent> =>
-  decision._tag === "Approved"
-    ? Toolkit.run(toolkit, [decision.call])
-    : Stream.succeed(ToolEvent.Output({ result: decision.result }))
 
 // ---------------------------------------------------------------------------
 // Approval policy. Sensitivity is just a predicate - swap in anything:
@@ -102,101 +95,49 @@ const SENSITIVE_TOOLS: ReadonlySet<string> = new Set(["send_email", "delete_user
 export const isSensitive: (call: Items.ToolCall) => boolean = (call) =>
   SENSITIVE_TOOLS.has(call.name)
 
+/** What a user can answer: approve, or deny with an optional reason. */
+export type Decision = typeof Approval.Default.schema.Type
+export type Answer = Approval.Answer<Decision>
+
 // ---------------------------------------------------------------------------
-// Verdict queue planner. Safe calls are approved at once; each gated call
-// announces `ApprovalRequested` and resolves when its verdict arrives (or as
-// `cancelled` after `timeout`). Single consumer: one round at a time per
-// queue, since the router retires once every gated call is resolved.
+// Closing calls the app decided itself
 // ---------------------------------------------------------------------------
 
-export type Verdict = {
-  readonly call_id: string
-  readonly decision: "approve" | "deny"
-  readonly reason?: string
+/** The errors this app closes calls with; they encode into history with this schema. */
+export const Closings = Schema.Union([Approval.Denied, ToolOutput.Cancelled])
+export type Closing = typeof Closings.Type
+const isClosing = Schema.is(Closings)
+
+/** The model sees a closed call like any failed one. */
+export const close = (
+  call: Items.ToolCall,
+  error: Closing,
+): ToolEvent.Output<string, never, Closing> => ({
+  _tag: "Output",
+  call_id: call.call_id,
+  tool: call.name,
+  result: Result.fail(error),
+})
+
+const denied = (reason: string | undefined) =>
+  new Approval.Denied({ message: reason ?? "The user denied this call." })
+
+/** The UI's cue: this call waits for an answer. */
+export type ApprovalRequested = {
+  readonly _tag: "ApprovalRequested"
+  readonly call: Items.ToolCall
 }
 
-export const fromQueue =
-  (
-    predicate: (call: Items.ToolCall) => boolean,
-    verdicts: Queue.Dequeue<Verdict>,
-    options?: { readonly timeout?: Duration.Input },
-  ) =>
-  (
-    calls: ReadonlyArray<Items.ToolCall>,
-  ): Effect.Effect<
-    {
-      readonly approved: ReadonlyArray<Items.ToolCall>
-      readonly decisions: Stream.Stream<Approval.ApprovalDecision>
-      readonly approvalRequests: Stream.Stream<ToolEvent>
-    },
-    never,
-    Scope.Scope
-  > =>
-    Effect.gen(function* () {
-      const gated = calls.filter(predicate)
-      const approved = calls.filter((call) => !predicate(call))
-      const pending = new Map(
-        yield* Effect.forEach(gated, (call) =>
-          Deferred.make<Approval.ApprovalDecision>().pipe(
-            Effect.map((d) => [call.call_id, { call, d }] as const),
-          ),
-        ),
-      )
-      const outstanding = yield* Ref.make(gated.length)
+// A closing is encoded with `Closings`; everything else with its tool's schemas.
+const toHistory = (outcome: Toolkit.Outcome) =>
+  Result.isFailure(outcome.result) && isClosing(outcome.result.failure)
+    ? ToolOutput.failure(outcome, Closings, outcome.result.failure)
+    : Toolkit.output(toolkit, outcome)
 
-      // Count only the winning completion, so a late verdict is a no-op.
-      const resolve = (id: string, decide: (call: Items.ToolCall) => Approval.ApprovalDecision) => {
-        const entry = pending.get(id)
-        return entry === undefined
-          ? Effect.void
-          : Deferred.succeed(entry.d, decide(entry.call)).pipe(
-              Effect.flatMap((won) => (won ? Ref.update(outstanding, (n) => n - 1) : Effect.void)),
-            )
-      }
-
-      const verdictOf = (v: Verdict) => (call: Items.ToolCall) =>
-        v.decision === "approve"
-          ? Approval.approve(call)
-          : Approval.reject(ToolResult.denied(call, v.reason))
-
-      const route: Effect.Effect<void> = Ref.get(outstanding).pipe(
-        Effect.flatMap((n) =>
-          n <= 0
-            ? Effect.void
-            : Queue.take(verdicts).pipe(
-                Effect.flatMap((v) => resolve(v.call_id, verdictOf(v))),
-                Effect.andThen(Effect.suspend(() => route)),
-              ),
-        ),
-      )
-
-      if (gated.length > 0) {
-        yield* Effect.forkScoped(route)
-        if (options?.timeout !== undefined) {
-          yield* Effect.forkScoped(
-            Effect.sleep(options.timeout).pipe(
-              Effect.andThen(
-                Effect.forEach(gated, (call) =>
-                  resolve(call.call_id, (c) =>
-                    Approval.reject(ToolResult.cancelled(c, "approval timed out")),
-                  ),
-                ),
-              ),
-            ),
-          )
-        }
-      }
-
-      return {
-        approved,
-        decisions: Stream.fromIterable(pending.values()).pipe(
-          Stream.flatMap(({ d }) => Stream.fromEffect(Deferred.await(d)), {
-            concurrency: "unbounded",
-          }),
-        ),
-        approvalRequests: Stream.fromIterable(gated.map(Approval.approvalRequested)),
-      }
-    })
+const appendAll = (state: State, turn: Turn.Turn) => (outcomes: ReadonlyArray<Toolkit.Outcome>) =>
+  Effect.map(Effect.forEach(outcomes, toHistory), (items) =>
+    Turn.appendToHistory(state, turn, items),
+  )
 
 // ---------------------------------------------------------------------------
 // State
@@ -215,128 +156,183 @@ export const initial: State = {
   ],
 }
 
-// ---------------------------------------------------------------------------
-// HTTP variant (primary). Approvals are a synchronous map keyed by
-// `call_id`; missing entries become `cancelled`. Pure planner, no
-// approvalRequests stream, no router fiber - the request payload IS the answer.
-//
-// Typical usage in an HTTP handler:
-//
-//   const approvals: Map<string, ApprovalMapEntry> =
-//     parseApprovalsFromRequestBody(req)
-//   const reconciledHistory = [
-//     ...storedHistory,
-//     ...cancelAllPending(storedHistory).map(toToolCallOutput),
-//     Items.userText(req.body.message),
-//   ]
-//   return httpConversation(approvals, { history: reconciledHistory })
-// ---------------------------------------------------------------------------
-
 export const DEFAULT_MODEL = "gpt-5.4-mini"
 
+// ---------------------------------------------------------------------------
+// HTTP variant (primary). Answers come with the request; the payload IS the
+// decision. Typical usage in an HTTP handler:
+//
+//   const answers = yield* Schema.decodeUnknownEffect(Schema.Array(Answer))(req.body.answers)
+//   const closing = yield* HistoryCheck.cancelAllPending(storedHistory)
+//   return httpConversation(answers, {
+//     history: [...storedHistory, ...closing, Items.userText(req.body.message)],
+//   })
+// ---------------------------------------------------------------------------
+
 export const httpConversation = (
-  approvals: ReadonlyMap<string, ApprovalMapEntry>,
+  answers: ReadonlyArray<Answer>,
   state: State = initial,
   model = DEFAULT_MODEL,
 ) =>
   pipe(
     state,
-    loop((current) =>
+    loop((current: State) =>
       Effect.gen(function* () {
         const lm = yield* LanguageModel
-        return lm
-          .streamTurn({
-            history: current.history,
-            model,
-            tools: toolkit,
-          })
-          .pipe(
-            onTurnComplete((turn) =>
-              Effect.sync(() => {
-                const calls = Turn.getToolCalls(turn)
-                if (calls.length === 0) return stop()
+        return lm.streamTurn({ history: current.history, model, tools: toolkit }).pipe(
+          onTurnComplete((turn) =>
+            Effect.sync(() => {
+              const calls = Turn.getToolCalls(turn)
+              if (calls.length === 0) return stop()
 
-                const plan = Approval.fromMap(isSensitive, approvals)(calls)
-                return Stream.merge(
-                  Toolkit.run(toolkit, plan.approved),
-                  Stream.fromIterable(plan.rejected.map((result) => ToolEvent.Output({ result }))),
-                ).pipe(Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)))
-              }),
-            ),
-          )
+              const { Approve, Deny, unanswered } = Approval.Default.resolve(
+                calls.filter(isSensitive),
+                answers,
+              )
+              const closed = [
+                ...Deny.map(({ call, decision }) => close(call, denied(decision.reason))),
+                ...unanswered.map((call) =>
+                  close(call, new ToolOutput.Cancelled({ message: "No approval was given." })),
+                ),
+              ]
+              const run = [...calls.filter((c) => !isSensitive(c)), ...Approve.map((a) => a.call)]
+              return Stream.merge(Toolkit.run(toolkit, run), Stream.fromIterable(closed)).pipe(
+                Toolkit.continueWith(appendAll(current, turn)),
+              )
+            }),
+          ),
+        )
       }),
     ),
   )
 
 // ---------------------------------------------------------------------------
-// Queue variant (enhancement). Long-lived channel; verdicts arrive over
-// time. `fromQueue` returns safe calls up-front, plus an `approvalRequests`
-// stream of `ApprovalRequested` events and a decision stream for gated calls.
-// The recipe explicitly chooses what to execute and which rejected results
-// to return to the model.
+// Queue variant (enhancement). Answers arrive over time on a queue. Safe
+// calls run at once; each gated call announces `ApprovalRequested` and then
+// runs or closes once its answer (or the timeout) arrives. Single consumer:
+// the router retires once every gated call is settled.
 // ---------------------------------------------------------------------------
+
+type Settled = Decision | ToolOutput.Cancelled
+
+export const fromQueue =
+  (
+    predicate: (call: Items.ToolCall) => boolean,
+    answers: Queue.Dequeue<Answer>,
+    options?: { readonly timeout?: Duration.Input },
+  ) =>
+  (
+    calls: ReadonlyArray<Items.ToolCall>,
+  ): Effect.Effect<
+    Stream.Stream<
+      Toolkit.Event<typeof toolkit> | ToolEvent.Output<string, never, Closing> | ApprovalRequested
+    >,
+    never,
+    Scope.Scope
+  > =>
+    Effect.gen(function* () {
+      const gated = calls.filter(predicate)
+      const safe = calls.filter((call) => !predicate(call))
+      const pending = new Map(
+        yield* Effect.forEach(gated, (call) =>
+          Deferred.make<Settled>().pipe(Effect.map((d) => [call.call_id, { call, d }] as const)),
+        ),
+      )
+      const outstanding = yield* Ref.make(gated.length)
+
+      // Count only the winning completion, so a late answer is a no-op.
+      const settle = (id: string, settled: Settled) =>
+        Option.match(Option.fromNullishOr(pending.get(id)), {
+          onNone: () => Effect.void,
+          onSome: ({ d }) =>
+            Deferred.succeed(d, settled).pipe(
+              Effect.flatMap((won) => (won ? Ref.update(outstanding, (n) => n - 1) : Effect.void)),
+            ),
+        })
+
+      const route: Effect.Effect<void> = Ref.get(outstanding).pipe(
+        Effect.flatMap((n) =>
+          n <= 0
+            ? Effect.void
+            : Queue.take(answers).pipe(
+                Effect.flatMap((a) => settle(a.callId, a.decision)),
+                Effect.andThen(Effect.suspend(() => route)),
+              ),
+        ),
+      )
+
+      if (gated.length > 0) {
+        yield* Effect.forkScoped(route)
+        if (options?.timeout !== undefined) {
+          const timedOut = new ToolOutput.Cancelled({ message: "The approval timed out." })
+          yield* Effect.forkScoped(
+            Effect.sleep(options.timeout).pipe(
+              Effect.andThen(Effect.forEach(gated, (call) => settle(call.call_id, timedOut))),
+            ),
+          )
+        }
+      }
+
+      const onceSettled = ({ call, d }: { call: Items.ToolCall; d: Deferred.Deferred<Settled> }) =>
+        Stream.unwrap(
+          Effect.map(Deferred.await(d), (settled) =>
+            Match.value(settled).pipe(
+              Match.tagsExhaustive({
+                Approve: () => Toolkit.run(toolkit, [call]),
+                Deny: ({ reason }) => Stream.succeed(close(call, denied(reason))),
+                Cancelled: (cancelled) => Stream.succeed(close(call, cancelled)),
+              }),
+            ),
+          ),
+        )
+
+      const requests = Stream.fromIterable(
+        gated.map((call): ApprovalRequested => ({ _tag: "ApprovalRequested", call })),
+      )
+      const settled = Stream.fromIterable(pending.values()).pipe(
+        Stream.flatMap(onceSettled, { concurrency: "unbounded" }),
+      )
+      return requests.pipe(Stream.merge(Toolkit.run(toolkit, safe)), Stream.merge(settled))
+    })
 
 export const queueConversation = (
-  verdicts: Queue.Queue<Verdict>,
+  answers: Queue.Queue<Answer>,
   state: State = initial,
   model = DEFAULT_MODEL,
 ) =>
   pipe(
     state,
-    loop((current) =>
+    loop((current: State) =>
       Effect.gen(function* () {
         const lm = yield* LanguageModel
-        return lm
-          .streamTurn({
-            history: current.history,
-            model,
-            tools: toolkit,
-          })
-          .pipe(
-            onTurnComplete((turn) =>
-              Effect.sync(() => {
-                const calls = Turn.getToolCalls(turn)
-                if (calls.length === 0) return stop()
-
-                // Stream.unwrap supplies the Scope that fromQueue's
-                // router fiber lives in. Router stays alive as long as the
-                // consumer is pulling from `events`.
-                const events = Stream.unwrap(
-                  Effect.gen(function* () {
-                    const { approved, decisions, approvalRequests } = yield* fromQueue(
-                      isSensitive,
-                      verdicts,
-                    )(calls)
-                    return Stream.merge(
-                      approvalRequests,
-                      Stream.merge(
-                        Toolkit.run(toolkit, approved),
-                        decisions.pipe(Stream.flatMap(decisionEvents)),
-                      ),
-                    )
-                  }),
-                )
-
-                return events.pipe(
-                  Toolkit.continueWithResults(Toolkit.appendToolResults(current, turn)),
-                )
-              }),
-            ),
-          )
+        return lm.streamTurn({ history: current.history, model, tools: toolkit }).pipe(
+          onTurnComplete((turn) =>
+            Effect.sync(() => {
+              const calls = Turn.getToolCalls(turn)
+              if (calls.length === 0) return stop()
+              // Stream.unwrap supplies the Scope the router fiber lives in: it
+              // stays alive as long as the consumer pulls.
+              return Stream.unwrap(fromQueue(isSensitive, answers)(calls)).pipe(
+                Toolkit.continueWith(appendAll(current, turn)),
+              )
+            }),
+          ),
+        )
       }),
     ),
   )
 
 // ---------------------------------------------------------------------------
-// Demo policy for the queue variant. In a real app verdicts come from a
+// Demo policy for the queue variant. In a real app answers come from a
 // UI / Slack / approval workflow; here we just decide based on the tool.
 // ---------------------------------------------------------------------------
 
-export const demoVerdict = (event: Extract<ToolEvent, { _tag: "ApprovalRequested" }>): Verdict =>
-  event.tool === "delete_user"
-    ? {
-        call_id: event.call_id,
-        decision: "deny",
-        reason: "Out of scope for this demo - ask an admin to confirm first.",
-      }
-    : { call_id: event.call_id, decision: "approve" }
+export const demoAnswer = ({ call }: ApprovalRequested): Answer => ({
+  callId: call.call_id,
+  decision:
+    call.name === "delete_user"
+      ? Approval.Default.Deny({
+          reason: "Out of scope for this demo - ask an admin to confirm first.",
+        })
+      : Approval.Default.Approve(),
+})

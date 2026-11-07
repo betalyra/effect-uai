@@ -45,16 +45,10 @@ const lines = [
     description: "Run typed Effect tools with streaming output, errors, scopes, and dependencies.",
   },
   {
-    code: "            Toolkit.continueWith(",
+    code: "            Toolkit.next(toolkit, state, turn),",
     label: "Keep events visible",
-    description: "Forward intermediate work to users while collecting final outputs for the next turn.",
+    description: "Forward tool events to users while folding typed results into the next turn's history, in your state shape.",
   },
-  {
-    code: "              Toolkit.appendResults(toolkit, state, turn),",
-    label: "Persist your way",
-    description: "Fold typed tool results into history with your state shape. Keep the library out of your session model.",
-  },
-  { code: "            ),", label: "", description: "" },
   { code: "          )", label: "", description: "" },
   { code: "        })),", label: "", description: "" },
   { code: "      )", label: "", description: "" },

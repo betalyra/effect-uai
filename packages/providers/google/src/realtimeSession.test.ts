@@ -196,7 +196,7 @@ describe("Gemini live session tools", () => {
               output: {
                 type: "function_call_output",
                 call_id: "fc_1",
-                output: '{"celsius":32}',
+                output: [{ type: "input_json", value: { celsius: 32 } }],
                 providerData: undefined,
               },
             }),
@@ -219,7 +219,7 @@ describe("Gemini live session tools", () => {
         {
           id: "fc_1",
           name: "get_weather",
-          response: { celsius: 32 },
+          response: { output: { celsius: 32 } },
           scheduling: "WHEN_IDLE",
         },
       ])
@@ -242,7 +242,7 @@ describe("Gemini live session tools", () => {
                 output: {
                   type: "function_call_output",
                   call_id: "fc_1",
-                  output: "{}",
+                  output: [{ type: "input_json", value: {} }],
                   providerData: undefined,
                 },
               }),
@@ -267,7 +267,7 @@ describe("Gemini live session tools", () => {
             output: {
               type: "function_call_output",
               call_id: "fc_unknown",
-              output: "{}",
+              output: [{ type: "input_json", value: {} }],
               providerData: undefined,
             },
           }),
@@ -360,7 +360,7 @@ describe("Gemini live session history", () => {
           {
             type: "function_call_output",
             call_id: "fc_1",
-            output: '{"now":"12:00"}',
+            output: [{ type: "input_json", value: { now: "12:00" } }],
             providerData: undefined,
           },
         ],

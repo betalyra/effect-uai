@@ -4,118 +4,90 @@ import {
   Cause,
   Data,
   Effect,
-  Fiber,
   Function,
   Match,
   Option,
-  Queue,
   Record,
   Ref,
+  Result,
   Schema,
   Stream,
 } from "effect"
-import * as Loop from "../loop/Loop.js"
-import type { HistoryItem, ToolCall } from "../domain/Items.js"
+import type { HistoryItem, ToolCall, ToolCallOutput } from "../domain/Items.js"
 import { appendToHistory, type Turn } from "../domain/Turn.js"
+import * as Loop from "../loop/Loop.js"
+import * as Content from "./Content.js"
 import {
   type AnyLocalTool,
   type AnyTool,
   type DecodeResult,
+  type Declared,
   decodeCallInput,
-  type Emit,
-  type InteractionTool,
   type ProviderTool,
-  type SignalTool,
   type Tool,
   type ToolDescriptor,
-  type ToolE,
   ToolFailed,
+  type ToolFailure,
+  type ToolOutput as OutputOf,
   type ToolR,
+  type ToolUnhandled,
   toDescriptors,
+  toStream,
 } from "./Tool.js"
-import {
-  ToolResult,
-  failed,
-  nonLocalTool,
-  outputValidationError,
-  toToolCallOutput,
-  validationError,
-} from "./ToolResult.js"
-import { ToolEvent } from "./ToolEvent.js"
-import { isOutput } from "./ToolEvent.js"
+import type * as ToolEvent from "./ToolEvent.js"
+import * as ToolOutput from "./ToolOutput.js"
+import { CoreError, InputInvalid, OutputInvalid, type RunError, UnknownTool } from "./ToolOutput.js"
 
 // ---------------------------------------------------------------------------
-// Toolkit: a name-indexed record of tools — "what the model sees". The record
-// gives O(1) dispatch and within-toolkit name-uniqueness for free; descriptors
-// are derived, not stored. Build a static one with `make` (compile-time
-// duplicate-name check), a dynamic one with `fromArray` (trusted single source,
-// last-wins), and combine independent ones with `compose` (the application
-// boundary where cross-source names can clash).
+// Toolkit: a name-indexed record of tools, what the model sees. `make` checks
+// duplicate names at compile time, `fromArray` takes a dynamic source
+// (last wins), `compose` joins independent toolkits and fails on clashes.
 // ---------------------------------------------------------------------------
 
 export type ToolMap = Record<string, AnyTool>
 
 export type Toolkit<Tools extends ToolMap = ToolMap> = Tools
 
+type Indexed<Tools extends ReadonlyArray<AnyTool>> = { [T in Tools[number] as T["name"]]: T }
+
 const indexByName = (tools: ReadonlyArray<AnyTool>): ToolMap =>
   Object.fromEntries(tools.map((tool) => [tool.name, tool]))
 
-/**
- * Index literal tools by their `name`. Duplicate names are a compile error
- * (`UniqueTools`). Names are not otherwise checked: a malformed name is a
- * developer typo in a literal that the provider rejects clearly on first use,
- * and there is no single cross-provider name rule to enforce here anyway.
- */
-const buildStatic = <Tools extends ReadonlyArray<AnyTool>>(
-  tools: Tools,
-): Toolkit<{ [T in Tools[number] as T["name"]]: T }> =>
-  indexByName(tools) as Toolkit<{ [T in Tools[number] as T["name"]]: T }>
+const buildStatic = <Tools extends ReadonlyArray<AnyTool>>(tools: Tools): Toolkit<Indexed<Tools>> =>
+  indexByName(tools) as Toolkit<Indexed<Tools>>
 
+/** Index tools by `name`. A repeated literal name is a compile error. */
 export const make = <const Tools extends ReadonlyArray<AnyTool>>(
   ...tools: UniqueTools<Tools>
-): Toolkit<{ [T in Tools[number] as T["name"]]: T }> => buildStatic(tools as unknown as Tools)
+): Toolkit<Indexed<Tools>> => buildStatic<Tools>(tools)
 
-/**
- * Build a toolkit from a dynamically-sourced array (MCP server, plugin). Names
- * are not validated (MCP legitimately uses dots / >64 chars — sanitize at the
- * provider adapter); same-named tools resolve last-wins. Cross-source clashes
- * are caught by `compose`.
- */
+/** A toolkit from a dynamic source (MCP server, plugin). Same-named tools: last wins. */
 export const fromArray = (tools: ReadonlyArray<AnyTool>): Toolkit => indexByName(tools)
 
-/** Render the provider-facing descriptors for a toolkit on demand. */
 export const descriptors = (toolkit: Toolkit): ReadonlyArray<ToolDescriptor> =>
   toDescriptors(Object.values(toolkit))
 
-/**
- * Union of every tool's `R` requirements in a toolkit. Surfaced by `run` so the
- * loop's stream type carries the services tools need through to `Effect.provide`.
- *
- * The `ToolMap extends T` guard yields `never` for the wide `Toolkit` type (a
- * toolkit passed through an untyped boundary, where the requirements aren't
- * statically known) instead of `any`, which would otherwise poison the
- * resulting stream's `R`. Concrete toolkits from `make` keep their precise R.
- */
+// A wide `Toolkit` (types unknown statically) yields `never`, not `any`.
+type Locals<T extends Toolkit> = Extract<T[keyof T], { readonly _tag: "LocalTool" }>
+
+/** Every tool's requirements. */
 export type ToolkitR<T extends Toolkit> = ToolMap extends T ? never : ToolR<T[keyof T]>
 
-/**
- * Union of every tool's `E` error type in a toolkit. `Toolkit.run` reports
- * `Exclude<ToolkitE<T>, string | ToolFailed>` on its stream: the sentinel
- * failures are absorbed into results, everything else propagates typed. The
- * same `ToolMap extends T` guard as `ToolkitR` keeps a wide toolkit at
- * `never` rather than `any`.
- */
-export type ToolkitE<T extends Toolkit> = ToolMap extends T ? never : ToolE<T[keyof T]>
+/** Every error a tool did not declare in `failureSchema`: these fail `run`'s stream. */
+export type ToolkitE<T extends Toolkit> = ToolMap extends T ? never : ToolUnhandled<T[keyof T]>
+
+/** What `run` emits: one member per local tool, plus calls it could not run at all. */
+export type Event<T extends Toolkit> =
+  | (Locals<T> extends infer X
+      ? X extends Tool<infer N, any, infer O, infer F, any, any>
+        ? ToolEvent.ToolEvent<N, O, F | RunError>
+        : never
+      : never)
+  | ToolEvent.Output<string, never, RunError>
 
 // ---------------------------------------------------------------------------
-// Uniqueness & composition. `make` rejects duplicate literal names at compile
-// time; `compose` rejects cross-source collisions — at compile time when the
-// names are statically known, and at runtime (`DuplicateToolName`) for dynamic
-// sources whose keys are only `string`. No silent last-wins overwrite, no late
-// provider 400.
+// Uniqueness and composition
 // ---------------------------------------------------------------------------
-
-// --- compile-time duplicate detection --------------------------------------
 
 type DuplicateName<
   Tools extends ReadonlyArray<AnyTool>,
@@ -139,11 +111,9 @@ export type NoDuplicateNames<Tools extends ReadonlyArray<AnyTool>> = [
   ? unknown
   : DuplicateNameError<DuplicateName<Tools>>
 
-/** `Tools` constrained so a repeated literal name is a compile error in `make`. */
 export type UniqueTools<Tools extends ReadonlyArray<AnyTool>> = Tools & NoDuplicateNames<Tools>
 
-// Cross-toolkit literal-key collision, skipping wide (`string`-keyed, dynamic)
-// toolkits so the compile-time check never false-positives on `fromArray`.
+// Skips wide (`string`-keyed) toolkits so `fromArray` never false-positives.
 type ComposeDuplicateKey<
   Kits extends ReadonlyArray<Toolkit>,
   Seen extends string = never,
@@ -170,33 +140,22 @@ type UnionToIntersection<U> = (U extends unknown ? (x: U) => void : never) exten
 type Composed<Kits extends ReadonlyArray<Toolkit>> =
   UnionToIntersection<Kits[number]> extends infer M ? (M extends ToolMap ? M : ToolMap) : ToolMap
 
-// --- uniqueness error ------------------------------------------------------
-
-/**
- * Two composed toolkits resolved to the same final name. Carries the colliding
- * `sources` (the positions of the clashing toolkits) so the error says *which*
- * inputs collided. Raised at runtime by `compose` for dynamic sources; static
- * collisions are caught earlier at compile time.
- */
+/** Two composed toolkits share a final name; `sources` are their positions. */
 export class DuplicateToolName extends Data.TaggedError("DuplicateToolName")<{
   readonly name: string
   readonly sources: ReadonlyArray<string>
 }> {}
 
-// --- namespacing -----------------------------------------------------------
-
 type PrefixName<Prefix extends string, Name extends string> = `${Prefix}__${Name}`
 
 type PrefixTool<Prefix extends string, T extends AnyTool> =
-  T extends Tool<infer N, infer I, infer Ev, infer O, infer E, infer R>
-    ? Tool<PrefixName<Prefix, N>, I, Ev, O, E, R>
+  T extends Tool<infer N, infer I, infer O, infer F, infer E, infer R>
+    ? Tool<PrefixName<Prefix, N>, I, O, F, E, R>
     : T extends ProviderTool<infer N, infer I, infer P, infer C>
       ? ProviderTool<PrefixName<Prefix, N>, I, P, C>
-      : T extends SignalTool<infer N, infer I>
-        ? SignalTool<PrefixName<Prefix, N>, I>
-        : T extends InteractionTool<infer N, infer I>
-          ? InteractionTool<PrefixName<Prefix, N>, I>
-          : T
+      : T extends Declared<infer N, infer I>
+        ? Declared<PrefixName<Prefix, N>, I>
+        : T
 
 type Namespaced<Prefix extends string, T extends ToolMap> = {
   readonly [K in keyof T & string as PrefixName<Prefix, K>]: T[K] extends AnyTool
@@ -204,111 +163,83 @@ type Namespaced<Prefix extends string, T extends ToolMap> = {
     : never
 }
 
-/**
- * Prefix every tool name with `<namespace>__`, returning a new toolkit. Use it
- * to keep generic names (`search`) from two sources distinct before `compose`.
- * If two namespaces collide at the `__` separator, the duplicate final name
- * surfaces from `compose` as a `DuplicateToolName`.
- */
+/** Prefix every tool name with `<namespace>__`, e.g. to keep two `search` tools apart. */
 export const namespace = <const Prefix extends string, const T extends ToolMap>(
   prefix: Prefix,
   toolkit: Toolkit<T>,
-): Toolkit<Namespaced<Prefix, T>> => {
-  const renamed = Arr.map(Record.values(toolkit), (tool) => ({
-    ...tool,
-    name: `${prefix}__${tool.name}`,
-  }))
-  return indexByName(renamed) as Toolkit<Namespaced<Prefix, T>>
-}
+): Toolkit<Namespaced<Prefix, T>> =>
+  indexByName(
+    Arr.map(Record.values(toolkit), (tool) => ({ ...tool, name: `${prefix}__${tool.name}` })),
+  ) as Toolkit<Namespaced<Prefix, T>>
 
-/** `namespace(prefix, make(...tools))` in one step, for static namespaced tools. */
+/** `namespace(prefix, make(...tools))` in one step. */
 export const makeNamespaced = <
   const Prefix extends string,
   const Tools extends ReadonlyArray<AnyTool>,
 >(
   prefix: Prefix,
   ...tools: UniqueTools<Tools>
-): Toolkit<Namespaced<Prefix, { [T in Tools[number] as T["name"]]: T }>> =>
-  namespace(prefix, buildStatic(tools as unknown as Tools))
-
-// --- composition (the application boundary) --------------------------------
+): Toolkit<Namespaced<Prefix, Indexed<Tools>>> => namespace(prefix, buildStatic<Tools>(tools))
 
 /**
- * Combine independently-built toolkits into one. This is where names from
- * separate sources can collide, so it is the one effectful constructor: a
- * duplicate final name fails with `DuplicateToolName` (naming the colliding
- * input positions) instead of silently overwriting or 400-ing later at the
- * provider. Statically-known collisions are additionally a compile error.
+ * Join independently built toolkits. A duplicate final name fails with
+ * `DuplicateToolName`; statically known duplicates are a compile error too.
  */
 export const compose = <const Kits extends ReadonlyArray<Toolkit>>(
   ...toolkits: Kits & NoDuplicateComposedKeys<Kits>
-): Effect.Effect<Toolkit<Composed<Kits>>, DuplicateToolName> =>
-  Effect.gen(function* () {
-    const kits = toolkits as unknown as ReadonlyArray<Toolkit>
-    const labelled = Arr.flatMap(kits, (kit, i) =>
-      Arr.map(Record.keys(kit), (name) => ({ name, source: `toolkit-${i}` })),
-    )
-    const collision = Arr.findFirst(
-      Record.toEntries(Arr.groupBy(labelled, (entry) => entry.name)),
-      ([, group]) => group.length > 1,
-    )
-    if (Option.isSome(collision)) {
-      const [name, group] = collision.value
-      return yield* new DuplicateToolName({ name, sources: Arr.map(group, (e) => e.source) })
-    }
-    return Arr.reduce(kits, {} as ToolMap, (acc, kit) => ({ ...acc, ...kit })) as Toolkit<
-      Composed<Kits>
-    >
-  })
+): Effect.Effect<Toolkit<Composed<Kits>>, DuplicateToolName> => {
+  const kits: ReadonlyArray<Toolkit> = toolkits
+  const labelled = Arr.flatMap(kits, (kit, i) =>
+    Arr.map(Record.keys(kit), (name) => ({ name, source: `toolkit-${i}` })),
+  )
+  return Arr.findFirst(
+    Record.toEntries(Arr.groupBy(labelled, (entry) => entry.name)),
+    ([, group]) => group.length > 1,
+  ).pipe(
+    Option.match({
+      onNone: () =>
+        Effect.succeed(
+          Arr.reduce(kits, {}, (acc: ToolMap, kit) => ({ ...acc, ...kit })) as Toolkit<
+            Composed<Kits>
+          >,
+        ),
+      onSome: ([name, group]) =>
+        Effect.fail(new DuplicateToolName({ name, sources: Arr.map(group, (e) => e.source) })),
+    }),
+  )
+}
 
 // ---------------------------------------------------------------------------
-// Middleware: a `Toolkit -> Toolkit` transform applied up front, then the
-// wrapped toolkit is run. A middleware transforms one local tool's `run` given
-// its name (logging, retry, auth, metrics); `wrap` lifts it over the whole
-// toolkit, leaving provider/signal/interaction kinds untouched. The one reason
-// this is a combinator rather than native `Record.map`: it tracks the
-// middleware's added requirement `R2`, unioning it into `ToolkitR` instead of
-// widening every tool's type.
+// Middleware: transforms each local tool's `run`, seen as a stream (an `Effect`
+// run is a one-element stream), and tracks the added `R2` / `E2`.
 // ---------------------------------------------------------------------------
 
-type Handler<Input, Event, Output, E, R> = (
-  input: Input,
-  emit: Emit<Event>,
-) => Effect.Effect<Output, E, R>
+export type Handler<Input, Output, E, R> = (input: Input) => Stream.Stream<Output, E, R>
 
-/**
- * A `run` transform, tracking an added requirement `R2` and optional added
- * error `E2`. The tool's own `E` is preserved; `describeFailures` is the
- * combinator that *replaces* it (mapping every error to `string`).
- */
-export type Middleware<R2 = never, E2 = never> = <Input, Event, Output, E, R>(
-  run: Handler<Input, Event, Output, E, R>,
+export type Middleware<R2 = never, E2 = never> = <Input, Output, E, R>(
+  run: Handler<Input, Output, E, R>,
   name: string,
-) => Handler<Input, Event, Output, E | E2, R | R2>
+) => Handler<Input, Output, E | E2, R | R2>
 
 type WrapTool<T extends AnyTool, R2, E2> =
-  T extends Tool<infer N, infer I, infer Ev, infer O, infer E, infer R>
-    ? Tool<N, I, Ev, O, E | E2, R | R2>
+  T extends Tool<infer N, infer I, infer O, infer F, infer E, infer R>
+    ? Tool<N, I, O, F, E | E2, R | R2>
     : T
 
 type WrapToolkit<T extends ToolMap, R2, E2> = {
   readonly [K in keyof T]: T[K] extends AnyTool ? WrapTool<T[K], R2, E2> : T[K]
 }
 
+const mapLocal = <T extends Toolkit, Out>(
+  toolkit: T,
+  f: (tool: AnyLocalTool) => AnyLocalTool,
+): Out => Record.map(toolkit, (tool) => (tool._tag === "LocalTool" ? f(tool) : tool)) as Out
+
 /**
- * Wrap every local tool's `run` with a middleware, preserving each tool's
- * `Input`/`Output` and unioning the middleware's requirement `R2` into the
- * toolkit's `ToolkitR`. Non-local kinds pass through unchanged. Stack with
- * `pipe` - inner-first, so the last `wrap` applied is the outermost and runs
- * first:
+ * Wrap every local tool's `run`. Stacks with `pipe`, inner first: the last
+ * `wrap` runs first.
  *
  *   const observed = pipe(toolkit, Toolkit.wrap(logging), Toolkit.wrap(authz))
- *   Toolkit.run(observed, calls) // authz runs, then logging, then the tool
- *
- * A middleware that fails with `string` / `ToolFailed` is absorbed by the
- * executor into a `ToolResult.Failure`; any other error propagates typed. Use
- * `describeFailures` for the total "everything to the model" case, or the
- * `Approval` flow for a distinct "denied" verdict.
  */
 export const wrap: {
   <R2, E2>(
@@ -318,20 +249,15 @@ export const wrap: {
 } = Function.dual(
   2,
   <T extends Toolkit, R2, E2>(toolkit: T, middleware: Middleware<R2, E2>): WrapToolkit<T, R2, E2> =>
-    Record.map(toolkit, (tool) =>
-      tool._tag === "LocalTool" ? { ...tool, run: middleware(tool.run, tool.name) } : tool,
-    ) as WrapToolkit<T, R2, E2>,
+    mapLocal(toolkit, (tool) => ({
+      ...tool,
+      run: middleware((input: unknown) => toStream(tool.run(input)), tool.name),
+    })),
 )
 
-// ---------------------------------------------------------------------------
-// describeFailures: map every local tool's error to a model-visible string,
-// opting its failures into recovery. Group tools by recovery policy, wrap
-// each group, then compose.
-// ---------------------------------------------------------------------------
-
 type DescribeTool<T extends AnyTool> =
-  T extends Tool<infer N, infer I, infer Ev, infer O, any, infer R>
-    ? Tool<N, I, Ev, O, string, R>
+  T extends Tool<infer N, infer I, infer O, infer F, any, infer R>
+    ? Tool<N, I, O, F | ToolFailed, F | ToolFailed, R>
     : T
 
 type DescribeToolkit<T extends ToolMap> = {
@@ -339,36 +265,33 @@ type DescribeToolkit<T extends ToolMap> = {
 }
 
 /**
- * Map every local tool's error to a `string`, so `Toolkit.run` absorbs those
- * failures into `ToolResult.Failure` the model reads and adapts to. Pairs
- * with the domain `describe` helpers (`AiError.describe`,
- * `BrowserError.describe`). Non-local kinds pass through.
- *
- *   const kit = yield* Toolkit.compose(
- *     Toolkit.describeFailures(searchKit, AiError.describe),
- *     browserToolkit(session), // failures stay typed
- *   )
+ * Every undeclared error becomes a `ToolFailed` the model reads, e.g. with
+ * `AiError.describe`. Declared failures pass through unchanged.
  */
 export const describeFailures: {
   <E>(describe: (e: E) => string): <T extends Toolkit>(toolkit: T) => DescribeToolkit<T>
   <T extends Toolkit>(toolkit: T, describe: (e: ToolkitE<T>) => string): DescribeToolkit<T>
 } = Function.dual(
   2,
-  <T extends Toolkit>(toolkit: T, describe: (e: any) => string): DescribeToolkit<T> =>
-    Record.map(toolkit, (tool) =>
-      tool._tag === "LocalTool"
-        ? {
-            ...tool,
-            run: (input: unknown, emit: Emit<unknown>) =>
-              (tool as AnyLocalTool).run(input, emit).pipe(Effect.mapError(describe)),
-          }
-        : tool,
-    ) as DescribeToolkit<T>,
+  <T extends Toolkit>(toolkit: T, describe: (e: unknown) => string): DescribeToolkit<T> =>
+    mapLocal(toolkit, (tool) => {
+      const isDeclared: (e: unknown) => boolean =
+        tool.failureSchema === undefined ? () => false : Schema.is(tool.failureSchema)
+      const toFailed = (e: unknown) =>
+        isDeclared(e) ? e : new ToolFailed({ message: describe(e) })
+      return {
+        ...tool,
+        failureSchema:
+          tool.failureSchema === undefined
+            ? ToolFailed
+            : Schema.Union([tool.failureSchema, ToolFailed]),
+        run: (input: unknown) => Stream.mapError(toStream(tool.run(input)), toFailed),
+      }
+    }),
 )
 
 // ---------------------------------------------------------------------------
-// Tool executor. Streams `ToolEvent`s in real time. Policy stays outside this
-// module: callers pass only the calls they have already decided should run.
+// Executor
 // ---------------------------------------------------------------------------
 
 export type ExecuteOptions = {
@@ -376,65 +299,53 @@ export type ExecuteOptions = {
 }
 
 /**
- * Execute every provided call. Approval/rejection policy belongs upstream.
- *
- * String and `ToolFailed` failures are absorbed into `ToolResult.Failure`
- * (the model reads and adapts to them); every other tool error propagates
- * typed on the stream, so `Exclude<ToolkitE<T>, string | ToolFailed>` is
- * what a caller catches or lets end the run. If one call in a concurrent
- * batch fails the stream, siblings may go unanswered: a loop that catches
- * and continues must reconcile history first (`HistoryCheck.cancelAllPending`).
+ * Run the calls, emitting each one's partials and its `Output`, typed per tool
+ * and decoded. An error matching the tool's `failureSchema` becomes a `Failure`;
+ * any other error fails the stream (siblings of a failed batch may then stay
+ * unanswered: see `HistoryCheck.cancelAllPending`). Which calls run is the caller's call.
  */
 export const run = <T extends Toolkit>(
   toolkit: T,
   calls: ReadonlyArray<ToolCall>,
   options?: ExecuteOptions,
-): Stream.Stream<ToolEvent, Exclude<ToolkitE<T>, string | ToolFailed>, ToolkitR<T>> =>
+): Stream.Stream<Event<T>, ToolkitE<T>, ToolkitR<T>> =>
   Stream.fromIterable(calls).pipe(
     Stream.flatMap((call) => runOne(toolkit, call), {
       concurrency: options?.concurrency ?? "unbounded",
     }),
-  ) as Stream.Stream<ToolEvent, Exclude<ToolkitE<T>, string | ToolFailed>, ToolkitR<T>>
+  ) as Stream.Stream<Event<T>, ToolkitE<T>, ToolkitR<T>>
 
-const okResult = (call: ToolCall, tool: string, value: unknown): ToolResult =>
-  ToolResult.Ok({ call_id: call.call_id, tool, value })
+type AnyEvent = ToolEvent.ToolEvent<string, unknown, unknown>
 
-// With an `outputSchema`, the wire carries the encoded value (Date → ISO
-// string, …) and a value the schema rejects becomes a model-visible result.
-const successResult = (
-  tool: AnyLocalTool,
-  call: ToolCall,
-  value: unknown,
-): Effect.Effect<ToolResult> =>
-  tool.outputSchema === undefined
-    ? Effect.succeed(okResult(call, tool.name, value))
-    : Schema.encodeUnknownEffect(tool.outputSchema)(value).pipe(
-        Effect.match({
-          onSuccess: (encoded) => okResult(call, tool.name, encoded),
-          onFailure: (error) => outputValidationError(call, error.message.slice(0, 500)),
-        }),
-      )
+// Own-property lookup: a call named `constructor` must not hit the prototype.
+const lookup = (toolkit: Toolkit, name: string): AnyTool | undefined =>
+  Object.hasOwn(toolkit, name) ? toolkit[name] : undefined
 
-const outputEvent = (result: ToolResult): Stream.Stream<ToolEvent, never, any> =>
-  Stream.succeed(ToolEvent.Output({ result }))
-
-const runOne = (toolkit: ToolMap, call: ToolCall): Stream.Stream<ToolEvent, unknown, any> => {
-  // Own-property lookup: a hallucinated call named `constructor` / `toString`
-  // must not resolve to a prototype method.
-  const tool = Object.hasOwn(toolkit, call.name) ? toolkit[call.name] : undefined
-  return Match.value(tool).pipe(
-    // No such tool. Graceful: emit a synthetic Failure so OTHER calls in this
-    // turn still execute. LLMs hallucinate tool names; MCP tools come and go.
-    Match.when(Match.undefined, () =>
-      outputEvent(failed(call, "unknown_tool", `No tool registered with name "${call.name}"`)),
-    ),
-    Match.tag("LocalTool", (local) => runTool(local, call)),
-    // Provider/signal/interaction tools are model-visible but not locally
-    // executable. The loop is expected to intercept these (decode + act) before
-    // execution; reaching here means it didn't, so report it rather than crash.
-    Match.orElse(() => outputEvent(nonLocalTool(call))),
-  )
+const local = (toolkit: Toolkit, name: string): AnyLocalTool | undefined => {
+  const tool = lookup(toolkit, name)
+  return tool?._tag === "LocalTool" ? tool : undefined
 }
+
+const done = (call: ToolCall, result: Result.Result<unknown, unknown>): AnyEvent => ({
+  _tag: "Output",
+  call_id: call.call_id,
+  tool: call.name,
+  result,
+})
+
+const failWith = (call: ToolCall, error: RunError): Stream.Stream<AnyEvent> =>
+  Stream.succeed(done(call, Result.fail(error)))
+
+const runOne = (toolkit: Toolkit, call: ToolCall): Stream.Stream<AnyEvent, unknown, any> =>
+  Match.value(lookup(toolkit, call.name)).pipe(
+    Match.when(Match.undefined, () =>
+      failWith(call, new UnknownTool({ message: `No tool named "${call.name}"` })),
+    ),
+    Match.tag("LocalTool", (tool) => runTool(tool, call)),
+    Match.orElse(() =>
+      failWith(call, new UnknownTool({ message: `"${call.name}" is not a local tool` })),
+    ),
+  )
 
 const describeIssues = (issues: ReadonlyArray<StandardSchemaV1.Issue>): string =>
   issues
@@ -447,173 +358,212 @@ const describeIssues = (issues: ReadonlyArray<StandardSchemaV1.Issue>): string =
     .join("; ")
     .slice(0, 500)
 
-// A decode failure is the model's contract violation: report it as a result
-// (never a stream failure) so the model can correct its next call.
-const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<ToolEvent, unknown, any> =>
+const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<AnyEvent, unknown, any> =>
   Stream.unwrap(
-    decodeCallInput(tool, call).pipe(
-      Effect.map(
-        Match.type<DecodeResult<unknown>>().pipe(
-          Match.tag("parseError", () =>
-            outputEvent(validationError(call, "arguments are not valid JSON")),
-          ),
-          Match.tag("invalid", ({ issues }) =>
-            outputEvent(validationError(call, describeIssues(issues))),
-          ),
-          Match.tag("ok", ({ input }) => runValidated(tool, call, input)),
-          Match.exhaustive,
+    Effect.map(
+      decodeCallInput(tool, call),
+      Match.type<DecodeResult<unknown>>().pipe(
+        Match.tag("parseError", () =>
+          failWith(call, new InputInvalid({ message: "arguments are not valid JSON" })),
         ),
+        Match.tag("invalid", ({ issues }) =>
+          failWith(call, new InputInvalid({ message: describeIssues(issues) })),
+        ),
+        Match.tag("ok", ({ input }) => execute(tool, call, input)),
+        Match.exhaustive,
       ),
     ),
   )
 
-const runValidated = (
+// Every element but the last is a `Partial`; the last is the `Success`. Each
+// value is checked against `outputSchema` and handed on decoded.
+const execute = (
   tool: AnyLocalTool,
   call: ToolCall,
   input: unknown,
-): Stream.Stream<ToolEvent, unknown, any> =>
+): Stream.Stream<AnyEvent, unknown, any> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      // Per-call queue: `emit` offers events as `run` produces them; the
-      // progress stream drains them in real time; `Queue.end` (in the
-      // `ensuring`) flushes pending events then signals a clean end, which
-      // `Stream.fromQueue` treats as completion. `Queue.shutdown` would clear
-      // queued items and interrupt pending takes — wrong for graceful teardown.
-      const queue = yield* Queue.make<unknown, Cause.Done>({ capacity: tool.emitBufferSize })
-      const emit = (event: unknown) => Effect.asVoid(Queue.offer(queue, event))
-      const fiber = yield* tool
-        .run(input, emit)
-        .pipe(Effect.ensuring(Queue.end(queue)), Effect.forkScoped)
-
-      const progress = Stream.fromQueue(queue).pipe(
-        Stream.map((data) => ToolEvent.Progress({ call_id: call.call_id, tool: tool.name, data })),
+      const last = yield* Ref.make(Option.none<unknown>())
+      const partials = toStream(tool.run(input)).pipe(
+        Stream.mapEffect((value) => Effect.as(check(tool, value), value)),
+        Stream.mapEffect((value) => Ref.getAndSet(last, Option.some(value))),
+        Stream.filterMap((previous) => Result.fromOption(previous, () => undefined)),
+        Stream.map((value): AnyEvent => ({
+          _tag: "Partial",
+          call_id: call.call_id,
+          tool: tool.name,
+          value,
+        })),
       )
-      const output = Stream.fromEffect(
-        Fiber.join(fiber).pipe(
-          Effect.matchCauseEffect({
-            onSuccess: (value: unknown) =>
-              successResult(tool, call, value).pipe(
-                Effect.map((result) => ToolEvent.Output({ result })),
-              ),
-            onFailure: (cause: Cause.Cause<unknown>) => routeCause(call, cause),
-          }),
+      const final = Effect.map(
+        Ref.get(last),
+        Option.match({
+          onNone: () => Result.fail(new OutputInvalid({ message: "The tool produced no value" })),
+          onSome: Result.succeed,
+        }),
+      )
+      return partials.pipe(
+        Stream.concat(Stream.fromEffect(Effect.map(final, (result) => done(call, result)))),
+        Stream.catchCause((cause) =>
+          Stream.fromEffect(
+            Effect.map(declared(tool, cause), (error) => done(call, Result.fail(error))),
+          ),
         ),
       )
-      return progress.pipe(Stream.concat(output))
     }),
   )
 
-// A clean single string / ToolFailed failure is absorbed as a model-visible
-// result; interruption, defects, and typed non-sentinel errors propagate.
-const routeCause = (
-  call: ToolCall,
-  cause: Cause.Cause<unknown>,
-): Effect.Effect<ToolEvent, unknown> => {
-  const only = cause.reasons.length === 1 ? cause.reasons[0] : undefined
-  if (only !== undefined && Cause.isFailReason(only)) {
-    const error = only.error
-    if (typeof error === "string") {
-      return Effect.succeed(ToolEvent.Output({ result: failed(call, "tool_failed", error) }))
-    }
-    if (error instanceof ToolFailed) {
-      return Effect.succeed(
-        ToolEvent.Output({ result: failed(call, error.kind ?? "tool_failed", error.message) }),
+// Marks a value `outputSchema` rejected, apart from the tool's own errors.
+class EncodeFailed {
+  constructor(readonly message: string) {}
+}
+
+const check = (tool: AnyLocalTool, value: unknown): Effect.Effect<unknown, EncodeFailed> =>
+  tool.outputSchema === undefined
+    ? Effect.void
+    : Schema.encodeUnknownEffect(tool.outputSchema)(value).pipe(
+        Effect.mapError((e) => new EncodeFailed(e.message.slice(0, 500))),
       )
-    }
+
+// One failure the tool declared (or a rejected value) becomes a `Failure`.
+// Anything else (undeclared errors, defects, interruption) propagates.
+const declared = (
+  tool: AnyLocalTool,
+  cause: Cause.Cause<unknown>,
+): Effect.Effect<unknown, unknown> => {
+  const only = cause.reasons.length === 1 ? cause.reasons[0] : undefined
+  if (only === undefined || !Cause.isFailReason(only)) return Effect.failCause(cause)
+  if (only.error instanceof EncodeFailed) {
+    return Effect.succeed(new OutputInvalid({ message: only.error.message }))
   }
-  return Effect.failCause(cause)
+  return tool.failureSchema !== undefined && Schema.is(tool.failureSchema)(only.error)
+    ? Effect.succeed(only.error)
+    : Effect.failCause(cause)
 }
 
 // ---------------------------------------------------------------------------
-// `continueWithResults` - bridge from a `Stream<ToolEvent>` to the loop's
-// emit shape. Drains the stream to the consumer in real-time, taps every
-// `Output` into an internal Ref, and at end-of-stream emits
-// `Loop.next(build(results))`. Recipe never sees the Ref.
-//
-// Dual: data-first `continueWithResults(stream, build)` and data-last
-// `stream.pipe(continueWithResults(build))` both work.
+// To history and back
+// ---------------------------------------------------------------------------
+
+const outputs = (tool: AnyLocalTool | undefined): Schema.Codec<unknown, Schema.Json> =>
+  tool?.outputSchema ?? Content.Value
+
+const failures = (tool: AnyLocalTool | undefined): Schema.Codec<unknown, Schema.Json> =>
+  tool?.failureSchema === undefined ? CoreError : Schema.Union([tool.failureSchema, CoreError])
+
+/** Any call's outcome, as `run` emits it. */
+export type Outcome = ToolEvent.Output<string, unknown, unknown>
+
+/** Narrows `Event<T>` to its `Output` members, keeping the per-tool types. */
+export const isOutcome = <A extends AnyEvent>(e: A): e is Extract<A, { readonly _tag: "Output" }> =>
+  e._tag === "Output"
+
+const toOutput = (
+  toolkit: Toolkit,
+  event: Outcome,
+): Effect.Effect<ToolCallOutput, Schema.SchemaError> => {
+  const tool = local(toolkit, event.tool)
+  return Result.match(event.result, {
+    onSuccess: (value) => ToolOutput.success(event, outputs(tool), value),
+    onFailure: (error) => ToolOutput.failure(event, failures(tool), error),
+  })
+}
+
+/**
+ * An outcome as history, encoded with the tool's schemas (never stringified:
+ * that is the provider codec's job). `output(toolkit)` is the pipeable form.
+ */
+export function output(
+  toolkit: Toolkit,
+): (event: Outcome) => Effect.Effect<ToolCallOutput, Schema.SchemaError>
+export function output(
+  toolkit: Toolkit,
+  event: Outcome,
+): Effect.Effect<ToolCallOutput, Schema.SchemaError>
+export function output(toolkit: Toolkit, event?: Outcome) {
+  return event === undefined ? (e: Outcome) => toOutput(toolkit, e) : toOutput(toolkit, event)
+}
+
+/** History back to a typed `Result` for tool `name`, decoded with its schemas. */
+export function decode<T extends Toolkit, N extends keyof T & string>(
+  toolkit: T,
+  name: N,
+  item: ToolCallOutput,
+): Effect.Effect<
+  Result.Result<OutputOf<T[N]>, ToolFailure<T[N]> | ToolOutput.CoreError>,
+  Schema.SchemaError
+>
+export function decode(
+  toolkit: Toolkit,
+  name: string,
+  item: ToolCallOutput,
+): Effect.Effect<Result.Result<unknown, unknown>, Schema.SchemaError> {
+  const tool = local(toolkit, name)
+  const decodeWith = (schema: Schema.Codec<unknown, unknown>) =>
+    Effect.flatMap(ToolOutput.encoded(item.output), Schema.decodeUnknownEffect(schema))
+  if (item.isError === true) return Effect.map(decodeWith(failures(tool)), Result.fail)
+  return Option.match(Option.fromNullishOr(tool?.outputSchema), {
+    // Without `outputSchema` the parts' own types say what the value is.
+    onNone: () => Effect.succeed(Result.succeed(ToolOutput.value(item.output))),
+    onSome: (schema) => Effect.map(decodeWith(schema), Result.succeed),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Into the loop
 // ---------------------------------------------------------------------------
 
 /**
- * Append a completed turn plus tool results to a state's history, converting
- * the results to wire-format `ToolCallOutput`s. Curried so it slots directly
- * into `continueWithResults`:
- *
- *   Toolkit.run(toolkit, calls).pipe(
- *     Toolkit.continueWithResults(Toolkit.appendToolResults(state, turn)),
- *   )
- *
- * Equivalent to `appendToHistory(state, turn, results.map(toToolCallOutput))`
- * — the helper just hides the wire-conversion step.
+ * Forward every event as a `Loop.value`, then continue the loop with
+ * `build(outcomes)`. `build` is an Effect, so it can encode.
  */
-export const appendToolResults =
-  <S extends { readonly history: ReadonlyArray<HistoryItem> }>(state: S, turn: Turn) =>
-  (results: ReadonlyArray<ToolResult>): S =>
-    appendToHistory(state, turn, results.map(toToolCallOutput))
-
-/**
- * Drain a `Stream<ToolEvent>` and return the accumulated `ToolResult`s
- * from every `Output` event. One-shot — the type is `Effect<results>`,
- * not a one-element stream — so it composes naturally with `Effect.map`
- * to build state.
- *
- * Counterpart to `continueWithResults`: `continueWithResults` bundles
- * drain + emit Next into one bridge; this one is the right arm of a
- * broadcast/fork-and-merge for callers that want to vary the left arm
- * (e.g., filter/tap ToolEvents before forwarding).
- */
-export const collectResults = <E, R>(
-  stream: Stream.Stream<ToolEvent, E, R>,
-): Effect.Effect<ReadonlyArray<ToolResult>, E, R> =>
-  stream.pipe(
-    Stream.filter(isOutput),
-    Stream.map((e) => e.result),
-    Stream.runCollect,
-  )
-
-/**
- * Bridge from a `Stream<ToolEvent>` to the loop's emit shape. Forwards
- * every ToolEvent downstream as a `Loop.value` and at end-of-stream emits
- * one `Loop.next(build(results))` carrying the accumulated `ToolResult`s
- * from terminal `Output` events.
- *
- * Conceptually a broadcast fork (one arm passes events through, the other
- * drains them into a state). Implemented as a single-pass Ref tap + concat
- * for zero buffering — the broadcast version is observationally equivalent
- * but holds events in a PubSub until both arms drain. The public primitives
- * (`Loop.value`, `collectResults`, `Loop.next`) compose the same pattern
- * when you need to vary an arm.
- *
- * Dual: data-first `continueWithResults(stream, build)` and data-last
- * `stream.pipe(continueWithResults(build))` both work.
- */
-export const continueWithResults: {
-  <S>(
-    build: (results: ReadonlyArray<ToolResult>) => S,
-  ): <E, R>(stream: Stream.Stream<ToolEvent, E, R>) => Stream.Stream<Loop.Step<ToolEvent, S>, E, R>
-  <S, E, R>(
-    stream: Stream.Stream<ToolEvent, E, R>,
-    build: (results: ReadonlyArray<ToolResult>) => S,
-  ): Stream.Stream<Loop.Step<ToolEvent, S>, E, R>
+export const continueWith: {
+  <S, E2, R2>(
+    build: (outcomes: ReadonlyArray<Outcome>) => Effect.Effect<S, E2, R2>,
+  ): <A extends AnyEvent, E, R>(
+    stream: Stream.Stream<A, E, R>,
+  ) => Stream.Stream<Loop.Step<A, S>, E | E2, R | R2>
+  <A extends AnyEvent, E, R, S, E2, R2>(
+    stream: Stream.Stream<A, E, R>,
+    build: (outcomes: ReadonlyArray<Outcome>) => Effect.Effect<S, E2, R2>,
+  ): Stream.Stream<Loop.Step<A, S>, E | E2, R | R2>
 } = Function.dual(
   2,
-  <S, E, R>(
-    stream: Stream.Stream<ToolEvent, E, R>,
-    build: (results: ReadonlyArray<ToolResult>) => S,
-  ): Stream.Stream<Loop.Step<ToolEvent, S>, E, R> =>
+  <A extends AnyEvent, E, R, S, E2, R2>(
+    stream: Stream.Stream<A, E, R>,
+    build: (outcomes: ReadonlyArray<Outcome>) => Effect.Effect<S, E2, R2>,
+  ): Stream.Stream<Loop.Step<A, S>, E | E2, R | R2> =>
     Stream.unwrap(
-      Effect.gen(function* () {
-        const ref = yield* Ref.make<ReadonlyArray<ToolResult>>([])
-        const tapped = stream.pipe(
-          Stream.tap((e) =>
-            isOutput(e) ? Ref.update(ref, (acc) => Arr.append(acc, e.result)) : Effect.void,
+      Effect.map(Ref.make<ReadonlyArray<Outcome>>([]), (outcomes) =>
+        Stream.concat(
+          stream.pipe(
+            Stream.tap((e) =>
+              isOutcome(e) ? Ref.update(outcomes, Arr.append<Outcome>(e)) : Effect.void,
+            ),
+            Stream.map(Loop.value),
           ),
-          Stream.map(Loop.value),
-        )
-        const continuation = Stream.unwrap(
-          Ref.get(ref).pipe(Effect.map((acc) => Loop.next(build(acc)))),
-        )
-        return tapped.pipe(Stream.concat(continuation))
-      }),
+          Stream.unwrap(Ref.get(outcomes).pipe(Effect.flatMap(build), Effect.map(Loop.next))),
+        ),
+      ),
     ),
 )
+
+/** Encode each outcome with `output` and append the turn plus the outputs to history. */
+export const appendResults =
+  <S extends { readonly history: ReadonlyArray<HistoryItem> }>(
+    toolkit: Toolkit,
+    state: S,
+    turn: Turn,
+  ) =>
+  (outcomes: ReadonlyArray<Outcome>): Effect.Effect<S, Schema.SchemaError> =>
+    Effect.map(Effect.forEach(outcomes, output(toolkit)), (items) =>
+      appendToHistory(state, turn, items),
+    )
+
+/** `continueWith(appendResults(toolkit, state, turn))`. */
+export const next = <S extends { readonly history: ReadonlyArray<HistoryItem> }>(
+  toolkit: Toolkit,
+  state: S,
+  turn: Turn,
+) => continueWith(appendResults(toolkit, state, turn))

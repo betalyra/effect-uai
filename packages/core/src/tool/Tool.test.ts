@@ -1,308 +1,236 @@
+import { describe, expect, expectTypeOf, it } from "@effect/vitest"
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
-import { Context, Effect, Schema } from "effect"
-import { describe, expect, expectTypeOf, it } from "vitest"
+import { Context, Effect, Exit, Schema, Stream } from "effect"
 import type * as Items from "../domain/Items.js"
+import * as Content from "./Content.js"
 import * as Tool from "./Tool.js"
 
-// ---------------------------------------------------------------------------
-// Minimal dual-standard schema for testing — no need to pull Zod / Valibot /
-// ArkType as devDeps. This is the smallest possible object satisfying both
-// `StandardSchemaV1` and `StandardJSONSchemaV1` per their published specs.
-// ---------------------------------------------------------------------------
+// The smallest object satisfying both Standard Schema and Standard JSON Schema.
+type Recipient = { readonly to: string }
 
-type EmailRecipient = { readonly to: string }
-
-const emailRecipientSchema: StandardSchemaV1<unknown, EmailRecipient> &
-  StandardJSONSchemaV1<unknown, EmailRecipient> = {
+const recipientSchema: StandardSchemaV1<unknown, Recipient> &
+  StandardJSONSchemaV1<unknown, Recipient> = {
   "~standard": {
     version: 1,
     vendor: "test-fixture",
-    validate: (value) => {
-      if (
-        typeof value === "object" &&
-        value !== null &&
-        "to" in value &&
-        typeof (value as { to: unknown }).to === "string"
-      ) {
-        return { value: value as EmailRecipient }
-      }
-      return { issues: [{ message: "expected { to: string }" }] }
-    },
+    validate: (value) =>
+      typeof value === "object" && value !== null && "to" in value && typeof value.to === "string"
+        ? { value: { to: value.to } }
+        : { issues: [{ message: "expected { to: string }" }] },
     jsonSchema: {
-      input: () => ({
-        type: "object",
-        properties: { to: { type: "string" } },
-        required: ["to"],
-      }),
-      output: () => ({
-        type: "object",
-        properties: { to: { type: "string" } },
-        required: ["to"],
-      }),
+      input: () => ({ type: "object", properties: { to: { type: "string" } }, required: ["to"] }),
+      output: () => ({ type: "object", properties: { to: { type: "string" } }, required: ["to"] }),
     },
   },
 }
 
-// A schema that satisfies StandardSchemaV1 only (no JSON Schema). Used to
-// verify the helper's compile-time guard.
-const standardOnly: StandardSchemaV1<unknown, EmailRecipient> = {
-  "~standard": {
-    version: 1,
-    vendor: "test-fixture",
-    validate: () => ({ value: { to: "" } }),
-  },
-}
-
-describe("Tool.fromStandardSchema", () => {
-  it("returns the schema (structurally) typed as ToolInputSchema<Output>", () => {
-    const adapted = Tool.fromStandardSchema(emailRecipientSchema)
-
-    // Same object — helper is a type-narrowing identity at runtime.
-    expect(adapted).toBe(emailRecipientSchema)
-
-    // Both interfaces accessible through the same `~standard` key.
-    const valid = adapted["~standard"].validate({ to: "hi@example.com" })
-    expect(valid).toEqual({ value: { to: "hi@example.com" } })
-
-    const json = adapted["~standard"].jsonSchema.input({ target: "draft-2020-12" })
-    expect(json).toEqual({
-      type: "object",
-      properties: { to: { type: "string" } },
-      required: ["to"],
-    })
-  })
-
-  it("composes with Tool.make so Input is inferred from the schema's Output", async () => {
-    const sendEmail = Tool.make({
-      name: "send_email",
-      description: "Send an email to a single recipient.",
-      inputSchema: Tool.fromStandardSchema(emailRecipientSchema),
-      run: ({ to }) => Effect.succeed(`queued: ${to}`),
-    })
-
-    // `run`'s parameter is typed as { to: string } via the schema's Output —
-    // this property access compiles without annotation.
-    const result = await Effect.runPromise(sendEmail.run({ to: "x@y.z" }, () => Effect.void))
-    expect(result).toBe("queued: x@y.z")
-  })
-
-  it("type: rejects schemas missing the Standard JSON Schema half at compile time", () => {
-    // @ts-expect-error — `standardOnly` lacks `jsonSchema`; helper's
-    // intersection constraint refuses it.
-    Tool.fromStandardSchema(standardOnly)
-  })
-
-  it("type: Output type flows through fromStandardSchema into Tool.make", () => {
-    const tool = Tool.make({
-      name: "send_email",
-      description: "send",
-      inputSchema: Tool.fromStandardSchema(emailRecipientSchema),
-      run: (input) => Effect.succeed(input),
-    })
-
-    type InputOf<T> = T extends Tool.Tool<string, infer I, any, any, any> ? I : never
-    expectTypeOf<InputOf<typeof tool>>().toEqualTypeOf<EmailRecipient>()
-  })
+const callWith = (name: string, args: string): Items.ToolCall => ({
+  type: "function_call",
+  call_id: "call_1",
+  name,
+  arguments: args,
 })
 
-describe("Tool.withRun", () => {
-  const sendEmail = Tool.make({
-    name: "send_email",
-    description: "Send an email to a single recipient.",
-    inputSchema: Tool.fromStandardSchema(emailRecipientSchema),
-    run: ({ to }) => Effect.succeed(`sent: ${to}`),
-  })
-
-  it("swaps run while keeping the model-facing descriptor identical", async () => {
-    const dryRun = Tool.withRun(sendEmail, ({ to }) => Effect.succeed(`dry-run: ${to}`))
-
-    // Definition (name/description/schema) is byte-identical -> same descriptor.
-    expect(Tool.toDescriptors([dryRun])).toEqual(Tool.toDescriptors([sendEmail]))
-    // input is typed from the original tool, no annotation needed.
-    const out = await Effect.runPromise(dryRun.run({ to: "x@y.z" }, () => Effect.void))
-    expect(out).toBe("dry-run: x@y.z")
-  })
-})
-
-describe("Tool.decodeArgs", () => {
-  const sendEmail = Tool.make({
-    name: "send_email",
-    description: "Send an email to a single recipient.",
-    inputSchema: Tool.fromStandardSchema(emailRecipientSchema),
-    run: ({ to }) => Effect.succeed(`queued: ${to}`),
-  })
-
-  const callWith = (args: string): Items.ToolCall => ({
-    type: "function_call",
-    call_id: "call_1",
-    name: "send_email",
-    arguments: args,
-  })
-
-  it("decodes valid JSON arguments to the typed input", async () => {
-    const input = await Effect.runPromise(Tool.decodeArgs(sendEmail, callWith('{"to":"x@y.z"}')))
-    expect(input).toEqual({ to: "x@y.z" })
-    // The return type is the tool's Input, no annotation needed.
-    expectTypeOf(input).toEqualTypeOf<EmailRecipient>()
-  })
-
-  it("fails with ToolError when the arguments aren't valid JSON", async () => {
-    const exit = await Effect.runPromiseExit(Tool.decodeArgs(sendEmail, callWith("not json")))
-    expect(exit._tag).toBe("Failure")
-  })
-
-  it("fails with ToolError when the arguments don't satisfy the schema", async () => {
-    const exit = await Effect.runPromiseExit(Tool.decodeArgs(sendEmail, callWith('{"to":42}')))
-    expect(exit._tag).toBe("Failure")
-  })
-})
-
-describe("Effect Schema inputSchema", () => {
+describe("Tool.make", () => {
   const Recipient = Schema.Struct({ to: Schema.String })
 
-  const sendEmail = Tool.make({
-    name: "send_email",
-    description: "Send an email to a single recipient.",
-    inputSchema: Recipient,
-    run: ({ to }) => Effect.succeed(`queued: ${to}`),
+  it("type: infers Input from an Effect Schema or a Standard Schema, and keeps the name literal", () => {
+    const effect = Tool.make({
+      name: "send_email",
+      description: "",
+      inputSchema: Recipient,
+      run: ({ to }) => Effect.succeed(to),
+    })
+    const standard = Tool.make({
+      name: "send_email",
+      description: "",
+      inputSchema: Tool.fromStandardSchema(recipientSchema),
+      run: ({ to }) => Effect.succeed(to),
+    })
+    expectTypeOf(effect).toEqualTypeOf<Tool.Tool<"send_email", { readonly to: string }, string>>()
+    expectTypeOf(standard).toEqualTypeOf<Tool.Tool<"send_email", Recipient, string>>()
   })
 
-  const callWith = (args: string): Items.ToolCall => ({
-    type: "function_call",
-    call_id: "call_1",
-    name: "send_email",
-    arguments: args,
-  })
-
-  it("runs with the input inferred from the schema's Type", async () => {
-    const result = await Effect.runPromise(sendEmail.run({ to: "x@y.z" }, () => Effect.void))
-    expect(result).toBe("queued: x@y.z")
-  })
-
-  it("type: Input is the schema's Type", () => {
-    type InputOf<T> = T extends Tool.Tool<string, infer I, any, any, any> ? I : never
-    expectTypeOf<InputOf<typeof sendEmail>>().toEqualTypeOf<{ readonly to: string }>()
-  })
-
-  it("type: E and R are inferred from run through the Effect Schema overload", () => {
+  it("type: infers Output, Failure, E and R from run and failureSchema", () => {
+    class NotFound extends Schema.TaggedError<NotFound>()("NotFound", { to: Schema.String }) {}
     class Mailer extends Context.Service<
       Mailer,
-      { readonly send: (to: string) => Effect.Effect<string> }
+      { readonly send: (to: string) => Effect.Effect<{ readonly id: string }> }
     >()("test/Mailer") {}
 
     const tool = Tool.make({
       name: "send_email",
-      description: "send",
+      description: "",
       inputSchema: Recipient,
+      failureSchema: NotFound,
       run: ({ to }) =>
         Effect.gen(function* () {
-          const mailer = yield* Mailer
-          if (to === "") return yield* Effect.fail("empty" as const)
-          return yield* mailer.send(to)
+          if (to === "") return yield* new NotFound({ to })
+          if (to === "boom") return yield* Effect.fail("crashed" as const)
+          return yield* (yield* Mailer).send(to)
         }),
     })
-
-    expectTypeOf<Tool.ToolE<typeof tool>>().toEqualTypeOf<"empty">()
+    expectTypeOf<Tool.ToolOutput<typeof tool>>().toEqualTypeOf<{ readonly id: string }>()
+    expectTypeOf<Tool.ToolFailure<typeof tool>>().toEqualTypeOf<NotFound>()
+    expectTypeOf<Tool.ToolUnhandled<typeof tool>>().toEqualTypeOf<"crashed">()
     expectTypeOf<Tool.ToolR<typeof tool>>().toEqualTypeOf<Mailer>()
   })
 
-  it("decodes valid JSON arguments to the typed input", async () => {
-    const input = await Effect.runPromise(Tool.decodeArgs(sendEmail, callWith('{"to":"x@y.z"}')))
-    expect(input).toEqual({ to: "x@y.z" })
-    expectTypeOf(input).toEqualTypeOf<{ readonly to: string }>()
+  it("type: a Stream run types Output like an Effect run", () => {
+    const tool = Tool.make({
+      name: "count",
+      description: "",
+      inputSchema: Tool.noInput,
+      run: () => Stream.fromIterable([1, 2, 3]),
+    })
+    expectTypeOf<Tool.ToolOutput<typeof tool>>().toEqualTypeOf<number>()
   })
 
-  it("fails with ToolValidationError when the arguments don't satisfy the schema", async () => {
-    const exit = await Effect.runPromiseExit(Tool.decodeArgs(sendEmail, callWith('{"to":42}')))
-    expect(exit._tag).toBe("Failure")
-  })
-
-  it("renders a JSON Schema descriptor from the wrapped schema", () => {
-    const [descriptor] = Tool.toDescriptors([sendEmail])
-    expect(descriptor?.name).toBe("send_email")
-    expect(descriptor?.inputSchema).toMatchObject({
-      type: "object",
-      properties: { to: { type: "string" } },
-      required: ["to"],
+  it("type: without outputSchema, run must return a Content.Value", () => {
+    Tool.make({
+      name: "shot",
+      description: "",
+      inputSchema: Tool.noInput,
+      run: () => Effect.succeed([{ title: "Home" }, Content.image({ _tag: "url", url: "u" })]),
+    })
+    // @ts-expect-error a Date is not a Content.Value
+    Tool.make({
+      name: "when",
+      description: "",
+      inputSchema: Tool.noInput,
+      run: () => Effect.succeed(new Date()),
     })
   })
 
-  it("accepts an already-wrapped fromEffectSchema value unchanged", async () => {
+  it("type: with outputSchema, the encoded side must be JSON", () => {
+    const Observed = Schema.Struct({ at: Schema.DateFromString })
+    const tool = Tool.make({
+      name: "when",
+      description: "",
+      inputSchema: Tool.noInput,
+      outputSchema: Observed,
+      run: () => Effect.succeed({ at: new Date() }),
+    })
+    expectTypeOf<Tool.ToolOutput<typeof tool>>().toEqualTypeOf<{ readonly at: Date }>()
+
+    Tool.make({
+      name: "when",
+      description: "",
+      inputSchema: Tool.noInput,
+      // @ts-expect-error Schema.Date encodes to a Date, not JSON
+      outputSchema: Schema.Struct({ at: Schema.Date }),
+      run: () => Effect.succeed({ at: new Date() }),
+    })
+  })
+
+  it("renders the same descriptor from an Effect Schema and its fromEffectSchema form", () => {
+    const direct = Tool.make({
+      name: "send_email",
+      description: "Send.",
+      inputSchema: Recipient,
+      run: () => Effect.succeed("ok"),
+      strict: true,
+    })
     const wrapped = Tool.make({
       name: "send_email",
-      description: "Send an email to a single recipient.",
+      description: "Send.",
       inputSchema: Tool.fromEffectSchema(Recipient),
-      run: ({ to }) => Effect.succeed(`queued: ${to}`),
+      run: () => Effect.succeed("ok"),
+      strict: true,
     })
-    expect(Tool.toDescriptors([wrapped])).toEqual(Tool.toDescriptors([sendEmail]))
-    const input = await Effect.runPromise(Tool.decodeArgs(wrapped, callWith('{"to":"x@y.z"}')))
-    expectTypeOf(input).toEqualTypeOf<{ readonly to: string }>()
-  })
-
-  it("signal: decode-only kinds accept an Effect Schema directly", async () => {
-    const escalate = Tool.signal({
-      name: "escalate",
-      description: "Escalate to a human.",
-      inputSchema: Schema.Struct({ reason: Schema.String }),
+    expect(Tool.toDescriptors([direct])).toEqual(Tool.toDescriptors([wrapped]))
+    expect(Tool.toDescriptors([direct])[0]).toMatchObject({
+      inputSchema: { type: "object", properties: { to: { type: "string" } }, required: ["to"] },
+      strict: true,
     })
-    const input = await Effect.runPromise(
-      Tool.decodeArgs(escalate, {
-        type: "function_call",
-        call_id: "call_2",
-        name: "escalate",
-        arguments: '{"reason":"stuck"}',
-      }),
-    )
-    expect(input).toEqual({ reason: "stuck" })
-    expectTypeOf(input).toEqualTypeOf<{ readonly reason: string }>()
   })
 })
 
-describe("provider-hosted tools", () => {
-  const localTool = Tool.make({
-    name: "send_email",
-    description: "Send an email.",
-    inputSchema: Tool.fromEffectSchema(Schema.Struct({ to: Schema.String })),
-    run: ({ to }) => Effect.succeed(`sent: ${to}`),
-  })
-  const signalTool = Tool.signal({
+describe("Tool.decodeArgs", () => {
+  const escalate = Tool.declare({
     name: "escalate",
     description: "Escalate to a human.",
     inputSchema: Schema.Struct({ reason: Schema.String }),
   })
-  const hostedTool = Tool.provider({
+
+  it.effect("decodes a declared tool's arguments to its typed input", () =>
+    Effect.gen(function* () {
+      const input = yield* Tool.decodeArgs(escalate, callWith("escalate", '{"reason":"stuck"}'))
+      expect(input).toEqual({ reason: "stuck" })
+      expectTypeOf(input).toEqualTypeOf<{ readonly reason: string }>()
+    }),
+  )
+
+  it.effect("tells bad JSON (ToolError) apart from a schema violation (ToolValidationError)", () =>
+    Effect.gen(function* () {
+      const notJson = yield* Effect.flip(Tool.decodeArgs(escalate, callWith("escalate", "nope")))
+      const invalid = yield* Effect.flip(
+        Tool.decodeArgs(escalate, callWith("escalate", '{"reason":1}')),
+      )
+      expect(notJson._tag).toBe("ToolError")
+      expect(invalid._tag).toBe("ToolValidationError")
+    }),
+  )
+
+  it.effect("fails, rather than throws, when a Standard Schema validator throws", () =>
+    Effect.gen(function* () {
+      const throwing = Tool.declare({
+        name: "t",
+        description: "",
+        inputSchema: {
+          "~standard": {
+            ...recipientSchema["~standard"],
+            validate: () => {
+              throw new Error("bug")
+            },
+          },
+        },
+      })
+      const exit = yield* Effect.exit(Tool.decodeArgs(throwing, callWith("t", "{}")))
+      expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  )
+})
+
+describe("Tool.withRun", () => {
+  const Weather = Schema.Struct({ at: Schema.DateFromString })
+  const weather = Tool.make({
+    name: "weather",
+    description: "Weather now.",
+    inputSchema: Tool.noInput,
+    outputSchema: Weather,
+    run: () => Effect.succeed({ at: new Date() }),
+  })
+
+  it.effect("keeps the descriptor, replaces run and drops the original outputSchema", () =>
+    Effect.gen(function* () {
+      const mocked = Tool.withRun(weather, () => Effect.succeed("sunny"))
+      expect(Tool.toDescriptors([mocked])).toEqual(Tool.toDescriptors([weather]))
+      expect(mocked.outputSchema).toBeUndefined()
+      expect(yield* Stream.runCollect(Tool.toStream(mocked.run({})))).toEqual(["sunny"])
+    }),
+  )
+})
+
+describe("provider-hosted tools", () => {
+  const local = Tool.make({
+    name: "send_email",
+    description: "",
+    inputSchema: Tool.noInput,
+    run: () => Effect.succeed("sent"),
+  })
+  const declared = Tool.declare({ name: "escalate", description: "", inputSchema: Tool.noInput })
+  const hosted = Tool.provider({
     name: "web_search",
-    description: "Search the web.",
+    description: "",
     inputSchema: Tool.noInput,
     provider: "gemini",
     config: { kind: "google_search" },
   })
-  const toolkit = { send_email: localTool, escalate: signalTool, web_search: hostedTool }
+  const toolkit = { send_email: local, escalate: declared, web_search: hosted }
 
-  it("descriptorsOf excludes provider-hosted tools", () => {
-    const descriptors = Tool.descriptorsOf(toolkit)
-    expect(descriptors.map((d) => d.name)).toEqual(["send_email", "escalate"])
-  })
-
-  it("toDescriptors drops a ProviderTool from a mixed array", () => {
-    expect(Tool.toDescriptors([localTool, hostedTool]).map((d) => d.name)).toEqual(["send_email"])
-  })
-
-  it("providerToolsOf returns only the provider-hosted tools", () => {
-    const provider = Tool.providerToolsOf(toolkit)
-    expect(provider).toHaveLength(1)
-    expect(provider[0]?.name).toBe("web_search")
-    expect(provider[0]?.provider).toBe("gemini")
-    expect(provider[0]?.config).toEqual({ kind: "google_search" })
-  })
-
-  it("providerToolsOf on an absent toolkit is empty", () => {
-    expect(Tool.providerToolsOf(undefined)).toEqual([])
-  })
-
-  it("isProviderTool narrows the tool kind", () => {
-    expect(Tool.isProviderTool(hostedTool)).toBe(true)
-    expect(Tool.isProviderTool(localTool)).toBe(false)
-    expect(Tool.isProviderTool(signalTool)).toBe(false)
+  it("are rendered by the provider, never as function descriptors", () => {
+    expect(Tool.descriptorsOf(toolkit).map((d) => d.name)).toEqual(["send_email", "escalate"])
+    expect(Tool.providerToolsOf(toolkit)).toEqual([hosted])
   })
 })

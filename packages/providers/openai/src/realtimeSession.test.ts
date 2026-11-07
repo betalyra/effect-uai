@@ -236,7 +236,7 @@ describe("OpenAI realtime session tools", () => {
               output: {
                 type: "function_call_output",
                 call_id: "call_1",
-                output: '{"now":"12:00"}',
+                output: [{ type: "input_json", value: { now: "12:00" } }],
                 providerData: undefined,
               },
             }),
@@ -279,7 +279,7 @@ describe("OpenAI realtime session tools", () => {
               output: {
                 type: "function_call_output",
                 call_id: "call_1",
-                output: "{}",
+                output: [{ type: "input_json", value: {} }],
                 providerData: undefined,
               },
             }),
@@ -332,7 +332,7 @@ describe("OpenAI realtime session tools", () => {
               output: {
                 type: "function_call_output",
                 call_id: "call_1",
-                output: "{}",
+                output: [{ type: "input_json", value: {} }],
                 providerData: undefined,
               },
             }),
@@ -355,7 +355,7 @@ describe("OpenAI realtime session tools", () => {
             output: {
               type: "function_call_output",
               call_id: "call_unknown",
-              output: "{}",
+              output: [{ type: "input_json", value: {} }],
               providerData: undefined,
             },
           }),
@@ -364,6 +364,44 @@ describe("OpenAI realtime session tools", () => {
 
       expect(failure._tag).toBe("Failure")
       expect(JSON.stringify(failure)).toContain("InvalidRequest")
+      const sent = yield* server.sent
+      expect(sent.some((f: any) => f.item?.type === "function_call_output")).toBe(false)
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("rejects a tool output with media instead of dropping it", () =>
+    Effect.gen(function* () {
+      const server = yield* openai
+      yield* transcript(server, (handle) =>
+        Effect.gen(function* () {
+          yield* server.push({ type: "response.created", response: { id: "resp_1" } })
+          yield* server.push({
+            type: "response.output_item.added",
+            response_id: "resp_1",
+            item: { id: "call_item", type: "function_call", call_id: "call_1", name: "shot" },
+          })
+          yield* tick
+          const error = yield* Effect.flip(
+            handle.send(
+              RealtimeInput.ToolResult({
+                output: {
+                  type: "function_call_output",
+                  call_id: "call_1",
+                  output: [
+                    { type: "input_text", text: "Home" },
+                    {
+                      type: "input_image",
+                      source: { _tag: "url", url: "https://x/shot.png" },
+                    },
+                  ],
+                  providerData: undefined,
+                },
+              }),
+            ),
+          )
+          expect(error).toMatchObject({ _tag: "Unsupported", capability: "tool_output_media" })
+        }),
+      )
       const sent = yield* server.sent
       expect(sent.some((f: any) => f.item?.type === "function_call_output")).toBe(false)
     }).pipe(Effect.scoped),

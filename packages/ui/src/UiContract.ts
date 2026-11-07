@@ -19,13 +19,19 @@
  * it. A listed name whose payload doesn't decode fails the envelope: that is
  * a contract violation, not data to show.
  *
- * Typed tool output needs the `outputSchema` in the type: use a shared spec
- * (`as const`). A core `Tool` value types its input; its output stays JSON.
+ * A tool is a core `Tool` or a shared spec (`as const`, schemas only). Its
+ * result is `Success { value } | Failure { error }`: the error is the tool's
+ * `failureSchema`, core's `ToolOutput.CoreError` or the contract's `failures`.
+ * Without `outputSchema`, values are a `Content.Value` (media as classes).
  */
+import * as Content from "@effect-uai/core/Content"
+import type * as Tool from "@effect-uai/core/Tool"
 import type { ToolInputSchema } from "@effect-uai/core/Tool"
-import { Effect, Schema } from "effect"
+import type * as ToolEvent from "@effect-uai/core/ToolEvent"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
+import { Effect, Match, Result, Schema } from "effect"
 import * as Event from "./RunEvent.js"
-import type { Envelope, Json, Payloads as AnyPayloads, RunEvent } from "./RunEvent.js"
+import type { Envelope, Json, Payloads as AnyPayloads, RunEvent, ToolPayload } from "./RunEvent.js"
 import * as RunView from "./RunView.js"
 import * as Thread from "./Thread.js"
 
@@ -36,10 +42,13 @@ export type ToolSpec = {
   readonly name: string
   readonly inputSchema: AnyCodec | ToolInputSchema<any>
   readonly outputSchema?: AnyCodec
+  readonly failureSchema?: AnyCodec
 }
 
 export type Spec = {
   readonly tools?: ReadonlyArray<ToolSpec>
+  /** Errors the app closes calls with (denied, superseded): every tool's result may carry one. */
+  readonly failures?: AnyCodec
   readonly objects?: Readonly<Record<string, AnyCodec>>
   readonly data?: Readonly<Record<string, AnyCodec>>
   readonly live?: Readonly<Record<string, AnyCodec>>
@@ -47,14 +56,25 @@ export type Spec = {
 }
 
 type InputOf<S> = S extends Schema.Top ? S["Type"] : S extends ToolInputSchema<infer A> ? A : Json
-type OutputOf<T> = T extends { readonly outputSchema: infer O extends Schema.Top }
-  ? O["Type"]
-  : Json
-type ToolOf<T> = T extends ToolSpec
+// A core `Tool` carries its types; a spec has them in its schemas. Without
+// `outputSchema` a tool returns a `Content.Value`, and that is what arrives.
+type OutputOf<T> = T extends { readonly _tag: "LocalTool" }
+  ? Tool.ToolOutput<T>
+  : T extends { readonly outputSchema: infer O extends Schema.Top }
+    ? O["Type"]
+    : Content.Value
+type FailureOf<T> = T extends { readonly _tag: "LocalTool" }
+  ? Tool.ToolFailure<T>
+  : T extends { readonly failureSchema: infer F extends Schema.Top }
+    ? F["Type"]
+    : never
+type AppFailureOf<S extends Spec> = S["failures"] extends Schema.Top ? S["failures"]["Type"] : never
+type ToolOf<T, App> = T extends ToolSpec
   ? {
       readonly name: T["name"]
       readonly input: InputOf<T["inputSchema"]>
       readonly output: OutputOf<T>
+      readonly failure: FailureOf<T> | ToolOutput.CoreError | App
     }
   : never
 type ElementOf<T> = T extends ReadonlyArray<infer E> ? E : never
@@ -66,7 +86,7 @@ type NamedOf<M> = {
 }[keyof M & string]
 /** The payload types a spec describes: its listed names only. */
 export type PayloadsOf<S extends Spec> = {
-  readonly tool: ToolOf<ElementOf<S["tools"]>>
+  readonly tool: ToolOf<ElementOf<S["tools"]>, AppFailureOf<S>>
   readonly object: NamedOf<S["objects"]>
   readonly data: NamedOf<S["data"]>
   readonly live: NamedOf<S["live"]>
@@ -76,6 +96,11 @@ export type PayloadsOf<S extends Spec> = {
 type NameOf<T> = T extends { readonly name: infer N } ? N : never
 type ValueOf<T, N> =
   Extract<T, { readonly name: N }> extends { readonly value: infer V } ? V : never
+type ToolField<T, N, K extends "output" | "failure"> =
+  Extract<T, { readonly name: N }> extends infer X extends ToolPayload ? X[K] : never
+
+/** The call an app closes itself: its id and the tool's name. */
+export type Call<N extends string = string> = { readonly call_id: string; readonly name: N }
 
 /**
  * A contract's payload types, for the generic folds:
@@ -105,6 +130,18 @@ export interface UiContract<P extends AnyPayloads> {
   ): Effect.Effect<RunEvent, Schema.SchemaError>
   /** Server: run metadata encoded for `run-completed`. */
   metadata(value: P["metadata"]): Effect.Effect<Json, Schema.SchemaError>
+  /** Server: a toolkit event (`Toolkit.run`) encoded with the tool's schemas. */
+  toolEvent(event: ToolEvent.ToolEvent): Effect.Effect<RunEvent, Schema.SchemaError>
+  /** Server: close a call with a value of its tool's output (e.g. supplied by the user). */
+  success<N extends NameOf<P["tool"]>>(
+    call: Call<N>,
+    value: ToolField<P["tool"], N, "output">,
+  ): Effect.Effect<RunEvent, Schema.SchemaError>
+  /** Server: close a call with an error (e.g. the app's `Denied`). */
+  failure<N extends NameOf<P["tool"]>>(
+    call: Call<N>,
+    error: ToolField<P["tool"], N, "failure">,
+  ): Effect.Effect<RunEvent, Schema.SchemaError>
 }
 
 // ---------------------------------------------------------------------------
@@ -131,8 +168,17 @@ const inputCodec = (tool: ToolSpec): PayloadCodec => {
     return !(result instanceof Promise) && result.issues === undefined
   })
 }
-const outputCodec = (tool: ToolSpec): PayloadCodec =>
-  tool.outputSchema === undefined ? Schema.Json : json(tool.outputSchema)
+const outputCodec = (tool: ToolSpec | undefined): PayloadCodec =>
+  json(tool?.outputSchema ?? Content.Value)
+
+const failureCodec = (tool: ToolSpec | undefined, app: AnyCodec | undefined): PayloadCodec =>
+  json(
+    Schema.Union([
+      ...(tool?.failureSchema === undefined ? [] : [tool.failureSchema]),
+      ToolOutput.CoreError,
+      ...(app === undefined ? [] : [app]),
+    ]),
+  )
 
 const entries = (record: Readonly<Record<string, AnyCodec>> | undefined) =>
   Object.entries(record ?? {})
@@ -150,9 +196,13 @@ type Loose = {
   ): Effect.Effect<RunEvent, Schema.SchemaError>
   live(name: string, value: unknown): Effect.Effect<RunEvent, Schema.SchemaError>
   metadata(value: unknown): Effect.Effect<Json, Schema.SchemaError>
+  toolEvent(event: ToolEvent.ToolEvent): Effect.Effect<RunEvent, Schema.SchemaError>
+  success(call: Call, value: unknown): Effect.Effect<RunEvent, Schema.SchemaError>
+  failure(call: Call, error: unknown): Effect.Effect<RunEvent, Schema.SchemaError>
 }
 
 const toJson = Schema.decodeUnknownEffect(Schema.Json)
+const toOutcome = Schema.decodeUnknownEffect(Event.Outcome)
 
 /**
  * Build a contract. Tool names must be literal types: pass core `Tool`s or
@@ -166,6 +216,9 @@ export function make(spec: Spec): Loose {
   const live = entries(spec.live)
   const toolNames = tools.map((t) => t.name)
   const metadata = spec.metadata === undefined ? Schema.Json : json(spec.metadata)
+  const toolOf = (name: string) => tools.find((t) => t.name === name)
+  const resultCodec = (tool: ToolSpec | undefined) =>
+    Event.outcome(outputCodec(tool), failureCodec(tool, spec.failures))
 
   const interrupt = Schema.Union([
     ...tools.map((t) =>
@@ -210,19 +263,15 @@ export function make(spec: Spec): Loose {
     toolInput(Event.ToolApprovalRequested),
     Schema.Union([
       ...tools.map((t) =>
-        Schema.Struct({
-          ...Event.ToolResult.fields,
-          name: listed(t.name),
-          isError: Schema.Literal(false),
-          output: outputCodec(t),
-        }),
+        Schema.Struct({ ...Event.ToolPartial.fields, name: listed(t.name), value: outputCodec(t) }),
       ),
-      Schema.Struct({
-        ...Event.ToolResult.fields,
-        name: unlisted(toolNames),
-        isError: Schema.Literal(false),
-      }),
-      Schema.Struct({ ...Event.ToolResult.fields, isError: Schema.Literal(true) }),
+      Schema.Struct({ ...Event.ToolPartial.fields, name: unlisted(toolNames) }),
+    ]),
+    Schema.Union([
+      ...tools.map((t) =>
+        Schema.Struct({ ...Event.ToolResult.fields, name: listed(t.name), result: resultCodec(t) }),
+      ),
+      Schema.Struct({ ...Event.ToolResult.fields, name: unlisted(toolNames) }),
     ]),
     named(Event.Data, data),
     named(Event.Live, live),
@@ -232,8 +281,15 @@ export function make(spec: Spec): Loose {
   const view = RunView.schema({
     block: Schema.Union([
       ...RunView.contentBlocks,
-      ...tools.map((t) => RunView.toolBlock(listed(t.name), inputCodec(t), outputCodec(t))),
-      RunView.toolBlock(unlisted(toolNames), Schema.Json, Schema.Json),
+      ...tools.map((t) =>
+        RunView.toolBlock(
+          listed(t.name),
+          inputCodec(t),
+          outputCodec(t),
+          failureCodec(t, spec.failures),
+        ),
+      ),
+      RunView.toolBlock(unlisted(toolNames), Schema.Json, Schema.Json, Schema.Json),
       ...objects.map(([name, schema]) => RunView.objectBlock(listed(name), json(schema))),
       RunView.objectBlock(unlisted(objects.map(([name]) => name)), Schema.Json),
       RunView.unnamedObject,
@@ -254,6 +310,16 @@ export function make(spec: Spec): Loose {
     Schema.encodeUnknownEffect(schema === undefined ? Schema.Json : json(schema))(value).pipe(
       Effect.flatMap(toJson),
     )
+  const toolResult = (call: Call, outcome: Event.Outcome<unknown, unknown>) =>
+    Schema.encodeUnknownEffect(resultCodec(toolOf(call.name)))(outcome).pipe(
+      Effect.flatMap(toOutcome),
+      Effect.map((result): RunEvent => ({
+        type: "tool-result",
+        callId: call.call_id,
+        name: call.name,
+        result,
+      })),
+    )
 
   return {
     decode: Schema.decodeUnknownEffect(envelope),
@@ -273,5 +339,30 @@ export function make(spec: Spec): Loose {
         Effect.map((encoded): RunEvent => ({ type: "live", name, value: encoded })),
       ),
     metadata: (value) => encode(spec.metadata, value),
+    toolEvent: (event) =>
+      Match.value(event).pipe(
+        Match.tagsExhaustive({
+          Partial: (e) =>
+            Schema.encodeUnknownEffect(outputCodec(toolOf(e.tool)))(e.value).pipe(
+              Effect.flatMap(toJson),
+              Effect.map((value): RunEvent => ({
+                type: "tool-partial",
+                callId: e.call_id,
+                name: e.tool,
+                value,
+              })),
+            ),
+          Output: (e) =>
+            toolResult(
+              { call_id: e.call_id, name: e.tool },
+              Result.match(e.result, {
+                onSuccess: (value): Event.Outcome<unknown, unknown> => ({ _tag: "Success", value }),
+                onFailure: (error): Event.Outcome<unknown, unknown> => ({ _tag: "Failure", error }),
+              }),
+            ),
+        }),
+      ),
+    success: (call, value) => toolResult(call, { _tag: "Success", value }),
+    failure: (call, error) => toolResult(call, { _tag: "Failure", error }),
   }
 }

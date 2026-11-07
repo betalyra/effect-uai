@@ -12,6 +12,7 @@
  * Constructors build drafts without randomness; the id is assigned where an
  * input is sent (`Atoms.submit`, or `withId`).
  */
+import * as Approval from "@effect-uai/core/Approval"
 import * as Items from "@effect-uai/core/Items"
 import { Effect, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
@@ -26,12 +27,12 @@ export const UserMessage = Schema.Struct({
 export type UserMessage = typeof UserMessage.Type
 export type Content = UserMessage["content"][number]
 
-/** The answer to one `run-interrupted` interrupt. */
-export const Decision = Schema.Struct({
-  callId: Schema.String,
-  approved: Schema.Boolean,
-  reason: Schema.optional(Schema.String),
-})
+/** The answer to one waiting call, with a decision of the app's `Approval.decisions`. */
+export const answer = <D extends Schema.Top>(decision: D) =>
+  Schema.Struct({ callId: Schema.String, decision })
+
+/** The default answer: `Approval.Default` (approve, or deny with an optional reason). */
+export const Decision = answer(Approval.Default.schema)
 export type Decision = typeof Decision.Type
 
 const submitFields = {
@@ -40,16 +41,16 @@ const submitFields = {
   messages: Schema.Array(UserMessage),
 }
 
-const resolveFields = {
+const resolveFields = <D extends Schema.Top>(decision: D) => ({
   id: InputId,
   kind: Schema.Literal("resolve"),
-  decisions: Schema.Array(Decision),
-}
+  decisions: Schema.Array(answer(decision)),
+})
 
 export const Submit = Schema.Struct(submitFields)
 export type Submit = typeof Submit.Type
 
-export const Resolve = Schema.Struct(resolveFields)
+export const Resolve = Schema.Struct(resolveFields(Approval.Default.schema))
 export type Resolve = typeof Resolve.Type
 
 export const Input = Schema.Union([Submit, Resolve])
@@ -59,12 +60,23 @@ export const SubmitJson = Schema.toCodecJson(Submit)
 export const InputJson = Schema.toCodecJson(Input)
 
 /**
- * The preset with typed app `data`: required on `submit`, optional on
- * `resolve`.
+ * The preset with typed app `data` (required on `submit`, optional on
+ * `resolve`) and, optionally, the app's decisions (`Approval.decisions(...).schema`).
  */
-export const make = <D extends Schema.Top>(data: D) => {
+export function make<D extends Schema.Top>(data: D): Preset<D, typeof Approval.Default.schema>
+export function make<D extends Schema.Top, A extends Schema.Top>(
+  data: D,
+  decisions: A,
+): Preset<D, A>
+export function make(data: Schema.Top, decisions: Schema.Top = Approval.Default.schema) {
+  return preset(data, decisions)
+}
+
+type Preset<D extends Schema.Top, A extends Schema.Top> = ReturnType<typeof preset<D, A>>
+
+const preset = <D extends Schema.Top, A extends Schema.Top>(data: D, decisions: A) => {
   const Submit = Schema.Struct({ ...submitFields, data })
-  const Resolve = Schema.Struct({ ...resolveFields, data: Schema.optionalKey(data) })
+  const Resolve = Schema.Struct({ ...resolveFields(decisions), data: Schema.optionalKey(data) })
   const Input = Schema.Union([Submit, Resolve])
   return {
     Submit,
@@ -124,15 +136,25 @@ export function submit(
   }
 }
 
-export function resolve(decisions: ReadonlyArray<Decision>, options?: Id): Draft<Resolve>
-export function resolve<D>(
-  decisions: ReadonlyArray<Decision>,
+/** A resolve draft; the decision type defaults to `Approval.Default`'s. */
+export type ResolveDraft<A = Decision["decision"]> = {
+  readonly id?: InputId
+  readonly kind: "resolve"
+  readonly decisions: ReadonlyArray<Approval.Answer<A>>
+}
+
+export function resolve<A = Decision["decision"]>(
+  decisions: ReadonlyArray<Approval.Answer<A>>,
+  options?: Id,
+): ResolveDraft<A>
+export function resolve<A, D>(
+  decisions: ReadonlyArray<Approval.Answer<A>>,
   options: Id & { readonly data: D },
-): Draft<Resolve> & { readonly data: D }
+): ResolveDraft<A> & { readonly data: D }
 export function resolve(
-  decisions: ReadonlyArray<Decision>,
+  decisions: ReadonlyArray<Approval.Answer<unknown>>,
   options?: Id & { readonly data?: unknown },
-): Draft<Resolve> & { readonly data?: unknown } {
+): ResolveDraft<unknown> & { readonly data?: unknown } {
   return { ...options, kind: "resolve", decisions }
 }
 

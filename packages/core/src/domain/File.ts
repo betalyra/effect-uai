@@ -53,6 +53,16 @@ export const FileSource: Schema.Codec<FileSource> = Schema.Union([
   FileBytesSource,
 ])
 
+/** `FileSource` as JSON: bytes encode as base64 (e.g. tool output on a UI wire). */
+export const FileSourceJson = Schema.Union([
+  FileUrlSource,
+  FileBase64Source,
+  Schema.TaggedStruct("bytes", {
+    bytes: Schema.Uint8ArrayFromBase64,
+    mimeType: FileMimeTypeSchema,
+  }),
+])
+
 export const fileUrl = (url: string, mimeType?: FileMimeType): FileUrlSource =>
   mimeType !== undefined ? { _tag: "url", url, mimeType } : { _tag: "url", url }
 

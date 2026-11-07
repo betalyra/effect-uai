@@ -19,7 +19,14 @@ describe("itemsToMessages", () => {
       { type: "message", role: "assistant", content: [{ type: "output_text", text: "checking" }] },
       { type: "function_call", call_id: "c1", name: "a", arguments: "{}" },
       { type: "function_call", call_id: "c2", name: "b", arguments: "{}" },
-      { type: "function_call_output", call_id: "c1", output: "ra" },
+      {
+        type: "function_call_output",
+        call_id: "c1",
+        output: [
+          { type: "input_text", text: "ra" },
+          { type: "input_json", value: { n: 1 } },
+        ],
+      },
     ]
     expect(itemsToMessages(history)).toEqual([
       {
@@ -30,7 +37,7 @@ describe("itemsToMessages", () => {
           { id: "c2", type: "function", function: { name: "b", arguments: "{}" } },
         ],
       },
-      { role: "tool", tool_call_id: "c1", content: "ra" },
+      { role: "tool", tool_call_id: "c1", content: 'ra\n{"n":1}' },
     ])
   })
 

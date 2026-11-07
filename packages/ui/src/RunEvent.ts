@@ -11,7 +11,7 @@ import * as Img from "@effect-uai/core/Image"
 import * as Items from "@effect-uai/core/Items"
 import { Schema } from "effect"
 
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 // ---------------------------------------------------------------------------
 // Ids: branded so a stream, run and input id can't be swapped. Wire decoding
@@ -145,18 +145,36 @@ export const ToolApprovalRequested = event("tool-approval-requested", {
   name: Schema.String,
   input: Schema.Json,
 })
-export const ToolProgress = event("tool-progress", { callId: Schema.String, data: Schema.Json })
+/** An intermediate value of a streaming tool, encoded like its output. */
+export const ToolPartial = event("tool-partial", {
+  callId: Schema.String,
+  name: Schema.String,
+  value: Schema.Json,
+})
+
+/** How a call ended: its output, or an error (the tool's, core's, or the app's). */
+export const outcome = <V extends Schema.Top, E extends Schema.Top>(value: V, error: E) =>
+  Schema.Union([
+    Schema.TaggedStruct("Success", { value }),
+    Schema.TaggedStruct("Failure", { error }),
+  ])
+
+/** An outcome as sent: value and error are JSON. */
+export const Outcome = outcome(Schema.Json, Schema.Json)
+
+export type Outcome<V = Json, E = Json> =
+  | { readonly _tag: "Success"; readonly value: V }
+  | { readonly _tag: "Failure"; readonly error: E }
+
 /**
- * `output` is the tool's output, or the error (`{ kind, reason? }`) when
- * `isError`. Every outcome is a `tool-result`: denied, cancelled or superseded
- * calls too, told apart by `kind`.
+ * Every call ends with one `tool-result`: calls that ran, and calls the app
+ * closed itself (denied, cancelled, answered by the user).
  */
 export const ToolResult = event("tool-result", {
   callId: Schema.String,
-  /** The tool's name, so a client can decode `output` without state. */
+  /** The tool's name, so a client can decode `result` without state. */
   name: Schema.String,
-  output: Schema.Json,
-  isError: Schema.Boolean,
+  result: Outcome,
 })
 
 // ---------------------------------------------------------------------------
@@ -191,6 +209,7 @@ export const payloadEvents = [
   ObjectDone,
   ToolCallReady,
   ToolApprovalRequested,
+  ToolPartial,
   ToolResult,
   Data,
   Live,
@@ -215,7 +234,6 @@ export const plainEvents = [
   ObjectFailed,
   ToolCallStarted,
   ToolCallArgsDelta,
-  ToolProgress,
   Usage,
   InputAccepted,
 ] as const
@@ -245,6 +263,8 @@ export type ToolPayload = {
   readonly name: string
   readonly input: unknown
   readonly output: unknown
+  /** Every error a call of this tool can end with. */
+  readonly failure: unknown
 }
 export type NamedPayload = { readonly name: string; readonly value: unknown }
 
@@ -259,7 +279,12 @@ export type Payloads = {
 
 /** No contract: any name, payloads as sent. */
 export type Untyped = {
-  readonly tool: { readonly name: string; readonly input: Json; readonly output: Json }
+  readonly tool: {
+    readonly name: string
+    readonly input: Json
+    readonly output: Json
+    readonly failure: Json
+  }
   readonly object: { readonly name: string; readonly value: Json }
   readonly data: { readonly name: string; readonly value: Json }
   readonly live: { readonly name: string; readonly value: Json }
@@ -267,6 +292,23 @@ export type Untyped = {
 }
 
 type Plain = (typeof plainEvents)[number]["Type"]
+
+// Distributes over the tool union, so narrowing by `name` types `value` and `result`.
+type ToolEvents<T> = T extends ToolPayload
+  ?
+      | {
+          readonly type: "tool-partial"
+          readonly callId: string
+          readonly name: T["name"]
+          readonly value: T["output"]
+        }
+      | {
+          readonly type: "tool-result"
+          readonly callId: string
+          readonly name: T["name"]
+          readonly result: Outcome<T["output"], T["failure"]>
+        }
+  : never
 
 export type Interrupt<P extends Payloads = Untyped> = {
   readonly callId: string
@@ -296,20 +338,7 @@ type Typed<P extends Payloads> =
       readonly name: P["tool"]["name"]
       readonly input: P["tool"]["input"]
     }
-  | {
-      readonly type: "tool-result"
-      readonly callId: string
-      readonly name: P["tool"]["name"]
-      readonly isError: false
-      readonly output: P["tool"]["output"]
-    }
-  | {
-      readonly type: "tool-result"
-      readonly callId: string
-      readonly name: string
-      readonly isError: true
-      readonly output: Json
-    }
+  | ToolEvents<P["tool"]>
   | {
       readonly type: "data"
       readonly name: P["data"]["name"]

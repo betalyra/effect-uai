@@ -10,7 +10,7 @@ class Dropped extends Data.TaggedError("Dropped")<{}> {}
 
 const frames: ReadonlyArray<Envelope> = (
   [
-    { type: "run-started", runId: r1, inputs: [], protocol: 1 },
+    { type: "run-started", runId: r1, inputs: [], protocol: 2 },
     { type: "text-delta", text: "a" },
     { type: "text-delta", text: "b" },
     { type: "text-delta", text: "c" },

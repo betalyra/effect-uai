@@ -1,293 +1,118 @@
-/**
- * Tests for approval planners + history-reconciliation primitives. Exercises
- * the full HITL + streaming-tool stack end-to-end by composing approval plans
- * with `run`, with the four wire-shaped scenarios:
- *
- *   1. Approval        : gated calls approved → tools execute, structured Values
- *   2. Denial          : gated calls denied   → Failure(denied) results
- *   3. Cancellation    : missing verdicts     → Failure(cancelled) results
- *   4. Mixed + history : reconciliation via cancelAllPending
- *
- * Plus: hallucinated tool name (graceful Failure), unknown_tool kind.
- */
-import { Effect, Schema, Stream } from "effect"
-import { describe, expect, it } from "vitest"
+import { describe, expect, expectTypeOf, it } from "@effect/vitest"
+import { Effect, Result, Schema } from "effect"
 import * as Items from "../domain/Items.js"
-import { findUnansweredCalls, cancelAllPending, isReconciled } from "./HistoryCheck.js"
-import { type ToolResult, isFailure, isOk, toToolCallOutput } from "./ToolResult.js"
-import { type ApprovalMapEntry, fromMap } from "./Approval.js"
-import { fromEffectSchema, make as makeTool } from "./Tool.js"
-import { make as makeToolkit, run } from "./Toolkit.js"
-import { ToolEvent, isApprovalRequested, isProgress, isOutput } from "./ToolEvent.js"
+import * as Approval from "./Approval.js"
+import * as HistoryCheck from "./HistoryCheck.js"
+import * as Tool from "./Tool.js"
+import * as Toolkit from "./Toolkit.js"
+import * as ToolOutput from "./ToolOutput.js"
 
-// ---------------------------------------------------------------------------
-// Three demo tools covering the matrix:
-//   - web_search      : streaming, no approval
-//   - bulk_email      : streaming, requires approval
-//   - delete_database : non-streaming, requires approval
-// ---------------------------------------------------------------------------
-
-const webSearch = makeTool({
-  name: "web_search",
-  description: "search",
-  inputSchema: fromEffectSchema(Schema.Struct({ query: Schema.String })),
-  run: ({ query }, emit) =>
-    Effect.gen(function* () {
-      const hits = [
-        { url: "a", title: `${query} 1` },
-        { url: "b", title: `${query} 2` },
-        { url: "c", title: `${query} 3` },
-      ]
-      yield* Stream.runForEach(Stream.fromIterable(hits), emit)
-      return { count: hits.length }
-    }),
-})
-
-const bulkEmail = makeTool({
-  name: "bulk_email",
-  description: "send",
-  inputSchema: fromEffectSchema(
-    Schema.Struct({ recipients: Schema.Array(Schema.String), subject: Schema.String }),
-  ),
-  run: ({ recipients }, emit) =>
-    Effect.gen(function* () {
-      yield* Effect.forEach(recipients, (_, i) =>
-        emit({ type: "progress" as const, sent: i + 1, total: recipients.length }),
-      )
-      return { status: "sent" as const, delivered: recipients.length }
-    }),
-})
-
-const deleteDatabase = makeTool({
-  name: "delete_database",
-  description: "drop",
-  inputSchema: fromEffectSchema(Schema.Struct({ name: Schema.String })),
-  run: ({ name }) => Effect.succeed({ status: "dropped", name }),
-})
-
-const allTools = makeToolkit(webSearch, bulkEmail, deleteDatabase)
-const SENSITIVE = new Set(["bulk_email", "delete_database"])
-const isSensitive = (call: Items.ToolCall) => SENSITIVE.has(call.name)
-
-const fc = (call_id: string, name: string, args: unknown): Items.ToolCall => ({
+const call = (id: string): Items.ToolCall => ({
   type: "function_call",
-  call_id,
-  name,
-  arguments: JSON.stringify(args),
+  call_id: id,
+  name: "send_email",
+  arguments: "{}",
 })
 
-const calls = [
-  fc("c1", "web_search", { query: "effect" }),
-  fc("c2", "bulk_email", { recipients: ["a@x", "b@x"], subject: "Hi" }),
-  fc("c3", "delete_database", { name: "prod" }),
-]
+const Decisions = Approval.decisions({
+  Approve: { always: Schema.optionalKey(Schema.Boolean) },
+  Deny: { reason: Schema.optionalKey(Schema.String) },
+  Respond: { output: Schema.Json },
+})
 
-const resultsFrom = (collected: ReadonlyArray<ToolEvent>): ReadonlyArray<ToolResult> =>
-  collected.filter(isOutput).map((e) => e.result)
-
-const byCallId = (results: ReadonlyArray<ToolResult>) => new Map(results.map((r) => [r.call_id, r]))
-
-const rejectedStream = (rejected: ReadonlyArray<ToolResult>) =>
-  Stream.fromIterable(rejected.map((result) => ToolEvent.Output({ result })))
-
-const eventsFromApprovalMap = (approvals: ReadonlyMap<string, ApprovalMapEntry>) => {
-  const plan = fromMap(isSensitive, approvals)(calls)
-  return Stream.merge(run(allTools, plan.approved), rejectedStream(plan.rejected))
-}
-
-// ---------------------------------------------------------------------------
-// fromMap: HTTP-style scenarios
-// ---------------------------------------------------------------------------
-
-describe("fromMap + run", () => {
-  it("approval: all gated approved → tools execute, structured Values", async () => {
-    const approvals = new Map<string, ApprovalMapEntry>([
-      ["c2", { decision: "approve" }],
-      ["c3", { decision: "approve" }],
+describe("Approval.decisions", () => {
+  it("groups waiting calls by answer, ignores answers to other calls, keeps the rest unanswered", () => {
+    const waiting = [call("a"), call("b"), call("c"), call("d")]
+    const resolved = Decisions.resolve(waiting, [
+      { callId: "a", decision: Decisions.Approve({ always: true }) },
+      { callId: "b", decision: Decisions.Deny({ reason: "spam" }) },
+      { callId: "c", decision: Decisions.Respond({ output: { booked: true } }) },
+      { callId: "closed-long-ago", decision: Decisions.Approve() },
     ])
-    const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(approvals)))
-    const by = byCallId(resultsFrom(collected))
-    expect(by.get("c1")).toMatchObject({ _tag: "Ok", value: { count: 3 } })
-    expect(by.get("c2")).toMatchObject({
-      _tag: "Ok",
-      value: { status: "sent", delivered: 2 },
+    expect(resolved).toEqual({
+      Approve: [{ call: call("a"), decision: { _tag: "Approve", always: true } }],
+      Deny: [{ call: call("b"), decision: { _tag: "Deny", reason: "spam" } }],
+      Respond: [{ call: call("c"), decision: { _tag: "Respond", output: { booked: true } } }],
+      unanswered: [call("d")],
     })
-    expect(by.get("c3")).toMatchObject({
-      _tag: "Ok",
-      value: { status: "dropped", name: "prod" },
-    })
-
-    // No ApprovalRequested events from the pure HTTP flow.
-    expect(collected.filter(isApprovalRequested)).toHaveLength(0)
+    expectTypeOf(resolved.Deny[0]!.decision).toEqualTypeOf<{
+      readonly _tag: "Deny"
+      readonly reason?: string
+    }>()
   })
 
-  it("denial: gated denied → Failure(denied), no execution", async () => {
-    const approvals = new Map<string, ApprovalMapEntry>([
-      ["c2", { decision: "deny", reason: "spam concern" }],
-      ["c3", { decision: "deny", reason: "prod is sacred" }],
-    ])
-    const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(approvals)))
+  it.effect("decodes answers from the wire and rejects unknown tags", () =>
+    Effect.gen(function* () {
+      const decode = Schema.decodeUnknownEffect(Decisions.schema)
+      expect(yield* decode({ _tag: "Deny", reason: "no" })).toEqual(
+        Decisions.Deny({ reason: "no" }),
+      )
+      const error = yield* Effect.flip(decode({ _tag: "Maybe" }))
+      expect(error._tag).toBe("SchemaError")
+    }),
+  )
 
-    // bulk_email never ran.
-    expect(collected.filter(isProgress).filter((e) => e.tool === "bulk_email")).toHaveLength(0)
-
-    const by = byCallId(resultsFrom(collected))
-    expect(by.get("c2")).toMatchObject({
-      _tag: "Failure",
-      kind: "denied",
-      reason: "spam concern",
-    })
-    expect(by.get("c3")).toMatchObject({
-      _tag: "Failure",
-      kind: "denied",
-      reason: "prod is sacred",
-    })
-  })
-
-  it("cancellation: missing verdicts → Failure(cancelled)", async () => {
-    const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(new Map())))
-    const by = byCallId(resultsFrom(collected))
-    expect(by.get("c1")).toMatchObject({ _tag: "Ok", value: { count: 3 } })
-    expect(by.get("c2")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
-    expect(by.get("c3")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
-  })
-
-  it("mixed: approve + deny + omit → all three kinds", async () => {
-    const approvals = new Map<string, ApprovalMapEntry>([
-      ["c2", { decision: "approve" }],
-      // c3 omitted → cancelled
-    ])
-    const collected = await Effect.runPromise(Stream.runCollect(eventsFromApprovalMap(approvals)))
-    const by = byCallId(resultsFrom(collected))
-    expect(by.get("c1")).toMatchObject({ _tag: "Ok", value: { count: 3 } })
-    expect(by.get("c2")).toMatchObject({ _tag: "Ok", value: { status: "sent" } })
-    expect(by.get("c3")).toMatchObject({ _tag: "Failure", kind: "cancelled" })
+  it("type: constructors need their required fields", () => {
+    Decisions.Approve()
+    // @ts-expect-error Respond requires `output`
+    Decisions.Respond()
   })
 })
 
-// ---------------------------------------------------------------------------
-// Graceful degradation: hallucinated tool name doesn't kill the turn.
-// ---------------------------------------------------------------------------
-
-describe("run: graceful degradation", () => {
-  it("unknown tool name → Failure(unknown_tool); other calls still execute", async () => {
-    const callsWithBogus = [
-      fc("c1", "web_search", { query: "x" }),
-      fc("c2", "does_not_exist", {}),
-      fc("c3", "delete_database", { name: "prod" }),
-    ]
-    const collected = await Effect.runPromise(
-      Stream.runCollect(
-        (() => {
-          const plan = fromMap(
-            isSensitive,
-            new Map([["c3", { decision: "approve" }]]),
-          )(callsWithBogus)
-          return Stream.merge(run(allTools, plan.approved), rejectedStream(plan.rejected))
-        })(),
-      ),
-    )
-    const by = byCallId(resultsFrom(collected))
-    expect(by.get("c1")).toMatchObject({ _tag: "Ok" })
-    expect(by.get("c2")).toMatchObject({ _tag: "Failure", kind: "unknown_tool" })
-    expect(by.get("c3")).toMatchObject({ _tag: "Ok", value: { status: "dropped" } })
+describe("closing waiting calls", () => {
+  const Sent = Schema.Struct({ id: Schema.String })
+  const sendEmail = Tool.make({
+    name: "send_email",
+    description: "",
+    inputSchema: Tool.noInput,
+    outputSchema: Sent,
+    run: () => Effect.succeed({ id: "m1" }),
   })
+  const kit = Toolkit.make(sendEmail)
+
+  it.effect("a user-supplied result reads back like the tool's own output", () =>
+    Effect.gen(function* () {
+      const answered = yield* ToolOutput.success(call("b"), Sent, { id: "u1" })
+      expect(yield* Toolkit.decode(kit, "send_email", answered)).toEqual(
+        Result.succeed({ id: "u1" }),
+      )
+    }),
+  )
+
+  it.effect("a denied call carries the tagged error the model sees", () =>
+    Effect.gen(function* () {
+      const denied = new Approval.Denied({ message: "spam" })
+      expect(yield* ToolOutput.failure(call("a"), Approval.Denied, denied)).toEqual({
+        type: "function_call_output",
+        call_id: "a",
+        output: [{ type: "input_json", value: { _tag: "Denied", message: "spam" } }],
+        isError: true,
+      })
+    }),
+  )
 })
 
-// ---------------------------------------------------------------------------
-// History reconciliation
-// ---------------------------------------------------------------------------
+describe("HistoryCheck", () => {
+  it.effect("closes every unanswered call with Cancelled, so history is submittable", () =>
+    Effect.gen(function* () {
+      const history: ReadonlyArray<Items.HistoryItem> = [
+        Items.userText("send both"),
+        call("a"),
+        call("b"),
+        Items.toolCallOutput("a", "sent"),
+      ]
+      expect(HistoryCheck.findUnansweredCalls(history)).toEqual([call("b")])
 
-describe("findUnansweredCalls / cancelAllPending / isReconciled", () => {
-  const orphan = fc("c99", "delete_database", { name: "prod" })
-  const answered = fc("c98", "web_search", { query: "x" })
-  const answeredOutput = Items.toolCallOutput("c98", JSON.stringify({ count: 0 }))
-
-  it("findUnansweredCalls returns only orphans", () => {
-    const history = [Items.userText("hi"), answered, orphan, answeredOutput]
-    const unanswered = findUnansweredCalls(history)
-    expect(unanswered).toHaveLength(1)
-    expect(unanswered[0]!.call_id).toBe("c99")
-  })
-
-  it("isReconciled is false when orphans exist, true otherwise", () => {
-    const stale = [Items.userText("hi"), orphan]
-    expect(isReconciled(stale)).toBe(false)
-    const reconciled = [...stale, ...cancelAllPending(stale).map(toToolCallOutput)]
-    expect(isReconciled(reconciled)).toBe(true)
-  })
-
-  it("cancelAllPending synthesizes one Failure(cancelled) per orphan", () => {
-    const history = [Items.userText("hi"), answered, orphan, answeredOutput]
-    const closures = cancelAllPending(history, "user moved on")
-    expect(closures).toHaveLength(1)
-    const c = closures[0]!
-    expect(isFailure(c)).toBe(true)
-    expect(c).toMatchObject({
-      _tag: "Failure",
-      call_id: "c99",
-      kind: "cancelled",
-      reason: "user moved on",
-    })
-  })
-
-  it("follow-up: map closures to ToolCallOutput before appending new user message", () => {
-    const stale = [Items.userText("first request"), orphan]
-    const closures = cancelAllPending(stale, "user redirected")
-    const reconciled = [...stale, ...closures.map(toToolCallOutput), Items.userText("never mind")]
-    expect(findUnansweredCalls(reconciled)).toHaveLength(0)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Wire conversion
-// ---------------------------------------------------------------------------
-
-describe("toToolCallOutput", () => {
-  it("round-trips a Value result", () => {
-    const r: ToolResult = {
-      _tag: "Ok",
-      call_id: "c1",
-      tool: "web_search",
-      value: { count: 3 },
-    }
-    const out = toToolCallOutput(r)
-    expect(out.call_id).toBe("c1")
-    expect(JSON.parse(out.output)).toEqual({ count: 3 })
-  })
-
-  it("renders a Failure with reason as a nested error object", () => {
-    const r: ToolResult = {
-      _tag: "Failure",
-      call_id: "c2",
-      tool: "bulk_email",
-      kind: "denied",
-      reason: "spam concern",
-    }
-    const out = toToolCallOutput(r)
-    expect(JSON.parse(out.output)).toEqual({ error: { kind: "denied", message: "spam concern" } })
-  })
-
-  it("renders a Failure without reason (omits message)", () => {
-    const r: ToolResult = {
-      _tag: "Failure",
-      call_id: "c3",
-      tool: "delete_database",
-      kind: "cancelled",
-    }
-    const out = toToolCallOutput(r)
-    expect(JSON.parse(out.output)).toEqual({ error: { kind: "cancelled" } })
-  })
-})
-
-// ---------------------------------------------------------------------------
-// run
-// ---------------------------------------------------------------------------
-
-describe("run", () => {
-  it("runs all calls passed to it", async () => {
-    const collected = await Effect.runPromise(Stream.runCollect(run(allTools, calls)))
-    expect(collected.filter(isOutput)).toHaveLength(3)
-    expect(collected.filter(isOutput).every((e) => isOk(e.result))).toBe(true)
-  })
+      const closing = yield* HistoryCheck.cancelAllPending(history, "user moved on")
+      expect(closing).toEqual([
+        {
+          type: "function_call_output",
+          call_id: "b",
+          output: [{ type: "input_json", value: { _tag: "Cancelled", message: "user moved on" } }],
+          isError: true,
+        },
+      ])
+      expect(HistoryCheck.isReconciled([...history, ...closing])).toBe(true)
+    }),
+  )
 })

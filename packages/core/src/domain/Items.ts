@@ -174,10 +174,22 @@ export const ToolCall = Schema.Struct({
 })
 export type ToolCall = typeof ToolCall.Type
 
+/** A JSON value in a tool output. Kept as a value; provider codecs serialize it. */
+export const InputJson = Schema.Struct({
+  type: Schema.Literal("input_json"),
+  value: Schema.Json,
+})
+export type InputJson = typeof InputJson.Type
+
+export const ToolOutputContent = Schema.Union([InputText, InputJson, InputImage, InputFile])
+export type ToolOutputContent = typeof ToolOutputContent.Type
+
 export const ToolCallOutput = Schema.Struct({
   type: Schema.Literal("function_call_output"),
   call_id: Schema.String,
-  output: Schema.String,
+  output: Schema.Array(ToolOutputContent),
+  /** The call failed. Native on some providers; others only see the content. */
+  isError: Schema.optionalKey(Schema.Boolean),
   providerData: ProviderData,
 })
 export type ToolCallOutput = typeof ToolCallOutput.Type
@@ -207,6 +219,7 @@ export type HistoryItem = typeof HistoryItem.Type
 export const isInputText = Schema.is(InputText)
 export const isInputImage = Schema.is(InputImage)
 export const isInputFile = Schema.is(InputFile)
+export const isInputJson = Schema.is(InputJson)
 export const isOutputText = Schema.is(OutputText)
 export const isOutputImage = Schema.is(OutputImage)
 export const isRefusal = Schema.is(Refusal)
@@ -285,8 +298,15 @@ export const assistantText = (text: string): Message => ({
   content: [{ type: "output_text", text }],
 })
 
-export const toolCallOutput = (call_id: string, output: string): ToolCallOutput => ({
+/** A tool output with one text part. */
+export const toolCallOutput = (call_id: string, text: string): ToolCallOutput => ({
   type: "function_call_output",
   call_id,
-  output,
+  output: [{ type: "input_text", text }],
 })
+
+export const text = (text: string): InputText => ({ type: "input_text", text })
+export const json = (value: Schema.Json): InputJson => ({ type: "input_json", value })
+export const image = (source: ImageSource): InputImage => ({ type: "input_image", source })
+export const file = (source: FileSource, filename?: string): InputFile =>
+  filename === undefined ? { type: "input_file", source } : { type: "input_file", source, filename }

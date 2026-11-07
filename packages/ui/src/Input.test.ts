@@ -1,3 +1,4 @@
+import * as Approval from "@effect-uai/core/Approval"
 import * as Image from "@effect-uai/core/Image"
 import { describe, it } from "@effect/vitest"
 import { Effect, Exit, Schema } from "effect"
@@ -34,6 +35,34 @@ describe("Input wire codec", () => {
       const body = JSON.stringify({ ...Input.submit("Hi"), data: { templateId: 42 } })
       const exit = yield* Effect.exit(Schema.decodeUnknownEffect(Body)(body))
       expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  )
+
+  it.effect("carries the app's own decisions and rejects one it doesn't define", () =>
+    Effect.gen(function* () {
+      const Decisions = Approval.decisions({
+        Approve: { always: Schema.optionalKey(Schema.Boolean) },
+        Respond: { output: Schema.Json },
+      })
+      const Booking = Input.make(Schema.Struct({}), Decisions.schema)
+      const Resolve = Schema.fromJsonString(Booking.InputJson)
+      const input = {
+        ...Input.resolve([
+          { callId: "c1", decision: Decisions.Approve({ always: true }) },
+          { callId: "c2", decision: Decisions.Respond({ output: { booked: true } }) },
+        ]),
+        id: InputId.make("in_1"),
+      }
+      const body = yield* Schema.encodeEffect(Resolve)(input)
+      expect(yield* Schema.decodeUnknownEffect(Resolve)(body)).toEqual(input)
+
+      const denied = JSON.stringify({
+        ...input,
+        decisions: [{ callId: "c1", decision: { _tag: "Deny" } }],
+      })
+      expect(Exit.isFailure(yield* Effect.exit(Schema.decodeUnknownEffect(Resolve)(denied)))).toBe(
+        true,
+      )
     }),
   )
 })

@@ -16,7 +16,7 @@ const started: RunEvent = {
   type: "run-started",
   runId: r1,
   inputs: [],
-  protocol: 1,
+  protocol: 2,
 }
 
 describe("RunView.step", () => {

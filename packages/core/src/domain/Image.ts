@@ -64,6 +64,16 @@ export const ImageSource: Schema.Codec<ImageSource> = Schema.Union([
   ImageBytesSource,
 ])
 
+/** `ImageSource` as JSON: bytes encode as base64 (e.g. tool output on a UI wire). */
+export const ImageSourceJson = Schema.Union([
+  ImageUrlSource,
+  ImageBase64Source,
+  Schema.TaggedStruct("bytes", {
+    bytes: Schema.Uint8ArrayFromBase64,
+    mimeType: ImageMimeTypeSchema,
+  }),
+])
+
 export const imageUrl = (url: string, mimeType?: ImageMimeType): ImageUrlSource =>
   mimeType !== undefined ? { _tag: "url", url, mimeType } : { _tag: "url", url }
 

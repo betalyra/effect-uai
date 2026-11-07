@@ -24,7 +24,7 @@ describe("RunEvent wire codec", () => {
         type: "run-started",
         runId: r1,
         inputs: [RunEvent.InputId.make("in_1")],
-        protocol: 1,
+        protocol: 2,
       }),
     },
     {
@@ -69,7 +69,7 @@ describe("RunEvent wire codec", () => {
       frame: {
         streamId: "s",
         seq: 1,
-        event: { type: "run-started", runId: "r1", inputs: [], protocol: 2 },
+        event: { type: "run-started", runId: "r1", inputs: [], protocol: 1 },
       },
     },
     {

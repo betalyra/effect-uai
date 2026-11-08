@@ -23,7 +23,7 @@ const send = (chatId: Option<StreamId>, input: Input.Submit) =>
     const chat = yield* Option.match(chatId, { onNone: () => create, onSome: find })
     const history = yield* Ref.updateAndGet(chat.history, (h) => [...h, ...input.messages])
     return agent(history).pipe(
-      Projection.toRunEvents(),
+      Projection.toRunEvents({ contract: ChatUi }), // ChatUi = UiContract.make({}): no tools
       Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
       Run.start({ runId, inputs: [input.id] }),
       Run.complete,

@@ -133,6 +133,7 @@ describe("Projection.toRunEvents", () => {
         ReadonlyArray<RunEvent>
       >([
         { type: "tool-partial", callId: "s1", name: "search", value: { hits: 1 } },
+        { type: "tool-partial", callId: "s1", name: "search", value: { hits: 3 } },
         {
           type: "tool-result",
           callId: "s1",

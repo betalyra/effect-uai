@@ -12,7 +12,8 @@ replace, or skip.
 
 Server:
 
-- `Projection`: turns an effect-uai loop into `RunEvent`s (`toRunEvents()`).
+- `Projection`: turns an effect-uai loop into `RunEvent`s
+  (`toRunEvents({ contract })`; the contract's tool schemas encode tool values).
 - `Run`: one operator per job. `start` (`run-started` first), `complete`
   (one terminal last), `stopWhen` (stop on a signal), `failed` (an error as
   `run-failed`), `sequence` (per-stream `seq`), `coalesce` (merge deltas).

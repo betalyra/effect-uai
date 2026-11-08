@@ -19,13 +19,14 @@ class CityNotFound extends Schema.TaggedError<CityNotFound>()("CityNotFound", {
   city: Schema.String,
 }) {}
 
-// A shared spec: Schemas only, imported by server and client.
+// A shared spec: Schemas only, imported by server and client. It needs approval,
+// so the app may close a call with `Denied`.
 const GetWeather = {
   name: "get_weather",
   description: "Current weather for a city.",
   inputSchema: Schema.Struct({ city: Schema.String }),
   outputSchema: Schema.Struct({ temperatureC: Schema.Number, observedAt: Schema.DateFromString }),
-  failureSchema: CityNotFound,
+  failureSchema: Schema.Union([CityNotFound, Approval.Denied]),
 } as const
 
 type Weather = { readonly temperatureC: number; readonly observedAt: Date }
@@ -34,7 +35,6 @@ const Metrics = Schema.Struct({ tokps: Schema.Number, at: Schema.Date })
 
 const ChatUi = UiContract.make({
   tools: [GetWeather],
-  failures: Approval.Denied,
   live: { metrics: Metrics },
 })
 type ChatPayloads = UiContract.Payloads<typeof ChatUi>
@@ -222,6 +222,16 @@ describe("UiContract", () => {
     }),
   )
 
+  it("type: a spec's schemas must encode to JSON, as history encodes with them", () => {
+    UiContract.make({
+      // @ts-expect-error Schema.Date encodes to a Date, not JSON
+      tools: [{ name: "at", inputSchema: Tool.noInput, outputSchema: Schema.Date }],
+    })
+    UiContract.make({
+      tools: [{ name: "at", inputSchema: Tool.noInput, outputSchema: Schema.DateFromString }],
+    })
+  })
+
   it("types a core Tool by its own Output and Failure", () => {
     const tool = Tool.make({
       ...GetWeather,
@@ -233,7 +243,7 @@ describe("UiContract", () => {
     >
     expectTypeOf<Block["partial"]>().toEqualTypeOf<Weather | undefined>()
     expectTypeOf<Block["outcome"]>().toEqualTypeOf<
-      Outcome<Weather, CityNotFound | ToolOutput.CoreError> | undefined
+      Outcome<Weather, CityNotFound | Approval.Denied | ToolOutput.CoreError> | undefined
     >()
   })
 

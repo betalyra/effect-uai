@@ -50,7 +50,7 @@ describe("streaming-tool-output", () => {
       )
 
       const partials = events.flatMap((e) => (e._tag === "Partial" ? [e.value.answer] : []))
-      expect(partials).toEqual(["", "Let me reason... "])
+      expect(partials).toEqual(["", "Let me reason... ", "Let me reason... 42."])
       const [outcome] = events.filter(Toolkit.isOutcome)
       expect(outcome?.result).toEqual(Result.succeed({ answer: "Let me reason... 42." }))
     }),
@@ -70,7 +70,7 @@ describe("streaming-tool-output", () => {
       )
 
       const progress = events.flatMap((e) => (e._tag === "Partial" ? [e.value.pct] : []))
-      expect(progress).toEqual([33, 67, 100])
+      expect(progress).toEqual([33, 67, 100, 100])
       const [outcome] = events.filter(Toolkit.isOutcome)
       expect(outcome?.result).toEqual(
         Result.succeed({

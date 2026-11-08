@@ -3,7 +3,7 @@
  * the ones it needs:
  *
  *   agent(history).pipe(
- *     Projection.toRunEvents(),
+ *     Projection.toRunEvents({ contract }),
  *     Run.coalesce("30 millis"),
  *     Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
  *     Run.stopWhen(Deferred.await(stop)), // durable runs

@@ -93,16 +93,18 @@ export const GetWeather = {
   description: "The weather right now in a city.",
   inputSchema: Schema.Struct({ city: Schema.String }),
   outputSchema: Schema.Struct({ temperatureC: Schema.Number, observedAt: Schema.DateFromString }),
-  failureSchema: CityNotFound,
+  // Gated by approval: the app may close a call with `Denied`.
+  failureSchema: Schema.Union([CityNotFound, Approval.Denied]),
 } as const
 
-export const ChatUi = UiContract.make({ tools: [GetWeather], failures: Approval.Denied })
+export const ChatUi = UiContract.make({ tools: [GetWeather] })
 ```
 
 The server builds the tool from the spec (`Tool.make({ ...GetWeather, run })`)
 and passes the contract to `Projection.toRunEvents({ contract: ChatUi })`.
-`failures` lists the errors the app closes calls with itself; each tool's
-`failureSchema` and core's errors are always included. The client passes
+A tool's `failureSchema` lists every error its calls can end with, including
+the ones the app closes calls with itself (`Approval.Denied`); core's errors
+are always included. The client passes
 `contract: ChatUi` to `Atoms.thread`, and each envelope is decoded once on
 arrival. A tool block carries the latest `partial` of a streaming tool and,
 once the call ends, its `outcome`:

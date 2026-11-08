@@ -172,8 +172,8 @@ the Anthropic model and the request fails fast with `AiError.Unsupported`.
 ## Streaming tools: return a `Stream`
 
 A tool that has something to show while it works returns a `Stream`. Every
-element but the last reaches the consumer as a `ToolEvent.Partial`; the last
-is the result the model sees. A partial has the tool's own output type, so
+element reaches the consumer as a `ToolEvent.Partial` as soon as it is
+produced; the last is then also the result the model sees. A partial has the tool's own output type, so
 make progress part of that type, and a UI renders partials and the result
 with the same schema:
 
@@ -370,8 +370,9 @@ const events = Toolkit.run(toolkit, calls)
 requested tool concurrently, and emits events in real time. Two event
 variants, typed per tool:
 
-- **`Partial { call_id, tool, value }`**: every element but the last of a
-  `Stream` tool. `Effect` tools produce none.
+- **`Partial { call_id, tool, value }`**: every element of a `Stream` tool,
+  as soon as it is produced (the last one is repeated in the `Output`).
+  `Effect` tools produce none.
 - **`Output { call_id, tool, result }`**: one per call, terminal. `result` is
   Effect's `Result`: `Success` with the tool's value, or `Failure` with an
   error the model sees.
@@ -532,24 +533,35 @@ HTTP/request-shaped flows get the answers with the next request:
 
 ```ts
 const { Approve, Deny, unanswered } = Approval.Default.resolve(calls.filter(isSensitive), answers)
-const closed = [
-  ...Deny.map(({ call, decision }) =>
-    close(call, new Approval.Denied({ message: decision.reason ?? "Denied by the user." })),
-  ),
-  ...unanswered.map((call) => close(call, new ToolOutput.Cancelled({ message: "No answer." }))),
-]
+const closed =
+  yield *
+  Effect.all([
+    ...Deny.map(({ call, decision }) =>
+      close(call, new Approval.Denied({ message: decision.reason ?? "Denied by the user." })),
+    ),
+    ...unanswered.map((call) => close(call, new ToolOutput.Cancelled({ message: "No answer." }))),
+  ])
 const run = [...calls.filter((c) => !isSensitive(c)), ...Approve.map((a) => a.call)]
 const events = Stream.merge(Toolkit.run(toolkit, run), Stream.fromIterable(closed))
 ```
 
-`close` builds a `ToolEvent.Output` with `Result.fail(error)`, so the model
-sees a closed call like any failed one. Those errors aren't in the tool's
-`failureSchema`, so encode them for history with your own schema:
+`close` is `Toolkit.close(toolkit, call, error)`: an Effect of an `Output`
+event with `Result.fail(error)`, so the model sees a closed call like any
+failed one. A
+sensitive tool declares the errors it may be closed with, so `Toolkit.output`
+and `next` encode them like any other failure (core's `Cancelled` is always
+possible):
 
 ```ts
-const Closings = Schema.Union([Approval.Denied, ToolOutput.Cancelled])
-const item = yield * ToolOutput.failure(call, Closings, new Approval.Denied({ message: "Not now" }))
+const sendEmail = Tool.make({ ...spec, failureSchema: Approval.Denied, run })
+// a tool you don't define yourself (MCP, a library):
+const gated = Tool.withFailures(mcpSendEmail, Approval.Denied)
 ```
+
+`close` only accepts errors some tool in the toolkit declares, and checks the
+call's own tool when it runs: closing a call whose tool doesn't declare the
+error fails right there with `UndeclaredFailure`. `Toolkit.withFailures`
+declares an error on every tool of a toolkit (e.g. a whole MCP server).
 
 `ToolOutput.success(call, outputSchema, value)` does the same for a value the
 user supplied. For a long-lived connection, where answers arrive while the run

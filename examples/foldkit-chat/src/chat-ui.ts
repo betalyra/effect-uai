@@ -22,6 +22,9 @@ export class Superseded extends Schema.TaggedError<Superseded>()("Superseded", {
   message: Schema.String,
 }) {}
 
+/** How the app closes a call that needs approval: the user denied it, or moved past it. */
+export const Closings = Schema.Union([Approval.Denied, Superseded])
+
 export const GetWeather = {
   name: "get_weather",
   description: "The weather right now in a city, e.g. 'Lisbon' or 'Tokyo'.",
@@ -51,6 +54,7 @@ export const SendEmail = {
   description: "Send an email. The user approves it before it is sent.",
   inputSchema: Schema.Struct({ to: Schema.String, subject: Schema.String, body: Schema.String }),
   outputSchema: Schema.Struct({ to: Schema.String, sentAt: Schema.DateFromString }),
+  failureSchema: Closings,
 } as const
 
 export const BookTable = {
@@ -66,14 +70,11 @@ export const BookTable = {
     time: Schema.String,
     guests: Schema.Number,
   }),
+  failureSchema: Closings,
 } as const
-
-/** How the app closes calls itself: the user denied one, or moved past it. */
-export const Closings = Schema.Union([Approval.Denied, Superseded])
 
 export const ChatUi = UiContract.make({
   tools: [GetWeather, GetDate, SendEmail, BookTable],
-  failures: Closings,
   // Live metrics while an answer streams; the latest value of each wins.
   live: { ttftMs: Schema.Number, tokensPerSecond: Schema.Number },
 })

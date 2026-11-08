@@ -1,5 +1,5 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
-import { Effect, Match, Schema, Stream } from "effect"
+import { Effect, Function, Match, Schema, Stream } from "effect"
 import type { ToolCall } from "../domain/Items.js"
 import type * as Content from "./Content.js"
 
@@ -103,6 +103,11 @@ export type Run<Input, Output, E, R> = (
   input: Input,
 ) => Effect.Effect<Output, E, R> | Stream.Stream<Output, E, R>
 
+/** Whether `run` returned a `Stream` (values as partials) rather than an `Effect` (one value). */
+export const isStreamed = <A, E, R>(
+  out: Effect.Effect<A, E, R> | Stream.Stream<A, E, R>,
+): out is Stream.Stream<A, E, R> => Stream.isStream(out)
+
 /** An `Effect` is a one-element stream. */
 export const toStream = <A, E, R>(
   out: Effect.Effect<A, E, R> | Stream.Stream<A, E, R>,
@@ -119,7 +124,10 @@ export type Tool<Name extends string, Input, Output, Failure = never, E = never,
   readonly inputSchema: ToolInputSchema<Input>
   /** Checks every value and encodes it for history and the UI. A rejected value is `OutputInvalid`. */
   readonly outputSchema?: Schema.Codec<Output, any>
-  /** The errors the model may see. */
+  /**
+   * Every error a call may end with that the model sees: errors `run` raises and
+   * errors the app closes calls with (`Approval.Denied`, see `Toolkit.close`).
+   */
   readonly failureSchema?: Schema.Codec<Failure, any>
   readonly run: Run<Input, Output, E, R>
   /** Render with the provider's strict-mode flag. Default: true. */
@@ -273,6 +281,33 @@ export const withRun = <
   const { outputSchema: _dropped, run: _replaced, ...definition } = tool
   return { ...definition, run }
 }
+
+/**
+ * Add errors a call of this tool may end with, e.g. the app's `Approval.Denied`
+ * for a tool that needs approval. Its `run` need not raise them; the app closes
+ * calls with them (`Toolkit.close`).
+ */
+export const withFailures: {
+  <F2, F2Encoded extends Schema.Json>(
+    failures: Schema.Codec<F2, F2Encoded>,
+  ): <Name extends string, Input, Output, Failure, E, R>(
+    tool: Tool<Name, Input, Output, Failure, E, R>,
+  ) => Tool<Name, Input, Output, Failure | F2, E, R>
+  <Name extends string, Input, Output, Failure, E, R, F2, F2Encoded extends Schema.Json>(
+    tool: Tool<Name, Input, Output, Failure, E, R>,
+    failures: Schema.Codec<F2, F2Encoded>,
+  ): Tool<Name, Input, Output, Failure | F2, E, R>
+} = Function.dual(
+  2,
+  <Name extends string, Input, Output, Failure, E, R, F2>(
+    tool: Tool<Name, Input, Output, Failure, E, R>,
+    failures: Schema.Codec<F2, any>,
+  ): Tool<Name, Input, Output, Failure | F2, E, R> => ({
+    ...tool,
+    failureSchema:
+      tool.failureSchema === undefined ? failures : Schema.Union([tool.failureSchema, failures]),
+  }),
+)
 
 // ---------------------------------------------------------------------------
 // Descriptors

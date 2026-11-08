@@ -9,8 +9,8 @@ Streaming tools let the user see inner work without leaking the whole event
 log back to the model.
 
 The tool's `run` returns a `Stream` of snapshots of its own output type. Every
-element but the last reaches the consumer as a `ToolEvent.Partial`; the last is
-the result the model sees. Because a partial has the tool's output type, a UI
+element reaches the consumer as a `ToolEvent.Partial` as soon as it is
+produced; the last is then also the result the model sees. Because a partial has the tool's output type, a UI
 decodes and renders it with the same schema as the result. Rich UI for the
 user, clean data for the model.
 
@@ -136,12 +136,15 @@ For a single download with 3 chunks:
 Partial { tool: "download_artifact", value: { status: "running", pct: 33, chunks: 1, bytes: "" } }
 Partial { ...                        value: { status: "running", pct: 67, chunks: 2, bytes: "" } }
 Partial { ...                        value: { status: "running", pct: 100, chunks: 3, bytes: "" } }
+Partial { ...                        value: { status: "completed", pct: 100, ... } }
 Output  { call_id, tool: "download_artifact", result: Success({ status: "completed", pct: 100, ... }) }
 ```
 
 `e.tool === "download_artifact"` narrows `value` and `result` to
 `DownloadOutput`. For the sub-agent: one `Partial` per inner `TextDelta`
 carrying the answer so far, followed by the `Output` with the full answer.
+The last value arrives twice, as a `Partial` and as the `Output`: a partial is
+never held back waiting to learn whether it is the last.
 
 ## Run it
 

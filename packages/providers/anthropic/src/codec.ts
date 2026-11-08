@@ -2,6 +2,7 @@ import { Array as Arr, Match, Option, Order, Result, Schema, pipe } from "effect
 import { Base64 } from "effect/encoding"
 import * as Items from "@effect-uai/core/Items"
 import { JsonParseError } from "@effect-uai/core/JSONL"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -161,13 +162,10 @@ const fileSourceToWire = Match.type<Items.InputFile["source"]>().pipe(
   Match.exhaustive,
 )
 
-const textOf = (p: Items.InputText | Items.InputJson): string =>
-  p.type === "input_text" ? p.text : JSON.stringify(p.value)
-
 const toolResultBlock = Match.type<Items.ToolOutputContent>().pipe(
   Match.discriminatorsExhaustive("type")({
-    input_text: (p): RequestToolResultBlock => ({ type: "text", text: textOf(p) }),
-    input_json: (p): RequestToolResultBlock => ({ type: "text", text: textOf(p) }),
+    input_text: (p): RequestToolResultBlock => ({ type: "text", text: ToolOutput.partText(p) }),
+    input_json: (p): RequestToolResultBlock => ({ type: "text", text: ToolOutput.partText(p) }),
     input_image: (p): RequestToolResultBlock => ({
       type: "image",
       source: imageSourceToWire(p.source),
@@ -180,16 +178,11 @@ const toolResultBlock = Match.type<Items.ToolOutputContent>().pipe(
   }),
 )
 
-const isTextual = (p: Items.ToolOutputContent): p is Items.InputText | Items.InputJson =>
-  p.type === "input_text" || p.type === "input_json"
-
 // Text and JSON only: one string. With media: image and document blocks.
 const toolResult = (o: Items.ToolCallOutput): RequestToolResultContent => ({
   type: "tool_result",
   tool_use_id: o.call_id,
-  content: Arr.every(o.output, isTextual)
-    ? o.output.map(textOf).join("\n")
-    : o.output.map(toolResultBlock),
+  content: Option.getOrElse(ToolOutput.text(o.output), () => o.output.map(toolResultBlock)),
   ...(o.isError === true && { is_error: true }),
 })
 

@@ -9,6 +9,7 @@ import { fileBase64, fileUrl } from "@effect-uai/core/File"
 import { imageBase64 } from "@effect-uai/core/Image"
 import * as Tool from "@effect-uai/core/Tool"
 import * as CoreToolkit from "@effect-uai/core/Toolkit"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import type { McpClient } from "./Client.js"
 import { type McpError, McpProtocolError } from "./McpError.js"
 import {
@@ -64,18 +65,15 @@ const knownValue = Match.type<KnownContent>().pipe(
 const valueOf = (block: ContentBlock): string | Content.Media =>
   isKnownContent(block) ? knownValue(block) : `[${block.type} content omitted]`
 
-const single = (values: ReadonlyArray<Schema.Json | Content.Media>): Content.Value =>
-  values.length === 1 && values[0] !== undefined ? values[0] : values
-
 /**
  * A result as the tool's value: `structuredContent` when the server provides it
  * (its text blocks usually repeat it), plus any media; otherwise every block.
  */
 const outputOf = (result: CallToolResult): Content.Value => {
-  const values = (result.content ?? []).map(valueOf)
+  const values: ReadonlyArray<Schema.Json | Content.Media> = (result.content ?? []).map(valueOf)
   return Option.match(Option.fromNullishOr(result.structuredContent), {
-    onNone: () => single(values),
-    onSome: (structured) => single([structured, ...values.filter(Content.isMedia)]),
+    onNone: () => ToolOutput.single(values),
+    onSome: (structured) => ToolOutput.single([structured, ...values.filter(Content.isMedia)]),
   })
 }
 

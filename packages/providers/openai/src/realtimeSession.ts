@@ -6,13 +6,13 @@
  * `OpenAI-Beta` header: that dialect was shut down 2026-05-12.
  */
 import {
-  Array as Arr,
   Cause,
   Clock,
   DateTime,
   Duration,
   Effect,
   Match,
+  Option,
   Pull,
   Queue,
   Redacted,
@@ -32,14 +32,10 @@ import {
   RealtimeEvent,
   type RealtimeInput,
 } from "@effect-uai/core/Realtime"
-import type {
-  InputJson,
-  InputText,
-  ToolCallOutput,
-  ToolOutputContent,
-} from "@effect-uai/core/Items"
+import type { ToolCallOutput } from "@effect-uai/core/Items"
 import type { RealtimeSessionHandle } from "@effect-uai/core/RealtimeSession"
 import type { ToolDescriptor } from "@effect-uai/core/Tool"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
 import { WebSocket as WSWebSocket } from "ws"
 import type { OpenAIRealtimeModel } from "./models.js"
@@ -47,24 +43,19 @@ import { type OpenAiRegion, resolveHost } from "./region.js"
 
 const PROVIDER = "openai"
 
-const isTextual = (p: ToolOutputContent): p is InputText | InputJson =>
-  p.type === "input_text" || p.type === "input_json"
-
 // A realtime tool output is one string: text and JSON joined; media fails.
 const toolOutputString = (output: ToolCallOutput): Effect.Effect<string, AiError.Unsupported> =>
-  Arr.every(output.output, isTextual)
-    ? Effect.succeed(
-        output.output
-          .map((p) => (p.type === "input_text" ? p.text : JSON.stringify(p.value)))
-          .join("\n"),
-      )
-    : Effect.fail(
+  Option.match(ToolOutput.text(output.output), {
+    onSome: Effect.succeed,
+    onNone: () =>
+      Effect.fail(
         new AiError.Unsupported({
           provider: PROVIDER,
           capability: "tool_output_media",
           reason: "Realtime tool outputs carry text only.",
         }),
-      )
+      ),
+  })
 
 /** `baseUrl` plus `headers` are what make a compatible gateway reachable. */
 export type Config = {

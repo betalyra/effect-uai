@@ -285,8 +285,7 @@ export const describeFailures: {
     describe: (e: unknown) => string | undefined,
   ): DescribeToolkit<T, string | undefined> =>
     mapLocal(toolkit, (tool) => {
-      const isDeclared: (e: unknown) => boolean =
-        tool.failureSchema === undefined ? () => false : Schema.is(tool.failureSchema)
+      const isDeclared = isDeclaredBy(tool)
       const toFailed = (e: unknown) =>
         isDeclared(e)
           ? e
@@ -397,65 +396,85 @@ const execute = (
   call: ToolCall,
   input: unknown,
 ): Stream.Stream<AnyEvent, unknown, any> =>
-  Stream.unwrap(
-    Effect.gen(function* () {
-      const last = yield* Ref.make(Option.none<unknown>())
-      const partials = toStream(tool.run(input)).pipe(
-        Stream.mapEffect((value) => Effect.as(check(tool, value), value)),
-        Stream.mapEffect((value) => Ref.getAndSet(last, Option.some(value))),
-        Stream.filterMap((previous) => Result.fromOption(previous, () => undefined)),
-        Stream.map((value): AnyEvent => ({
-          _tag: "Partial",
-          call_id: call.call_id,
-          tool: tool.name,
-          value,
-        })),
-      )
-      const final = Effect.map(
-        Ref.get(last),
-        Option.match({
-          onNone: () => Result.fail(new OutputInvalid({ message: "The tool produced no value" })),
-          onSome: Result.succeed,
+  toStream(tool.run(input)).pipe(
+    Stream.mapEffect((value) => Effect.as(check(tool, value), Option.some(value))),
+    // `None` marks a clean end: `concat` never runs after a failure, so a
+    // failing tool can't have its last partial promoted to a `Success`.
+    Stream.concat(Stream.succeed(Option.none<unknown>())),
+    Stream.mapAccum(
+      () => Option.none<unknown>(),
+      (last, next): readonly [Option.Option<unknown>, ReadonlyArray<AnyEvent>] =>
+        Option.match(next, {
+          onSome: (value) => [
+            Option.some(value),
+            Option.match(last, {
+              onNone: () => [],
+              onSome: (previous) => [
+                { _tag: "Partial", call_id: call.call_id, tool: tool.name, value: previous },
+              ],
+            }),
+          ],
+          onNone: () => [
+            Option.none(),
+            [
+              done(
+                call,
+                Option.match(last, {
+                  onNone: () =>
+                    Result.fail(new OutputInvalid({ message: "The tool produced no value" })),
+                  onSome: Result.succeed,
+                }),
+              ),
+            ],
+          ],
         }),
-      )
-      return partials.pipe(
-        Stream.concat(Stream.fromEffect(Effect.map(final, (result) => done(call, result)))),
-        Stream.catchCause((cause) =>
-          Stream.fromEffect(
-            Effect.map(declared(tool, cause), (error) => done(call, Result.fail(error))),
-          ),
-        ),
-      )
-    }),
+    ),
+    Stream.catchCause((cause) =>
+      Stream.fromEffect(
+        Effect.map(declared(tool, cause), (error) => done(call, Result.fail(error))),
+      ),
+    ),
   )
 
-// Marks a value `outputSchema` rejected, apart from the tool's own errors.
-class EncodeFailed {
-  constructor(readonly message: string) {}
-}
+// Marks a value `outputSchema` rejected, apart from the tool's own errors
+// (matched by class, so a tool error with the same tag can't pose as one).
+class EncodeFailed extends Data.TaggedError("EncodeFailed")<{ readonly message: string }> {}
 
 const check = (tool: AnyLocalTool, value: unknown): Effect.Effect<unknown, EncodeFailed> =>
   tool.outputSchema === undefined
     ? Effect.void
     : Schema.encodeUnknownEffect(tool.outputSchema)(value).pipe(
-        Effect.mapError((e) => new EncodeFailed(e.message.slice(0, 500))),
+        Effect.mapError((e) => new EncodeFailed({ message: e.message.slice(0, 500) })),
       )
+
+const isDeclaredBy = (tool: AnyLocalTool): ((e: unknown) => boolean) =>
+  tool.failureSchema === undefined ? () => false : Schema.is(tool.failureSchema)
+
+// The error of a cause holding exactly one failure; `None` for anything mixed.
+const soleError = (cause: Cause.Cause<unknown>): Option.Option<unknown> =>
+  Option.fromNullishOr(cause.reasons.length === 1 ? cause.reasons[0] : undefined).pipe(
+    Option.filter(Cause.isFailReason),
+    Option.map((reason) => reason.error),
+  )
 
 // One failure the tool declared (or a rejected value) becomes a `Failure`.
 // Anything else (undeclared errors, defects, interruption) propagates.
 const declared = (
   tool: AnyLocalTool,
   cause: Cause.Cause<unknown>,
-): Effect.Effect<unknown, unknown> => {
-  const only = cause.reasons.length === 1 ? cause.reasons[0] : undefined
-  if (only === undefined || !Cause.isFailReason(only)) return Effect.failCause(cause)
-  if (only.error instanceof EncodeFailed) {
-    return Effect.succeed(new OutputInvalid({ message: only.error.message }))
-  }
-  return tool.failureSchema !== undefined && Schema.is(tool.failureSchema)(only.error)
-    ? Effect.succeed(only.error)
-    : Effect.failCause(cause)
-}
+): Effect.Effect<unknown, unknown> =>
+  soleError(cause).pipe(
+    Option.flatMap((error) =>
+      Match.value(error).pipe(
+        Match.when(Match.instanceOf(EncodeFailed), (e) =>
+          Option.some<unknown>(new OutputInvalid({ message: e.message })),
+        ),
+        Match.when(isDeclaredBy(tool), Option.some),
+        Match.orElse(() => Option.none()),
+      ),
+    ),
+    Option.match({ onNone: () => Effect.failCause(cause), onSome: Effect.succeed }),
+  )
 
 // ---------------------------------------------------------------------------
 // To history and back
@@ -518,12 +537,16 @@ export function decode(
   const tool = local(toolkit, name)
   const decodeWith = (schema: Schema.Codec<unknown, unknown>) =>
     Effect.flatMap(ToolOutput.encoded(item.output), Schema.decodeUnknownEffect(schema))
-  if (item.isError === true) return Effect.map(decodeWith(failures(tool)), Result.fail)
-  return Option.match(Option.fromNullishOr(tool?.outputSchema), {
-    // Without `outputSchema` the parts' own types say what the value is.
-    onNone: () => Effect.succeed(Result.succeed(ToolOutput.value(item.output))),
-    onSome: (schema) => Effect.map(decodeWith(schema), Result.succeed),
-  })
+  return Match.value(item).pipe(
+    Match.when({ isError: true }, () => Effect.map(decodeWith(failures(tool)), Result.fail)),
+    Match.orElse(() =>
+      Option.match(Option.fromNullishOr(tool?.outputSchema), {
+        // Without `outputSchema` the parts' own types say what the value is.
+        onNone: () => Effect.succeed(Result.succeed(ToolOutput.value(item.output))),
+        onSome: (schema) => Effect.map(decodeWith(schema), Result.succeed),
+      }),
+    ),
+  )
 }
 
 // ---------------------------------------------------------------------------

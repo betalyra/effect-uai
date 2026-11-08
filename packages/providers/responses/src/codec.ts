@@ -5,10 +5,9 @@ import type {
   HistoryItem,
   InputFile,
   InputImage,
-  InputJson,
-  InputText,
   ToolOutputContent,
 } from "@effect-uai/core/Items"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -220,13 +219,10 @@ const fileSourceToInput = Match.type<InputFile["source"]>().pipe(
   Match.exhaustive,
 )
 
-const textOf = (p: InputText | InputJson): string =>
-  p.type === "input_text" ? p.text : JSON.stringify(p.value)
-
 const toolOutputPart = Match.type<ToolOutputContent>().pipe(
   Match.discriminatorsExhaustive("type")({
-    input_text: (p) => ({ type: "input_text", text: textOf(p) }),
-    input_json: (p) => ({ type: "input_text", text: textOf(p) }),
+    input_text: (p) => ({ type: "input_text", text: ToolOutput.partText(p) }),
+    input_json: (p) => ({ type: "input_text", text: ToolOutput.partText(p) }),
     input_image: (p) => ({ type: "input_image", image_url: imageSourceToUrl(p.source) }),
     input_file: (p) => ({
       type: "input_file",
@@ -236,13 +232,10 @@ const toolOutputPart = Match.type<ToolOutputContent>().pipe(
   }),
 )
 
-const isTextual = (p: ToolOutputContent): p is InputText | InputJson =>
-  p.type === "input_text" || p.type === "input_json"
-
 // Text and JSON only: one string (the widest supported form). With media: native parts.
 // No error flag on this wire: a failure is told by its content.
 const toolOutput = (parts: ReadonlyArray<ToolOutputContent>): string | ReadonlyArray<object> =>
-  Arr.every(parts, isTextual) ? parts.map(textOf).join("\n") : parts.map(toolOutputPart)
+  Option.getOrElse(ToolOutput.text(parts), () => parts.map(toolOutputPart))
 
 const contentBlockToInput = Match.type<ContentBlock>().pipe(
   Match.discriminatorsExhaustive("type")({

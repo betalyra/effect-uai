@@ -25,7 +25,7 @@ Effect.forever(
   Settle.drainBurst(inbox, "300 millis").pipe(
     Effect.flatMap((batch) =>
       agent([...history, ...batch.flatMap((input) => input.messages)]).pipe(
-        Projection.toRunEvents(),
+        Projection.toRunEvents({ contract: ChatUi }), // ChatUi = UiContract.make({}): no tools
         Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
         Run.stopWhen(Deferred.await(stop)),
         Run.start({ runId, inputs: batch.map((i) => i.id) }),

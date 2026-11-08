@@ -7,6 +7,7 @@ import {
   Function,
   Match,
   Option,
+  Predicate,
   Record,
   Ref,
   Result,
@@ -31,8 +32,10 @@ import {
   type ToolOutput as OutputOf,
   type ToolR,
   type ToolUnhandled,
+  isStreamed,
   toDescriptors,
   toStream,
+  withFailures as withToolFailures,
 } from "./Tool.js"
 import type * as ToolEvent from "./ToolEvent.js"
 import * as ToolOutput from "./ToolOutput.js"
@@ -237,7 +240,8 @@ const mapLocal = <T extends Toolkit, Out>(
 
 /**
  * Wrap every local tool's `run`. Stacks with `pipe`, inner first: the last
- * `wrap` runs first.
+ * `wrap` runs first. The middleware sees a stream; an `Effect` tool stays one,
+ * with the stream's last value.
  *
  *   const observed = pipe(toolkit, Toolkit.wrap(logging), Toolkit.wrap(authz))
  */
@@ -249,10 +253,53 @@ export const wrap: {
 } = Function.dual(
   2,
   <T extends Toolkit, R2, E2>(toolkit: T, middleware: Middleware<R2, E2>): WrapToolkit<T, R2, E2> =>
-    mapLocal(toolkit, (tool) => ({
-      ...tool,
-      run: middleware((input: unknown) => toStream(tool.run(input)), tool.name),
-    })),
+    mapLocal(toolkit, (tool) => {
+      const wrapped = middleware((input: unknown) => toStream(tool.run(input)), tool.name)
+      // Keeps the shape: an `Effect` tool stays single-valued, so it emits no partials.
+      return {
+        ...tool,
+        run: (input: unknown) =>
+          isStreamed(tool.run(input)) ? wrapped(input) : lastOf(tool.name, wrapped(input)),
+      }
+    }),
+)
+
+const lastOf = <A, E, R>(name: string, values: Stream.Stream<A, E, R>): Effect.Effect<A, E, R> =>
+  Effect.flatMap(
+    Stream.runLast(values),
+    Option.match({
+      onSome: Effect.succeed,
+      onNone: () => Effect.die(`A middleware left the Effect tool "${name}" without a value`),
+    }),
+  )
+
+type AddFailures<T extends AnyTool, F2> =
+  T extends Tool<infer N, infer I, infer O, infer F, infer E, infer R>
+    ? Tool<N, I, O, F | F2, E, R>
+    : T
+
+type AddFailuresToolkit<T extends ToolMap, F2> = {
+  readonly [K in keyof T]: T[K] extends AnyTool ? AddFailures<T[K], F2> : T[K]
+}
+
+/**
+ * `Tool.withFailures` for every local tool, e.g. a whole MCP toolkit that needs
+ * approval. Prefer it per tool when only some tools are gated.
+ */
+export const withFailures: {
+  <F2, F2Encoded extends Schema.Json>(
+    failures: Schema.Codec<F2, F2Encoded>,
+  ): <T extends Toolkit>(toolkit: T) => AddFailuresToolkit<T, F2>
+  <T extends Toolkit, F2, F2Encoded extends Schema.Json>(
+    toolkit: T,
+    failures: Schema.Codec<F2, F2Encoded>,
+  ): AddFailuresToolkit<T, F2>
+} = Function.dual(
+  2,
+  <T extends Toolkit, F2>(
+    toolkit: T,
+    failures: Schema.Codec<F2, Schema.Json>,
+  ): AddFailuresToolkit<T, F2> => mapLocal(toolkit, (tool) => withToolFailures(tool, failures)),
 )
 
 // `D` is what `describe` returns: with `undefined` possible, some errors stay on the stream.
@@ -299,7 +346,11 @@ export const describeFailures: {
           tool.failureSchema === undefined
             ? ToolFailed
             : Schema.Union([tool.failureSchema, ToolFailed]),
-        run: (input: unknown) => Stream.mapError(toStream(tool.run(input)), toFailed),
+        // Keeps the shape: an `Effect` tool must not start emitting partials.
+        run: (input: unknown) => {
+          const out = tool.run(input)
+          return isStreamed(out) ? Stream.mapError(out, toFailed) : Effect.mapError(out, toFailed)
+        },
       }
     }),
 )
@@ -389,14 +440,34 @@ const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<AnyEvent, un
     ),
   )
 
-// Every element but the last is a `Partial`; the last is the `Success`. Each
-// value is checked against `outputSchema` and handed on decoded.
+// An `Effect` tool emits its `Output`. A `Stream` tool emits each value as a
+// `Partial` as it arrives, then the last one again as the `Output`. Each value
+// is checked against `outputSchema` and handed on decoded.
 const execute = (
   tool: AnyLocalTool,
   call: ToolCall,
   input: unknown,
-): Stream.Stream<AnyEvent, unknown, any> =>
-  toStream(tool.run(input)).pipe(
+): Stream.Stream<AnyEvent, unknown, any> => {
+  const out = tool.run(input)
+  const events = isStreamed(out)
+    ? streamed(tool, call, out)
+    : Stream.fromEffect(
+        Effect.map(
+          Effect.tap(out, (value) => check(tool, value)),
+          (value) => done(call, Result.succeed(value)),
+        ),
+      )
+  return Stream.catchCause(events, (cause) =>
+    Stream.fromEffect(Effect.map(declared(tool, cause), (error) => done(call, Result.fail(error)))),
+  )
+}
+
+const streamed = (
+  tool: AnyLocalTool,
+  call: ToolCall,
+  values: Stream.Stream<unknown, unknown, unknown>,
+): Stream.Stream<AnyEvent, unknown, unknown> =>
+  values.pipe(
     Stream.mapEffect((value) => Effect.as(check(tool, value), Option.some(value))),
     // `None` marks a clean end: `concat` never runs after a failure, so a
     // failing tool can't have its last partial promoted to a `Success`.
@@ -407,15 +478,10 @@ const execute = (
         Option.match(next, {
           onSome: (value) => [
             Option.some(value),
-            Option.match(last, {
-              onNone: () => [],
-              onSome: (previous) => [
-                { _tag: "Partial", call_id: call.call_id, tool: tool.name, value: previous },
-              ],
-            }),
+            [{ _tag: "Partial", call_id: call.call_id, tool: tool.name, value }],
           ],
           onNone: () => [
-            Option.none(),
+            last,
             [
               done(
                 call,
@@ -428,11 +494,6 @@ const execute = (
             ],
           ],
         }),
-    ),
-    Stream.catchCause((cause) =>
-      Stream.fromEffect(
-        Effect.map(declared(tool, cause), (error) => done(call, Result.fail(error))),
-      ),
     ),
   )
 
@@ -488,6 +549,49 @@ const failures = (tool: AnyLocalTool | undefined): Schema.Codec<unknown, Schema.
 
 /** Any call's outcome, as `run` emits it. */
 export type Outcome = ToolEvent.Output<string, unknown, unknown>
+
+/** Every error the toolkit's tools declare (core's errors are always possible too). */
+export type ToolkitFailure<T extends Toolkit> = ToolMap extends T
+  ? unknown
+  : ToolFailure<T[keyof T]>
+
+/** `Toolkit.close` got an error the call's tool doesn't declare: a bug in the app. */
+export class UndeclaredFailure extends Data.TaggedError("UndeclaredFailure")<{
+  readonly tool: string
+  readonly message: string
+}> {}
+
+const describeError = (error: unknown): string =>
+  Predicate.hasProperty(error, "_tag") && Predicate.isString(error._tag)
+    ? error._tag
+    : String(error)
+
+/**
+ * A call the app closes itself (denied, superseded), as the outcome `run`
+ * would emit. `error` must be core's or declared by the call's tool
+ * (`failureSchema`, `Tool.withFailures`), else this fails with `UndeclaredFailure`.
+ */
+export const close = <T extends Toolkit>(
+  toolkit: T,
+  call: ToolCall,
+  error: ToolkitFailure<T> | CoreError,
+): Effect.Effect<
+  ToolEvent.Output<string, never, ToolkitFailure<T> | CoreError>,
+  UndeclaredFailure
+> =>
+  Schema.is(failures(local(toolkit, call.name)))(error)
+    ? Effect.succeed({
+        _tag: "Output",
+        call_id: call.call_id,
+        tool: call.name,
+        result: Result.fail(error),
+      })
+    : Effect.fail(
+        new UndeclaredFailure({
+          tool: call.name,
+          message: `"${call.name}" does not declare ${describeError(error)} in its failureSchema`,
+        }),
+      )
 
 /** Narrows to the `Output` members (also in a loop's mixed stream), keeping the per-tool types. */
 export const isOutcome = <A extends { readonly _tag: string }>(

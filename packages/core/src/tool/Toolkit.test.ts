@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest"
-import { Cause, Context, Effect, Exit, Layer, pipe, Result, Schema, Stream } from "effect"
+import { Cause, Context, Deferred, Effect, Exit, Layer, pipe, Result, Schema, Stream } from "effect"
 import { imageBytes } from "../domain/Image.js"
 import type { HistoryItem, ToolCall } from "../domain/Items.js"
 import type { Turn } from "../domain/Turn.js"
@@ -69,14 +69,58 @@ const escalate = Tool.declare({ name: "escalate", description: "", inputSchema: 
 const kit = Toolkit.make(weather, search, escalate)
 
 describe("Toolkit.run", () => {
-  it.effect("emits a Stream tool's values as partials and its last value as the result", () =>
+  it.effect("emits each of a Stream tool's values as a partial, then the last as the result", () =>
     Effect.gen(function* () {
       const events = yield* collect(kit, [call("search", "s1", '{"query":"x"}')])
       expect(events.map((e) => (e._tag === "Partial" ? e.value : e.result))).toEqual([
         { hits: 1 },
         { hits: 3 },
+        { hits: 4 },
         Result.succeed({ hits: 4 }),
       ])
+    }),
+  )
+
+  it.effect("emits a partial as soon as the tool produces it, not when the next arrives", () =>
+    Effect.gen(function* () {
+      const gate = yield* Deferred.make<void>()
+      const slow = Tool.make({
+        name: "slow",
+        description: "",
+        inputSchema: Tool.noInput,
+        run: () =>
+          Stream.concat(
+            Stream.succeed("searching..."),
+            Stream.fromEffect(Effect.as(Deferred.await(gate), "found")),
+          ),
+      })
+      // The second value waits for the first partial: a delayed partial deadlocks.
+      const events = yield* Toolkit.run(Toolkit.make(slow), [call("slow", "1")]).pipe(
+        Stream.tap((e) =>
+          e._tag === "Partial" && e.value === "searching..."
+            ? Deferred.succeed(gate, undefined)
+            : Effect.void,
+        ),
+        Stream.runCollect,
+      )
+      expect(events.map((e) => (e._tag === "Partial" ? e.value : e.result))).toEqual([
+        "searching...",
+        "found",
+        Result.succeed("found"),
+      ])
+    }),
+  )
+
+  it.effect("an Effect tool emits only its result, also after describeFailures", () =>
+    Effect.gen(function* () {
+      const lisbon = [call("weather", "w1", '{"city":"Lisbon"}')]
+      const plain = yield* collect(kit, lisbon)
+      const described = yield* collect(
+        Toolkit.describeFailures(kit, () => "failed"),
+        lisbon,
+      )
+      expect(plain.map((e) => e._tag)).toEqual(["Output"])
+      expect(described.map((e) => e._tag)).toEqual(["Output"])
     }),
   )
 
@@ -242,6 +286,71 @@ describe("Toolkit.output and Toolkit.decode", () => {
   )
 })
 
+describe("Tool.withFailures and Toolkit.close", () => {
+  class Denied extends Schema.TaggedError<Denied>()("Denied", { message: Schema.String }) {}
+
+  // Only the tool that needs approval may be closed with `Denied`.
+  const gated = Toolkit.make(Tool.withFailures(weather, Denied), search)
+  const denied = new Denied({ message: "not now" })
+
+  it.effect("a closing the tool declares round-trips through history", () =>
+    Effect.gen(function* () {
+      const closed = yield* Toolkit.close(gated, call("weather", "1"), denied)
+      const item = yield* Toolkit.output(gated, closed)
+      expect(item.isError).toBe(true)
+      expect(yield* Toolkit.decode(gated, "weather", item)).toEqual(Result.fail(denied))
+    }),
+  )
+
+  it.effect("closing with an error the call's tool doesn't declare fails at close", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(Toolkit.close(gated, call("search", "2"), denied))
+      expect(error).toBeInstanceOf(Toolkit.UndeclaredFailure)
+      expect(error.tool).toBe("search")
+    }),
+  )
+
+  it.effect("core's errors close any call", () =>
+    Effect.gen(function* () {
+      const cancelled = new ToolOutput.Cancelled({ message: "moved on" })
+      const closed = yield* Toolkit.close(gated, call("search", "3"), cancelled)
+      expect(closed.result).toEqual(Result.fail(cancelled))
+    }),
+  )
+
+  it.effect("Toolkit.withFailures declares the closing on every local tool", () =>
+    Effect.gen(function* () {
+      const all = Toolkit.withFailures(kit, Denied)
+      const closed = yield* Toolkit.close(all, call("search", "4"), denied)
+      const item = yield* Toolkit.output(all, closed)
+      expect(yield* Toolkit.decode(all, "search", item)).toEqual(Result.fail(denied))
+    }),
+  )
+
+  it.effect("keeps the tool's own failures declared", () =>
+    Effect.gen(function* () {
+      const [event] = yield* outcomes(gated, [call("weather", "3", '{"city":"Atlantis"}')])
+      expect(failureOf(event!.result)).toEqual(new CityNotFound({ city: "Atlantis" }))
+    }),
+  )
+
+  it("type: close takes only errors the toolkit declares", () => {
+    const decoded = Toolkit.decode(gated, "weather", {
+      type: "function_call_output",
+      call_id: "1",
+      output: [],
+    })
+    expectTypeOf<Effect.Success<typeof decoded>>().toEqualTypeOf<
+      Result.Result<
+        { readonly city: string; readonly at: Date },
+        CityNotFound | Denied | ToolOutput.CoreError
+      >
+    >()
+    // @ts-expect-error ApiDown is no tool's declared failure
+    Toolkit.close(gated, call("weather", "4"), new ApiDown())
+  })
+})
+
 describe("Toolkit.next", () => {
   it.effect("forwards every event, then continues with the turn and encoded outputs appended", () =>
     Effect.gen(function* () {
@@ -256,7 +365,15 @@ describe("Toolkit.next", () => {
         Toolkit.next(kit, state, turn),
         Stream.runCollect,
       )
-      expect(steps.map((s) => s._tag)).toEqual(["Value", "Value", "Value", "Value", "Next"])
+      // weather: Output; search: three partials and its Output.
+      expect(steps.map((s) => s._tag)).toEqual([
+        "Value",
+        "Value",
+        "Value",
+        "Value",
+        "Value",
+        "Next",
+      ])
 
       const last = steps.at(-1)
       expect(last?._tag === "Next" && last.state).toEqual({
@@ -310,6 +427,24 @@ describe("Toolkit.wrap and Toolkit.describeFailures", () => {
       )
       expect(recorded).toEqual(["search"])
       expect(events.map((e) => e.result._tag)).toEqual(["Success", "Failure"])
+    }),
+  )
+
+  it.effect("wrap keeps each tool's shape: an Effect tool emits no partials", () =>
+    Effect.gen(function* () {
+      const wrapped = pipe(kit, Toolkit.wrap(audited))
+      const events = yield* Toolkit.run(
+        wrapped,
+        [call("weather", "1", '{"city":"Lisbon"}'), call("search", "2", '{"query":"x"}')],
+        { concurrency: 1 },
+      ).pipe(Stream.runCollect, Effect.provideService(Audit, { record: () => Effect.void }))
+      expect(events.map((e) => `${e.tool}:${e._tag}`)).toEqual([
+        "weather:Output",
+        "search:Partial",
+        "search:Partial",
+        "search:Partial",
+        "search:Output",
+      ])
     }),
   )
 

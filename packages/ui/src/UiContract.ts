@@ -21,7 +21,8 @@
  *
  * A tool is a core `Tool` or a shared spec (`as const`, schemas only). Its
  * result is `Success { value } | Failure { error }`: the error is the tool's
- * `failureSchema`, core's `ToolOutput.CoreError` or the contract's `failures`.
+ * `failureSchema` (app closings like `Approval.Denied` included) or core's
+ * `ToolOutput.CoreError`.
  * Without `outputSchema`, values are a `Content.Value` (media as classes).
  */
 import * as Content from "@effect-uai/core/Content"
@@ -36,19 +37,19 @@ import * as RunView from "./RunView.js"
 import * as Thread from "./Thread.js"
 
 type AnyCodec = Schema.Codec<any, any, never, never>
+// Tool values reach history and the UI through the same schema, so it must encode to JSON.
+type JsonCodec = Schema.Codec<any, Schema.Json, never, never>
 
 /** A tool as the contract sees it: a core `Tool` or a shared spec (`as const`). */
 export type ToolSpec = {
   readonly name: string
   readonly inputSchema: AnyCodec | ToolInputSchema<any>
-  readonly outputSchema?: AnyCodec
-  readonly failureSchema?: AnyCodec
+  readonly outputSchema?: JsonCodec
+  readonly failureSchema?: JsonCodec
 }
 
 export type Spec = {
   readonly tools?: ReadonlyArray<ToolSpec>
-  /** Errors the app closes calls with (denied, superseded): every tool's result may carry one. */
-  readonly failures?: AnyCodec
   readonly objects?: Readonly<Record<string, AnyCodec>>
   readonly data?: Readonly<Record<string, AnyCodec>>
   readonly live?: Readonly<Record<string, AnyCodec>>
@@ -68,13 +69,12 @@ type FailureOf<T> = T extends { readonly _tag: "LocalTool" }
   : T extends { readonly failureSchema: infer F extends Schema.Top }
     ? F["Type"]
     : never
-type AppFailureOf<S extends Spec> = S["failures"] extends Schema.Top ? S["failures"]["Type"] : never
-type ToolOf<T, App> = T extends ToolSpec
+type ToolOf<T> = T extends ToolSpec
   ? {
       readonly name: T["name"]
       readonly input: InputOf<T["inputSchema"]>
       readonly output: OutputOf<T>
-      readonly failure: FailureOf<T> | ToolOutput.CoreError | App
+      readonly failure: FailureOf<T> | ToolOutput.CoreError
     }
   : never
 type ElementOf<T> = T extends ReadonlyArray<infer E> ? E : never
@@ -86,7 +86,7 @@ type NamedOf<M> = {
 }[keyof M & string]
 /** The payload types a spec describes: its listed names only. */
 export type PayloadsOf<S extends Spec> = {
-  readonly tool: ToolOf<ElementOf<S["tools"]>, AppFailureOf<S>>
+  readonly tool: ToolOf<ElementOf<S["tools"]>>
   readonly object: NamedOf<S["objects"]>
   readonly data: NamedOf<S["data"]>
   readonly live: NamedOf<S["live"]>
@@ -168,17 +168,15 @@ const inputCodec = (tool: ToolSpec): PayloadCodec => {
     return !(result instanceof Promise) && result.issues === undefined
   })
 }
+// The tool's own schemas, as `Toolkit.output` uses them: they encode to JSON, so
+// the UI and history agree by construction (no `toCodecJson` on top).
 const outputCodec = (tool: ToolSpec | undefined): PayloadCodec =>
-  json(tool?.outputSchema ?? Content.Value)
+  tool?.outputSchema ?? Content.Value
 
-const failureCodec = (tool: ToolSpec | undefined, app: AnyCodec | undefined): PayloadCodec =>
-  json(
-    Schema.Union([
-      ...(tool?.failureSchema === undefined ? [] : [tool.failureSchema]),
-      ToolOutput.CoreError,
-      ...(app === undefined ? [] : [app]),
-    ]),
-  )
+const failureCodec = (tool: ToolSpec | undefined): PayloadCodec =>
+  tool?.failureSchema === undefined
+    ? ToolOutput.CoreError
+    : Schema.Union([tool.failureSchema, ToolOutput.CoreError])
 
 const entries = (record: Readonly<Record<string, AnyCodec>> | undefined) =>
   Object.entries(record ?? {})
@@ -217,7 +215,7 @@ export function make(spec: Spec): Loose {
   const toolNames = tools.map((t) => t.name)
   const metadata = spec.metadata === undefined ? Schema.Json : json(spec.metadata)
   const resultCodec = (tool: ToolSpec | undefined) =>
-    Event.outcome(outputCodec(tool), failureCodec(tool, spec.failures))
+    Event.outcome(outputCodec(tool), failureCodec(tool))
   // Built once per tool; an unlisted name falls back to the tool-less codecs.
   const codecsOf = (tool: ToolSpec | undefined) => ({
     output: outputCodec(tool),
@@ -290,12 +288,7 @@ export function make(spec: Spec): Loose {
     block: Schema.Union([
       ...RunView.contentBlocks,
       ...tools.map((t) =>
-        RunView.toolBlock(
-          listed(t.name),
-          inputCodec(t),
-          outputCodec(t),
-          failureCodec(t, spec.failures),
-        ),
+        RunView.toolBlock(listed(t.name), inputCodec(t), outputCodec(t), failureCodec(t)),
       ),
       RunView.toolBlock(unlisted(toolNames), Schema.Json, Schema.Json, Schema.Json),
       ...objects.map(([name, schema]) => RunView.objectBlock(listed(name), json(schema))),

@@ -235,8 +235,28 @@ Each phase ends green before the next starts; nothing is committed by me.
 - `Loop.loop` / `onTurnComplete`: the body's outer Effect infers error and
   requirements separately from its stream (needed once `next` adds
   `SchemaError`, and for helpers generic over a toolkit).
-- `Projection.toRunEvents`: contract optional (default `Content.Value`).
+- `Projection.toRunEvents`: contract required. An optional one fell back to
+  `Content.Value` / `CoreError`, which failed on declared errors and closings
+  and let `outputSchema` values through unencoded.
+- `UiContract` encodes tool values and errors with the tool's own schemas, as
+  `Toolkit.output` does (no `toCodecJson`), and a spec's `outputSchema` /
+  `failureSchema` must encode to JSON. One encoding for history and the UI.
 - Decisions live on `Input.make(data, decisions)`, not on the contract.
 - `UiContract` types a core `Tool` by its own `Output` / `Failure`.
 - `@effect-uai/ai-sdk`: outputs as JSON (media as data URLs), failures as
   `tool-output-error`.
+- A `Stream` tool emits every value as a `Partial` as soon as it is produced,
+  then the last again as the `Output` (holding each back one value hid
+  progress until the next arrived). `Effect` tools emit only the `Output`;
+  `describeFailures` keeps a tool's shape.
+- App closings (`Approval.Denied`, `Superseded`) are declared per tool, in the
+  gated tools' `failureSchema` (or via `Tool.withFailures` for tools you don't
+  own), not on the contract: `UiContract.make` has no `failures`, and
+  `Toolkit.output` / `next` / `decode` encode closings with no extra schema.
+  `Toolkit.close(toolkit, call, error)` builds the outcome as an Effect: typed
+  against the toolkit's declared failures, and checked against the call's own
+  tool when it runs (`UndeclaredFailure`), so a mismatch fails where it is made,
+  not later inside `next`. `Toolkit.withFailures` covers a whole toolkit.
+- `Toolkit.wrap` keeps a tool's shape like `describeFailures`: the middleware
+  still sees a stream, and an `Effect` tool gets the stream's last value back
+  (a middleware that drops it is a defect).

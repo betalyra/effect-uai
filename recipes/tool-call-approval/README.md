@@ -47,33 +47,37 @@ import * as ToolOutput from "@effect-uai/core/ToolOutput"
 export type Decision = typeof Approval.Default.schema.Type
 export type Answer = Approval.Answer<Decision>
 // { callId, decision: Approval.Default.Approve() | Approval.Default.Deny({ reason? }) }
+```
 
-// The errors this app closes calls with; they encode into history with this schema.
-export const Closings = Schema.Union([Approval.Denied, ToolOutput.Cancelled])
+A sensitive tool declares `Approval.Denied` in its `failureSchema`: its `run`
+never raises it, but the app may close a call with it. Core's
+`ToolOutput.Cancelled` is possible for every tool.
+
+```ts
+const deleteUser = Tool.make({
+  name: "delete_user",
+  description: "Permanently delete a user account.",
+  inputSchema: Schema.Struct({ user_id: Schema.String }),
+  failureSchema: Approval.Denied,
+  run: ({ user_id }) => Effect.succeed({ status: "deleted", user_id }),
+})
+
+// The model sees a closed call like any failed one.
+export const close = (call: Items.ToolCall, error: Approval.Denied | ToolOutput.Cancelled) =>
+  Toolkit.close(toolkit, call, error)
 ```
 
 A denied or cancelled call becomes an `Output` event whose `result` is a
-`Result.fail` with `Approval.Denied` or `ToolOutput.Cancelled`. The model
-sees it like any failed call. When appending to history, closings encode
-with `Closings` and everything else with its tool's schemas:
-
-```ts
-const toHistory = (outcome: Toolkit.Outcome) =>
-  Result.isFailure(outcome.result) && isClosing(outcome.result.failure)
-    ? ToolOutput.failure(outcome, Closings, outcome.result.failure)
-    : Toolkit.output(toolkit, outcome)
-
-const appendAll = (state: State, turn: Turn.Turn) => (outcomes: ReadonlyArray<Toolkit.Outcome>) =>
-  Effect.map(Effect.forEach(outcomes, toHistory), (items) =>
-    Turn.appendToHistory(state, turn, items),
-  )
-```
+`Result.fail`. Because the error is declared by the call's tool, `Toolkit.next`
+encodes it into history like any other outcome. `close` checks that when it
+runs: a `Denied` on `search_emails` fails with `UndeclaredFailure`. A tool from somewhere else
+(MCP, a library) gets the same with `Tool.withFailures(tool, Approval.Denied)`.
 
 ## HTTP variant (primary)
 
 ```ts
 onTurnComplete((turn) =>
-  Effect.sync(() => {
+  Effect.gen(function* () {
     const calls = Turn.getToolCalls(turn)
     // No requested tools means there is nothing to approve or execute.
     if (calls.length === 0) return stop()
@@ -82,15 +86,15 @@ onTurnComplete((turn) =>
       calls.filter(isSensitive),
       answers,
     )
-    const closed = [
+    const closed = yield* Effect.all([
       ...Deny.map(({ call, decision }) => close(call, denied(decision.reason))),
       ...unanswered.map((call) =>
         close(call, new ToolOutput.Cancelled({ message: "No approval was given." })),
       ),
-    ]
+    ])
     const run = [...calls.filter((c) => !isSensitive(c)), ...Approve.map((a) => a.call)]
     return Stream.merge(Toolkit.run(toolkit, run), Stream.fromIterable(closed)).pipe(
-      Toolkit.continueWith(appendAll(current, turn)),
+      Toolkit.next(toolkit, current, turn),
     )
   }),
 )
@@ -99,9 +103,8 @@ onTurnComplete((turn) =>
 `answers` is a `ReadonlyArray<Answer>`, matched to calls by `callId`. A gated call
 without an answer lands in `unanswered` and is closed as `Cancelled`.
 `close(call, error)` builds the `Output` event for a closed call, and
-`Toolkit.continueWith(appendAll(current, turn))` forwards every event, then
-appends the turn plus one output per call so the next provider request
-stays well-formed.
+`Toolkit.next(toolkit, current, turn)` forwards every event, then appends the
+turn plus one output per call so the next provider request stays well-formed.
 
 ### Reconciling history before the next request
 
@@ -136,8 +139,8 @@ waits until its specific answer lands on the queue.
 Match.value(settled).pipe(
   Match.tagsExhaustive({
     Approve: () => Toolkit.run(toolkit, [call]),
-    Deny: ({ reason }) => Stream.succeed(close(call, denied(reason))),
-    Cancelled: (cancelled) => Stream.succeed(close(call, cancelled)),
+    Deny: ({ reason }) => Stream.fromEffect(close(call, denied(reason))),
+    Cancelled: (cancelled) => Stream.fromEffect(close(call, cancelled)),
   }),
 )
 
@@ -148,7 +151,7 @@ onTurnComplete((turn) =>
     // Stream.unwrap supplies the Scope the router fiber lives in: it
     // stays alive as long as the consumer pulls.
     return Stream.unwrap(fromQueue(isSensitive, answers)(calls)).pipe(
-      Toolkit.continueWith(appendAll(current, turn)),
+      Toolkit.next(toolkit, current, turn),
     )
   }),
 )

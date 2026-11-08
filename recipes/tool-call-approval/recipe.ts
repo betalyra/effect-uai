@@ -17,8 +17,8 @@
  *                              `ApprovalRequested` events drive the UI.
  *
  * A denied or cancelled call still gets an output, so the model's next turn is
- * valid: an `Output` failure with `Approval.Denied` or `ToolOutput.Cancelled`,
- * encoded into history with the app's own schema (`Closings`).
+ * valid: an `Output` failure with `Approval.Denied` (declared by the sensitive
+ * tools) or core's `ToolOutput.Cancelled`, encoded like any other outcome.
  *
  * This file exports the building blocks for both. `app.ts` drives the
  * queue variant (more visual demo).
@@ -28,7 +28,6 @@ import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
-import type * as ToolEvent from "@effect-uai/core/ToolEvent"
 import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -40,7 +39,6 @@ import {
   Option,
   Queue,
   Ref,
-  Result,
   type Scope,
   Schema,
   Stream,
@@ -67,10 +65,12 @@ const searchEmails = Tool.make({
   strict: true,
 })
 
+// The sensitive tools declare `Denied`: the app may close their calls with it.
 const sendEmail = Tool.make({
   name: "send_email",
   description: "Send an email on behalf of the user.",
   inputSchema: Schema.Struct({ to: Schema.String, subject: Schema.String, body: Schema.String }),
+  failureSchema: Approval.Denied,
   run: ({ to, subject }) =>
     Effect.succeed({ status: "sent", to, subject, sent_at: new Date().toISOString() }),
   strict: true,
@@ -80,6 +80,7 @@ const deleteUser = Tool.make({
   name: "delete_user",
   description: "Permanently delete a user account.",
   inputSchema: Schema.Struct({ user_id: Schema.String }),
+  failureSchema: Approval.Denied,
   run: ({ user_id }) => Effect.succeed({ status: "deleted", user_id }),
   strict: true,
 })
@@ -103,21 +104,10 @@ export type Answer = Approval.Answer<Decision>
 // Closing calls the app decided itself
 // ---------------------------------------------------------------------------
 
-/** The errors this app closes calls with; they encode into history with this schema. */
-export const Closings = Schema.Union([Approval.Denied, ToolOutput.Cancelled])
-export type Closing = typeof Closings.Type
-const isClosing = Schema.is(Closings)
-
-/** The model sees a closed call like any failed one. */
-export const close = (
-  call: Items.ToolCall,
-  error: Closing,
-): ToolEvent.Output<string, never, Closing> => ({
-  _tag: "Output",
-  call_id: call.call_id,
-  tool: call.name,
-  result: Result.fail(error),
-})
+/** The model sees a closed call like any failed one; `Denied` only on the sensitive tools. */
+export const close = (call: Items.ToolCall, error: Approval.Denied | ToolOutput.Cancelled) =>
+  Toolkit.close(toolkit, call, error)
+type Closed = Effect.Success<ReturnType<typeof close>>
 
 const denied = (reason: string | undefined) =>
   new Approval.Denied({ message: reason ?? "The user denied this call." })
@@ -127,17 +117,6 @@ export type ApprovalRequested = {
   readonly _tag: "ApprovalRequested"
   readonly call: Items.ToolCall
 }
-
-// A closing is encoded with `Closings`; everything else with its tool's schemas.
-const toHistory = (outcome: Toolkit.Outcome) =>
-  Result.isFailure(outcome.result) && isClosing(outcome.result.failure)
-    ? ToolOutput.failure(outcome, Closings, outcome.result.failure)
-    : Toolkit.output(toolkit, outcome)
-
-const appendAll = (state: State, turn: Turn.Turn) => (outcomes: ReadonlyArray<Toolkit.Outcome>) =>
-  Effect.map(Effect.forEach(outcomes, toHistory), (items) =>
-    Turn.appendToHistory(state, turn, items),
-  )
 
 // ---------------------------------------------------------------------------
 // State
@@ -181,7 +160,7 @@ export const httpConversation = (
         const lm = yield* LanguageModel
         return lm.streamTurn({ history: current.history, model, tools: toolkit }).pipe(
           onTurnComplete((turn) =>
-            Effect.sync(() => {
+            Effect.gen(function* () {
               const calls = Turn.getToolCalls(turn)
               if (calls.length === 0) return stop()
 
@@ -189,15 +168,15 @@ export const httpConversation = (
                 calls.filter(isSensitive),
                 answers,
               )
-              const closed = [
+              const closed = yield* Effect.all([
                 ...Deny.map(({ call, decision }) => close(call, denied(decision.reason))),
                 ...unanswered.map((call) =>
                   close(call, new ToolOutput.Cancelled({ message: "No approval was given." })),
                 ),
-              ]
+              ])
               const run = [...calls.filter((c) => !isSensitive(c)), ...Approve.map((a) => a.call)]
               return Stream.merge(Toolkit.run(toolkit, run), Stream.fromIterable(closed)).pipe(
-                Toolkit.continueWith(appendAll(current, turn)),
+                Toolkit.next(toolkit, current, turn),
               )
             }),
           ),
@@ -225,7 +204,8 @@ export const fromQueue =
     calls: ReadonlyArray<Items.ToolCall>,
   ): Effect.Effect<
     Stream.Stream<
-      Toolkit.Event<typeof toolkit> | ToolEvent.Output<string, never, Closing> | ApprovalRequested
+      Toolkit.Event<typeof toolkit> | Closed | ApprovalRequested,
+      Toolkit.UndeclaredFailure
     >,
     never,
     Scope.Scope
@@ -279,8 +259,8 @@ export const fromQueue =
             Match.value(settled).pipe(
               Match.tagsExhaustive({
                 Approve: () => Toolkit.run(toolkit, [call]),
-                Deny: ({ reason }) => Stream.succeed(close(call, denied(reason))),
-                Cancelled: (cancelled) => Stream.succeed(close(call, cancelled)),
+                Deny: ({ reason }) => Stream.fromEffect(close(call, denied(reason))),
+                Cancelled: (cancelled) => Stream.fromEffect(close(call, cancelled)),
               }),
             ),
           ),
@@ -313,7 +293,7 @@ export const queueConversation = (
               // Stream.unwrap supplies the Scope the router fiber lives in: it
               // stays alive as long as the consumer pulls.
               return Stream.unwrap(fromQueue(isSensitive, answers)(calls)).pipe(
-                Toolkit.continueWith(appendAll(current, turn)),
+                Toolkit.next(toolkit, current, turn),
               )
             }),
           ),

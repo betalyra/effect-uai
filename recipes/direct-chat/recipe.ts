@@ -13,8 +13,12 @@ import * as Input from "@effect-uai/ui/Input"
 import * as Projection from "@effect-uai/ui/Projection"
 import * as Run from "@effect-uai/ui/Run"
 import { RunId, StreamId } from "@effect-uai/ui/RunEvent"
+import * as UiContract from "@effect-uai/ui/UiContract"
 import { Data, Effect, HashMap, Option, Ref, Stream } from "effect"
 import { SecureRandom } from "effect/crypto"
+
+// The chat runs no tools; a contract with tools types their values in the browser.
+export const ChatUi = UiContract.make({})
 
 export class ChatNotFound extends Data.TaggedError("ChatNotFound")<{ readonly chatId: StreamId }> {}
 
@@ -66,7 +70,7 @@ export const makeChats = <E, R>(
               ? Ref.update(chat.history, (h) => [...h, ...source.turn.items])
               : Effect.void,
           ),
-          Projection.toRunEvents(),
+          Projection.toRunEvents({ contract: ChatUi }),
           Run.coalesce("30 millis"),
           Stream.catchCause((cause) => Stream.succeed(Run.failed(cause))),
           Run.start({ runId, inputs: [input.id] }),

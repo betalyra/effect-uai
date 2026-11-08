@@ -13,7 +13,6 @@ import * as Items from "@effect-uai/core/Items"
 import type { ToolCall } from "@effect-uai/core/Items"
 import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop, value } from "@effect-uai/core/Loop"
-import type * as ToolEvent from "@effect-uai/core/ToolEvent"
 import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
@@ -33,7 +32,6 @@ import {
   Layer,
   Option,
   Ref,
-  Result,
   Schema,
   Stream,
 } from "effect"
@@ -104,30 +102,14 @@ const interrupted = (calls: ReadonlyArray<ToolCall>): RunEvent => ({
   })),
 })
 
-/** A call the app closes itself: the model and the page see it like a failed call. */
-const close = (
-  call: ToolCall,
-  error: typeof Closings.Type,
-): ToolEvent.Output<string, never, typeof Closings.Type> => ({
-  _tag: "Output",
-  call_id: call.call_id,
-  tool: call.name,
-  result: Result.fail(error),
-})
-
-const isClosing = Schema.is(Closings)
-
-// An outcome as history: a closing with the app's schema, the rest with its tool's.
-const outputOf = (outcome: Toolkit.Outcome) =>
-  Result.isFailure(outcome.result) && isClosing(outcome.result.failure)
-    ? ToolOutput.failure(outcome, Closings, outcome.result.failure)
-    : Toolkit.output(toolkit, outcome)
+// A call the app closes itself; the gated tools declare `Closings` in their `failureSchema`.
+const close = (call: ToolCall, error: typeof Closings.Type) => Toolkit.close(toolkit, call, error)
 
 // What one loop event adds to the chat's history: the turn's items, a tool's output.
 const historyOf = (source: Projection.Source): Effect.Effect<History, Schema.SchemaError> => {
   if (Items.isToolCallOutput(source)) return Effect.succeed([source])
   if (Turn.isTurnComplete(source)) return Effect.succeed(source.turn.items)
-  if (Toolkit.isOutcome(source)) return Effect.map(outputOf(source), Arr.of)
+  if (Toolkit.isOutcome(source)) return Effect.map(Toolkit.output(toolkit, source), Arr.of)
   return Effect.succeed([])
 }
 
@@ -216,15 +198,14 @@ const makeChats = Effect.gen(function* () {
       const awaiting = yield* Ref.get(chat.awaiting)
       const held = yield* Ref.get(chat.held)
       const kept = awaiting.filter((call) => onFollowUp(call) === "keep")
-      const superseded = awaiting
-        .filter((call) => onFollowUp(call) === "deny")
-        .map((call) =>
-          close(call, new Superseded({ message: "The user sent a new message instead." })),
-        )
+      const superseded = yield* Effect.forEach(
+        awaiting.filter((call) => onFollowUp(call) === "deny"),
+        (call) => close(call, new Superseded({ message: "The user sent a new message instead." })),
+      )
       const placeholders = kept
         .filter((call) => !HashSet.has(held, call.call_id))
         .map((call) => Items.toolCallOutput(call.call_id, PLACEHOLDER))
-      const closings = yield* Effect.forEach(superseded, outputOf)
+      const closings = yield* Effect.forEach(superseded, Toolkit.output(toolkit))
       yield* Ref.update(chat.history, (h) => [
         ...h,
         ...closings,
@@ -250,13 +231,13 @@ const makeChats = Effect.gen(function* () {
         toolkit,
         Approve.map((a) => a.call),
       ).pipe(Stream.filter(Toolkit.isOutcome), Stream.runCollect, Effect.provideContext(http))
-      const denied = Deny.map(({ call, decision }) =>
+      const denied = yield* Effect.forEach(Deny, ({ call, decision }) =>
         close(call, new Approval.Denied({ message: decision.reason ?? "The user declined." })),
       )
       const results: ReadonlyArray<Toolkit.Outcome> = [...ran, ...denied]
       // A call with a placeholder already has its output; it learns the verdict from a note.
       const items = yield* Effect.forEach(results, (outcome) =>
-        Effect.map(outputOf(outcome), (item) =>
+        Effect.map(Toolkit.output(toolkit, outcome), (item) =>
           HashSet.has(held, outcome.call_id)
             ? Items.userText(
                 `[${outcome.result._tag === "Success" ? "approved" : "not run"}] ${outcome.tool} (${outcome.call_id}): ${JSON.stringify(ToolOutput.value(item.output))}`,

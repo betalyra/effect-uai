@@ -86,7 +86,7 @@ describe("tool-call-approval: queue variant", () => {
   it.effect("the router retires per round, so sequential rounds over one queue both settle", () =>
     Effect.gen(function* () {
       const answers = yield* Queue.unbounded<Answer>()
-      const outcomesOf = (stream: Stream.Stream<{ readonly _tag: string }>) =>
+      const outcomesOf = <E>(stream: Stream.Stream<{ readonly _tag: string }, E>) =>
         Stream.runCollect(stream.pipe(Stream.filter(Toolkit.isOutcome)))
 
       const r1 = yield* fromQueue(isSensitive, answers)([deleteCall("c1")])

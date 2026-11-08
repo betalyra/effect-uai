@@ -5,7 +5,7 @@
  * Every value goes through a schema (the tool's `outputSchema`, else `Content.Value`):
  * the decoded side decides the shape and supplies media, the encoded side the JSON.
  */
-import { Array as Arr, Effect, Match, Predicate, Schema } from "effect"
+import { Array as Arr, Effect, Match, Option, Predicate, Schema } from "effect"
 import * as Items from "../domain/Items.js"
 import type { ToolCall, ToolCallOutput, ToolOutputContent } from "../domain/Items.js"
 import * as Content from "./Content.js"
@@ -81,9 +81,24 @@ export const failure = <E>(
 /** Any `Content.Value` as the call's output, for calls the app closes itself. */
 export const make = (call: CallId, value: Content.Value) => success(call, Content.Value, value)
 
-// A single part reads back as itself, so a one-element array of media comes back unwrapped.
-const single = <A>(values: ReadonlyArray<A>): A | ReadonlyArray<A> =>
+/** One value as itself, several (or none) as the array: how parts read back as a value. */
+export const single = <A>(values: ReadonlyArray<A>): A | ReadonlyArray<A> =>
   Arr.isReadonlyArrayNonEmpty(values) && values.length === 1 ? Arr.headNonEmpty(values) : values
+
+/** A text or JSON part. */
+export const isTextual = (p: ToolOutputContent): p is Items.InputText | Items.InputJson =>
+  p.type === "input_text" || p.type === "input_json"
+
+/** A text part verbatim, a JSON part serialized. */
+export const partText = (p: Items.InputText | Items.InputJson): string =>
+  p.type === "input_text" ? p.text : JSON.stringify(p.value)
+
+/**
+ * The parts as one string joined by newlines, for wires (or wire paths) whose
+ * tool outputs carry text only. `None` when a part is media.
+ */
+export const text = (output: ReadonlyArray<ToolOutputContent>): Option.Option<string> =>
+  Arr.every(output, isTextual) ? Option.some(output.map(partText).join("\n")) : Option.none()
 
 /** Parts back to a `Content.Value`, read from the parts' own types. */
 export const value = (output: ReadonlyArray<ToolOutputContent>): Content.Value =>

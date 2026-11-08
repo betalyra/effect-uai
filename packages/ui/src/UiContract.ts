@@ -29,7 +29,7 @@ import type * as Tool from "@effect-uai/core/Tool"
 import type { ToolInputSchema } from "@effect-uai/core/Tool"
 import type * as ToolEvent from "@effect-uai/core/ToolEvent"
 import * as ToolOutput from "@effect-uai/core/ToolOutput"
-import { Effect, Match, Result, Schema } from "effect"
+import { Effect, HashMap, Match, Option, Result, Schema } from "effect"
 import * as Event from "./RunEvent.js"
 import type { Envelope, Json, Payloads as AnyPayloads, RunEvent, ToolPayload } from "./RunEvent.js"
 import * as RunView from "./RunView.js"
@@ -216,9 +216,17 @@ export function make(spec: Spec): Loose {
   const live = entries(spec.live)
   const toolNames = tools.map((t) => t.name)
   const metadata = spec.metadata === undefined ? Schema.Json : json(spec.metadata)
-  const toolOf = (name: string) => tools.find((t) => t.name === name)
   const resultCodec = (tool: ToolSpec | undefined) =>
     Event.outcome(outputCodec(tool), failureCodec(tool, spec.failures))
+  // Built once per tool; an unlisted name falls back to the tool-less codecs.
+  const codecsOf = (tool: ToolSpec | undefined) => ({
+    output: outputCodec(tool),
+    result: resultCodec(tool),
+  })
+  const unlistedCodecs = codecsOf(undefined)
+  const codecsByName = HashMap.fromIterable(tools.map((t) => [t.name, codecsOf(t)] as const))
+  const codecs = (name: string) =>
+    Option.getOrElse(HashMap.get(codecsByName, name), () => unlistedCodecs)
 
   const interrupt = Schema.Union([
     ...tools.map((t) =>
@@ -311,7 +319,7 @@ export function make(spec: Spec): Loose {
       Effect.flatMap(toJson),
     )
   const toolResult = (call: Call, outcome: Event.Outcome<unknown, unknown>) =>
-    Schema.encodeUnknownEffect(resultCodec(toolOf(call.name)))(outcome).pipe(
+    Schema.encodeUnknownEffect(codecs(call.name).result)(outcome).pipe(
       Effect.flatMap(toOutcome),
       Effect.map((result): RunEvent => ({
         type: "tool-result",
@@ -343,7 +351,7 @@ export function make(spec: Spec): Loose {
       Match.value(event).pipe(
         Match.tagsExhaustive({
           Partial: (e) =>
-            Schema.encodeUnknownEffect(outputCodec(toolOf(e.tool)))(e.value).pipe(
+            Schema.encodeUnknownEffect(codecs(e.tool).output)(e.value).pipe(
               Effect.flatMap(toJson),
               Effect.map((value): RunEvent => ({
                 type: "tool-partial",

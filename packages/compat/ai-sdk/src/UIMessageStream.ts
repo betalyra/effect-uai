@@ -19,6 +19,7 @@ import type { FileSource } from "@effect-uai/core/File"
 import type { ImageSource } from "@effect-uai/core/Image"
 import type * as Items from "@effect-uai/core/Items"
 import type * as SSE from "@effect-uai/core/SSE"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as Turn from "@effect-uai/core/Turn"
 import { Match, Option, Stream } from "effect"
 import { Base64 } from "effect/encoding"
@@ -143,11 +144,7 @@ const partJson = Match.type<Items.ToolOutputContent>().pipe(
   }),
 )
 
-// One part reads as its value, several as an array.
-const outputJson = (o: Items.ToolCallOutput): unknown => {
-  const values = o.output.map(partJson)
-  return values.length === 1 ? values[0] : values
-}
+const outputJson = (o: Items.ToolCallOutput): unknown => ToolOutput.single(o.output.map(partJson))
 
 const toolOutputPart = (o: Items.ToolCallOutput): Part => {
   const output = outputJson(o)

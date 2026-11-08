@@ -3,7 +3,7 @@
  * wire schema, the constructors and a resolver that groups waiting calls by
  * answer. Which calls wait and what each answer means is app code.
  */
-import { Function, Schema } from "effect"
+import { Array as Arr, Function, HashMap, Option, Record, Result, Schema } from "effect"
 import type { ToolCall } from "../domain/Items.js"
 
 /** Each answer's fields; context-free schemas so the wire codec needs no services. */
@@ -67,17 +67,18 @@ export function decisions(variants: Variants): object {
   const resolve = Function.dual(
     2,
     (calls: ReadonlyArray<ToolCall>, answers: ReadonlyArray<Answer<{ readonly _tag: string }>>) => {
-      const byId = new Map(answers.map((a) => [a.callId, a.decision]))
-      const groups = Object.fromEntries(
-        tags.map((tag) => [
-          tag,
-          calls.flatMap((call) => {
-            const decision = byId.get(call.call_id)
-            return decision?._tag === tag ? [{ call, decision }] : []
-          }),
-        ]),
+      const byId = HashMap.fromIterable(Arr.map(answers, (a) => [a.callId, a.decision] as const))
+      const [answered, unanswered] = Arr.partition(calls, (call) =>
+        Option.match(HashMap.get(byId, call.call_id), {
+          onNone: () => Result.fail(call),
+          onSome: (decision) => Result.succeed({ call, decision }),
+        }),
       )
-      return { ...groups, unanswered: calls.filter((call) => !byId.has(call.call_id)) }
+      const byTag = Arr.groupBy(answered, (a) => a.decision._tag)
+      return {
+        ...Record.fromIterableWith(tags, (tag) => [tag, byTag[tag] ?? []]),
+        unanswered,
+      }
     },
   )
   return { ...constructors, schema, resolve }

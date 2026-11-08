@@ -5,15 +5,13 @@ import type {
   ContentBlock,
   HistoryItem,
   InputImage,
-  InputJson,
-  InputText,
   StopReason,
   ToolCallOutput,
-  ToolOutputContent,
   Usage,
 } from "@effect-uai/core/Items"
 import type { StructuredFormat } from "@effect-uai/core/StructuredFormat"
 import type { ToolDescriptor } from "@effect-uai/core/Tool"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import type { Turn } from "@effect-uai/core/Turn"
 import { TurnEvent } from "@effect-uai/core/Turn"
 
@@ -75,21 +73,15 @@ const encodeContent = (
         return part === undefined ? Result.failVoid : Result.succeed(part)
       })
 
-const isTextual = (p: ToolOutputContent): p is InputText | InputJson =>
-  p.type === "input_text" || p.type === "input_json"
-
 const hasMedia = (item: HistoryItem): boolean =>
-  item.type === "function_call_output" && !Arr.every(item.output, isTextual)
+  item.type === "function_call_output" && !Arr.every(item.output, ToolOutput.isTextual)
 
 /**
  * A tool message's content: text and JSON, joined. Tool messages carry text only
  * on this dialect; `rejectToolOutputMedia` fails a request with media first.
  */
 export const toolOutputText = (output: ToolCallOutput): string =>
-  output.output
-    .filter(isTextual)
-    .map((p) => (p.type === "input_text" ? p.text : JSON.stringify(p.value)))
-    .join("\n")
+  output.output.filter(ToolOutput.isTextual).map(ToolOutput.partText).join("\n")
 
 /** Fails when a tool output in `history` carries an image or file, rather than drop it. */
 export const rejectToolOutputMedia = (

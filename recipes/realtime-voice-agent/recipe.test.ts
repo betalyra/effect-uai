@@ -22,6 +22,7 @@ const getTime = Tool.make({
   name: "get_current_time",
   description: "The current time.",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ timezone: Schema.String })),
+  outputSchema: Schema.Struct({ timezone: Schema.String, iso: Schema.String }),
   run: ({ timezone }) =>
     Effect.succeed({ timezone, iso: "2026-09-12T12:00:00Z" }).pipe(Effect.delay("30 millis")),
 })

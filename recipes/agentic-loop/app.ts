@@ -36,6 +36,7 @@ const getCurrentTime = Tool.make({
   description:
     "Look up the current local time for an IANA timezone, e.g. 'Europe/Lisbon' or 'Asia/Tokyo'.",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ timezone: Schema.String })),
+  outputSchema: Schema.Struct({ timezone: Schema.String, iso: Schema.String }),
   run: ({ timezone }) =>
     DateTime.now.pipe(
       Effect.flatMap((now) =>
@@ -55,6 +56,7 @@ const rollDice = Tool.make({
   name: "roll_dice",
   description: "Roll a fair die with the given number of sides (e.g. 6 or 20).",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ sides: Schema.Number })),
+  outputSchema: Schema.Struct({ sides: Schema.Number, roll: Schema.Number }),
   run: ({ sides }) =>
     Effect.sync(() => ({ sides, roll: Math.floor(Math.random() * sides) + 1 })).pipe(
       Effect.delay("600 millis"),

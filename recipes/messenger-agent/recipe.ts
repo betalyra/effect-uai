@@ -80,6 +80,7 @@ const reactTool = (lastMessage: Ref.Ref<Option.Option<MessageId>>) =>
     name: "react",
     description: "React to the user's most recent message with a single emoji.",
     inputSchema: Tool.fromEffectSchema(Schema.Struct({ emoji: Schema.String })),
+    outputSchema: Schema.String,
     strict: true,
     run: ({ emoji }) =>
       Effect.gen(function* () {
@@ -108,6 +109,7 @@ export const imageTool = (model: string) =>
     description:
       "Draw a picture from a text prompt and send it to the user. Returns once it is delivered.",
     inputSchema: Tool.fromEffectSchema(Schema.Struct({ prompt: Schema.String })),
+    outputSchema: Schema.String,
     strict: true,
     run: ({ prompt }) =>
       Effect.gen(function* () {

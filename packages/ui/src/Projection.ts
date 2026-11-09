@@ -9,10 +9,9 @@
  */
 import type * as Items from "@effect-uai/core/Items"
 import type * as ToolEvent from "@effect-uai/core/ToolEvent"
-import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as Turn from "@effect-uai/core/Turn"
 import { Effect, Match, Option, Schema, Stream } from "effect"
-import { type Json, Outcome, type RunEvent } from "./RunEvent.js"
+import type { Json, RunEvent } from "./RunEvent.js"
 import * as UiContract from "./UiContract.js"
 
 /** What an effect-uai loop emits: turn events, tool events, and plain tool outputs. */
@@ -31,7 +30,7 @@ export type Options = typeof Options.Type
 
 /** `Options` plus the contract whose tool schemas encode tool values and errors. */
 export type Config = Options & {
-  readonly contract: Pick<UiContract.UiContract<any>, "toolEvent">
+  readonly contract: Pick<UiContract.UiContract<any>, "toolEvent" | "toolOutput">
 }
 
 export const State = Schema.Struct({
@@ -50,7 +49,6 @@ type Step = readonly [State, ReadonlyArray<RunEvent>]
 // back to the raw string when it isn't JSON.
 const parseJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Json))
 const decodeJson = (raw: string): Json => Option.getOrElse(parseJson(raw), () => raw)
-const decodeOutcome = Schema.decodeUnknownEffect(Outcome)
 
 // Content belongs to a step (one model turn); open one lazily on its first event.
 const inStep = (s: State, events: ReadonlyArray<RunEvent>): Step =>
@@ -86,27 +84,16 @@ const turnComplete = (s: State, turn: Turn.Turn): Step => {
   return [{ ...initial, tools }, events]
 }
 
-// A history item already holds the encoded value: read it back from its parts.
-const outputResult = (s: State, o: Items.ToolCallOutput) =>
-  ToolOutput.encoded(o.output).pipe(
-    Effect.map((encoded) =>
-      o.isError === true
-        ? { _tag: "Failure", error: encoded }
-        : { _tag: "Success", value: encoded },
-    ),
-    Effect.flatMap(decodeOutcome),
-    Effect.map((result): Step => [
-      s,
-      [{ type: "tool-result", callId: o.call_id, name: s.tools[o.call_id] ?? "", result }],
-    ]),
-  )
+// A history item already holds the encoded value; the contract shapes it for the wire.
+const outputResult = (config: Config, s: State, o: Items.ToolCallOutput) =>
+  Effect.map(config.contract.toolOutput(o, s.tools[o.call_id] ?? ""), (event): Step => [s, [event]])
 
 /** Map one loop event onto zero or more `RunEvent`s; tool values are encoded by the contract. */
 export const step =
   (config: Config) =>
   (s: State, event: Source): Effect.Effect<Step, Schema.SchemaError> =>
     Match.value(event).pipe(
-      Match.when({ type: "function_call_output" }, (o) => outputResult(s, o)),
+      Match.when({ type: "function_call_output" }, (o) => outputResult(config, s, o)),
       Match.tags({
         Partial: (e) => Effect.map(config.contract.toolEvent(e), (r): Step => [s, [r]]),
         Output: (e) => Effect.map(config.contract.toolEvent(e), (r): Step => [s, [r]]),

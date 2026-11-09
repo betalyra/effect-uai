@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest"
-import { Effect, Result, Schema } from "effect"
+import { Effect, Match, Result, Schema } from "effect"
 import * as Items from "../domain/Items.js"
 import * as Approval from "./Approval.js"
 import * as HistoryCheck from "./HistoryCheck.js"
@@ -30,10 +30,22 @@ describe("Approval.decisions", () => {
       { callId: "e", decision: { _tag: "Edit", subject: "hi" } },
       { callId: "closed-long-ago", decision: Decisions.Approve() },
     ])
+    const approve = {
+      _tag: "Approve",
+      call: call("a"),
+      decision: { _tag: "Approve", always: true },
+    }
+    const deny = { _tag: "Deny", call: call("b"), decision: { _tag: "Deny", reason: "spam" } }
+    const respond = {
+      _tag: "Respond",
+      call: call("c"),
+      decision: { _tag: "Respond", output: { booked: true } },
+    }
     expect(resolved).toEqual({
-      Approve: [{ call: call("a"), decision: { _tag: "Approve", always: true } }],
-      Deny: [{ call: call("b"), decision: { _tag: "Deny", reason: "spam" } }],
-      Respond: [{ call: call("c"), decision: { _tag: "Respond", output: { booked: true } } }],
+      Approve: [approve],
+      Deny: [deny],
+      Respond: [respond],
+      answered: [approve, deny, respond],
       unanswered: [call("d")],
       // An answer this definition doesn't accept is reported, not dropped.
       invalid: [{ call: call("e"), decision: { _tag: "Edit", subject: "hi" } }],
@@ -74,6 +86,51 @@ describe("Approval.decisions", () => {
       new Approval.Denied({ message: "The user declined." }),
     ])
     expectTypeOf(Deny[0]!.error).toEqualTypeOf<Approval.Denied>()
+  })
+
+  it("answered lists every answered call, tagged by its decision, for an exhaustive Match", () => {
+    const { answered } = Approval.Default.resolve(
+      [call("a"), call("b")],
+      [
+        { callId: "a", decision: Approval.Default.Approve() },
+        { callId: "b", decision: Approval.Default.Deny({ reason: "no" }) },
+      ],
+    )
+    const handled = answered.map(
+      Match.type<(typeof answered)[number]>().pipe(
+        Match.tagsExhaustive({
+          Approve: ({ call }) => `run ${call.call_id}`,
+          Deny: ({ call, error }) => `close ${call.call_id}: ${error.message}`,
+        }),
+      ),
+    )
+    expect(handled).toEqual(["run a", "close b: no"])
+  })
+
+  it("type: Match over answered must handle every decision", () => {
+    const { answered } = Approval.Default.resolve([], [])
+    answered.map(
+      Match.type<(typeof answered)[number]>().pipe(
+        // @ts-expect-error Deny is not handled
+        Match.tagsExhaustive({ Approve: () => "run" }),
+      ),
+    )
+  })
+
+  it("a call answered twice: the same answer counts once, two different ones are invalid", () => {
+    const resolved = Approval.Default.resolve(
+      [call("a"), call("b")],
+      [
+        { callId: "a", decision: Approval.Default.Approve() },
+        { callId: "a", decision: Approval.Default.Approve() },
+        { callId: "b", decision: Approval.Default.Approve() },
+        { callId: "b", decision: Approval.Default.Deny() },
+      ],
+    )
+    expect(resolved.answered.map((e) => e.call.call_id)).toEqual(["a"])
+    expect(resolved.invalid).toEqual([
+      { call: call("b"), decision: [{ _tag: "Approve" }, { _tag: "Deny" }] },
+    ])
   })
 })
 
@@ -148,6 +205,18 @@ describe("Approval.byTool", () => {
       expect(yield* decode({ _tag: "Edit", subject: "s" })).toEqual(Email.Edit({ subject: "s" }))
     }),
   )
+
+  it("type: two sets may share a tag only with the same fields", () => {
+    const Always = Approval.decisions({ Approve: { always: Schema.Boolean } })
+    // @ts-expect-error "Approve" has different fields in issue_refund and send_email
+    Approval.byTool({ issue_refund: Refund, send_email: Always })
+    // An optional extra field is a conflict too: the union would drop it.
+    const Maybe = Approval.decisions({ Approve: { always: Schema.optionalKey(Schema.Boolean) } })
+    // @ts-expect-error "Approve" has different fields
+    Approval.byTool({ issue_refund: Refund }, { fallback: Maybe })
+    // Same fields (or a reused variant) are fine.
+    Approval.byTool({ issue_refund: Refund, send_email: Email }, { fallback: Approval.Default })
+  })
 
   it("type: an answer takes its tool's decisions; groups and errors are typed per tool", () => {
     const refund = { callId: "r1", name: "issue_refund" } as const

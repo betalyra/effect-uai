@@ -39,19 +39,21 @@ describe("Tool.make", () => {
       name: "send_email",
       description: "",
       inputSchema: Recipient,
+      outputSchema: Schema.String,
       run: ({ to }) => Effect.succeed(to),
     })
     const standard = Tool.make({
       name: "send_email",
       description: "",
       inputSchema: Tool.fromStandardSchema(recipientSchema),
+      outputSchema: Schema.String,
       run: ({ to }) => Effect.succeed(to),
     })
     expectTypeOf(effect).toEqualTypeOf<Tool.Tool<"send_email", { readonly to: string }, string>>()
     expectTypeOf(standard).toEqualTypeOf<Tool.Tool<"send_email", Recipient, string>>()
   })
 
-  it("type: infers Output, Failure, E and R from run and failureSchema", () => {
+  it("type: Output from outputSchema; Failure, E and R from failureSchema and run", () => {
     class NotFound extends Schema.TaggedError<NotFound>()("NotFound", { to: Schema.String }) {}
     class Mailer extends Context.Service<
       Mailer,
@@ -62,6 +64,7 @@ describe("Tool.make", () => {
       name: "send_email",
       description: "",
       inputSchema: Recipient,
+      outputSchema: Schema.Struct({ id: Schema.String }),
       failureSchema: NotFound,
       run: ({ to }) =>
         Effect.gen(function* () {
@@ -76,29 +79,31 @@ describe("Tool.make", () => {
     expectTypeOf<Tool.ToolR<typeof tool>>().toEqualTypeOf<Mailer>()
   })
 
-  it("type: a Stream run types Output like an Effect run", () => {
+  it("type: a Stream run returns outputSchema's type like an Effect run", () => {
     const tool = Tool.make({
       name: "count",
       description: "",
       inputSchema: Tool.noInput,
+      outputSchema: Schema.Number,
       run: () => Stream.fromIterable([1, 2, 3]),
     })
     expectTypeOf<Tool.ToolOutput<typeof tool>>().toEqualTypeOf<number>()
   })
 
-  it("type: without outputSchema, run must return a Content.Value", () => {
+  it("type: a tool with run declares outputSchema; Content.Value is the explicit anything", () => {
     Tool.make({
       name: "shot",
       description: "",
       inputSchema: Tool.noInput,
+      outputSchema: Content.Value,
       run: () => Effect.succeed([{ title: "Home" }, Content.image({ _tag: "url", url: "u" })]),
     })
-    // @ts-expect-error a Date is not a Content.Value
+    // @ts-expect-error a tool with run needs an outputSchema
     Tool.make({
-      name: "when",
+      name: "shot",
       description: "",
       inputSchema: Tool.noInput,
-      run: () => Effect.succeed(new Date()),
+      run: () => Effect.succeed("ok"),
     })
   })
 
@@ -123,11 +128,29 @@ describe("Tool.make", () => {
     })
   })
 
+  it("type: a tool without run is a signal, or a call answered elsewhere typed by outputSchema", () => {
+    const escalate = Tool.make({
+      name: "escalate",
+      description: "",
+      inputSchema: Schema.Struct({ reason: Schema.String }),
+    })
+    const askUser = Tool.make({
+      name: "ask_user",
+      description: "",
+      inputSchema: Schema.Struct({ question: Schema.String }),
+      outputSchema: Schema.Struct({ answer: Schema.String }),
+    })
+    expect(Tool.hasRun(escalate)).toBe(false)
+    expectTypeOf<Tool.ToolOutput<typeof escalate>>().toEqualTypeOf<never>()
+    expectTypeOf<Tool.ToolOutput<typeof askUser>>().toEqualTypeOf<{ readonly answer: string }>()
+  })
+
   it("renders the same descriptor from an Effect Schema and its fromEffectSchema form", () => {
     const direct = Tool.make({
       name: "send_email",
       description: "Send.",
       inputSchema: Recipient,
+      outputSchema: Schema.String,
       run: () => Effect.succeed("ok"),
       strict: true,
     })
@@ -135,6 +158,7 @@ describe("Tool.make", () => {
       name: "send_email",
       description: "Send.",
       inputSchema: Tool.fromEffectSchema(Recipient),
+      outputSchema: Schema.String,
       run: () => Effect.succeed("ok"),
       strict: true,
     })
@@ -147,13 +171,13 @@ describe("Tool.make", () => {
 })
 
 describe("Tool.decodeArgs", () => {
-  const escalate = Tool.declare({
+  const escalate = Tool.make({
     name: "escalate",
     description: "Escalate to a human.",
     inputSchema: Schema.Struct({ reason: Schema.String }),
   })
 
-  it.effect("decodes a declared tool's arguments to its typed input", () =>
+  it.effect("decodes the arguments of a tool without run to its typed input", () =>
     Effect.gen(function* () {
       const input = yield* Tool.decodeArgs(escalate, callWith("escalate", '{"reason":"stuck"}'))
       expect(input).toEqual({ reason: "stuck" })
@@ -174,7 +198,7 @@ describe("Tool.decodeArgs", () => {
 
   it.effect("fails, rather than throws, when a Standard Schema validator throws", () =>
     Effect.gen(function* () {
-      const throwing = Tool.declare({
+      const throwing = Tool.make({
         name: "t",
         description: "",
         inputSchema: {
@@ -194,6 +218,7 @@ describe("Tool.decodeArgs", () => {
 
 describe("Tool.withRun", () => {
   const Weather = Schema.Struct({ at: Schema.DateFromString })
+  const at = new Date("2026-01-01T00:00:00.000Z")
   const weather = Tool.make({
     name: "weather",
     description: "Weather now.",
@@ -202,14 +227,19 @@ describe("Tool.withRun", () => {
     run: () => Effect.succeed({ at: new Date() }),
   })
 
-  it.effect("keeps the descriptor, replaces run and drops the original outputSchema", () =>
+  it.effect("keeps the descriptor and schemas, replaces run", () =>
     Effect.gen(function* () {
-      const mocked = Tool.withRun(weather, () => Effect.succeed("sunny"))
+      const mocked = Tool.withRun(weather, () => Effect.succeed({ at }))
       expect(Tool.toDescriptors([mocked])).toEqual(Tool.toDescriptors([weather]))
-      expect(mocked.outputSchema).toBeUndefined()
-      expect(yield* Stream.runCollect(Tool.toStream(mocked.run({})))).toEqual(["sunny"])
+      expect(mocked.outputSchema).toBe(Weather)
+      expect(yield* Stream.runCollect(Tool.toStream(mocked.run({})))).toEqual([{ at }])
     }),
   )
+
+  it("type: the new run returns the same output type", () => {
+    // @ts-expect-error a string is not the tool's output
+    Tool.withRun(weather, () => Effect.succeed("sunny"))
+  })
 })
 
 describe("provider-hosted tools", () => {
@@ -217,9 +247,10 @@ describe("provider-hosted tools", () => {
     name: "send_email",
     description: "",
     inputSchema: Tool.noInput,
+    outputSchema: Schema.String,
     run: () => Effect.succeed("sent"),
   })
-  const declared = Tool.declare({ name: "escalate", description: "", inputSchema: Tool.noInput })
+  const signal = Tool.make({ name: "escalate", description: "", inputSchema: Tool.noInput })
   const hosted = Tool.provider({
     name: "web_search",
     description: "",
@@ -227,7 +258,7 @@ describe("provider-hosted tools", () => {
     provider: "gemini",
     config: { kind: "google_search" },
   })
-  const toolkit = { send_email: local, escalate: declared, web_search: hosted }
+  const toolkit = { send_email: local, escalate: signal, web_search: hosted }
 
   it("are rendered by the provider, never as function descriptors", () => {
     expect(Tool.descriptorsOf(toolkit).map((d) => d.name)).toEqual(["send_email", "escalate"])

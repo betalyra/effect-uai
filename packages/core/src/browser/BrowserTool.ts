@@ -71,6 +71,7 @@ export const gotoTool = (session: BrowserSession) =>
     name: "browser_goto",
     description: "Navigate the browser to an absolute URL.",
     inputSchema: Tool.fromEffectSchema(GotoArgs),
+    outputSchema: Schema.String,
     run: (args) =>
       Effect.andThen(session.goto(args.url), okAt(session)).pipe(
         Effect.withSpan("browser_goto", {
@@ -85,6 +86,7 @@ export const clickTool = (session: BrowserSession) =>
     name: "browser_click",
     description: "Click the element named by ref. A click may navigate to a new page.",
     inputSchema: Tool.fromEffectSchema(ClickArgs),
+    outputSchema: Schema.String,
     run: (args) =>
       Effect.andThen(session.click(args.ref), okAt(session)).pipe(
         Effect.withSpan("browser_click", {
@@ -100,6 +102,7 @@ export const fillTool = (session: BrowserSession) =>
     description:
       "Put text into the input named by ref. Filling alone does not submit; press Enter to submit the input.",
     inputSchema: Tool.fromEffectSchema(FillArgs),
+    outputSchema: Schema.String,
     run: (args) =>
       Effect.andThen(session.fill(args.ref, args.text), okAt(session)).pipe(
         Effect.withSpan("browser_fill", {
@@ -114,6 +117,7 @@ export const pressTool = (session: BrowserSession) =>
     name: "browser_press",
     description: "Press a keyboard key against the focused element.",
     inputSchema: Tool.fromEffectSchema(PressArgs),
+    outputSchema: Schema.String,
     run: (args) =>
       Effect.andThen(session.press(args.key), okAt(session)).pipe(
         Effect.withSpan("browser_press", {
@@ -129,6 +133,7 @@ export const scrollTool = (session: BrowserSession) =>
     description:
       "Scroll the viewport. Only useful to bring an element into view - a page-reading tool's text is already scroll-independent.",
     inputSchema: Tool.fromEffectSchema(ScrollArgs),
+    outputSchema: Schema.String,
     run: (args) =>
       Effect.andThen(session.scroll({ direction: args.direction }), okAt(session)).pipe(
         Effect.withSpan("browser_scroll", {

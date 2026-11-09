@@ -101,3 +101,32 @@ describe("ToolOutput.value", () => {
     }),
   )
 })
+
+describe("ToolOutput.ValueParts", () => {
+  const encode = Schema.encodeEffect(ToolOutput.ValueParts)
+  const decode = Schema.decodeUnknownEffect(ToolOutput.ValueParts)
+
+  it.effect("JSON shaped like an image stays JSON through the wire", () =>
+    Effect.gen(function* () {
+      const lookalike = { _tag: "Image", source: { _tag: "url", url: "https://x/cat.png" } }
+      const wire = yield* encode(lookalike)
+      expect(wire).toEqual([{ type: "input_json", value: lookalike }])
+      const back = yield* decode(JSON.parse(JSON.stringify(wire)))
+      expect(back).toEqual(lookalike)
+      expect(back).not.toBeInstanceOf(Content.Image)
+    }),
+  )
+
+  it.effect("media round-trips as a class, bytes as base64 on the wire", () =>
+    Effect.gen(function* () {
+      const value = [{ title: "Home" }, png, "caption"]
+      const wire = yield* encode(value)
+      expect(wire[1]).toEqual({
+        type: "input_image",
+        source: { _tag: "bytes", bytes: "AQID", mimeType: "image/png" },
+      })
+      const back = yield* decode(JSON.parse(JSON.stringify(wire)))
+      expect(back).toEqual(value)
+    }),
+  )
+})

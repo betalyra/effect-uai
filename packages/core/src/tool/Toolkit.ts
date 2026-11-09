@@ -22,9 +22,10 @@ import {
   type AnyLocalTool,
   type AnyTool,
   type DecodeResult,
-  type Declared,
   decodeCallInput,
+  hasRun,
   type ProviderTool,
+  type Runnable,
   type Tool,
   type ToolDescriptor,
   ToolFailed,
@@ -156,9 +157,7 @@ type PrefixTool<Prefix extends string, T extends AnyTool> =
     ? Tool<PrefixName<Prefix, N>, I, O, F, E, R>
     : T extends ProviderTool<infer N, infer I, infer P, infer C>
       ? ProviderTool<PrefixName<Prefix, N>, I, P, C>
-      : T extends Declared<infer N, infer I>
-        ? Declared<PrefixName<Prefix, N>, I>
-        : T
+      : T
 
 type Namespaced<Prefix extends string, T extends ToolMap> = {
   readonly [K in keyof T & string as PrefixName<Prefix, K>]: T[K] extends AnyTool
@@ -233,10 +232,9 @@ type WrapToolkit<T extends ToolMap, R2, E2> = {
   readonly [K in keyof T]: T[K] extends AnyTool ? WrapTool<T[K], R2, E2> : T[K]
 }
 
-const mapLocal = <T extends Toolkit, Out>(
-  toolkit: T,
-  f: (tool: AnyLocalTool) => AnyLocalTool,
-): Out => Record.map(toolkit, (tool) => (tool._tag === "LocalTool" ? f(tool) : tool)) as Out
+// Only tools with `run`: middleware has nothing to wrap on a tool without one.
+const mapLocal = <T extends Toolkit, Out>(toolkit: T, f: (tool: Runnable) => AnyLocalTool): Out =>
+  Record.map(toolkit, (tool) => (tool._tag === "LocalTool" && hasRun(tool) ? f(tool) : tool)) as Out
 
 /**
  * Wrap every local tool's `run`. Stacks with `pipe`, inner first: the last
@@ -406,9 +404,16 @@ const runOne = (toolkit: Toolkit, call: ToolCall): Stream.Stream<AnyEvent, unkno
     Match.when(Match.undefined, () =>
       failWith(call, new UnknownTool({ message: `No tool named "${call.name}"` })),
     ),
-    Match.tag("LocalTool", (tool) => runTool(tool, call)),
+    Match.when({ _tag: "LocalTool" }, (tool) =>
+      hasRun(tool)
+        ? runTool(tool, call)
+        : failWith(
+            call,
+            new UnknownTool({ message: `"${call.name}" has no run; the app handles its calls` }),
+          ),
+    ),
     Match.orElse(() =>
-      failWith(call, new UnknownTool({ message: `"${call.name}" is not a local tool` })),
+      failWith(call, new UnknownTool({ message: `"${call.name}" is run by the provider` })),
     ),
   )
 
@@ -423,7 +428,7 @@ const describeIssues = (issues: ReadonlyArray<StandardSchemaV1.Issue>): string =
     .join("; ")
     .slice(0, 500)
 
-const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<AnyEvent, unknown, any> =>
+const runTool = (tool: Runnable, call: ToolCall): Stream.Stream<AnyEvent, unknown, any> =>
   Stream.unwrap(
     Effect.map(
       decodeCallInput(tool, call),
@@ -444,7 +449,7 @@ const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<AnyEvent, un
 // `Partial` as it arrives, then the last one again as the `Output`. Each value
 // is checked against `outputSchema` and handed on decoded.
 const execute = (
-  tool: AnyLocalTool,
+  tool: Runnable,
   call: ToolCall,
   input: unknown,
 ): Stream.Stream<AnyEvent, unknown, any> => {

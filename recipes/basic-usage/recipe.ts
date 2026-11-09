@@ -34,6 +34,7 @@ const getCurrentTime = Tool.make({
   description:
     "Look up the current local time for an IANA timezone, e.g. 'Europe/Lisbon' or 'Asia/Tokyo'.",
   inputSchema: GetCurrentTimeInput,
+  outputSchema: Schema.Struct({ timezone: Schema.String, iso: Schema.String }),
   failureSchema: InvalidTimeZone,
   run: ({ timezone }) =>
     DateTime.now.pipe(

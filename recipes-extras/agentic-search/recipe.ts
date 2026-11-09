@@ -211,6 +211,9 @@ export const searchTool = (options: SearchToolOptions) =>
     description:
       "Search the indexed corpus for passages relevant to a query. Combines keyword and semantic search. Call it more than once with different phrasings if the first results are thin.",
     inputSchema: Tool.fromEffectSchema(SearchInput),
+    outputSchema: Schema.Struct({
+      passages: Schema.Array(Schema.Struct({ id: Schema.Number, text: Schema.String })),
+    }),
     run: ({ query }) =>
       hybridSearch(query, options).pipe(
         Effect.tap((stages) => options.onStages?.(stages) ?? Effect.void),

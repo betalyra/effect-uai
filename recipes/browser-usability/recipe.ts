@@ -32,8 +32,8 @@ import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
-// The finish signal: how the run ends. A signal tool is model-visible but
-// never executed - the loop intercepts it, decodes the report from its
+// The finish signal: how the run ends. A tool without `run` is model-visible
+// but never executed: the loop intercepts it, decodes the report from its
 // arguments, and stops. Keeping the report schema on the tool (rather than
 // a structured-output turn) stays in tool space, which every provider's
 // tool-calling path supports.
@@ -52,7 +52,7 @@ const FinishArgs = Schema.Struct({
   }),
 })
 
-const finishTool = Tool.declare({
+const finishTool = Tool.make({
   name: "finish",
   description:
     "End the usability test and file the report. Call it as soon as the goal is met, or when you are stuck with no way forward.",
@@ -99,6 +99,7 @@ const readPageTool = (session: CoreBrowser.BrowserSession) =>
     description:
       "Read the current page: its full main content as markdown plus the interactive elements, each with an @ref usable in browser_click / browser_fill. Call it after navigating or acting to see the result.",
     inputSchema: Tool.noInput,
+    outputSchema: Schema.String,
     run: () =>
       Effect.gen(function* () {
         const { elements, markdown, url } = yield* Effect.all(

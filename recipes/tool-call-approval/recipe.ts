@@ -53,6 +53,7 @@ const searchEmails = Tool.make({
   name: "search_emails",
   description: "Search the user's recent emails. Returns up to three subject lines.",
   inputSchema: Schema.Struct({ query: Schema.String }),
+  outputSchema: Schema.Struct({ query: Schema.String, results: Schema.Array(Schema.String) }),
   run: ({ query }) =>
     Effect.succeed({
       query,
@@ -70,6 +71,12 @@ const sendEmail = Tool.make({
   name: "send_email",
   description: "Send an email on behalf of the user.",
   inputSchema: Schema.Struct({ to: Schema.String, subject: Schema.String, body: Schema.String }),
+  outputSchema: Schema.Struct({
+    status: Schema.String,
+    to: Schema.String,
+    subject: Schema.String,
+    sent_at: Schema.String,
+  }),
   failureSchema: Approval.Denied,
   run: ({ to, subject }) =>
     Effect.succeed({ status: "sent", to, subject, sent_at: new Date().toISOString() }),
@@ -80,6 +87,7 @@ const deleteUser = Tool.make({
   name: "delete_user",
   description: "Permanently delete a user account.",
   inputSchema: Schema.Struct({ user_id: Schema.String }),
+  outputSchema: Schema.Struct({ status: Schema.String, user_id: Schema.String }),
   failureSchema: Approval.Denied,
   run: ({ user_id }) => Effect.succeed({ status: "deleted", user_id }),
   strict: true,

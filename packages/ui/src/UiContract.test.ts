@@ -2,7 +2,7 @@ import * as Approval from "@effect-uai/core/Approval"
 import * as Content from "@effect-uai/core/Content"
 import { imageBytes } from "@effect-uai/core/Image"
 import * as Tool from "@effect-uai/core/Tool"
-import type * as ToolOutput from "@effect-uai/core/ToolOutput"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import { describe, expect, expectTypeOf, it } from "@effect/vitest"
 import { Effect, Fiber, Option, Result, Schema, Stream } from "effect"
 import { SecureRandom } from "effect/crypto"
@@ -200,12 +200,13 @@ describe("UiContract", () => {
     }),
   )
 
-  it.effect("a tool without outputSchema carries Content.Value: media arrives as a class", () =>
+  it.effect("a Content.Value tool's media arrives as a class", () =>
     Effect.gen(function* () {
       const shot = Tool.make({
         name: "shot",
         description: "",
         inputSchema: Tool.noInput,
+        outputSchema: Content.Value,
         run: () =>
           Effect.succeed([
             { title: "Home" },
@@ -219,6 +220,27 @@ describe("UiContract", () => {
       const decoded = yield* Ui.decode(envelope!)
       const result = decoded.event.type === "tool-result" ? decoded.event.result : undefined
       expect(result).toEqual({ _tag: "Success", value: [{ title: "Home" }, png] })
+    }),
+  )
+
+  it.effect("JSON that looks like media stays JSON in the browser (from history)", () =>
+    Effect.gen(function* () {
+      const anything = Tool.make({
+        name: "anything",
+        description: "",
+        inputSchema: Tool.noInput,
+        outputSchema: Content.Value,
+        run: () => Effect.succeed("x"),
+      })
+      const Ui = UiContract.make({ tools: [anything] })
+      const lookalike = { _tag: "Image", source: { _tag: "url", url: "https://x/cat.png" } }
+      const item = yield* ToolOutput.success({ call_id: "c1" }, Content.Value, lookalike)
+      const event = yield* Ui.toolOutput(item, "anything")
+      const [envelope] = wire([JSON.parse(JSON.stringify(event))])
+      const decoded = yield* Ui.decode(envelope!)
+      const result = decoded.event.type === "tool-result" ? decoded.event.result : undefined
+      expect(result).toEqual({ _tag: "Success", value: lookalike })
+      expect(result?._tag === "Success" && result.value).not.toBeInstanceOf(Content.Image)
     }),
   )
 

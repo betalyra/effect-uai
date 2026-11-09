@@ -83,6 +83,7 @@ export const webSearchTool = (
     description:
       "Search the web for current information. Returns ranked results with titles, URLs, and snippets.",
     inputSchema: Tool.fromEffectSchema(WebSearchToolArgs),
+    outputSchema: Schema.String,
     // The call is wrapped in a tracing span so agent traces show the tool
     // invocation (query, filters, result count) nested under the model turn.
     // `withSpan` is a no-op until a Tracer is installed, so this is free by

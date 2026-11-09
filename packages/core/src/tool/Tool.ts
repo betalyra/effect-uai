@@ -1,7 +1,6 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
 import { Effect, Function, Match, Schema, Stream } from "effect"
 import type { ToolCall } from "../domain/Items.js"
-import type * as Content from "./Content.js"
 
 export class ToolError extends Schema.TaggedError<ToolError>("@betalyra/effect-uai/ToolError")(
   "ToolError",
@@ -114,8 +113,10 @@ export const toStream = <A, E, R>(
 ): Stream.Stream<A, E, R> => (Effect.isEffect(out) ? Stream.fromEffect(out) : out)
 
 /**
- * A model-visible tool that runs locally. `Toolkit.run` executes it: errors
- * matching `failureSchema` reach the model, any other error fails the stream.
+ * A model-visible tool. With `run`, `Toolkit.run` executes it: errors matching
+ * `failureSchema` reach the model, any other error fails the stream. Without
+ * `run`, the app handles its calls: a signal to the loop (`escalate`), or a call
+ * answered elsewhere (`ask_user`, typed by `outputSchema`).
  */
 export type Tool<Name extends string, Input, Output, Failure = never, E = never, R = never> = {
   readonly _tag: "LocalTool"
@@ -129,22 +130,18 @@ export type Tool<Name extends string, Input, Output, Failure = never, E = never,
    * errors the app closes calls with (`Approval.Denied`, see `Toolkit.close`).
    */
   readonly failureSchema?: Schema.Codec<Failure, any>
-  readonly run: Run<Input, Output, E, R>
+  readonly run?: Run<Input, Output, E, R>
   /** Render with the provider's strict-mode flag. Default: true. */
   readonly strict?: boolean
 }
 
-/**
- * A model-visible tool without `run`: the loop decides what a call means
- * (escalate, ask the user, hand off) and closes it. `Toolkit.run` reports it as
- * `UnknownTool`.
- */
-export type Declared<Name extends string, Input> = {
-  readonly _tag: "Declared"
-  readonly name: Name
-  readonly description: string
-  readonly inputSchema: ToolInputSchema<Input>
+/** A tool with `run`, the only kind `Toolkit.run` executes. */
+export type Runnable<T extends AnyLocalTool = AnyLocalTool> = T & {
+  readonly run: NonNullable<T["run"]>
 }
+
+export const hasRun = <T extends AnyLocalTool>(tool: T): tool is Runnable<T> =>
+  tool.run !== undefined
 
 /**
  * A provider-hosted tool (native web search, code execution, grounding), executed
@@ -162,10 +159,7 @@ export type ProviderTool<Name extends string, Input, Provider extends string, Co
 
 export type AnyLocalTool<E = any, R = any> = Tool<string, any, any, any, E, R>
 
-export type AnyTool<E = any, R = any> =
-  | AnyLocalTool<E, R>
-  | ProviderTool<string, any, string, any>
-  | Declared<string, any>
+export type AnyTool<E = any, R = any> = AnyLocalTool<E, R> | ProviderTool<string, any, string, any>
 
 /** Any tool kind with a decodable input schema. */
 export type DecodableTool<Input> = {
@@ -190,22 +184,27 @@ type Spec<Name extends string, Input, Failure, FailureEncoded> = {
   readonly strict?: boolean
 }
 
-/** Without `outputSchema`, `run` returns a `Content.Value`: text, JSON, media. */
+/**
+ * Without `run`, the app handles the tool's calls: a signal to the loop
+ * (no `outputSchema`), or a call answered elsewhere (typed by `outputSchema`).
+ */
 export function make<
   const Name extends string,
   Input,
-  Output extends Content.Value,
+  Output = never,
+  Encoded extends Schema.Json = never,
   Failure = never,
   FailureEncoded extends Schema.Json = never,
-  E = never,
-  R = never,
 >(
   spec: Spec<Name, Input, Failure, FailureEncoded> & {
-    readonly outputSchema?: undefined
-    readonly run: Run<Input, Output, E, R>
+    readonly outputSchema?: Schema.Codec<Output, Encoded>
+    readonly run?: undefined
   },
-): Tool<Name, Input, Output, Failure, E, R>
-/** With `outputSchema`, `run` returns its type, and its encoded side must be JSON. */
+): Tool<Name, Input, Output, Failure>
+/**
+ * With `run`, `outputSchema` says what it returns and its encoded side must be
+ * JSON. `Content.Value` is the explicit "anything": text, JSON or media.
+ */
 export function make<
   const Name extends string,
   Input,
@@ -224,24 +223,18 @@ export function make<
 export function make(
   spec: Spec<string, unknown, unknown, unknown> & {
     readonly outputSchema?: Schema.Codec<unknown, any> | undefined
-    readonly run: Run<unknown, unknown, unknown, unknown>
+    readonly run?: Run<unknown, unknown, unknown, unknown> | undefined
   },
 ): AnyLocalTool {
-  const { outputSchema, inputSchema, ...rest } = spec
-  const tool = { _tag: "LocalTool" as const, ...rest, inputSchema: resolveInputSchema(inputSchema) }
-  return outputSchema === undefined ? tool : { ...tool, outputSchema }
+  const { outputSchema, inputSchema, run, ...rest } = spec
+  return {
+    _tag: "LocalTool",
+    ...rest,
+    inputSchema: resolveInputSchema(inputSchema),
+    ...(outputSchema === undefined ? {} : { outputSchema }),
+    ...(run === undefined ? {} : { run }),
+  }
 }
-
-/** A model-visible tool without `run`; the loop handles its calls. */
-export const declare = <const Name extends string, Input>(spec: {
-  readonly name: Name
-  readonly description: string
-  readonly inputSchema: InputSchema<Input>
-}): Declared<Name, Input> => ({
-  _tag: "Declared",
-  ...spec,
-  inputSchema: resolveInputSchema(spec.inputSchema),
-})
 
 /** A provider-hosted tool. */
 export const provider = <const Name extends string, Input, Provider extends string, Config>(
@@ -261,26 +254,13 @@ export const withName = <N extends string, T extends AnyTool>(
 ): Omit<T, "name"> & { readonly name: N } => ({ ...tool, name })
 
 /**
- * Replace a tool's `run`, keeping what the model sees (name, description, input),
- * e.g. to mock it. `outputSchema` is dropped: it describes the original `run`.
+ * Replace a tool's `run`, keeping everything else (name, description, schemas),
+ * e.g. to mock it. The new `run` returns the same output type.
  */
-export const withRun = <
-  Name extends string,
-  Input,
-  Output,
-  Failure,
-  E,
-  R,
-  Output2 extends Content.Value,
-  E2 = never,
-  R2 = never,
->(
+export const withRun = <Name extends string, Input, Output, Failure, E, R, E2 = never, R2 = never>(
   tool: Tool<Name, Input, Output, Failure, E, R>,
-  run: Run<Input, Output2, E2, R2>,
-): Tool<Name, Input, Output2, Failure, E2, R2> => {
-  const { outputSchema: _dropped, run: _replaced, ...definition } = tool
-  return { ...definition, run }
-}
+  run: Run<Input, Output, E2, R2>,
+): Runnable<Tool<Name, Input, Output, Failure, E2, R2>> => ({ ...tool, run })
 
 /**
  * Add errors a call of this tool may end with, e.g. the app's `Approval.Denied`
@@ -394,7 +374,7 @@ export const decodeCallInput = <Input>(
 }
 
 /**
- * A call's typed input, e.g. for a `Declared` tool the loop handles itself.
+ * A call's typed input, e.g. for a tool without `run` the loop handles itself.
  * Bad JSON fails with `ToolError`, a schema violation with `ToolValidationError`.
  */
 export const decodeArgs = <Input>(

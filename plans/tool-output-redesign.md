@@ -1,8 +1,8 @@
 # Tool output redesign: typed results, multimodal parts, typed UI
 
-Status: implemented (phases 1 to 4; open: a multimodal recipe). Deviations
-found while implementing are listed under "Changes during implementation" at
-the end. Source of truth for the design: `experiments/tool-api-spike/`
+Status: implemented (phases 1 to 4; open: a multimodal recipe, and the decided
+but not yet implemented items under "Review: decisions design"). Deviations
+found while implementing are listed under "Changes during implementation". Source of truth for the design: `experiments/tool-api-spike/`
 (`NOTES.md`, `TYPED-HISTORY.md`, `app/`). This plan moves it into `@effect-uai/core`,
 the provider packages and `@effect-uai/ui`, plus recipes, examples and docs.
 
@@ -434,25 +434,17 @@ const askUser = Tool.make({
 Removed: `Tool.declare`, the `Declared` type. `wrap` and `describeFailures`
 skip tools without `run`.
 
-Calls to tools without `run` must not reach `Toolkit.run`, and the compiler
-enforces it. `Toolkit.calls(toolkit, turn)` replaces `Turn.getToolCalls(turn)`
-for a toolkit that has such tools: the runnable calls, plus one typed group
-per tool without `run`. `Toolkit.run` then only takes runnable calls; with a
-toolkit that has no such tools it takes plain calls, as today.
+Handling calls to tools without `run` stays the app's job for now, not checked
+by the types: the loop picks them out of `Turn.getToolCalls(turn)` before
+`Toolkit.run`, as the escalation recipe does today. If one still reaches `run`,
+it is closed with `UnknownTool`, with a message that says what happened
+(`"escalate" has no run; the app handles its calls`). Making this a compile
+error is a follow-up: `plans/typed-pending-calls.md` (typed `Pending` events,
+handlers like `catchTags`, `Toolkit.next` refusing unhandled calls). The
+`Toolkit.calls` sorting step considered here is dropped in its favor.
 
-```ts
-const { calls, escalate } = Toolkit.calls(toolkit, turn)
-if (escalate.length > 0) return next({ ...state, tier: "strong" })
-if (calls.length === 0) return stop()
-return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
-
-Toolkit.run(toolkit, Turn.getToolCalls(turn))
-// ✗ this toolkit has tools without run ("escalate"): get its calls with Toolkit.calls(toolkit, turn)
-```
-
-Unknown names stay in `calls` and reach the model as `UnknownTool` (the model
-can fix those). A plain helper to build a tool without `run` is optional: the
-attribute alone says it.
+A plain helper to build a tool without `run` is not needed: the missing
+attribute says it.
 
 ### Kept as is
 
@@ -468,14 +460,17 @@ attribute alone says it.
   `input_image`, as in history) and read them with `ToolOutput.value`.
 - **Require `outputSchema` on every tool**, with `Content.Value` as the explicit
   "anything". Leaning yes.
-- **Covering every kind of call in the types** (calls for the front end,
-  provider tools, signals), beyond R6.
+
+### Moved to a follow-up
+
+- **Every tool call handled, checked by the compiler**: `plans/typed-pending-calls.md`,
+  listed in `plans/backlog.md`.
 
 ### Order
 
 1. R2 (compile-time conflict check), R1 (`answered` plus the partial-answer
    test), R4's duplicate answers.
-2. R6 (optional `run`, `Toolkit.calls`).
+2. R6 (optional `run`, `Tool.declare` removed, clearer `UnknownTool` message).
 3. Docs for R3, R4, R5; update Appendix A.
 
 ## Appendix A: tool call decisions

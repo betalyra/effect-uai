@@ -241,7 +241,9 @@ Each phase ends green before the next starts; nothing is committed by me.
 - `UiContract` encodes tool values and errors with the tool's own schemas, as
   `Toolkit.output` does (no `toCodecJson`), and a spec's `outputSchema` /
   `failureSchema` must encode to JSON. One encoding for history and the UI.
-- Decisions live on `Input.make(data, decisions)`, not on the contract.
+- Decisions are app code, not on the contract, the tools or the toolkit: the
+  app's `Approval.decisions` sets (or an `Approval.byTool` map of them) give
+  `Input.make(data, Decisions.schema)` its wire schema. See Appendix A.
 - `UiContract` types a core `Tool` by its own `Output` / `Failure`.
 - `@effect-uai/ai-sdk`: outputs as JSON (media as data URLs), failures as
   `tool-output-error`.
@@ -260,3 +262,420 @@ Each phase ends green before the next starts; nothing is committed by me.
 - `Toolkit.wrap` keeps a tool's shape like `describeFailures`: the middleware
   still sees a stream, and an `Effect` tool gets the stream's last value back
   (a middleware that drops it is a defect).
+- Decisions per tool, kept in app code (Appendix A):
+  - `Decisions.resolve` checks each answer against its own schema; an answer
+    it doesn't take lands in `invalid` instead of being dropped.
+  - `Approval.closesWith(fields, build)`: a decision that ends the call carries
+    the error it builds, so `Escalate` can only end in `Escalated`.
+    `Approval.Default.Deny` is one (wire unchanged: `Deny { reason? }`).
+  - `Toolkit.close(toolkit, "name", call, error)`: with the tool's name, the
+    error is checked against that tool's `failureSchema` at compile time.
+  - `Approval.byTool({ tool: set }, { fallback })`: one map gives the wire
+    schema, typed answers in the browser and one `resolve` on the server.
+  - Rejected along the way: decisions on the tool or the toolkit. Decisions
+    never reach history, so tools have no reason to know them.
+
+## Review: decisions design (decided, not implemented)
+
+Status: every point below is decided; nothing is implemented yet. Appendix A
+describes the design as built; it gets updated once these land.
+
+Principle for all of them: the library offers small, explicit pieces; policy
+(which calls wait, what an answer does, how the page learns about problems)
+stays app code. No helper that hides the loop.
+
+### R1. A forgotten group leaves calls without an output
+
+`resolve` returns a group per tag, but nothing makes the app handle each one.
+A call in an unhandled group is not run, not closed and not kept waiting, so
+the next model call fails at the provider (unanswered `function_call`).
+
+Decision: `resolve` also returns the answered calls as one flat list; the app
+handles them with Effect's own exhaustive `Match`. A forgotten tag is a compile
+error, with no new helper. The groups per tag stay for apps that prefer them.
+
+```ts
+const { answered, unanswered, invalid } = RefundDecisions.resolve(waiting, answers)
+const outcomes =
+  yield *
+  Effect.forEach(
+    answered,
+    ({ call, decision }) =>
+      Match.value(decision).pipe(
+        Match.tagsExhaustive({
+          Approve: () => runOne(call),
+          Reduce: ({ amount }) => runOne(withAmount(call, amount)),
+          Escalate: (d) => Toolkit.close(toolkit, "issue_refund", call, d.error),
+          Deny: (d) => Toolkit.close(toolkit, "issue_refund", call, d.error),
+        }),
+      ),
+    { concurrency: "unbounded" },
+  )
+```
+
+For a closing decision the entry carries its `error` (from `closesWith`).
+
+Also to check: the examples run the agent after a resolve that answers only
+some waiting calls, while the rest have no output yet. Confirm with a test; fix
+by running the agent only when nothing is left waiting, or by giving the
+waiting calls a placeholder output (as the follow-up-message path does).
+
+### R2. The same tag in two sets loses fields
+
+`byTool.schema` is a union of every set's schema. Two sets that both define
+`Approve` with different fields collapse: decoding
+`{ _tag: "Approve", always: true }` with `Union([Approve {}, Approve { always }])`
+yields `{ _tag: "Approve" }`, on decode and on encode (confirmed). The shorter
+set's check then accepts it.
+
+Decision: keep the design (one union schema, each set checks its own answers)
+and make the conflict a compile error in `byTool`, like duplicate tool names in
+`Toolkit.make`. Same tag means exactly the same decision type; rename otherwise.
+
+```ts
+Approval.byTool({
+  issue_refund: Approval.decisions({ Approve: {}, ... }),
+  send_email: Approval.decisions({ Approve: { always: Schema.Boolean }, ... }),
+})
+// ✗ "Approve" has different fields in issue_refund and send_email
+```
+
+Exact equality, not compatibility: `Approve {}` next to
+`Approve { always?: boolean }` is a conflict too (the union would drop
+`always`). Identical definitions and reused variants
+(`Approval.Default.variants.Deny`) pass.
+
+### R3. Which calls wait and which can be answered drift apart
+
+The app's `needsApproval` and the `byTool` map are separate lists. A call that
+waits but has no decision set can never be answered.
+
+Decision: no new helper (an object owning gating and answers hides the loop).
+Document deriving the policy from the same map:
+
+```ts
+const needsApproval = (call: ToolCall) =>
+  Object.hasOwn(Decisions.tools, call.name) || isHelpdeskWrite(call)
+```
+
+### R4. A rejected answer gives the user no feedback
+
+Decision: app code, documented. The only library change: `resolve` puts two
+different answers to the same call in `invalid` (today the last one wins
+silently).
+
+Documented pattern:
+
+```ts
+const { invalid, unanswered } = resolved
+// Ask again for the calls whose answer didn't fit; the page shows the cards again.
+yield *
+  emit({
+    type: "run-interrupted",
+    interrupts: [...invalid.map((i) => i.call), ...unanswered].map(toInterrupt),
+  })
+```
+
+To say why it asks again, the app can send its own `data` event.
+
+### R5. Edited arguments
+
+Two separate problems, for a refund the approver reduced from 89 to 40:
+
+```
+history:  function_call         issue_refund { orderId: "A-1042", amount: 89 }   (the model's call)
+          function_call_output  { refundId: "r_77" }                               (the tool ran with 40)
+```
+
+- **The model believes 89 was refunded**, unless the output says otherwise. It
+  may tell the customer the wrong amount.
+- **An invalid edit is blamed on the model.** If the approver's values fail
+  `inputSchema` (say, an empty subject), the run fails with `InputInvalid`,
+  which the model reads as its own mistake and retries.
+
+Decision: app code, documented; no core helper.
+
+```ts
+// Validate the edit before running; a bad edit goes back to the approver, not to the model.
+const args = yield * Tool.decodeArgs(issueRefund, call)
+const edited = { ...call, arguments: JSON.stringify({ ...args, amount: decision.amount }) }
+yield * Tool.decodeArgs(issueRefund, edited) // fails → treat like an invalid answer (R4)
+
+// Tell the model, next to the output:
+Items.userText(`[approver] issue_refund ${call.call_id}: amount 89 → 40`)
+```
+
+Keeping the edit only in history would not help the model: it reads the call it
+made and the output, so it has to be told either way.
+
+### R6. `Tool.declare` goes; `run` becomes optional
+
+A declared tool is structurally a tool without `run`: same name, description
+and input, and the model calls it like any other. Only provider tools are a
+different kind (executed by the provider, never a call the app sees). The two
+uses of `declare` both fit a tool without `run`:
+
+- **Signals** (`escalate`, `finish`): no `run`, no `outputSchema`; the loop acts
+  on the call.
+- **Answered elsewhere** (`ask_user`, a hand-off): no `run`, but `outputSchema`
+  and `failureSchema`; the app answers with a typed value or closes with an
+  error, through the same waiting flow as approvals.
+
+```ts
+const escalate = Tool.make({ name: "escalate", description, inputSchema: EscalateInput })
+const askUser = Tool.make({
+  name: "ask_user",
+  description,
+  inputSchema: Schema.Struct({ question: Schema.String }),
+  outputSchema: Schema.Struct({ answer: Schema.String }),
+})
+```
+
+Removed: `Tool.declare`, the `Declared` type. `wrap` and `describeFailures`
+skip tools without `run`.
+
+Calls to tools without `run` must not reach `Toolkit.run`, and the compiler
+enforces it. `Toolkit.calls(toolkit, turn)` replaces `Turn.getToolCalls(turn)`
+for a toolkit that has such tools: the runnable calls, plus one typed group
+per tool without `run`. `Toolkit.run` then only takes runnable calls; with a
+toolkit that has no such tools it takes plain calls, as today.
+
+```ts
+const { calls, escalate } = Toolkit.calls(toolkit, turn)
+if (escalate.length > 0) return next({ ...state, tier: "strong" })
+if (calls.length === 0) return stop()
+return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
+
+Toolkit.run(toolkit, Turn.getToolCalls(turn))
+// ✗ this toolkit has tools without run ("escalate"): get its calls with Toolkit.calls(toolkit, turn)
+```
+
+Unknown names stay in `calls` and reach the model as `UnknownTool` (the model
+can fix those). A plain helper to build a tool without `run` is optional: the
+attribute alone says it.
+
+### Kept as is
+
+- **`OutputInvalid`** (a value the tool's own `outputSchema` rejects: a
+  refinement such as `Schema.Int`, loosely typed data, an empty `Stream`) stays
+  a model-visible failure.
+
+### Not decided yet
+
+- **Media in the browser for tools without `outputSchema`.** `Content.Value`
+  can't tell JSON shaped like `{ _tag: "Image", source }` from an image.
+  Proposal: send those values to the browser as typed parts (`input_json` /
+  `input_image`, as in history) and read them with `ToolOutput.value`.
+- **Require `outputSchema` on every tool**, with `Content.Value` as the explicit
+  "anything". Leaning yes.
+- **Covering every kind of call in the types** (calls for the front end,
+  provider tools, signals), beyond R6.
+
+### Order
+
+1. R2 (compile-time conflict check), R1 (`answered` plus the partial-answer
+   test), R4's duplicate answers.
+2. R6 (optional `run`, `Toolkit.calls`).
+3. Docs for R3, R4, R5; update Appendix A.
+
+## Appendix A: tool call decisions
+
+How an app asks a person about a tool call before it runs, and how the answer
+becomes the call's outcome.
+
+### The idea
+
+A **decision** is a person's answer to a waiting tool call: `Approve`, `Deny`,
+`Edit`, whatever the app defines. Decisions are app code. Tools and toolkits
+know nothing about them.
+
+What a tool does declare is every way a call can **end**: its `outputSchema`
+for success, its `failureSchema` for errors, including errors the app may close
+a call with (`Denied`, `Escalated`). That is the only contract between the two,
+and it is what history, the model and the UI read.
+
+```
+person answers ──► decision (app)            Approve | Reduce{amount} | Escalate{team} | Deny{reason?}
+                     │ resolve: each call checked against its tool's decisions
+                     ▼
+app acts       ──► run the call (as is, or with edited arguments)  or  close it with an error
+                     ▼
+call ends      ──► Success(value) | Failure(error)     typed by the tool's schemas
+                     ▼
+history, model, UI: the same typed outcome
+```
+
+### The pieces
+
+| Piece                                          | What it does                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| `Approval.decisions({...})`                    | One set of answers: constructors, wire schema, `resolve`.    |
+| `Approval.closesWith(fields, build)`           | An answer that ends the call; `build` makes its error.       |
+| `Approval.byTool({ tool: set }, { fallback })` | Which set each tool takes; typed `answer` and one `resolve`. |
+| `Approval.Default` / `Approval.Denied`         | Ready set: `Approve`, `Deny { reason? }` ending in `Denied`. |
+| `Toolkit.close(toolkit, "tool", call, error)`  | Ends a call with an error the tool declares (checked).       |
+| `Tool.withFailures` / `Toolkit.withFailures`   | Declare closing errors on tools you don't define (MCP).      |
+
+### Example: a refund desk
+
+A support agent that looks up orders, issues refunds and emails customers, plus
+a helpdesk MCP server. Refunds offer `Approve`, `Reduce`, `Escalate`, `Deny`;
+emails offer `Approve`, `Edit`, `Deny`; the helpdesk's write tools offer
+`Approve` / `Deny`; everything else runs without asking.
+
+**Shared by server and browser**
+
+```ts
+// Errors a refund can end with: its own, and the ones the app closes it with.
+export class Escalated extends Schema.TaggedError<Escalated>()("Escalated", {
+  team: Schema.Literals(["finance", "legal"]),
+  message: Schema.String,
+}) {}
+
+export const IssueRefund = {
+  name: "issue_refund",
+  description: "Refund part or all of an order.",
+  inputSchema: Schema.Struct({ orderId: Schema.String, amount: Schema.Number }),
+  outputSchema: Schema.Struct({ refundId: Schema.String, amount: Schema.Number }),
+  failureSchema: Schema.Union([OrderNotFound, Approval.Denied, Escalated]),
+} as const
+
+// What a person may answer, per tool.
+export const RefundDecisions = Approval.decisions({
+  Approve: {},
+  Reduce: { amount: Schema.Number },
+  Escalate: Approval.closesWith(
+    { team: Schema.Literals(["finance", "legal"]) },
+    ({ team }) =>
+      new Escalated({ team, message: `Handed to ${team}; they will contact the customer.` }),
+  ),
+  Deny: Approval.closesWith(
+    { reason: Schema.optionalKey(Schema.String) },
+    ({ reason }) => new Approval.Denied({ message: reason ?? "The refund was declined." }),
+  ),
+})
+
+export const EmailDecisions = Approval.decisions({
+  Approve: {},
+  Edit: { subject: Schema.optionalKey(Schema.String), body: Schema.optionalKey(Schema.String) },
+  Deny: Approval.Default.variants.Deny,
+})
+
+export const Decisions = Approval.byTool(
+  { issue_refund: RefundDecisions, send_email: EmailDecisions },
+  { fallback: Approval.Default }, // the helpdesk's write tools
+)
+
+// Which calls wait: plain app policy.
+export const needsApproval = (call: ToolCall) =>
+  call.name === "issue_refund" ||
+  call.name === "send_email" ||
+  /^helpdesk__(write|delete)_/.test(call.name)
+
+// The wire: answers decode with every set's schema.
+export const ChatInput = Input.make(Schema.Struct({}), Decisions.schema)
+export const ChatUi = UiContract.make({ tools: [LookupOrder, IssueRefund, SendEmail] })
+```
+
+**Server: tools**
+
+```ts
+const toolkit =
+  yield *
+  Toolkit.compose(
+    Toolkit.make(lookupOrder, issueRefund, sendEmail),
+    // Dynamic MCP tools: declare the closing on them too.
+    Toolkit.withFailures(yield * mcpToolkit(client, { prefix: "helpdesk" }), Approval.Denied),
+  )
+```
+
+The loop runs the calls that don't need approval, parks the rest and ends the
+run with `run-interrupted`; the page shows a card per waiting call.
+
+**Browser: one card per tool, typed by its decisions**
+
+```tsx
+Match.value(interrupt).pipe(
+  Match.when({ name: "issue_refund" }, (i) => (
+    <RefundCard
+      amount={i.input.amount}
+      onApprove={() => send(Decisions.answer(i, RefundDecisions.Approve()))}
+      onReduce={(amount) => send(Decisions.answer(i, RefundDecisions.Reduce({ amount })))}
+      onEscalate={() => send(Decisions.answer(i, RefundDecisions.Escalate({ team: "finance" })))}
+    />
+  )),
+  // Decisions.answer(i, EmailDecisions.Edit({})) here would not compile.
+  Match.orElse((i) => (
+    <ApproveOrDeny
+      onApprove={() => send(Decisions.answer(i, Approval.Default.Approve()))}
+      onDeny={(reason) => send(Decisions.answer(i, Approval.Default.Deny({ reason })))}
+    />
+  )),
+)
+
+const send = (answer: Approval.Answer<unknown>) => submit(Input.resolve([answer]))
+```
+
+**Server: the answers**
+
+```ts
+const { issue_refund, send_email, fallback, unanswered, invalid } = Decisions.resolve(
+  waiting,
+  input.decisions,
+)
+
+const outcomes =
+  yield *
+  Effect.all([
+    ...issue_refund.Approve.map(({ call }) => runOne(call)),
+    ...issue_refund.Reduce.map(({ call, decision }) =>
+      runOne(withArgs(call, { amount: decision.amount })),
+    ),
+    ...issue_refund.Escalate.map(({ call, error }) =>
+      Toolkit.close(toolkit, "issue_refund", call, error),
+    ),
+    ...issue_refund.Deny.map(({ call, error }) =>
+      Toolkit.close(toolkit, "issue_refund", call, error),
+    ),
+    ...send_email.Approve.map(({ call }) => runOne(call)),
+    ...send_email.Edit.map(({ call, decision }) => runOne(withArgs(call, decision))),
+    ...send_email.Deny.map(({ call, error }) => Toolkit.close(toolkit, "send_email", call, error)),
+    ...fallback.Approve.map(({ call }) => runOne(call)),
+    ...fallback.Deny.map(({ call, error }) => Toolkit.close(toolkit, call, error)),
+  ])
+const items = yield * Effect.forEach(outcomes, Toolkit.output(toolkit))
+// unanswered and invalid calls keep waiting; the page can ask again.
+```
+
+`runOne` runs one call with `Toolkit.run`; `withArgs` returns the call with the
+person's values merged into its arguments.
+
+**What ends up in history**
+
+```ts
+// Escalate: a failure the model reads and can act on
+{ type: "function_call_output", call_id: "c1", isError: true,
+  output: [{ type: "input_json", value: { _tag: "Escalated", team: "finance",
+    message: "Handed to finance; they will contact the customer." } }] }
+
+// Reduce: the tool ran with 40; the result says what really happened
+{ type: "function_call_output", call_id: "c2",
+  output: [{ type: "input_json", value: { refundId: "r_77", amount: 40 } }] }
+```
+
+The model's own `function_call` keeps its original arguments (`amount: 89`);
+the output carries the effective values. The browser gets the same outcome
+typed: `Failure { error: Escalated }` or `Success { value: { amount: 40 } }`.
+
+### What is checked, and where
+
+| Check                                                      | Where                                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------- |
+| An answer fits the call's tool (`Reduce` only for refunds) | browser: `Decisions.answer` (compile time); server: `resolve` (`invalid`) |
+| A closing decision ends in its own error                   | `closesWith`: the decision builds it                                      |
+| That error is one the tool declares                        | `Toolkit.close(toolkit, "issue_refund", ...)` (compile time and runtime)  |
+| Every decision is handled                                  | `resolve` returns one group per tag                                       |
+| History, model and UI agree on the outcome                 | the tool's `outputSchema` / `failureSchema`                               |
+
+Tools and toolkits stay free of approval: a tool only lists the ways a call
+can end.

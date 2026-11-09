@@ -164,13 +164,14 @@ export const httpConversation = (
               const calls = Turn.getToolCalls(turn)
               if (calls.length === 0) return stop()
 
-              const { Approve, Deny, unanswered } = Approval.Default.resolve(
+              const { Approve, Deny, unanswered, invalid } = Approval.Default.resolve(
                 calls.filter(isSensitive),
                 answers,
               )
+              // `Deny` carries its `Denied`; no usable answer means no approval.
               const closed = yield* Effect.all([
-                ...Deny.map(({ call, decision }) => close(call, denied(decision.reason))),
-                ...unanswered.map((call) =>
+                ...Deny.map(({ call, error }) => close(call, error)),
+                ...[...unanswered, ...invalid.map((i) => i.call)].map((call) =>
                   close(call, new ToolOutput.Cancelled({ message: "No approval was given." })),
                 ),
               ])

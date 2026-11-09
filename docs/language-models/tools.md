@@ -526,20 +526,26 @@ Toolkit.run(toolkit, calls).pipe(
 ## Approval gating
 
 For HITL, `run` stays the only executor. `Approval` defines what an answer can
-be and groups waiting calls by answer. `Approval.Default` is approve, or deny
-with an optional reason; `Approval.decisions({...})` defines your own.
+be and groups waiting calls by answer; which calls wait and what each answer
+does is app code. `Approval.Default` is approve, or deny with an optional
+reason; `Approval.decisions({...})` defines your own, `Approval.closesWith`
+marks an answer that ends the call with an error, and `Approval.byTool` gives
+each tool its own set of answers.
 
 HTTP/request-shaped flows get the answers with the next request:
 
 ```ts
-const { Approve, Deny, unanswered } = Approval.Default.resolve(calls.filter(isSensitive), answers)
+const { Approve, Deny, unanswered, invalid } = Approval.Default.resolve(
+  calls.filter(isSensitive),
+  answers,
+)
 const closed =
   yield *
   Effect.all([
-    ...Deny.map(({ call, decision }) =>
-      close(call, new Approval.Denied({ message: decision.reason ?? "Denied by the user." })),
+    ...Deny.map(({ call, error }) => close(call, error)), // Deny carries its Denied
+    ...[...unanswered, ...invalid.map((i) => i.call)].map((call) =>
+      close(call, new ToolOutput.Cancelled({ message: "No answer." })),
     ),
-    ...unanswered.map((call) => close(call, new ToolOutput.Cancelled({ message: "No answer." }))),
   ])
 const run = [...calls.filter((c) => !isSensitive(c)), ...Approve.map((a) => a.call)]
 const events = Stream.merge(Toolkit.run(toolkit, run), Stream.fromIterable(closed))

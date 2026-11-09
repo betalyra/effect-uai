@@ -310,6 +310,20 @@ describe("Tool.withFailures and Toolkit.close", () => {
     }),
   )
 
+  it.effect("with the tool's name, close checks the call belongs to that tool", () =>
+    Effect.gen(function* () {
+      const closed = yield* Toolkit.close(gated, "weather", call("weather", "5"), denied)
+      expect(closed.tool).toBe("weather")
+      const error = yield* Effect.flip(Toolkit.close(gated, "weather", call("search", "6"), denied))
+      expect(error).toBeInstanceOf(Toolkit.UndeclaredFailure)
+    }),
+  )
+
+  it("type: with the tool's name, the error must be that tool's", () => {
+    // @ts-expect-error search declares no Denied, though weather does
+    Toolkit.close(gated, "search", call("search", "7"), denied)
+  })
+
   it.effect("core's errors close any call", () =>
     Effect.gen(function* () {
       const cancelled = new ToolOutput.Cancelled({ message: "moved on" })

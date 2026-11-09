@@ -313,14 +313,16 @@ const makeChats = Effect.gen(function* () {
       const awaiting = yield* Ref.get(chat.awaiting)
       const held = yield* Ref.get(chat.held)
       // Groups only the calls this chat waits for; a stale answer is ignored.
-      const { Approve, Deny, unanswered } = Approval.Default.resolve(awaiting, input.decisions)
+      const { Approve, Deny, unanswered, invalid } = Approval.Default.resolve(
+        awaiting,
+        input.decisions,
+      )
       const ran = yield* Toolkit.run(
         toolkit,
         Approve.map((a) => a.call),
       ).pipe(Stream.filter(Toolkit.isOutcome), Stream.runCollect, Effect.provideContext(http))
-      const denied = yield* Effect.forEach(Deny, ({ call, decision }) =>
-        close(call, new Approval.Denied({ message: decision.reason ?? "The user declined." })),
-      )
+      // `Deny` carries the `Denied` it ends the call with.
+      const denied = yield* Effect.forEach(Deny, ({ call, error }) => close(call, error))
       const results: ReadonlyArray<Toolkit.Outcome> = [...ran, ...denied]
       // A call with a placeholder already has its output; it learns the verdict from a note.
       const items = yield* Effect.forEach(results, (outcome) =>
@@ -333,7 +335,8 @@ const makeChats = Effect.gen(function* () {
         ),
       )
       yield* Ref.update(chat.history, (h) => [...h, ...items])
-      yield* Ref.set(chat.awaiting, unanswered)
+      // A call answered with something it doesn't take keeps waiting.
+      yield* Ref.set(chat.awaiting, [...unanswered, ...invalid.map((i) => i.call)])
       return results
     })
 

@@ -8,7 +8,7 @@
  * interrupts the run.
  */
 import { createServer } from "node:http"
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Items from "@effect-uai/core/Items"
 import type { ToolCall } from "@effect-uai/core/Items"
 import { type LanguageModel, streamTurn } from "@effect-uai/core/LanguageModel"
@@ -313,7 +313,7 @@ const makeChats = Effect.gen(function* () {
       const awaiting = yield* Ref.get(chat.awaiting)
       const held = yield* Ref.get(chat.held)
       // Groups only the calls this chat waits for; a stale answer is ignored.
-      const { Approve, Deny, unanswered, invalid } = Approval.Default.resolve(
+      const { Approve, Deny, unanswered, invalid } = ToolDecision.Default.resolve(
         awaiting,
         input.decisions,
       )

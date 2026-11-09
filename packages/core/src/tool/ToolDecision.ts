@@ -1,8 +1,8 @@
 /**
- * Approval: define what an answer to a waiting call can be, and get the wire
- * schema, the constructors and a resolver that groups waiting calls by answer.
- * Which calls wait and what each answer means is app code; tools and toolkits
- * know nothing about decisions.
+ * ToolDecision: define what an answer to a waiting tool call can be (approve,
+ * deny, edit, escalate, anything), and get the wire schema, the constructors
+ * and a resolver that groups waiting calls by answer. Which calls wait and what each
+ * answer means is app code; tools and toolkits know nothing about decisions.
  */
 import { Array as Arr, Equal, Function, HashMap, Option, Record, Result, Schema } from "effect"
 import type { ToolCall } from "../domain/Items.js"
@@ -112,15 +112,15 @@ const answersById = (answers: ReadonlyArray<Answer<unknown>>): HashMap.HashMap<s
 /**
  * Define the possible answers:
  *
- *   const RefundDecisions = Approval.decisions({
+ *   const RefundDecisions = ToolDecision.make({
  *     Approve: {},
  *     Reduce: { amount: Schema.Number },
- *     Deny: Approval.closesWith({ reason: Schema.String }, ({ reason }) => new Denied({ message: reason })),
+ *     Deny: ToolDecision.closesWith({ reason: Schema.String }, ({ reason }) => new Denied({ message: reason })),
  *   })
  *   const { Approve, Reduce, Deny, unanswered, invalid } = RefundDecisions.resolve(waiting, answers)
  */
-export function decisions<const V extends Variants>(variants: V): Decisions<V>
-export function decisions(variants: Variants): object {
+export function make<const V extends Variants>(variants: V): Decisions<V>
+export function make(variants: Variants): object {
   const fieldsOf = (variant: Fields | Closing<Fields, unknown>): Fields =>
     isClosing(variant) ? variant.fields : variant
   const tags = Object.keys(variants)
@@ -183,7 +183,7 @@ export class Denied extends Schema.TaggedError<Denied>("@betalyra/effect-uai/Den
 }) {}
 
 /** Approve, or deny with an optional reason; `Deny` ends the call with `Denied`. */
-export const Default = decisions({
+export const Default = make({
   Approve: {},
   Deny: closesWith(
     { reason: Schema.optionalKey(Schema.String) },
@@ -273,9 +273,9 @@ type NoConflicts<M extends Table, F> = [Conflicts<AllSets<M, F>>] extends [never
 /**
  * The decisions each tool takes, in app code:
  *
- *   const Decisions = Approval.byTool(
+ *   const Decisions = ToolDecision.byTool(
  *     { issue_refund: RefundDecisions, send_email: EmailDecisions },
- *     { fallback: Approval.Default },
+ *     { fallback: ToolDecision.Default },
  *   )
  *
  * Sets may share a tag only with the same fields (a compile error otherwise).

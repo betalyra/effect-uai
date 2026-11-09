@@ -1,4 +1,4 @@
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import type * as Items from "@effect-uai/core/Items"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
@@ -247,7 +247,7 @@ describe("Thread approvals", () => {
 
   // The answer runs the call (or not) in the next run.
   const answer = (approved: boolean, result: RunEvent) => {
-    const decision = approved ? Approval.Default.Approve() : Approval.Default.Deny()
+    const decision = approved ? ToolDecision.Default.Approve() : ToolDecision.Default.Deny()
     const resolve = {
       ...Input.resolve([{ callId: "call_1", decision }]),
       id: InputId.make("in_2"),

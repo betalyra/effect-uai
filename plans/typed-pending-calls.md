@@ -68,7 +68,7 @@ argument (refunds over 20 EUR), as an Effect if it decodes arguments. It only
 marks calls; nothing is filtered by hand, so no call can get lost between a
 partition and a stop.
 
-Resuming is unchanged: the decisions design (`Approval.decisions`, `byTool`,
+Resuming is unchanged: the decisions design (`ToolDecision.make`, `byTool`,
 `closesWith`, `Toolkit.close`) with the exhaustive `Match` over `answered`.
 Approved calls run with `Toolkit.run`, denied ones are closed, `ask_user` gets
 its typed answer with `Toolkit.complete`.

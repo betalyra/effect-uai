@@ -1,4 +1,4 @@
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Content from "@effect-uai/core/Content"
 import { imageBytes } from "@effect-uai/core/Image"
 import * as Tool from "@effect-uai/core/Tool"
@@ -26,7 +26,7 @@ const GetWeather = {
   description: "Current weather for a city.",
   inputSchema: Schema.Struct({ city: Schema.String }),
   outputSchema: Schema.Struct({ temperatureC: Schema.Number, observedAt: Schema.DateFromString }),
-  failureSchema: Schema.Union([CityNotFound, Approval.Denied]),
+  failureSchema: Schema.Union([CityNotFound, ToolDecision.Denied]),
 } as const
 
 type Weather = { readonly temperatureC: number; readonly observedAt: Date }
@@ -125,7 +125,7 @@ describe("UiContract", () => {
     expectTypeOf<Block["input"]>().toEqualTypeOf<{ readonly city: string } | undefined>()
     expectTypeOf<Block["partial"]>().toEqualTypeOf<Weather | undefined>()
     expectTypeOf<Block["outcome"]>().toEqualTypeOf<
-      Outcome<Weather, CityNotFound | ToolOutput.CoreError | Approval.Denied> | undefined
+      Outcome<Weather, CityNotFound | ToolOutput.CoreError | ToolDecision.Denied> | undefined
     >()
   })
 
@@ -172,7 +172,7 @@ describe("UiContract", () => {
         ChatUi.success({ call_id: "c2", name: "get_weather" }, { temperatureC: 1, observedAt: at }),
         ChatUi.failure(
           { call_id: "c3", name: "get_weather" },
-          new Approval.Denied({ message: "not now" }),
+          new ToolDecision.Denied({ message: "not now" }),
         ),
       ])
       expect(events).toEqual([
@@ -195,7 +195,7 @@ describe("UiContract", () => {
       expect(toolBlocks(view).map((b) => b.outcome)).toEqual([
         { _tag: "Failure", error: new CityNotFound({ city: "Atlantis" }) },
         { _tag: "Success", value: { temperatureC: 1, observedAt: at } },
-        { _tag: "Failure", error: new Approval.Denied({ message: "not now" }) },
+        { _tag: "Failure", error: new ToolDecision.Denied({ message: "not now" }) },
       ])
     }),
   )
@@ -265,7 +265,7 @@ describe("UiContract", () => {
     >
     expectTypeOf<Block["partial"]>().toEqualTypeOf<Weather | undefined>()
     expectTypeOf<Block["outcome"]>().toEqualTypeOf<
-      Outcome<Weather, CityNotFound | Approval.Denied | ToolOutput.CoreError> | undefined
+      Outcome<Weather, CityNotFound | ToolDecision.Denied | ToolOutput.CoreError> | undefined
     >()
   })
 

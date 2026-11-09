@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest"
 import { Effect, Match, Result, Schema } from "effect"
 import * as Items from "../domain/Items.js"
-import * as Approval from "./Approval.js"
+import * as ToolDecision from "./ToolDecision.js"
 import * as HistoryCheck from "./HistoryCheck.js"
 import * as Tool from "./Tool.js"
 import * as Toolkit from "./Toolkit.js"
@@ -14,13 +14,13 @@ const call = (id: string): Items.ToolCall => ({
   arguments: "{}",
 })
 
-const Decisions = Approval.decisions({
+const Decisions = ToolDecision.make({
   Approve: { always: Schema.optionalKey(Schema.Boolean) },
   Deny: { reason: Schema.optionalKey(Schema.String) },
   Respond: { output: Schema.Json },
 })
 
-describe("Approval.decisions", () => {
+describe("ToolDecision.make", () => {
   it("groups waiting calls by answer, ignores answers to other calls, keeps the rest unanswered", () => {
     const waiting = [call("a"), call("b"), call("c"), call("d"), call("e")]
     const resolved = Decisions.resolve(waiting, [
@@ -74,26 +74,26 @@ describe("Approval.decisions", () => {
   })
 
   it("a closing decision comes with the error it names, built from its fields", () => {
-    const { Deny } = Approval.Default.resolve(
+    const { Deny } = ToolDecision.Default.resolve(
       [call("a"), call("b")],
       [
-        { callId: "a", decision: Approval.Default.Deny({ reason: "not today" }) },
-        { callId: "b", decision: Approval.Default.Deny() },
+        { callId: "a", decision: ToolDecision.Default.Deny({ reason: "not today" }) },
+        { callId: "b", decision: ToolDecision.Default.Deny() },
       ],
     )
     expect(Deny.map((d) => d.error)).toEqual([
-      new Approval.Denied({ message: "not today" }),
-      new Approval.Denied({ message: "The user declined." }),
+      new ToolDecision.Denied({ message: "not today" }),
+      new ToolDecision.Denied({ message: "The user declined." }),
     ])
-    expectTypeOf(Deny[0]!.error).toEqualTypeOf<Approval.Denied>()
+    expectTypeOf(Deny[0]!.error).toEqualTypeOf<ToolDecision.Denied>()
   })
 
   it("answered lists every answered call, tagged by its decision, for an exhaustive Match", () => {
-    const { answered } = Approval.Default.resolve(
+    const { answered } = ToolDecision.Default.resolve(
       [call("a"), call("b")],
       [
-        { callId: "a", decision: Approval.Default.Approve() },
-        { callId: "b", decision: Approval.Default.Deny({ reason: "no" }) },
+        { callId: "a", decision: ToolDecision.Default.Approve() },
+        { callId: "b", decision: ToolDecision.Default.Deny({ reason: "no" }) },
       ],
     )
     const handled = answered.map(
@@ -108,7 +108,7 @@ describe("Approval.decisions", () => {
   })
 
   it("type: Match over answered must handle every decision", () => {
-    const { answered } = Approval.Default.resolve([], [])
+    const { answered } = ToolDecision.Default.resolve([], [])
     answered.map(
       Match.type<(typeof answered)[number]>().pipe(
         // @ts-expect-error Deny is not handled
@@ -118,13 +118,13 @@ describe("Approval.decisions", () => {
   })
 
   it("a call answered twice: the same answer counts once, two different ones are invalid", () => {
-    const resolved = Approval.Default.resolve(
+    const resolved = ToolDecision.Default.resolve(
       [call("a"), call("b")],
       [
-        { callId: "a", decision: Approval.Default.Approve() },
-        { callId: "a", decision: Approval.Default.Approve() },
-        { callId: "b", decision: Approval.Default.Approve() },
-        { callId: "b", decision: Approval.Default.Deny() },
+        { callId: "a", decision: ToolDecision.Default.Approve() },
+        { callId: "a", decision: ToolDecision.Default.Approve() },
+        { callId: "b", decision: ToolDecision.Default.Approve() },
+        { callId: "b", decision: ToolDecision.Default.Deny() },
       ],
     )
     expect(resolved.answered.map((e) => e.call.call_id)).toEqual(["a"])
@@ -134,28 +134,28 @@ describe("Approval.decisions", () => {
   })
 })
 
-describe("Approval.byTool", () => {
+describe("ToolDecision.byTool", () => {
   class Escalated extends Schema.TaggedError<Escalated>()("Escalated", {
     team: Schema.Literals(["finance", "legal"]),
   }) {}
 
-  const Refund = Approval.decisions({
+  const Refund = ToolDecision.make({
     Approve: {},
     Reduce: { amount: Schema.Number },
-    Escalate: Approval.closesWith(
+    Escalate: ToolDecision.closesWith(
       { team: Schema.Literals(["finance", "legal"]) },
       ({ team }) => new Escalated({ team }),
     ),
   })
-  const Email = Approval.decisions({
+  const Email = ToolDecision.make({
     Approve: {},
     Edit: { subject: Schema.String },
     // A closing decision is reusable across sets.
-    Deny: Approval.Default.variants.Deny,
+    Deny: ToolDecision.Default.variants.Deny,
   })
-  const Decisions = Approval.byTool(
+  const Decisions = ToolDecision.byTool(
     { issue_refund: Refund, send_email: Email },
-    { fallback: Approval.Default },
+    { fallback: ToolDecision.Default },
   )
 
   const named = (name: string, id: string): Items.ToolCall => ({
@@ -177,22 +177,22 @@ describe("Approval.byTool", () => {
       { callId: "r1", decision: Refund.Reduce({ amount: 40 }) },
       { callId: "r2", decision: Email.Edit({ subject: "a refund edited like an email" }) },
       { callId: "e1", decision: Email.Edit({ subject: "Your refund" }) },
-      { callId: "h1", decision: Approval.Default.Deny({ reason: "read only today" }) },
+      { callId: "h1", decision: ToolDecision.Default.Deny({ reason: "read only today" }) },
     ])
     expect(resolved.issue_refund.Reduce.map((r) => r.decision.amount)).toEqual([40])
     expect(resolved.send_email.Edit.map((r) => r.call.call_id)).toEqual(["e1"])
     expect(resolved.fallback.Deny.map((r) => r.error)).toEqual([
-      new Approval.Denied({ message: "read only today" }),
+      new ToolDecision.Denied({ message: "read only today" }),
     ])
     expect(resolved.invalid.map((i) => i.call.call_id)).toEqual(["r2"])
     expect(resolved.unanswered.map((c) => c.call_id)).toEqual(["e2"])
   })
 
   it("without a fallback, a call nobody takes decisions for can't be answered", () => {
-    const only = Approval.byTool({ issue_refund: Refund })
+    const only = ToolDecision.byTool({ issue_refund: Refund })
     const resolved = only.resolve(
       [named("delete_ticket", "d1"), named("delete_ticket", "d2")],
-      [{ callId: "d1", decision: Approval.Default.Approve() }],
+      [{ callId: "d1", decision: ToolDecision.Default.Approve() }],
     )
     expect(resolved.invalid.map((i) => i.call.call_id)).toEqual(["d1"])
     expect(resolved.unanswered.map((c) => c.call_id)).toEqual(["d2"])
@@ -207,15 +207,18 @@ describe("Approval.byTool", () => {
   )
 
   it("type: two sets may share a tag only with the same fields", () => {
-    const Always = Approval.decisions({ Approve: { always: Schema.Boolean } })
+    const Always = ToolDecision.make({ Approve: { always: Schema.Boolean } })
     // @ts-expect-error "Approve" has different fields in issue_refund and send_email
-    Approval.byTool({ issue_refund: Refund, send_email: Always })
+    ToolDecision.byTool({ issue_refund: Refund, send_email: Always })
     // An optional extra field is a conflict too: the union would drop it.
-    const Maybe = Approval.decisions({ Approve: { always: Schema.optionalKey(Schema.Boolean) } })
+    const Maybe = ToolDecision.make({ Approve: { always: Schema.optionalKey(Schema.Boolean) } })
     // @ts-expect-error "Approve" has different fields
-    Approval.byTool({ issue_refund: Refund }, { fallback: Maybe })
+    ToolDecision.byTool({ issue_refund: Refund }, { fallback: Maybe })
     // Same fields (or a reused variant) are fine.
-    Approval.byTool({ issue_refund: Refund, send_email: Email }, { fallback: Approval.Default })
+    ToolDecision.byTool(
+      { issue_refund: Refund, send_email: Email },
+      { fallback: ToolDecision.Default },
+    )
   })
 
   it("type: an answer takes its tool's decisions; groups and errors are typed per tool", () => {
@@ -223,14 +226,19 @@ describe("Approval.byTool", () => {
     Decisions.answer(refund, Refund.Reduce({ amount: 1 }))
     // @ts-expect-error an email decision for a refund call
     Decisions.answer(refund, Email.Edit({ subject: "s" }))
-    Decisions.answer({ callId: "h1", name: "helpdesk__write_ticket" }, Approval.Default.Approve())
+    Decisions.answer(
+      { callId: "h1", name: "helpdesk__write_ticket" },
+      ToolDecision.Default.Approve(),
+    )
 
-    type Resolved = Approval.ResolvedByTool<typeof Decisions.tools, typeof Approval.Default>
+    type Resolved = ToolDecision.ResolvedByTool<typeof Decisions.tools, typeof ToolDecision.Default>
     expectTypeOf<Resolved["issue_refund"]["Escalate"][number]["error"]>().toEqualTypeOf<Escalated>()
     expectTypeOf<
       Resolved["send_email"]["Edit"][number]["decision"]["subject"]
     >().toEqualTypeOf<string>()
-    expectTypeOf<Resolved["send_email"]["Deny"][number]["error"]>().toEqualTypeOf<Approval.Denied>()
+    expectTypeOf<
+      Resolved["send_email"]["Deny"][number]["error"]
+    >().toEqualTypeOf<ToolDecision.Denied>()
   })
 })
 
@@ -256,8 +264,8 @@ describe("closing waiting calls", () => {
 
   it.effect("a denied call carries the tagged error the model sees", () =>
     Effect.gen(function* () {
-      const denied = new Approval.Denied({ message: "spam" })
-      expect(yield* ToolOutput.failure(call("a"), Approval.Denied, denied)).toEqual({
+      const denied = new ToolDecision.Denied({ message: "spam" })
+      expect(yield* ToolOutput.failure(call("a"), ToolDecision.Denied, denied)).toEqual({
         type: "function_call_output",
         call_id: "a",
         output: [{ type: "input_json", value: { _tag: "Denied", message: "spam" } }],

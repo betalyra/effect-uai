@@ -1,4 +1,4 @@
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Image from "@effect-uai/core/Image"
 import { describe, it } from "@effect/vitest"
 import { Effect, Exit, Schema } from "effect"
@@ -40,7 +40,7 @@ describe("Input wire codec", () => {
 
   it.effect("carries the app's own decisions and rejects one it doesn't define", () =>
     Effect.gen(function* () {
-      const Decisions = Approval.decisions({
+      const Decisions = ToolDecision.make({
         Approve: { always: Schema.optionalKey(Schema.Boolean) },
         Respond: { output: Schema.Json },
       })

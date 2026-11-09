@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Fiber, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Items from "@effect-uai/core/Items"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as Toolkit from "@effect-uai/core/Toolkit"
@@ -65,8 +65,8 @@ describe("tool-call-approval: queue variant", () => {
         ),
       )
       yield* Queue.offerAll(answers, [
-        { callId: "send", decision: Approval.Default.Approve() },
-        { callId: "del", decision: Approval.Default.Deny({ reason: "not allowed" }) },
+        { callId: "send", decision: ToolDecision.Default.Approve() },
+        { callId: "del", decision: ToolDecision.Default.Deny({ reason: "not allowed" }) },
       ])
       const events = yield* Fiber.join(fiber)
 
@@ -90,11 +90,11 @@ describe("tool-call-approval: queue variant", () => {
         Stream.runCollect(stream.pipe(Stream.filter(Toolkit.isOutcome)))
 
       const r1 = yield* fromQueue(isSensitive, answers)([deleteCall("c1")])
-      yield* Queue.offer(answers, { callId: "c1", decision: Approval.Default.Approve() })
+      yield* Queue.offer(answers, { callId: "c1", decision: ToolDecision.Default.Approve() })
       const [o1] = yield* outcomesOf(r1)
 
       const r2 = yield* fromQueue(isSensitive, answers)([deleteCall("c2")])
-      yield* Queue.offer(answers, { callId: "c2", decision: Approval.Default.Deny() })
+      yield* Queue.offer(answers, { callId: "c2", decision: ToolDecision.Default.Deny() })
       const [o2] = yield* outcomesOf(r2)
 
       expect(o1).toMatchObject({ call_id: "c1", result: { _tag: "Success" } })
@@ -128,7 +128,7 @@ describe("tool-call-approval: http variant", () => {
       const { layer, recorder } = MockProvider.layerWithRecorder([askingForAll, done])
       yield* Stream.runCollect(
         httpConversation(
-          [{ callId: "send", decision: Approval.Default.Approve() }],
+          [{ callId: "send", decision: ToolDecision.Default.Approve() }],
           undefined,
           "mock",
         ),

@@ -5,7 +5,7 @@
  * has its tool's input and outcome (`observedAt` is a `Date`, a failure is
  * the tool's own error class).
  */
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as UiContract from "@effect-uai/ui/UiContract"
 import { Schema } from "effect"
 
@@ -23,7 +23,7 @@ export class Superseded extends Schema.TaggedError<Superseded>()("Superseded", {
 }) {}
 
 /** How the app closes a call that needs approval: the user denied it, or moved past it. */
-export const Closings = Schema.Union([Approval.Denied, Superseded])
+export const Closings = Schema.Union([ToolDecision.Denied, Superseded])
 
 export const GetWeather = {
   name: "get_weather",

@@ -6,7 +6,7 @@
  * Two transport flavors, same pieces:
  *
  *   - HTTP (primary)         : decisions arrive bundled with the next
- *                              request. `Approval.Default.resolve` groups the
+ *                              request. `ToolDecision.Default.resolve` groups the
  *                              waiting calls; a call without an answer is
  *                              closed as cancelled.
  *
@@ -17,13 +17,13 @@
  *                              `ApprovalRequested` events drive the UI.
  *
  * A denied or cancelled call still gets an output, so the model's next turn is
- * valid: an `Output` failure with `Approval.Denied` (declared by the sensitive
+ * valid: an `Output` failure with `ToolDecision.Denied` (declared by the sensitive
  * tools) or core's `ToolOutput.Cancelled`, encoded like any other outcome.
  *
  * This file exports the building blocks for both. `app.ts` drives the
  * queue variant (more visual demo).
  */
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Items from "@effect-uai/core/Items"
 import { LanguageModel } from "@effect-uai/core/LanguageModel"
 import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
@@ -77,7 +77,7 @@ const sendEmail = Tool.make({
     subject: Schema.String,
     sent_at: Schema.String,
   }),
-  failureSchema: Approval.Denied,
+  failureSchema: ToolDecision.Denied,
   run: ({ to, subject }) =>
     Effect.succeed({ status: "sent", to, subject, sent_at: new Date().toISOString() }),
   strict: true,
@@ -88,7 +88,7 @@ const deleteUser = Tool.make({
   description: "Permanently delete a user account.",
   inputSchema: Schema.Struct({ user_id: Schema.String }),
   outputSchema: Schema.Struct({ status: Schema.String, user_id: Schema.String }),
-  failureSchema: Approval.Denied,
+  failureSchema: ToolDecision.Denied,
   run: ({ user_id }) => Effect.succeed({ status: "deleted", user_id }),
   strict: true,
 })
@@ -105,20 +105,20 @@ export const isSensitive: (call: Items.ToolCall) => boolean = (call) =>
   SENSITIVE_TOOLS.has(call.name)
 
 /** What a user can answer: approve, or deny with an optional reason. */
-export type Decision = typeof Approval.Default.schema.Type
-export type Answer = Approval.Answer<Decision>
+export type Decision = typeof ToolDecision.Default.schema.Type
+export type Answer = ToolDecision.Answer<Decision>
 
 // ---------------------------------------------------------------------------
 // Closing calls the app decided itself
 // ---------------------------------------------------------------------------
 
 /** The model sees a closed call like any failed one; `Denied` only on the sensitive tools. */
-export const close = (call: Items.ToolCall, error: Approval.Denied | ToolOutput.Cancelled) =>
+export const close = (call: Items.ToolCall, error: ToolDecision.Denied | ToolOutput.Cancelled) =>
   Toolkit.close(toolkit, call, error)
 type Closed = Effect.Success<ReturnType<typeof close>>
 
 const denied = (reason: string | undefined) =>
-  new Approval.Denied({ message: reason ?? "The user denied this call." })
+  new ToolDecision.Denied({ message: reason ?? "The user denied this call." })
 
 /** The UI's cue: this call waits for an answer. */
 export type ApprovalRequested = {
@@ -172,7 +172,7 @@ export const httpConversation = (
               const calls = Turn.getToolCalls(turn)
               if (calls.length === 0) return stop()
 
-              const { Approve, Deny, unanswered, invalid } = Approval.Default.resolve(
+              const { Approve, Deny, unanswered, invalid } = ToolDecision.Default.resolve(
                 calls.filter(isSensitive),
                 answers,
               )
@@ -320,8 +320,8 @@ export const demoAnswer = ({ call }: ApprovalRequested): Answer => ({
   callId: call.call_id,
   decision:
     call.name === "delete_user"
-      ? Approval.Default.Deny({
+      ? ToolDecision.Default.Deny({
           reason: "Out of scope for this demo - ask an admin to confirm first.",
         })
-      : Approval.Default.Approve(),
+      : ToolDecision.Default.Approve(),
 })

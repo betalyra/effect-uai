@@ -94,7 +94,7 @@ export const GetWeather = {
   inputSchema: Schema.Struct({ city: Schema.String }),
   outputSchema: Schema.Struct({ temperatureC: Schema.Number, observedAt: Schema.DateFromString }),
   // Gated by approval: the app may close a call with `Denied`.
-  failureSchema: Schema.Union([CityNotFound, Approval.Denied]),
+  failureSchema: Schema.Union([CityNotFound, ToolDecision.Denied]),
 } as const
 
 export const ChatUi = UiContract.make({ tools: [GetWeather] })
@@ -103,7 +103,7 @@ export const ChatUi = UiContract.make({ tools: [GetWeather] })
 The server builds the tool from the spec (`Tool.make({ ...GetWeather, run })`)
 and passes the contract to `Projection.toRunEvents({ contract: ChatUi })`.
 A tool's `failureSchema` lists every error its calls can end with, including
-the ones the app closes calls with itself (`Approval.Denied`); core's errors
+the ones the app closes calls with itself (`ToolDecision.Denied`); core's errors
 are always included. The client passes
 `contract: ChatUi` to `Atoms.thread`, and each envelope is decoded once on
 arrival. A tool block carries the latest `partial` of a streaming tool and,
@@ -125,10 +125,10 @@ the stream: that's a contract bug, not data.
 When your loop stops on a call that needs a human, it ends the run with
 `run-interrupted` and the card shows `awaiting-approval`. The page sends the
 answer as an input,
-`chat.submit(Input.resolve([{ callId, decision: Approval.Default.Approve() }]))`,
+`chat.submit(Input.resolve([{ callId, decision: ToolDecision.Default.Approve() }]))`,
 and your server decides: it takes the pending calls from its own history,
-checks who may approve them, groups them with `Approval.Default.resolve`, runs
-the approved ones and closes the denied ones with `Approval.Denied`. The result
+checks who may approve them, groups them with `ToolDecision.Default.resolve`, runs
+the approved ones and closes the denied ones with `ToolDecision.Denied`. The result
 updates the card it was asked from.
 
 ## Direct or durable

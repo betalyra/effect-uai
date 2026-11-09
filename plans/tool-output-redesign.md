@@ -39,9 +39,9 @@ already holds the `Approval.fromQueue` move).
    `build`), `appendToolResults` → `Toolkit.appendResults(toolkit, state, turn)`, new
    `Toolkit.next(toolkit, state, turn)` = their composition. `Toolkit.output(toolkit)`
    is pipeable; `Toolkit.isOutcome` keeps per-tool types.
-10. **Approval:** `Approval.decisions({...})` (constructors, `schema`, dual `resolve` →
-    groups per tag + `unanswered`), `Approval.Default` (Approve, Deny { reason? }),
-    `Approval.Denied`. App closings are typed: `ToolOutput.success` (user-supplied
+10. **Approval:** `ToolDecision.make({...})` (constructors, `schema`, dual `resolve` →
+    groups per tag + `unanswered`), `ToolDecision.Default` (Approve, Deny { reason? }),
+    `ToolDecision.Denied`. App closings are typed: `ToolOutput.success` (user-supplied
     result) / `ToolOutput.failure` (denied, superseded).
 11. **UI:** the contract carries each tool's `failureSchema`, the app's `failures` and
     `decisions`. A tool block narrowed by `name` has typed `input`, `partial` and
@@ -112,7 +112,7 @@ already holds the `Approval.fromQueue` move).
       new `Tool` type (namespaced names must keep the per-tool typing).
 - [ ] Delete `tool/ToolResult.ts`.
 
-### `tool/Approval.ts`
+### `tool/ToolDecision.ts`
 
 - [ ] `decisions`, `Default`, `Denied`, `Answer`, dual `resolve`. Remove
       `ApprovalDecision`, `approve`, `reject`, `split…`, `approvalRequested`, `fromMap`.
@@ -132,7 +132,7 @@ already holds the `Approval.fromQueue` move).
 
 ### Tests
 
-- [ ] Port `Tool.test.ts`, `Toolkit.test.ts`, `Approval.test.ts` to `@effect/vitest`
+- [ ] Port `Tool.test.ts`, `Toolkit.test.ts`, `ToolDecision.test.ts` to `@effect/vitest`
       (`it.effect`), covering: error split, partials, `outputSchema` rejection, mixed
       media arrays, `decode` round trip, `next` / `continueWith`, typed narrowing via
       `expectTypeOf` (including `Schema.Date` rejected, `const Name`).
@@ -181,13 +181,13 @@ Every codec maps `ToolCallOutput.output` parts natively (sketches: spike `Codecs
       (typed per tool; errors = tool failures | `RunError` | app failures). Statuses
       unchanged.
 - [ ] `Input.Decision { callId, approved }` → `{ callId, decision }` typed by the
-      contract's decisions (default `Approval.Default.schema`); `Input.resolve` typed.
+      contract's decisions (default `ToolDecision.Default.schema`); `Input.resolve` typed.
 - [ ] `Thread`, `Atoms`, `Client`: thread the new types through; tests per module.
 
 ## Phase 4: recipes, examples, docs
 
 - [ ] Recipes (about 20 use the tool API): `tool-call-approval` (decisions, typed
-      closings, `fromQueue` on `Approval.decisions`), `streaming-tool-output` (Stream
+      closings, `fromQueue` on `ToolDecision.make`), `streaming-tool-output` (Stream
       tools), `agentic-loop`, `basic-usage`, `mcp-tools`, `realtime-voice-agent`,
       `camera-assistant`, `messenger-agent`, `sleeper-agent`, `radio-station`,
       `browser-usability`, `deep-research`, `grounded-answer`, `native-grounding`,
@@ -242,7 +242,7 @@ Each phase ends green before the next starts; nothing is committed by me.
   `Toolkit.output` does (no `toCodecJson`), and a spec's `outputSchema` /
   `failureSchema` must encode to JSON. One encoding for history and the UI.
 - Decisions are app code, not on the contract, the tools or the toolkit: the
-  app's `Approval.decisions` sets (or an `Approval.byTool` map of them) give
+  app's `ToolDecision.make` sets (or an `ToolDecision.byTool` map of them) give
   `Input.make(data, Decisions.schema)` its wire schema. See Appendix A.
 - `UiContract` types a core `Tool` by its own `Output` / `Failure`.
 - `@effect-uai/ai-sdk`: outputs as JSON (media as data URLs), failures as
@@ -251,7 +251,7 @@ Each phase ends green before the next starts; nothing is committed by me.
   then the last again as the `Output` (holding each back one value hid
   progress until the next arrived). `Effect` tools emit only the `Output`;
   `describeFailures` keeps a tool's shape.
-- App closings (`Approval.Denied`, `Superseded`) are declared per tool, in the
+- App closings (`ToolDecision.Denied`, `Superseded`) are declared per tool, in the
   gated tools' `failureSchema` (or via `Tool.withFailures` for tools you don't
   own), not on the contract: `UiContract.make` has no `failures`, and
   `Toolkit.output` / `next` / `decode` encode closings with no extra schema.
@@ -263,14 +263,17 @@ Each phase ends green before the next starts; nothing is committed by me.
   still sees a stream, and an `Effect` tool gets the stream's last value back
   (a middleware that drops it is a defect).
 - Decisions per tool, kept in app code (Appendix A):
+  - `Approval` is renamed `ToolDecision` and `decisions` is `make`: an answer
+    can be any decision about a tool call. (`Decision` is taken by the
+    decision models, the type half of `DecisionModel`.)
   - `Decisions.resolve` checks each answer against its own schema; an answer
     it doesn't take lands in `invalid` instead of being dropped.
-  - `Approval.closesWith(fields, build)`: a decision that ends the call carries
+  - `ToolDecision.closesWith(fields, build)`: a decision that ends the call carries
     the error it builds, so `Escalate` can only end in `Escalated`.
-    `Approval.Default.Deny` is one (wire unchanged: `Deny { reason? }`).
+    `ToolDecision.Default.Deny` is one (wire unchanged: `Deny { reason? }`).
   - `Toolkit.close(toolkit, "name", call, error)`: with the tool's name, the
     error is checked against that tool's `failureSchema` at compile time.
-  - `Approval.byTool({ tool: set }, { fallback })`: one map gives the wire
+  - `ToolDecision.byTool({ tool: set }, { fallback })`: one map gives the wire
     schema, typed answers in the browser and one `resolve` on the server.
   - Rejected along the way: decisions on the tool or the toolkit. Decisions
     never reach history, so tools have no reason to know them.
@@ -334,9 +337,9 @@ and make the conflict a compile error in `byTool`, like duplicate tool names in
 `Toolkit.make`. Same tag means exactly the same decision type; rename otherwise.
 
 ```ts
-Approval.byTool({
-  issue_refund: Approval.decisions({ Approve: {}, ... }),
-  send_email: Approval.decisions({ Approve: { always: Schema.Boolean }, ... }),
+ToolDecision.byTool({
+  issue_refund: ToolDecision.make({ Approve: {}, ... }),
+  send_email: ToolDecision.make({ Approve: { always: Schema.Boolean }, ... }),
 })
 // ✗ "Approve" has different fields in issue_refund and send_email
 ```
@@ -344,7 +347,7 @@ Approval.byTool({
 Exact equality, not compatibility: `Approve {}` next to
 `Approve { always?: boolean }` is a conflict too (the union would drop
 `always`). Identical definitions and reused variants
-(`Approval.Default.variants.Deny`) pass.
+(`ToolDecision.Default.variants.Deny`) pass.
 
 ### R3. Which calls wait and which can be answered drift apart
 
@@ -522,14 +525,14 @@ history, model, UI: the same typed outcome
 
 ### The pieces
 
-| Piece                                          | What it does                                                                                                    |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `Approval.decisions({...})`                    | One set of answers: constructors, wire schema, `resolve` (`answered`, groups per tag, `unanswered`, `invalid`). |
-| `Approval.closesWith(fields, build)`           | An answer that ends the call; `build` makes its error.                                                          |
-| `Approval.byTool({ tool: set }, { fallback })` | Which set each tool takes; typed `answer` and one `resolve`.                                                    |
-| `Approval.Default` / `Approval.Denied`         | Ready set: `Approve`, `Deny { reason? }` ending in `Denied`.                                                    |
-| `Toolkit.close(toolkit, "tool", call, error)`  | Ends a call with an error the tool declares (checked).                                                          |
-| `Tool.withFailures` / `Toolkit.withFailures`   | Declare closing errors on tools you don't define (MCP).                                                         |
+| Piece                                              | What it does                                                                                                    |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `ToolDecision.make({...})`                         | One set of answers: constructors, wire schema, `resolve` (`answered`, groups per tag, `unanswered`, `invalid`). |
+| `ToolDecision.closesWith(fields, build)`           | An answer that ends the call; `build` makes its error.                                                          |
+| `ToolDecision.byTool({ tool: set }, { fallback })` | Which set each tool takes; typed `answer` and one `resolve`.                                                    |
+| `ToolDecision.Default` / `ToolDecision.Denied`     | Ready set: `Approve`, `Deny { reason? }` ending in `Denied`.                                                    |
+| `Toolkit.close(toolkit, "tool", call, error)`      | Ends a call with an error the tool declares (checked).                                                          |
+| `Tool.withFailures` / `Toolkit.withFailures`       | Declare closing errors on tools you don't define (MCP).                                                         |
 
 ### Example: a refund desk
 
@@ -552,33 +555,33 @@ export const IssueRefund = {
   description: "Refund part or all of an order.",
   inputSchema: Schema.Struct({ orderId: Schema.String, amount: Schema.Number }),
   outputSchema: Schema.Struct({ refundId: Schema.String, amount: Schema.Number }),
-  failureSchema: Schema.Union([OrderNotFound, Approval.Denied, Escalated]),
+  failureSchema: Schema.Union([OrderNotFound, ToolDecision.Denied, Escalated]),
 } as const
 
 // What a person may answer, per tool.
-export const RefundDecisions = Approval.decisions({
+export const RefundDecisions = ToolDecision.make({
   Approve: {},
   Reduce: { amount: Schema.Number },
-  Escalate: Approval.closesWith(
+  Escalate: ToolDecision.closesWith(
     { team: Schema.Literals(["finance", "legal"]) },
     ({ team }) =>
       new Escalated({ team, message: `Handed to ${team}; they will contact the customer.` }),
   ),
-  Deny: Approval.closesWith(
+  Deny: ToolDecision.closesWith(
     { reason: Schema.optionalKey(Schema.String) },
-    ({ reason }) => new Approval.Denied({ message: reason ?? "The refund was declined." }),
+    ({ reason }) => new ToolDecision.Denied({ message: reason ?? "The refund was declined." }),
   ),
 })
 
-export const EmailDecisions = Approval.decisions({
+export const EmailDecisions = ToolDecision.make({
   Approve: {},
   Edit: { subject: Schema.optionalKey(Schema.String), body: Schema.optionalKey(Schema.String) },
-  Deny: Approval.Default.variants.Deny,
+  Deny: ToolDecision.Default.variants.Deny,
 })
 
-export const Decisions = Approval.byTool(
+export const Decisions = ToolDecision.byTool(
   { issue_refund: RefundDecisions, send_email: EmailDecisions },
-  { fallback: Approval.Default }, // the helpdesk's write tools
+  { fallback: ToolDecision.Default }, // the helpdesk's write tools
 )
 
 // Which calls wait: plain app policy, derived from the same map so a call that
@@ -599,7 +602,7 @@ const toolkit =
   Toolkit.compose(
     Toolkit.make(lookupOrder, issueRefund, sendEmail),
     // Dynamic MCP tools: declare the closing on them too.
-    Toolkit.withFailures(yield * mcpToolkit(client, { prefix: "helpdesk" }), Approval.Denied),
+    Toolkit.withFailures(yield * mcpToolkit(client, { prefix: "helpdesk" }), ToolDecision.Denied),
   )
 ```
 
@@ -621,13 +624,13 @@ Match.value(interrupt).pipe(
   // Decisions.answer(i, EmailDecisions.Edit({})) here would not compile.
   Match.orElse((i) => (
     <ApproveOrDeny
-      onApprove={() => send(Decisions.answer(i, Approval.Default.Approve()))}
-      onDeny={(reason) => send(Decisions.answer(i, Approval.Default.Deny({ reason })))}
+      onApprove={() => send(Decisions.answer(i, ToolDecision.Default.Approve()))}
+      onDeny={(reason) => send(Decisions.answer(i, ToolDecision.Default.Deny({ reason })))}
     />
   )),
 )
 
-const send = (answer: Approval.Answer<unknown>) => submit(Input.resolve([answer]))
+const send = (answer: ToolDecision.Answer<unknown>) => submit(Input.resolve([answer]))
 ```
 
 **Server: the answers**
@@ -704,7 +707,7 @@ browser gets the same outcome typed: `Failure { error: Escalated }` or
 | ---------------------------------------------------------- | ------------------------------------------------------------------------- |
 | An answer fits the call's tool (`Reduce` only for refunds) | browser: `Decisions.answer` (compile time); server: `resolve` (`invalid`) |
 | Two answers to one call disagree                           | `resolve` (`invalid`)                                                     |
-| The same tag means the same answer in every set            | `Approval.byTool` (compile time)                                          |
+| The same tag means the same answer in every set            | `ToolDecision.byTool` (compile time)                                      |
 | A closing decision ends in its own error                   | `closesWith`: the decision builds it                                      |
 | That error is one the tool declares                        | `Toolkit.close(toolkit, "issue_refund", ...)` (compile time and runtime)  |
 | Every decision is handled                                  | exhaustive `Match` over `answered` (compile time)                         |

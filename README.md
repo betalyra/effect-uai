@@ -68,18 +68,14 @@ export const conversation = loop(initial, (state) =>
     return oai
       .streamTurn({ history: state.history, model, tools: toolkit }) // stream text, reasoning, tool events
       .pipe(
-        onTurnComplete((turn) =>
-          Effect.sync(() => {
-            const calls = Turn.getToolCalls(turn) // approve, deny, audit, batch (it's your code)
-            if (calls.length === 0) return stop() // stop on a final answer, a budget, your call
-            return Toolkit.run(toolkit, calls).pipe(
-              // run typed Effect tools
-              Toolkit.continueWithResults(
-                Toolkit.appendToolResults(state, turn), // fold results back into your state
-              ),
-            )
-          }),
-        ),
+        onTurnComplete((turn) => {
+          const calls = Turn.getToolCalls(turn) // approve, deny, audit, batch (it's your code)
+          if (calls.length === 0) return stop() // stop on a final answer, a budget, your call
+          return Toolkit.run(toolkit, calls).pipe(
+            // run typed Effect tools
+            Toolkit.next(toolkit, state, turn), // fold results back into your state
+          )
+        }),
       )
   }),
 )

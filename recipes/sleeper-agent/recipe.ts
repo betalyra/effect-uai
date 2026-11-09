@@ -154,6 +154,7 @@ export const conversation = (
         name: "trigger_deploy",
         description: "Trigger a CI/CD pipeline deploy. Returns a pipeline ID to track.",
         inputSchema: Tool.fromEffectSchema(Schema.Struct({ branch: Schema.String })),
+        outputSchema: Schema.Struct({ pipelineId: Schema.String, status: Schema.String }),
         run: ({ branch }) =>
           Effect.gen(function* () {
             const pipelineId = `pipeline-${branch}`

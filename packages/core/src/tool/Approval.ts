@@ -4,7 +4,7 @@
  * Which calls wait and what each answer means is app code; tools and toolkits
  * know nothing about decisions.
  */
-import { Array as Arr, Function, HashMap, Option, Record, Result, Schema } from "effect"
+import { Array as Arr, Equal, Function, HashMap, Option, Record, Result, Schema } from "effect"
 import type { ToolCall } from "../domain/Items.js"
 
 /** A decision's fields; context-free schemas so the wire codec needs no services. */
@@ -49,18 +49,27 @@ type Constructors<V extends Variants> = {
 /** One decision for one call, as a client sends it. */
 export type Answer<D> = { readonly callId: string; readonly decision: D }
 
-/** An answer the call's decisions don't accept (wrong tag or fields). */
+/** An answer the call's decisions don't accept (wrong tag or fields, or two different answers). */
 export type Invalid = { readonly call: ToolCall; readonly decision: unknown }
 
-/** One group: the calls answered with tag `K`; a closing decision also carries its error. */
-type Group<V extends Variants, K extends keyof V & string> = ReadonlyArray<
-  {
+/**
+ * One answered call, tagged like its decision so `Match.tagsExhaustive` covers
+ * every tag; a closing decision also carries its error.
+ */
+export type Entry<V extends Variants, K extends keyof V & string = keyof V & string> = {
+  [T in K]: {
+    readonly _tag: T
     readonly call: ToolCall
-    readonly decision: Extract<DecisionOf<V>, { readonly _tag: K }>
-  } & (V[K] extends Closing<any, infer E> ? { readonly error: E } : {})
->
+    readonly decision: Extract<DecisionOf<V>, { readonly _tag: T }>
+  } & (V[T] extends Closing<any, infer E> ? { readonly error: E } : {})
+}[K]
 
-type Groups<V extends Variants> = { readonly [K in keyof V & string]: Group<V, K> }
+type Groups<V extends Variants> = {
+  readonly [K in keyof V & string]: ReadonlyArray<Entry<V, K>>
+} & {
+  /** Every answered call, in order: match on `_tag` to handle each decision. */
+  readonly answered: ReadonlyArray<Entry<V>>
+}
 
 /** Waiting calls grouped by the tag of their answer; `unanswered` got none, `invalid` a wrong one. */
 export type Resolved<V extends Variants> = Groups<V> & {
@@ -84,8 +93,21 @@ export type Decisions<V extends Variants> = Constructors<V> & {
   readonly resolve: ResolveFn<Resolved<V>>
 }
 
-const answersById = (answers: ReadonlyArray<Answer<unknown>>) =>
-  HashMap.fromIterable(Arr.map(answers, (a) => [a.callId, a.decision] as const))
+/** A call's answer: one decision, or `Conflict` when it got two different ones. */
+type Answered = Result.Result<unknown, { readonly conflict: ReadonlyArray<unknown> }>
+
+const answersById = (answers: ReadonlyArray<Answer<unknown>>): HashMap.HashMap<string, Answered> =>
+  HashMap.fromIterable(
+    Object.entries(Arr.groupBy(answers, (a) => a.callId)).map(([callId, group]) => {
+      const decisions = Arr.dedupeWith(
+        group.map((a) => a.decision),
+        Equal.equals,
+      )
+      const answered: Answered =
+        decisions.length === 1 ? Result.succeed(decisions[0]) : Result.fail({ conflict: decisions })
+      return [callId, answered] as const
+    }),
+  )
 
 /**
  * Define the possible answers:
@@ -109,34 +131,40 @@ export function decisions(variants: Variants): object {
   const constructors = Object.fromEntries(
     tags.map((tag) => [tag, (fields: object = {}) => ({ _tag: tag, ...fields })]),
   )
-  // A closing decision brings its error along, built from the answer's fields.
-  const withError = (entry: {
-    readonly call: ToolCall
-    readonly decision: { readonly _tag: string }
-  }) =>
-    Option.match(
-      Option.fromNullishOr(variants[entry.decision._tag]).pipe(Option.filter(isClosing)),
-      {
-        onNone: () => entry,
-        onSome: (closing) => ({ ...entry, error: closing.error(entry.decision) }),
-      },
-    )
+  // An entry is tagged like its decision; a closing one brings its error, built from the fields.
+  const entryOf = (call: ToolCall, decision: { readonly _tag: string }) =>
+    Option.match(Option.fromNullishOr(variants[decision._tag]).pipe(Option.filter(isClosing)), {
+      onNone: () => ({ _tag: decision._tag, call, decision }),
+      onSome: (closing) => ({
+        _tag: decision._tag,
+        call,
+        decision,
+        error: closing.error(decision),
+      }),
+    })
   const resolve = Function.dual(
     2,
     (calls: ReadonlyArray<ToolCall>, answers: ReadonlyArray<Answer<unknown>>) => {
       const byId = answersById(answers)
-      const [answered, unanswered] = Arr.partition(calls, (call) =>
+      const [answeredCalls, unanswered] = Arr.partition(calls, (call) =>
         Option.match(HashMap.get(byId, call.call_id), {
           onNone: () => Result.fail(call),
-          onSome: (decision) => Result.succeed({ call, decision }),
+          onSome: (answer) => Result.succeed({ call, answer }),
         }),
       )
-      const [valid, invalid] = Arr.partition(answered, ({ call, decision }) =>
-        accepts(decision) ? Result.succeed({ call, decision }) : Result.fail({ call, decision }),
+      const [answered, invalid] = Arr.partition(answeredCalls, ({ call, answer }) =>
+        Result.match(answer, {
+          onSuccess: (decision) =>
+            accepts(decision)
+              ? Result.succeed(entryOf(call, decision))
+              : Result.fail({ call, decision }),
+          onFailure: ({ conflict }) => Result.fail({ call, decision: conflict }),
+        }),
       )
-      const byTag = Arr.groupBy(Arr.map(valid, withError), (a) => a.decision._tag)
+      const byTag = Arr.groupBy(answered, (entry) => entry._tag)
       return {
         ...Record.fromIterableWith(tags, (tag) => [tag, byTag[tag] ?? []]),
+        answered,
         unanswered,
         invalid,
       }
@@ -167,10 +195,17 @@ export const Default = decisions({
 // Decisions per tool
 // ---------------------------------------------------------------------------
 
-type AnyDecisions = Decisions<any>
-type VariantsOf<D> = D extends Decisions<infer V> ? V : never
+// Any decision set, by structure: `Decisions<any>` is too narrow for a typed set's `resolve`.
+type AnyDecisions = {
+  readonly variants: Variants
+  readonly schema: Schema.Codec<any, unknown>
+  readonly resolve: ResolveFn<any>
+}
+type VariantsOf<D> = D extends { readonly variants: infer V extends Variants } ? V : never
 // Distributes over a union of sets, so each keeps its own tags.
-type DecisionsOf<D> = D extends Decisions<infer V> ? DecisionOf<V> : never
+type DecisionsOf<D> = D extends { readonly variants: infer V extends Variants }
+  ? DecisionOf<V>
+  : never
 type Table = Record<string, AnyDecisions>
 
 /** The decision a call of tool `N` takes: its own set, else the fallback. */
@@ -199,6 +234,42 @@ export type ByTool<M extends Table, F> = {
   readonly resolve: ResolveFn<ResolvedByTool<M, F>>
 }
 
+// Exact type equality: `{}` and `{ always?: boolean }` differ (the union would drop `always`).
+type Equals<X, Y> =
+  (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2 ? true : false
+
+type TagDecision<V extends Variants, K extends string> = Extract<
+  DecisionOf<V>,
+  { readonly _tag: K }
+>
+
+// Tags two sets share with different fields.
+type SharedConflict<A, B> = A extends { readonly variants: infer VA extends Variants }
+  ? B extends { readonly variants: infer VB extends Variants }
+    ? {
+        [K in keyof VA & keyof VB & string]: Equals<
+          TagDecision<VA, K>,
+          TagDecision<VB, K>
+        > extends true
+          ? never
+          : K
+      }[keyof VA & keyof VB & string]
+    : never
+  : never
+
+type AllSets<M extends Table, F> = M & (F extends AnyDecisions ? { readonly fallback: F } : {})
+
+type Conflicts<S> = {
+  [A in keyof S]: { [B in keyof S]: SharedConflict<S[A], S[B]> }[keyof S]
+}[keyof S]
+
+/** A tag used by two sets with different fields: the wire can't tell them apart. */
+type NoConflicts<M extends Table, F> = [Conflicts<AllSets<M, F>>] extends [never]
+  ? unknown
+  : {
+      readonly __error: `Decision "${Conflicts<AllSets<M, F>> & string}" has different fields in two sets; rename one`
+    }
+
 /**
  * The decisions each tool takes, in app code:
  *
@@ -207,12 +278,15 @@ export type ByTool<M extends Table, F> = {
  *     { fallback: Approval.Default },
  *   )
  *
+ * Sets may share a tag only with the same fields (a compile error otherwise).
  * A call whose tool has no set (and no fallback) can't be answered: it stays
  * `unanswered`, or lands in `invalid` when an answer arrives for it.
  */
-export function byTool<const M extends Table>(tools: M): ByTool<M, undefined>
+export function byTool<const M extends Table>(
+  tools: M & NoConflicts<M, undefined>,
+): ByTool<M, undefined>
 export function byTool<const M extends Table, F extends AnyDecisions>(
-  tools: M,
+  tools: M & NoConflicts<M, F>,
   options: { readonly fallback: F },
 ): ByTool<M, F>
 export function byTool(tools: Table, options?: { readonly fallback?: AnyDecisions }): object {
@@ -256,7 +330,14 @@ export function byTool(tools: Table, options?: { readonly fallback?: AnyDecision
       const [orphaned, waiting] = Arr.partition(uncovered, (call) =>
         Option.match(HashMap.get(byId, call.call_id), {
           onNone: () => Result.fail(call),
-          onSome: (decision) => Result.succeed({ call, decision }),
+          onSome: (answer) =>
+            Result.succeed({
+              call,
+              decision: Result.match(answer, {
+                onSuccess: Function.identity,
+                onFailure: (c) => c.conflict,
+              }),
+            }),
         }),
       )
       return {

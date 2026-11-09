@@ -31,6 +31,12 @@ const makeRunPython = (sb: SandboxInstance) =>
     description:
       "Run a Python program inside a sandboxed microVM. Returns exit code, stdout, and stderr. Use this to compute precise answers.",
     inputSchema: Tool.fromEffectSchema(RunPythonInput),
+    outputSchema: Schema.Struct({
+      exitCode: Schema.Number,
+      stdout: Schema.String,
+      stderr: Schema.String,
+      durationMs: Schema.Number,
+    }),
     run: ({ code }) =>
       sb.exec({ cmd: ["python3", "-c", code] }).pipe(
         Effect.map((r) => ({

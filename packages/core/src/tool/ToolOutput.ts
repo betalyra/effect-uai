@@ -5,7 +5,17 @@
  * Every value goes through a schema (the tool's `outputSchema`, else `Content.Value`):
  * the decoded side decides the shape and supplies media, the encoded side the JSON.
  */
-import { Array as Arr, Effect, Match, Option, Predicate, Schema } from "effect"
+import {
+  Array as Arr,
+  Effect,
+  Match,
+  Option,
+  Predicate,
+  Schema,
+  SchemaTransformation,
+} from "effect"
+import { FileSourceJson } from "../domain/File.js"
+import { ImageSourceJson } from "../domain/Image.js"
 import * as Items from "../domain/Items.js"
 import type { ToolCall, ToolCallOutput, ToolOutputContent } from "../domain/Items.js"
 import * as Content from "./Content.js"
@@ -111,6 +121,50 @@ export const encoded = (
   Effect.forEach(output.map(fromPart), (v) =>
     Content.isMedia(v) ? Schema.encodeEffect(Content.Media)(v) : Effect.succeed(v),
   ).pipe(Effect.map(single))
+
+// --- a Content.Value as typed parts, for the wire to a UI -------------------------
+
+const isJson = Schema.is(Schema.Json)
+
+const elementPart = Match.type<Content.Media | Schema.Json>().pipe(
+  Match.when(Content.isMedia, toPart),
+  Match.when(Predicate.isString, Items.text),
+  Match.orElse(Items.json),
+)
+
+/** A `Content.Value` as history parts, by the same rule as `parts` (its JSON is itself). */
+export const valueParts = (v: Content.Value): ReadonlyArray<ToolOutputContent> =>
+  Match.value(v).pipe(
+    Match.when(Predicate.isString, (text) => [Items.text(text)]),
+    Match.when(Content.isMedia, (media) => [toPart(media)]),
+    Match.when(isMixed, (values) => values.map(elementPart)),
+    Match.when(isJson, (json) => [Items.json(json)]),
+    // Unreachable: a Content.Value is text, JSON, media or a mix of them.
+    Match.orElse(() => []),
+  )
+
+/** A history part with JSON sources (bytes as base64), as it travels to a UI. */
+export const PartJson = Schema.Union([
+  Items.InputText,
+  Items.InputJson,
+  Schema.Struct({ type: Schema.Literal("input_image"), source: ImageSourceJson }),
+  Schema.Struct({
+    type: Schema.Literal("input_file"),
+    source: FileSourceJson,
+    filename: Schema.optionalKey(Schema.String),
+  }),
+])
+
+/**
+ * A `Content.Value` on the wire to a UI: typed parts instead of its plain JSON,
+ * so JSON shaped like `{ _tag: "Image", source }` can't come back as an image.
+ */
+export const ValueParts = Schema.Array(PartJson).pipe(
+  Schema.decodeTo(
+    Schema.toType(Content.Value),
+    SchemaTransformation.transform({ decode: value, encode: valueParts }),
+  ),
+)
 
 // --- core's own failures -------------------------------------------------------
 

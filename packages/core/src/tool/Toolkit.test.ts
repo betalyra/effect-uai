@@ -64,7 +64,8 @@ const search = Tool.make({
   run: () => Stream.fromIterable([{ hits: 1 }, { hits: 3 }, { hits: 4 }]),
 })
 
-const escalate = Tool.declare({ name: "escalate", description: "", inputSchema: Tool.noInput })
+// A tool without run: the loop handles its calls.
+const escalate = Tool.make({ name: "escalate", description: "", inputSchema: Tool.noInput })
 
 const kit = Toolkit.make(weather, search, escalate)
 
@@ -88,6 +89,7 @@ describe("Toolkit.run", () => {
         name: "slow",
         description: "",
         inputSchema: Tool.noInput,
+        outputSchema: Schema.String,
         run: () =>
           Stream.concat(
             Stream.succeed("searching..."),
@@ -203,6 +205,7 @@ describe("Toolkit.run", () => {
       name: "loose",
       description: "",
       inputSchema: Tool.noInput,
+      outputSchema: Schema.String,
       run: () => Effect.fail(new CityNotFound({ city: "x" })),
     })
     expectTypeOf<
@@ -217,6 +220,7 @@ describe("Toolkit.run", () => {
         name: "where",
         description: "",
         inputSchema: Tool.noInput,
+        outputSchema: Schema.String,
         run: () =>
           Effect.gen(function* () {
             return (yield* Geo).place
@@ -258,13 +262,14 @@ describe("Toolkit.output and Toolkit.decode", () => {
     }),
   )
 
-  it.effect("without outputSchema, media gets its own part and reads back as a class", () =>
+  it.effect("with Content.Value, media gets its own part and reads back as a class", () =>
     Effect.gen(function* () {
       const png = Content.image(imageBytes(new Uint8Array([1, 2]), "image/png"))
       const shot = Tool.make({
         name: "shot",
         description: "",
         inputSchema: Tool.noInput,
+        outputSchema: Content.Value,
         run: () => Effect.succeed([{ title: "Home" }, png]),
       })
       const shots = Toolkit.make(shot)
@@ -491,6 +496,7 @@ describe("Toolkit.wrap and Toolkit.describeFailures", () => {
         name: "click",
         description: "",
         inputSchema: Schema.Struct({ ref: Schema.String }),
+        outputSchema: Schema.String,
         run: ({ ref }) =>
           Effect.gen(function* () {
             if (ref === "gone") return yield* new SessionGone()
@@ -514,11 +520,17 @@ describe("Toolkit.wrap and Toolkit.describeFailures", () => {
 
 describe("Toolkit.make, namespace and compose", () => {
   const tool = <N extends string>(name: N) =>
-    Tool.make({ name, description: "", inputSchema: Tool.noInput, run: () => Effect.succeed(0) })
+    Tool.make({
+      name,
+      description: "",
+      inputSchema: Tool.noInput,
+      outputSchema: Schema.Number,
+      run: () => Effect.succeed(0),
+    })
 
   it("rejects a duplicate literal name at compile time", () => {
     const a = tool("search")
-    const b = Tool.declare({ name: "search", description: "", inputSchema: Tool.noInput })
+    const b = Tool.make({ name: "search", description: "", inputSchema: Tool.noInput })
     // @ts-expect-error Duplicate tool name: search
     Toolkit.make(a, b)
   })

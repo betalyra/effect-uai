@@ -111,6 +111,8 @@ const toLocalTool = (client: McpClient, info: ToolInfo) =>
     name: info.name,
     description: info.description ?? info.name,
     inputSchema: passthroughSchema(info),
+    // Known only at runtime: any mix of text, JSON and media.
+    outputSchema: Content.Value,
     failureSchema: McpToolFailed,
     run: (input) =>
       client.callTool(info.name, input).pipe(Effect.flatMap((r) => interpret(info.name, r))),

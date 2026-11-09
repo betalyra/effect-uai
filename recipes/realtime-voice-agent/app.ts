@@ -47,6 +47,7 @@ const getCurrentTime = Tool.make({
   name: "get_current_time",
   description: "The current local time for an IANA timezone, e.g. 'Europe/Lisbon'.",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ timezone: Schema.String })),
+  outputSchema: Schema.Struct({ timezone: Schema.String, iso: Schema.String }),
   run: ({ timezone }) =>
     DateTime.now.pipe(
       Effect.flatMap((now) =>
@@ -113,6 +114,16 @@ const getWeather = Tool.make({
   name: "get_weather",
   description: "The weather right now in a place, from Open-Meteo.",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ city: Schema.String })),
+  // A sentence when the place is unknown, else the reading.
+  outputSchema: Schema.Union([
+    Schema.String,
+    Schema.Struct({
+      place: Schema.String,
+      celsius: Schema.Number,
+      sky: Schema.String,
+      windKph: Schema.optionalKey(Schema.Number),
+    }),
+  ]),
   run: ({ city }) =>
     Effect.gen(function* () {
       // The model often says "Leiria, Portugal"; the geocoder wants the name.

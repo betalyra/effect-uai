@@ -19,9 +19,10 @@ their editor).
   `run` returns an Effect or a Stream (no `emit`) of typed values, including
   images and files; declared errors (`failureSchema`) reach the model, others
   fail the run; history holds typed parts. `Toolkit.next` replaces
-  `continueWithResults(appendToolResults(...))`, `Tool.declare` replaces
-  `signal` / `interaction`, `Approval.decisions` replaces `fromMap`, and the
-  UI wire carries typed outcomes (protocol v2).
+  `continueWithResults(appendToolResults(...))`, a tool with `run` requires
+  `outputSchema`, a tool without `run` replaces `signal` / `interaction`,
+  `Approval.decisions` replaces `fromMap`, and the UI wire carries typed
+  outcomes (protocol v2).
 - [Migrating to 0.18](/migrations/v0-18/): one required action, upgrade to
   Effect 4.0 stable (`effect` peer `>=4.0.1 <5.0.0`); effect-uai renames
   nothing. Realtime transcription and synthesis streams now fail on a

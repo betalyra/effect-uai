@@ -349,9 +349,12 @@ const makeChats = Effect.gen(function* () {
       const history = yield* Ref.get(chat.history)
       const parked = yield* Ref.make<ReadonlyArray<ToolCall>>([])
       const runId = RunId.make(yield* random.uuidV7())
-      // A verdict for nothing we wait for has nothing to answer.
+      // Calls still waiting without a placeholder have no output yet: the model can't be called.
+      const held = yield* Ref.get(chat.held)
+      const open = (yield* Ref.get(chat.awaiting)).filter((c) => !HashSet.has(held, c.call_id))
+      // A verdict for nothing we wait for, or one that leaves calls open, doesn't call the model.
       const answer =
-        input.kind === "resolve" && results.length === 0
+        input.kind === "resolve" && (results.length === 0 || open.length > 0)
           ? Stream.empty
           : agent(history, parked).pipe(
               Stream.tap((source) =>
@@ -363,10 +366,12 @@ const makeChats = Effect.gen(function* () {
                 throughput: { every: "500 millis", unit: "token", tokenizer: estimateTokens },
               }),
             )
-      // Parked calls end the run as interrupted and wait in `chat.awaiting`.
+      // Parked calls end the run as interrupted and wait in `chat.awaiting`; a partial
+      // verdict ends it with the calls still open.
       const interrupt = Stream.unwrap(
         Ref.get(parked).pipe(
           Effect.tap((calls) => Ref.update(chat.awaiting, (a) => [...a, ...calls])),
+          Effect.map((calls) => (input.kind === "resolve" && open.length > 0 ? open : calls)),
           Effect.map((calls) =>
             calls.length === 0 ? Stream.empty : Stream.make(interrupted(calls)),
           ),

@@ -24,6 +24,7 @@ const lookUp = Tool.make({
   name: "web_search",
   description: "Search the web.",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ query: Schema.String })),
+  outputSchema: Schema.Struct({ query: Schema.String, results: Schema.Array(Schema.String) }),
   run: ({ query }) =>
     Effect.succeed({ query, results: ["a result"] }).pipe(Effect.delay("30 millis")),
 })

@@ -75,6 +75,7 @@ export const webReadTool = (
     description:
       "Read a web page and return its content as clean text. Use it to read a promising URL in full (e.g. one found via search).",
     inputSchema: Tool.fromEffectSchema(WebReadToolArgs),
+    outputSchema: Schema.String,
     // The call is wrapped in a tracing span so agent traces show the tool
     // invocation (url, format, content length) nested under the model turn.
     // `withSpan` is a no-op until a Tracer is installed, so this is free by

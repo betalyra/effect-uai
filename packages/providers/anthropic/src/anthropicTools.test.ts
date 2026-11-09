@@ -10,6 +10,7 @@ const localTool = Tool.make({
   name: "get_weather",
   description: "Look up the weather.",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ city: Schema.String })),
+  outputSchema: Schema.String,
   run: ({ city }) => Effect.succeed(`sunny in ${city}`),
 })
 

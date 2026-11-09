@@ -58,6 +58,7 @@ const deleteUser = Tool.make({
   name: "delete_user",
   description: "Permanently delete a user account.",
   inputSchema: Schema.Struct({ user_id: Schema.String }),
+  outputSchema: Schema.Struct({ status: Schema.String, user_id: Schema.String }),
   failureSchema: Approval.Denied,
   run: ({ user_id }) => Effect.succeed({ status: "deleted", user_id }),
 })

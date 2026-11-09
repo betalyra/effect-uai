@@ -26,6 +26,7 @@
  * Without `outputSchema`, values are a `Content.Value` (media as classes).
  */
 import * as Content from "@effect-uai/core/Content"
+import type * as Items from "@effect-uai/core/Items"
 import type * as Tool from "@effect-uai/core/Tool"
 import type { ToolInputSchema } from "@effect-uai/core/Tool"
 import type * as ToolEvent from "@effect-uai/core/ToolEvent"
@@ -132,6 +133,8 @@ export interface UiContract<P extends AnyPayloads> {
   metadata(value: P["metadata"]): Effect.Effect<Json, Schema.SchemaError>
   /** Server: a toolkit event (`Toolkit.run`) encoded with the tool's schemas. */
   toolEvent(event: ToolEvent.ToolEvent): Effect.Effect<RunEvent, Schema.SchemaError>
+  /** Server: a history item (already encoded) as the `tool-result` of tool `name`. */
+  toolOutput(item: Items.ToolCallOutput, name: string): Effect.Effect<RunEvent, Schema.SchemaError>
   /** Server: close a call with a value of its tool's output (e.g. supplied by the user). */
   success<N extends NameOf<P["tool"]>>(
     call: Call<N>,
@@ -168,10 +171,17 @@ const inputCodec = (tool: ToolSpec): PayloadCodec => {
     return !(result instanceof Promise) && result.issues === undefined
   })
 }
+// "Anything": a tool typed `Content.Value`, or a name the contract doesn't list.
+const isAnything = (tool: ToolSpec | undefined): boolean =>
+  tool?.outputSchema === undefined || tool.outputSchema === Content.Value
+
 // The tool's own schemas, as `Toolkit.output` uses them: they encode to JSON, so
-// the UI and history agree by construction (no `toCodecJson` on top).
+// the UI and history agree by construction (no `toCodecJson` on top). "Anything"
+// travels as typed parts, so JSON can't be mistaken for media.
 const outputCodec = (tool: ToolSpec | undefined): PayloadCodec =>
-  tool?.outputSchema ?? Content.Value
+  isAnything(tool) ? ToolOutput.ValueParts : (tool?.outputSchema ?? ToolOutput.ValueParts)
+
+const encodeParts = Schema.encodeEffect(Schema.Array(ToolOutput.PartJson))
 
 const failureCodec = (tool: ToolSpec | undefined): PayloadCodec =>
   tool?.failureSchema === undefined
@@ -195,6 +205,7 @@ type Loose = {
   live(name: string, value: unknown): Effect.Effect<RunEvent, Schema.SchemaError>
   metadata(value: unknown): Effect.Effect<Json, Schema.SchemaError>
   toolEvent(event: ToolEvent.ToolEvent): Effect.Effect<RunEvent, Schema.SchemaError>
+  toolOutput(item: Items.ToolCallOutput, name: string): Effect.Effect<RunEvent, Schema.SchemaError>
   success(call: Call, value: unknown): Effect.Effect<RunEvent, Schema.SchemaError>
   failure(call: Call, error: unknown): Effect.Effect<RunEvent, Schema.SchemaError>
 }
@@ -220,6 +231,7 @@ export function make(spec: Spec): Loose {
   const codecsOf = (tool: ToolSpec | undefined) => ({
     output: outputCodec(tool),
     result: resultCodec(tool),
+    anything: isAnything(tool),
   })
   const unlistedCodecs = codecsOf(undefined)
   const codecsByName = HashMap.fromIterable(tools.map((t) => [t.name, codecsOf(t)] as const))
@@ -362,6 +374,26 @@ export function make(spec: Spec): Loose {
               }),
             ),
         }),
+      ),
+    // The item holds the encoded value: "anything" goes as its parts, the rest as the JSON they encode.
+    toolOutput: (item, name) =>
+      Match.value(item).pipe(
+        Match.when({ isError: true }, (o) =>
+          Effect.map(ToolOutput.encoded(o.output), (error) => ({ _tag: "Failure", error })),
+        ),
+        Match.orElse((o) =>
+          Effect.map(
+            codecs(name).anything ? encodeParts(o.output) : ToolOutput.encoded(o.output),
+            (value) => ({ _tag: "Success", value }),
+          ),
+        ),
+        Effect.flatMap(toOutcome),
+        Effect.map((result): RunEvent => ({
+          type: "tool-result",
+          callId: item.call_id,
+          name,
+          result,
+        })),
       ),
     success: (call, value) => toolResult(call, { _tag: "Success", value }),
     failure: (call, error) => toolResult(call, { _tag: "Failure", error }),

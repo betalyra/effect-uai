@@ -15,10 +15,10 @@ Most tools have a local `run`: it takes the decoded input and returns an
 consumer in real time as partial results (sub-agent text, download progress)
 and whose last element is the value the model sees. `Tool.make` builds these.
 
-Some model-visible tools have **no** local `run`: they are executed by the
-provider, or the loop decides what a call means. Those are the other two
-[tool kinds](#tool-kinds) (`Tool.provider`, `Tool.declare`); the executor
-reports them as `UnknownTool` rather than pretending to run a fake handler.
+Some model-visible tools have **no** local `run`: the loop decides what a call
+means (a [tool without `run`](#tools-without-run)), or the provider executes it
+(a [provider tool](#provider-hosted-tools)). The executor never pretends to run
+them.
 
 ## `Tool.make`: defining a tool
 
@@ -26,23 +26,21 @@ reports them as `UnknownTool` rather than pretending to run a fake handler.
 import { Effect, Schema } from "effect"
 import * as Tool from "@effect-uai/core/Tool"
 
-const GetCurrentTimeInput = Schema.Struct({
-  timezone: Schema.String,
-})
-
 const getCurrentTime = Tool.make({
   name: "get_current_time",
   description: "Look up the current local time for an IANA timezone.",
-  inputSchema: GetCurrentTimeInput,
+  inputSchema: Schema.Struct({ timezone: Schema.String }),
+  outputSchema: Schema.Struct({ timezone: Schema.String, iso: Schema.String }),
   run: ({ timezone }) => Effect.succeed({ timezone, iso: new Date().toISOString() }),
   strict: true,
 })
 ```
 
-A `Tool` is `{ name, description, inputSchema, outputSchema?, failureSchema?,
-run, strict? }`. `run` is `(input) => Effect<Output, E, R> | Stream<Output, E,
-R>`; `Tool.make` infers the output, the error type `E` and the requirements
-`R` from the body, and the executor surfaces them (see [Failures](#failures)).
+A `Tool` is `{ name, description, inputSchema, outputSchema, failureSchema?,
+run?, strict? }`. `run` is `(input) => Effect<Output, E, R> | Stream<Output, E,
+R>`; `Tool.make` takes the output type from `outputSchema` and infers the error
+type `E` and the requirements `R` from the body, and the executor surfaces them
+(see [Failures](#failures)). A tool with `run` must declare `outputSchema`.
 
 `strict` (default `true`) toggles the provider's strict-mode flag
 (OpenAI's `strict: true`, Gemini's equivalent). The framework never
@@ -51,13 +49,25 @@ strict mode, the provider errors and you drop `strict` or simplify it.
 
 ### What `run` returns
 
-**Without `outputSchema`**, `run` returns a `Content.Value`: a string (text),
-any JSON value, one image or file, or a top-level array mixing JSON and media.
-Anything else (a `Date`, a class instance, an object with an `undefined`
-field) is a type error; omit optional keys instead of setting them to
-`undefined`.
+`run` returns `outputSchema`'s type, and every value is checked and encoded
+with it. The encoded side must be JSON: `Schema.Date` is a type error, use
+`Schema.DateFromString`. Consumers (`Toolkit.run`, the UI) get the decoded
+value back, so a `Date` stays a `Date`.
 
-Images and files are classes from `@effect-uai/core/Content`:
+```ts
+const getWeather = Tool.make({
+  name: "get_weather",
+  description: "The weather right now in a city.",
+  inputSchema: Schema.Struct({ city: Schema.String }),
+  outputSchema: Schema.Struct({ temperatureC: Schema.Number, observedAt: Schema.DateFromString }),
+  run: ({ city }) => fetchWeather(city),
+})
+```
+
+Images and files are classes from `@effect-uai/core/Content`, usable inside
+any `outputSchema`. `Content.Value` is the explicit "anything": a string
+(text), any JSON value, one image or file, or a top-level array mixing JSON
+and media.
 
 ```ts
 import * as Content from "@effect-uai/core/Content"
@@ -67,11 +77,12 @@ const screenshot = Tool.make({
   name: "screenshot",
   description: "Take a screenshot of a page.",
   inputSchema: Schema.Struct({ url: Schema.String }),
+  outputSchema: Schema.Struct({ title: Schema.String, image: Content.Image }),
   run: ({ url }) =>
-    Effect.map(capture(url), (png) => [
-      { url, title: "Home" },
-      Content.image(imageBytes(png, "image/png")),
-    ]),
+    Effect.map(capture(url), (png) => ({
+      title: "Home",
+      image: Content.image(imageBytes(png, "image/png")),
+    })),
 })
 ```
 
@@ -80,44 +91,25 @@ files. Providers that accept media in tool results (Responses, Anthropic,
 Gemini) send it natively; text-only APIs (Chat Completions, Mistral, OpenAI
 Realtime) fail the request with `AiError.Unsupported`.
 
-**With `outputSchema`**, `run` returns the schema's type, and every value is
-checked and encoded with it. The encoded side must be JSON: `Schema.Date` is a
-type error, use `Schema.DateFromString`. Consumers (`Toolkit.run`, the UI) get
-the decoded value back, so a `Date` stays a `Date`.
-
-```ts
-const WeatherOutput = Schema.Struct({
-  temperatureC: Schema.Number,
-  observedAt: Schema.DateFromString,
-})
-
-const getWeather = Tool.make({
-  name: "get_weather",
-  description: "The weather right now in a city.",
-  inputSchema: Schema.Struct({ city: Schema.String }),
-  outputSchema: WeatherOutput,
-  run: ({ city }) => fetchWeather(city),
-})
-```
-
 ## Tool kinds
 
-Every tool is model-visible (it renders a descriptor), but only `Tool.make`
-tools are locally executable. The three kinds, discriminated by `_tag`:
+Every tool is model-visible (it renders a descriptor). Two kinds,
+discriminated by `_tag`:
 
-| Constructor     | Executed by                                   | Use for                                                   |
-| --------------- | --------------------------------------------- | --------------------------------------------------------- |
-| `Tool.make`     | your `run`, via `Toolkit.run`                 | ordinary local tools (weather, send email)                |
-| `Tool.provider` | the provider                                  | provider-hosted web search, code execution, RAG grounding |
-| `Tool.declare`  | nobody (the loop decides what the call means) | escalate, pause, ask the user, hand off                   |
+| Constructor     | Executed by                                            | Use for                                                   |
+| --------------- | ------------------------------------------------------ | --------------------------------------------------------- |
+| `Tool.make`     | your `run`, via `Toolkit.run`; without `run`, the loop | local tools; signals and calls answered elsewhere         |
+| `Tool.provider` | the provider                                           | provider-hosted web search, code execution, RAG grounding |
 
-A `Tool.declare` tool carries a `name`, `description`, and `inputSchema` but
-no `run`. You decode the arguments with `Tool.decodeArgs(tool, call)` and act
-on them (advance a tier, schedule a wake-up, stop for input) where the loop
-handles the call, instead of running a handler:
+### Tools without `run`
+
+A tool without `run` is model-visible and decodable, but the loop decides what
+a call means: a **signal** (escalate, finish) or a call **answered elsewhere**
+(ask the user, hand off), whose answer `outputSchema` types. Decode the
+arguments with `Tool.decodeArgs(tool, call)` where the loop handles the call:
 
 ```ts
-const escalate = Tool.declare({
+const escalate = Tool.make({
   name: "escalate",
   description: "Hand the question to a stronger model.",
   inputSchema: EscalateInput,
@@ -130,12 +122,12 @@ if (call !== undefined) {
 }
 ```
 
-If a declared or provider tool is ever passed to `Toolkit.run` (the loop
-forgot to intercept it), the executor closes that call with an `UnknownTool`
-failure rather than crashing, the same as a tool name that doesn't exist.
+Handling these calls is the app's job. If one is still passed to `Toolkit.run`,
+the executor closes it with an `UnknownTool` failure (`"escalate" has no run;
+the app handles its calls`) rather than crashing.
 
-`Tool.provider` additionally carries `provider` and `config` for the provider
-adapter to render its hosted tool natively.
+`Tool.provider` carries `provider` and `config` for the provider adapter to
+render its hosted tool natively.
 
 ### Provider-hosted tools
 
@@ -293,16 +285,17 @@ const logging: Toolkit.Middleware = (run, name) => (input) =>
 const observed = pipe(toolkit, Toolkit.wrap(logging), Toolkit.wrap(withAuthz))
 ```
 
+`wrap` keeps a tool's shape: an `Effect` tool stays single-valued (no partials).
+
 To override or mock a single tool while keeping its model-facing descriptor
-identical, spread the record and swap one `run` with `Tool.withRun`. It drops
-`outputSchema` (that described the original `run`), so the new `run` returns a
-`Content.Value`:
+identical, spread the record and swap one `run` with `Tool.withRun`. It keeps
+the schemas, so the new `run` returns the same output type:
 
 ```ts
 const dryRun = {
   ...toolkit,
   send_email: Tool.withRun(toolkit.send_email, ({ to }) =>
-    Effect.succeed({ status: "dry-run", to }),
+    Effect.succeed({ messageId: "dry-run", to }),
   ),
 }
 ```
@@ -325,6 +318,7 @@ const lookupWeather = Tool.make({
   name: "lookup_weather",
   description: "Current weather for a city.",
   inputSchema: LookupWeatherInput,
+  outputSchema: WeatherOutput,
   run: ({ city }) =>
     Effect.gen(function* () {
       const { key } = yield* WeatherApiKey
@@ -336,6 +330,7 @@ const getCoords = Tool.make({
   name: "get_coords",
   description: "Coordinates for a place.",
   inputSchema: GetCoordsInput,
+  outputSchema: Coords,
   run: ({ place }) =>
     Effect.gen(function* () {
       const { key } = yield* GeoApiKey
@@ -429,6 +424,7 @@ const getWeather = Tool.make({
   name: "get_weather",
   description: "The weather right now in a city.",
   inputSchema: Schema.Struct({ city: Schema.String }),
+  outputSchema: Weather,
   failureSchema: CityNotFound,
   run: ({ city }) =>
     lookup(city).pipe(
@@ -568,6 +564,64 @@ const gated = Tool.withFailures(mcpSendEmail, Approval.Denied)
 call's own tool when it runs: closing a call whose tool doesn't declare the
 error fails right there with `UndeclaredFailure`. `Toolkit.withFailures`
 declares an error on every tool of a toolkit (e.g. a whole MCP server).
+
+### Handling every answer
+
+A call that is neither run, closed nor kept waiting has no output, and the
+next model request fails. `resolve` also returns `answered`, each entry tagged
+like its decision, so an exhaustive `Match` makes a forgotten decision a
+compile error:
+
+```ts
+const { answered, unanswered, invalid } = RefundDecisions.resolve(waiting, answers)
+yield *
+  Effect.forEach(answered, (entry) =>
+    Match.value(entry).pipe(
+      Match.tagsExhaustive({
+        Approve: ({ call }) => runOne(call),
+        Reduce: ({ call, decision }) => runOne(withAmount(call, decision.amount)),
+        Deny: ({ call, error }) => Toolkit.close(toolkit, "issue_refund", call, error),
+      }),
+    ),
+  )
+```
+
+### Answers per tool
+
+When tools take different answers, `Approval.byTool({ issue_refund: RefundDecisions },
+{ fallback: Approval.Default })` resolves each call with its own tool's set and
+types `answer(interrupt, decision)` in the browser. Two sets may share a tag
+only with exactly the same fields; otherwise it is a compile error (rename
+one), since the wire could not tell them apart. Derive the app's gating from
+the same map, so a call that waits can always be answered:
+
+```ts
+const needsApproval = (call: ToolCall) =>
+  Object.hasOwn(Decisions.tools, call.name) || isHelpdeskWrite(call)
+```
+
+### Answers that don't fit
+
+`invalid` holds answers a call doesn't take (another tool's decision, wrong
+fields, or two different answers to the same call). Keep those calls waiting
+and tell the page, for example by sending `run-interrupted` for them again.
+
+### Edited arguments
+
+When an approver changes arguments (a smaller refund, an edited subject),
+validate the edit before running, so a bad edit goes back to the approver
+instead of reaching the model as `InputInvalid`. The model's `function_call`
+keeps its original arguments, so tell it what changed:
+
+```ts
+const args = yield * Tool.decodeArgs(issueRefund, call)
+const edited = { ...call, arguments: JSON.stringify({ ...args, amount: decision.amount }) }
+yield * Tool.decodeArgs(issueRefund, edited) // fails → back to the approver
+// after the output:
+Items.userText(
+  `[approver] issue_refund ${call.call_id}: amount ${args.amount} → ${decision.amount}`,
+)
+```
 
 `ToolOutput.success(call, outputSchema, value)` does the same for a value the
 user supplied. For a long-lived connection, where answers arrive while the run

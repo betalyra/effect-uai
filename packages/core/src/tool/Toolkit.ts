@@ -570,28 +570,57 @@ const describeError = (error: unknown): string =>
  * A call the app closes itself (denied, superseded), as the outcome `run`
  * would emit. `error` must be core's or declared by the call's tool
  * (`failureSchema`, `Tool.withFailures`), else this fails with `UndeclaredFailure`.
+ * Pass the tool's name to check `error` against that tool at compile time:
+ *
+ *   Toolkit.close(toolkit, "issue_refund", call, new Escalated({ team: "finance" }))
  */
-export const close = <T extends Toolkit>(
+export function close<T extends Toolkit, N extends keyof T & string>(
+  toolkit: T,
+  name: N,
+  call: ToolCall,
+  error: ToolFailure<T[N]> | CoreError,
+): Effect.Effect<ToolEvent.Output<N, never, ToolFailure<T[N]> | CoreError>, UndeclaredFailure>
+export function close<T extends Toolkit>(
   toolkit: T,
   call: ToolCall,
   error: ToolkitFailure<T> | CoreError,
-): Effect.Effect<
-  ToolEvent.Output<string, never, ToolkitFailure<T> | CoreError>,
-  UndeclaredFailure
-> =>
-  Schema.is(failures(local(toolkit, call.name)))(error)
-    ? Effect.succeed({
+): Effect.Effect<ToolEvent.Output<string, never, ToolkitFailure<T> | CoreError>, UndeclaredFailure>
+export function close(
+  toolkit: Toolkit,
+  ...args: [name: string, call: ToolCall, error: unknown] | [call: ToolCall, error: unknown]
+): Effect.Effect<ToolEvent.Output<string, never, unknown>, UndeclaredFailure> {
+  const [name, call, error] = args.length === 3 ? args : [args[0].name, ...args]
+  return Match.value({ name, call, error }).pipe(
+    Match.when(
+      ({ call }) => call.name !== name,
+      () =>
+        Effect.fail(
+          new UndeclaredFailure({
+            tool: name,
+            message: `the call is for "${call.name}", not "${name}"`,
+          }),
+        ),
+    ),
+    Match.when(
+      ({ error }) => !Schema.is(failures(local(toolkit, name)))(error),
+      () =>
+        Effect.fail(
+          new UndeclaredFailure({
+            tool: name,
+            message: `"${name}" does not declare ${describeError(error)} in its failureSchema`,
+          }),
+        ),
+    ),
+    Match.orElse(() =>
+      Effect.succeed<ToolEvent.Output<string, never, unknown>>({
         _tag: "Output",
         call_id: call.call_id,
-        tool: call.name,
+        tool: name,
         result: Result.fail(error),
-      })
-    : Effect.fail(
-        new UndeclaredFailure({
-          tool: call.name,
-          message: `"${call.name}" does not declare ${describeError(error)} in its failureSchema`,
-        }),
-      )
+      }),
+    ),
+  )
+}
 
 /** Narrows to the `Output` members (also in a loop's mixed stream), keeping the per-tool types. */
 export const isOutcome = <A extends { readonly _tag: string }>(

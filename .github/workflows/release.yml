@@ -1,19 +1,23 @@
 name: Release
 
 on:
+  # main: stable release. dev: `@dev` snapshot (same file because npm trusted
+  # publishing is bound to `release.yml`).
   push:
-    branches: [main]
+    branches: [main, dev]
   # Manual re-run (e.g. to finish a partial publish). With no changesets on
   # main it runs the publish path; `changeset publish` skips already-published
-  # versions and pushes only the missing ones.
+  # versions and pushes only the missing ones. On dev: forces a snapshot.
   workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  # A newer dev push supersedes a running snapshot; stable releases never cancel.
+  cancel-in-progress: ${{ github.ref == 'refs/heads/dev' }}
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -86,3 +90,69 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           bash scripts/tag-and-release.sh
+
+  # Pushes that touch no published code (docs, plans, recipes, webpage) skip.
+  # Without pending changesets there is nothing to version.
+  dev-gate:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.gate.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: gate
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if ! ls .changeset/*.md | grep -qv README.md; then
+            echo "No pending changesets"; echo "publish=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$EVENT" != push ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qE '^(packages/|\.changeset/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$)'; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No package changes"; echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Snapshot of dev as `X.Y.Z-dev-<datetime>` on the `dev` dist-tag. Versions
+  # are rewritten only in this checkout: nothing is committed or tagged, and
+  # `latest` is untouched.
+  dev-snapshot:
+    needs: dev-gate
+    if: needs.dev-gate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install -g npm@latest
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm changeset version --snapshot dev
+
+      - run: pnpm build
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      - run: pnpm changeset publish --tag dev --no-git-tag

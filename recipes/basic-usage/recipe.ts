@@ -95,20 +95,18 @@ export const makeConversation = (model: string) =>
           })
           .pipe(
             Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-            onTurnComplete((turn) =>
-              Effect.sync(() => {
-                const calls = Turn.getToolCalls(turn)
+            onTurnComplete((turn) => {
+              const calls = Turn.getToolCalls(turn)
 
-                // No tool calls - the assistant is done.
-                if (calls.length === 0) return stop()
+              // No tool calls - the assistant is done.
+              if (calls.length === 0) return stop()
 
-                // Stream tool events to the consumer; on end-of-stream emit one
-                // `Loop.next` carrying the appended turn.
-                return Toolkit.run(toolkit, calls).pipe(
-                  Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
-                )
-              }),
-            ),
+              // Stream tool events to the consumer; on end-of-stream emit one
+              // `Loop.next` carrying the appended turn.
+              return Toolkit.run(toolkit, calls).pipe(
+                Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
+              )
+            }),
           )
       }),
     ),

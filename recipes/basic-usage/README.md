@@ -36,18 +36,16 @@ pipe(
       const lm = yield* LanguageModel
 
       return lm.streamTurn({ history: state.history, model: "gpt-5.4-mini", tools: toolkit }).pipe(
-        onTurnComplete((turn) =>
-          Effect.sync(() => {
-            const calls = Turn.getToolCalls(turn)
-            // No tool calls means the model produced its final answer.
-            if (calls.length === 0) return stop()
+        onTurnComplete((turn) => {
+          const calls = Turn.getToolCalls(turn)
+          // No tool calls means the model produced its final answer.
+          if (calls.length === 0) return stop()
 
-            // Append the model's tool_call items and the matching outputs.
-            return Toolkit.run(toolkit, calls).pipe(
-              Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
-            )
-          }),
-        ),
+          // Append the model's tool_call items and the matching outputs.
+          return Toolkit.run(toolkit, calls).pipe(
+            Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
+          )
+        }),
       )
     }),
   ),

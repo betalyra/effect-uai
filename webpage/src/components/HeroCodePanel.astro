@@ -25,7 +25,7 @@ const lines = [
   },
   { code: "      .pipe(", label: "", description: "" },
   {
-    code: "        onTurnComplete((turn) => Effect.sync(() => {",
+    code: "        onTurnComplete((turn) => {",
     label: "React at boundaries",
     description: "Show live output while it streams, then decide what happens after the turn completes.",
   },
@@ -50,7 +50,7 @@ const lines = [
     description: "Forward tool events to users while folding typed results into the next turn's history, in your state shape.",
   },
   { code: "          )", label: "", description: "" },
-  { code: "        })),", label: "", description: "" },
+  { code: "        }),", label: "", description: "" },
   { code: "      )", label: "", description: "" },
   { code: "  }))", label: "", description: "" },
 ] as const

@@ -9,7 +9,6 @@
 "@effect-uai/mistral": minor
 "@effect-uai/openai": minor
 "@effect-uai/mcp": minor
-"@effect-uai/recipe-kit": minor
 ---
 
 Tool output redesign: tools return typed values, including images and files.

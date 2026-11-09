@@ -15,17 +15,16 @@ import {
   Stream,
 } from "effect"
 import type { HistoryItem, ToolCall, ToolCallOutput } from "../domain/Items.js"
-import { appendToHistory, type Turn } from "../domain/Turn.js"
+import { appendToHistory, getToolCalls, type Turn } from "../domain/Turn.js"
 import * as Loop from "../loop/Loop.js"
 import * as Content from "./Content.js"
 import {
+  type AnyDescribed,
   type AnyLocalTool,
   type AnyTool,
   type DecodeResult,
   decodeCallInput,
-  hasRun,
   type ProviderTool,
-  type Runnable,
   type Tool,
   type ToolDescriptor,
   ToolFailed,
@@ -232,9 +231,10 @@ type WrapToolkit<T extends ToolMap, R2, E2> = {
   readonly [K in keyof T]: T[K] extends AnyTool ? WrapTool<T[K], R2, E2> : T[K]
 }
 
-// Only tools with `run`: middleware has nothing to wrap on a tool without one.
-const mapLocal = <T extends Toolkit, Out>(toolkit: T, f: (tool: Runnable) => AnyLocalTool): Out =>
-  Record.map(toolkit, (tool) => (tool._tag === "LocalTool" && hasRun(tool) ? f(tool) : tool)) as Out
+const mapLocal = <T extends Toolkit, Out>(
+  toolkit: T,
+  f: (tool: AnyLocalTool) => AnyLocalTool,
+): Out => Record.map(toolkit, (tool) => (tool._tag === "LocalTool" ? f(tool) : tool)) as Out
 
 /**
  * Wrap every local tool's `run`. Stacks with `pipe`, inner first: the last
@@ -384,9 +384,10 @@ type AnyEvent = ToolEvent.ToolEvent<string, unknown, unknown>
 const lookup = (toolkit: Toolkit, name: string): AnyTool | undefined =>
   Object.hasOwn(toolkit, name) ? toolkit[name] : undefined
 
-const local = (toolkit: Toolkit, name: string): AnyLocalTool | undefined => {
+// A tool whose schemas apply to the call's outcome: `Tool` or `Declared`.
+const local = (toolkit: Toolkit, name: string): AnyDescribed | undefined => {
   const tool = lookup(toolkit, name)
-  return tool?._tag === "LocalTool" ? tool : undefined
+  return tool === undefined || tool._tag === "ProviderTool" ? undefined : tool
 }
 
 const done = (call: ToolCall, result: Result.Result<unknown, unknown>): AnyEvent => ({
@@ -404,17 +405,16 @@ const runOne = (toolkit: Toolkit, call: ToolCall): Stream.Stream<AnyEvent, unkno
     Match.when(Match.undefined, () =>
       failWith(call, new UnknownTool({ message: `No tool named "${call.name}"` })),
     ),
-    Match.when({ _tag: "LocalTool" }, (tool) =>
-      hasRun(tool)
-        ? runTool(tool, call)
-        : failWith(
-            call,
-            new UnknownTool({ message: `"${call.name}" has no run; the app handles its calls` }),
-          ),
-    ),
-    Match.orElse(() =>
-      failWith(call, new UnknownTool({ message: `"${call.name}" is run by the provider` })),
-    ),
+    Match.discriminatorsExhaustive("_tag")({
+      LocalTool: (tool) => runTool(tool, call),
+      DeclaredTool: () =>
+        failWith(
+          call,
+          new UnknownTool({ message: `"${call.name}" has no run; the app handles its calls` }),
+        ),
+      ProviderTool: () =>
+        failWith(call, new UnknownTool({ message: `"${call.name}" is run by the provider` })),
+    }),
   )
 
 const describeIssues = (issues: ReadonlyArray<StandardSchemaV1.Issue>): string =>
@@ -428,20 +428,33 @@ const describeIssues = (issues: ReadonlyArray<StandardSchemaV1.Issue>): string =
     .join("; ")
     .slice(0, 500)
 
-const runTool = (tool: Runnable, call: ToolCall): Stream.Stream<AnyEvent, unknown, any> =>
+// A call's input, or the `InputInvalid` the model gets for it.
+const decodeInput = (
+  tool: AnyDescribed,
+  call: ToolCall,
+): Effect.Effect<Result.Result<unknown, InputInvalid>> =>
+  Effect.map(
+    decodeCallInput(tool, call),
+    Match.type<DecodeResult<unknown>>().pipe(
+      Match.tag("parseError", () =>
+        Result.fail(new InputInvalid({ message: "arguments are not valid JSON" })),
+      ),
+      Match.tag("invalid", ({ issues }) =>
+        Result.fail(new InputInvalid({ message: describeIssues(issues) })),
+      ),
+      Match.tag("ok", ({ input }) => Result.succeed(input)),
+      Match.exhaustive,
+    ),
+  )
+
+const runTool = (tool: AnyLocalTool, call: ToolCall): Stream.Stream<AnyEvent, unknown, any> =>
   Stream.unwrap(
     Effect.map(
-      decodeCallInput(tool, call),
-      Match.type<DecodeResult<unknown>>().pipe(
-        Match.tag("parseError", () =>
-          failWith(call, new InputInvalid({ message: "arguments are not valid JSON" })),
-        ),
-        Match.tag("invalid", ({ issues }) =>
-          failWith(call, new InputInvalid({ message: describeIssues(issues) })),
-        ),
-        Match.tag("ok", ({ input }) => execute(tool, call, input)),
-        Match.exhaustive,
-      ),
+      decodeInput(tool, call),
+      Result.match({
+        onFailure: (error) => failWith(call, error),
+        onSuccess: (input) => execute(tool, call, input),
+      }),
     ),
   )
 
@@ -449,7 +462,7 @@ const runTool = (tool: Runnable, call: ToolCall): Stream.Stream<AnyEvent, unknow
 // `Partial` as it arrives, then the last one again as the `Output`. Each value
 // is checked against `outputSchema` and handed on decoded.
 const execute = (
-  tool: Runnable,
+  tool: AnyLocalTool,
   call: ToolCall,
   input: unknown,
 ): Stream.Stream<AnyEvent, unknown, any> => {
@@ -506,7 +519,7 @@ const streamed = (
 // (matched by class, so a tool error with the same tag can't pose as one).
 class EncodeFailed extends Data.TaggedError("EncodeFailed")<{ readonly message: string }> {}
 
-const check = (tool: AnyLocalTool, value: unknown): Effect.Effect<unknown, EncodeFailed> =>
+const check = (tool: AnyDescribed, value: unknown): Effect.Effect<unknown, EncodeFailed> =>
   tool.outputSchema === undefined
     ? Effect.void
     : Schema.encodeUnknownEffect(tool.outputSchema)(value).pipe(
@@ -546,10 +559,10 @@ const declared = (
 // To history and back
 // ---------------------------------------------------------------------------
 
-const outputs = (tool: AnyLocalTool | undefined): Schema.Codec<unknown, Schema.Json> =>
+const outputs = (tool: AnyDescribed | undefined): Schema.Codec<unknown, Schema.Json> =>
   tool?.outputSchema ?? Content.Value
 
-const failures = (tool: AnyLocalTool | undefined): Schema.Codec<unknown, Schema.Json> =>
+const failures = (tool: AnyDescribed | undefined): Schema.Codec<unknown, Schema.Json> =>
   tool?.failureSchema === undefined ? CoreError : Schema.Union([tool.failureSchema, CoreError])
 
 /** Any call's outcome, as `run` emits it. */
@@ -626,6 +639,115 @@ export function close(
     ),
   )
 }
+
+/**
+ * A call the app answers itself (`ask_user`, a signal's acknowledgement), as
+ * the outcome `run` would emit: `close`'s success side. `value` is typed by the
+ * tool's `outputSchema`; a value it rejects ends the call with `OutputInvalid`,
+ * as from `run`. Fails with `UndeclaredFailure` if `call` is for another tool.
+ */
+export const complete = <T extends Toolkit, N extends keyof T & string>(
+  toolkit: T,
+  name: N,
+  call: ToolCall,
+  value: OutputOf<T[N]>,
+): Effect.Effect<ToolEvent.Output<N, OutputOf<T[N]>, OutputInvalid>, UndeclaredFailure> =>
+  Option.match(Option.fromNullishOr(call.name === name ? local(toolkit, name) : undefined), {
+    onNone: () =>
+      Effect.fail(
+        new UndeclaredFailure({
+          tool: name,
+          message:
+            call.name === name
+              ? `"${name}" is not a tool of this toolkit`
+              : `the call is for "${call.name}", not "${name}"`,
+        }),
+      ),
+    onSome: (tool) =>
+      check(tool, value).pipe(
+        Effect.match({
+          onFailure: (e) => Result.fail(new OutputInvalid({ message: e.message })),
+          onSuccess: () => Result.succeed(value),
+        }),
+        Effect.map((result) => ({ _tag: "Output", call_id: call.call_id, tool: name, result })),
+      ),
+  })
+
+// ---------------------------------------------------------------------------
+// Calls to declared tools
+// ---------------------------------------------------------------------------
+
+type InputOf<T> = T extends { readonly inputSchema: StandardSchemaV1<any, infer I> } ? I : never
+
+// Distributes over the tool type, so a loose toolkit yields `{ tool: string, input: any }`.
+type DeclaredCallOf<K extends string, X> = X extends { readonly _tag: "DeclaredTool" }
+  ? { readonly tool: K; readonly call: ToolCall; readonly input: InputOf<X> }
+  : never
+
+/** A call to one of the toolkit's declared tools, its input decoded. `tool` is the discriminant. */
+export type DeclaredCall<T extends Toolkit> = {
+  [K in keyof T & string]: DeclaredCallOf<K, T[K]>
+}[keyof T & string]
+
+/** A turn's calls, sorted for the loop. */
+export type Split<T extends Toolkit> = {
+  /** For `Toolkit.run`: calls to tools with `run`, and to unknown names (closed there). */
+  readonly run: ReadonlyArray<ToolCall>
+  /** Calls to declared tools, decoded: handle them with `Match.discriminatorsExhaustive("tool")`. */
+  readonly declared: ReadonlyArray<DeclaredCall<T>>
+  /** Calls to declared tools with bad arguments, closed with `InputInvalid` for the model. */
+  readonly invalid: ReadonlyArray<ToolEvent.Output<string, never, InputInvalid>>
+}
+
+type Sorted =
+  | { readonly _tag: "run"; readonly call: ToolCall }
+  | { readonly _tag: "declared"; readonly declared: DeclaredCall<ToolMap> }
+  | { readonly _tag: "invalid"; readonly output: ToolEvent.Output<string, never, InputInvalid> }
+
+const sortCall = (toolkit: Toolkit, call: ToolCall): Effect.Effect<Sorted> => {
+  const tool = lookup(toolkit, call.name)
+  return tool?._tag === "DeclaredTool"
+    ? Effect.map(
+        decodeInput(tool, call),
+        Result.match({
+          onFailure: (error): Sorted => ({
+            _tag: "invalid",
+            output: {
+              _tag: "Output",
+              call_id: call.call_id,
+              tool: call.name,
+              result: Result.fail(error),
+            },
+          }),
+          onSuccess: (input): Sorted => ({
+            _tag: "declared",
+            declared: { tool: call.name, call, input },
+          }),
+        }),
+      )
+    : Effect.succeed({ _tag: "run", call })
+}
+
+/**
+ * The turn's tool calls, sorted: `run` for `Toolkit.run`, and the calls to
+ * declared tools decoded and typed per tool. Handling `declared` with
+ * `Match.discriminatorsExhaustive("tool")` makes a new declared tool a compile
+ * error until the loop handles it:
+ *
+ *   const { run, declared, invalid } = yield* Toolkit.split(toolkit, turn)
+ *   declared.map(Match.discriminatorsExhaustive("tool")({ ask_user: ..., escalate: ... }))
+ */
+export const split = <T extends Toolkit>(toolkit: T, turn: Turn): Effect.Effect<Split<T>> =>
+  Effect.map(
+    Effect.forEach(getToolCalls(turn), (call) => sortCall(toolkit, call)),
+    (sorted) => ({
+      run: sorted.flatMap((s) => (s._tag === "run" ? [s.call] : [])),
+      declared: sorted.flatMap((s) =>
+        s._tag === "declared" ? [s.declared as DeclaredCall<T>] : [],
+      ),
+      invalid: sorted.flatMap((s) => (s._tag === "invalid" ? [s.output] : [])),
+    }),
+  )
 
 /** Narrows to the `Output` members (also in a loop's mixed stream), keeping the per-tool types. */
 export const isOutcome = <A extends { readonly _tag: string }>(

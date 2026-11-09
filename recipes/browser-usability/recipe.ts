@@ -32,7 +32,7 @@ import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
-// The finish signal: how the run ends. A tool without `run` is model-visible
+// The finish signal: how the run ends. A declared tool (no `run`) is model-visible
 // but never executed: the loop intercepts it, decodes the report from its
 // arguments, and stops. Keeping the report schema on the tool (rather than
 // a structured-output turn) stays in tool space, which every provider's
@@ -52,7 +52,7 @@ const FinishArgs = Schema.Struct({
   }),
 })
 
-const finishTool = Tool.make({
+const finishTool = Tool.declare({
   name: "finish",
   description:
     "End the usability test and file the report. Call it as soon as the goal is met, or when you are stuck with no way forward.",

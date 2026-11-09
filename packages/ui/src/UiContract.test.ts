@@ -269,6 +269,22 @@ describe("UiContract", () => {
     >()
   })
 
+  it("types a declared tool by its outputSchema (a call answered in the browser)", () => {
+    const askUser = Tool.declare({
+      name: "ask_user",
+      description: "",
+      inputSchema: Schema.Struct({ question: Schema.String }),
+      outputSchema: Schema.Struct({ answer: Schema.String }),
+    })
+    type Block = Extract<
+      RunView.Block<UiContract.PayloadsOf<{ tools: [typeof askUser] }>>,
+      { type: "tool" }
+    >
+    expectTypeOf<Block["outcome"]>().toEqualTypeOf<
+      Outcome<{ readonly answer: string }, ToolOutput.CoreError> | undefined
+    >()
+  })
+
   it.effect("server constructors encode typed values for the wire", () =>
     Effect.gen(function* () {
       const event = yield* ChatUi.live("metrics", { tokps: 42, at })

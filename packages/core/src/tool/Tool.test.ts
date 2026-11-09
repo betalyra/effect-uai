@@ -1,9 +1,10 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest"
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
-import { Context, Effect, Exit, Schema, Stream } from "effect"
+import { Context, Effect, Exit, Result, Schema, Stream } from "effect"
 import type * as Items from "../domain/Items.js"
 import * as Content from "./Content.js"
 import * as Tool from "./Tool.js"
+import * as Toolkit from "./Toolkit.js"
 
 // The smallest object satisfying both Standard Schema and Standard JSON Schema.
 type Recipient = { readonly to: string }
@@ -128,19 +129,29 @@ describe("Tool.make", () => {
     })
   })
 
-  it("type: a tool without run is a signal, or a call answered elsewhere typed by outputSchema", () => {
-    const escalate = Tool.make({
+  it("type: make requires run", () => {
+    // @ts-expect-error run is missing: a tool without run is Tool.declare
+    Tool.make({
+      name: "escalate",
+      description: "",
+      inputSchema: Tool.noInput,
+      outputSchema: Schema.String,
+    })
+  })
+
+  it("type: a declared tool is a signal, or a call answered elsewhere typed by outputSchema", () => {
+    const escalate = Tool.declare({
       name: "escalate",
       description: "",
       inputSchema: Schema.Struct({ reason: Schema.String }),
     })
-    const askUser = Tool.make({
+    const askUser = Tool.declare({
       name: "ask_user",
       description: "",
       inputSchema: Schema.Struct({ question: Schema.String }),
       outputSchema: Schema.Struct({ answer: Schema.String }),
     })
-    expect(Tool.hasRun(escalate)).toBe(false)
+    expect(escalate._tag).toBe("DeclaredTool")
     expectTypeOf<Tool.ToolOutput<typeof escalate>>().toEqualTypeOf<never>()
     expectTypeOf<Tool.ToolOutput<typeof askUser>>().toEqualTypeOf<{ readonly answer: string }>()
   })
@@ -171,7 +182,7 @@ describe("Tool.make", () => {
 })
 
 describe("Tool.decodeArgs", () => {
-  const escalate = Tool.make({
+  const escalate = Tool.declare({
     name: "escalate",
     description: "Escalate to a human.",
     inputSchema: Schema.Struct({ reason: Schema.String }),
@@ -198,7 +209,7 @@ describe("Tool.decodeArgs", () => {
 
   it.effect("fails, rather than throws, when a Standard Schema validator throws", () =>
     Effect.gen(function* () {
-      const throwing = Tool.make({
+      const throwing = Tool.declare({
         name: "t",
         description: "",
         inputSchema: {
@@ -240,6 +251,35 @@ describe("Tool.withRun", () => {
     // @ts-expect-error a string is not the tool's output
     Tool.withRun(weather, () => Effect.succeed("sunny"))
   })
+
+  it.effect("implements a declared tool, keeping its schemas", () =>
+    Effect.gen(function* () {
+      const spec = Tool.declare({
+        name: "weather",
+        description: "Weather now.",
+        inputSchema: Tool.noInput,
+        outputSchema: Weather,
+      })
+      const implemented = Tool.withRun(spec, () => Effect.succeed({ at }))
+      expect(implemented._tag).toBe("LocalTool")
+      expect(implemented.outputSchema).toBe(Weather)
+      const events = yield* Stream.runCollect(
+        Toolkit.run(Toolkit.make(implemented), [callWith("weather", "{}")]),
+      )
+      expect(events.map((e) => e._tag === "Output" && e.result)).toEqual([Result.succeed({ at })])
+    }),
+  )
+
+  it("type: withFailures keeps the tool's kind", () => {
+    const declared = Tool.withFailures(
+      Tool.declare({ name: "a", description: "", inputSchema: Tool.noInput }),
+      Tool.ToolFailed,
+    )
+    const local = Tool.withFailures(weather, Tool.ToolFailed)
+    expectTypeOf(declared._tag).toEqualTypeOf<"DeclaredTool">()
+    expectTypeOf(local._tag).toEqualTypeOf<"LocalTool">()
+    expectTypeOf<Tool.ToolFailure<typeof local>>().toEqualTypeOf<Tool.ToolFailed>()
+  })
 })
 
 describe("provider-hosted tools", () => {
@@ -250,7 +290,7 @@ describe("provider-hosted tools", () => {
     outputSchema: Schema.String,
     run: () => Effect.succeed("sent"),
   })
-  const signal = Tool.make({ name: "escalate", description: "", inputSchema: Tool.noInput })
+  const signal = Tool.declare({ name: "escalate", description: "", inputSchema: Tool.noInput })
   const hosted = Tool.provider({
     name: "web_search",
     description: "",

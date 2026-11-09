@@ -19,8 +19,9 @@ their editor).
   `run` returns an Effect or a Stream (no `emit`) of typed values, including
   images and files; declared errors (`failureSchema`) reach the model, others
   fail the run; history holds typed parts. `Toolkit.next` replaces
-  `continueWithResults(appendToolResults(...))`, a tool with `run` requires
-  `outputSchema`, a tool without `run` replaces `signal` / `interaction`,
+  `continueWithResults(appendToolResults(...))`, `Tool.make` requires `run` and
+  `outputSchema`, `Tool.declare` (no `run`) replaces `signal` / `interaction`,
+  `Toolkit.split` sorts a turn's calls,
   `ToolDecision.make` replaces `fromMap`, and the UI wire carries typed
   outcomes (protocol v2).
 - [Migrating to 0.18](/migrations/v0-18/): one required action, upgrade to

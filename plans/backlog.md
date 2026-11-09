@@ -117,11 +117,13 @@ everything else stays provider-typed.
 
 ### From earlier plans
 
-- [ ] **Typed pending calls** (after 0.19): the turn's calls as a stream with
-      pipe steps (`Toolkit.calls`, `defer` for approvals, `execute`); calls to
-      tools without `run` become typed `Pending` events, handlers (like Effect's
-      `catchTag` / `catchTags`) turn them into directives (outcome, wait,
-      redirect, end), and `Toolkit.next` only accepts a stream with none left.
+- [ ] **Typed pending calls** (parked; 0.19 shipped `Tool.declare`,
+      `Toolkit.split` and `Toolkit.complete` as the intermediate step): the
+      turn's calls as a stream with pipe steps (`calls`, `defer` for approvals,
+      `execute`); calls to declared tools become typed `Pending` events,
+      handlers (like Effect's `catchTag` / `catchTags`) turn them into
+      directives (outcome, wait, redirect, end), and `Toolkit.next` only accepts
+      a stream with none left. Spiked in `experiments/tool-api-spike`.
       Source: `plans/typed-pending-calls.md`.
 - [ ] **`Loop.loopFrom`**: loop seeded by a `Stream<I>`, usable as a stream
       operator. Source: `internal-docs/roadmap-from-assessments.md:44` (§ at :641).

@@ -412,7 +412,7 @@ Items.userText(`[approver] issue_refund ${call.call_id}: amount 89 → 40`)
 Keeping the edit only in history would not help the model: it reads the call it
 made and the output, so it has to be told either way.
 
-### R6. `Tool.declare` goes; `run` becomes optional
+### R6. `Tool.declare` goes; `run` becomes optional (revised: `declare` is back, see the end)
 
 A declared tool is structurally a tool without `run`: same name, description
 and input, and the model calls it like any other. Only provider tools are a
@@ -449,6 +449,18 @@ handlers like `catchTags`, `Toolkit.next` refusing unhandled calls). The
 
 A plain helper to build a tool without `run` is not needed: the missing
 attribute says it.
+
+**Revised during implementation: `Tool.declare` is back.** The typed
+pending calls spike (`experiments/tool-api-spike`) showed that the types need
+to tell a tool with `run` from one without, and an optional `run` can't: both
+`make` overloads returned the same type, and `withFailures` lost the
+distinction. Now `Tool.make` requires `run` (`_tag: "LocalTool"`) and
+`Tool.declare` has none (`_tag: "DeclaredTool"`, `Declared` type, optional
+`outputSchema`). `Tool.withRun` turns a declared tool into a `Tool` (the shared
+spec case), `withFailures` keeps the kind, `hasRun` / `Runnable` are gone. Two
+helpers handle declared calls without the pipeline: `Toolkit.split(toolkit,
+turn)` (`run`, `declared` typed per tool for an exhaustive `Match`, `invalid`)
+and `Toolkit.complete` (the success side of `close`).
 
 ### Kept as is
 

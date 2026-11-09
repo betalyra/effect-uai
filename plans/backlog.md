@@ -117,6 +117,12 @@ everything else stays provider-typed.
 
 ### From earlier plans
 
+- [ ] **Typed pending calls** (after 0.19): `Toolkit.run` emits a typed
+      `Pending` event for calls to tools without `run`; handlers (like Effect's
+      `catchTag` / `catchTags`) turn them into directives (outcome, wait,
+      redirect, end), and `Toolkit.next` only accepts a stream with none left,
+      so every tool call is handled by construction. Source:
+      `plans/typed-pending-calls.md`.
 - [ ] **`Loop.loopFrom`**: loop seeded by a `Stream<I>`, usable as a stream
       operator. Source: `internal-docs/roadmap-from-assessments.md:44` (§ at :641).
 - [ ] **Widen `LoopBody` to allow `Scope`** in the Effect-returning variant,

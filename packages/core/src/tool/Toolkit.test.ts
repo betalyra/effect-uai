@@ -1,5 +1,17 @@
 import { describe, expect, expectTypeOf, it } from "@effect/vitest"
-import { Cause, Context, Deferred, Effect, Exit, Layer, pipe, Result, Schema, Stream } from "effect"
+import {
+  Cause,
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  Layer,
+  Match,
+  pipe,
+  Result,
+  Schema,
+  Stream,
+} from "effect"
 import { imageBytes } from "../domain/Image.js"
 import type { HistoryItem, ToolCall } from "../domain/Items.js"
 import type { Turn } from "../domain/Turn.js"
@@ -64,8 +76,8 @@ const search = Tool.make({
   run: () => Stream.fromIterable([{ hits: 1 }, { hits: 3 }, { hits: 4 }]),
 })
 
-// A tool without run: the loop handles its calls.
-const escalate = Tool.make({ name: "escalate", description: "", inputSchema: Tool.noInput })
+// A declared tool: the loop handles its calls.
+const escalate = Tool.declare({ name: "escalate", description: "", inputSchema: Tool.noInput })
 
 const kit = Toolkit.make(weather, search, escalate)
 
@@ -370,6 +382,104 @@ describe("Tool.withFailures and Toolkit.close", () => {
   })
 })
 
+describe("Toolkit.split and Toolkit.complete", () => {
+  const askUser = Tool.declare({
+    name: "ask_user",
+    description: "",
+    inputSchema: Schema.Struct({ question: Schema.String }),
+    outputSchema: Schema.String,
+  })
+  const finish = Tool.declare({
+    name: "finish",
+    description: "",
+    inputSchema: Schema.Struct({ report: Schema.String }),
+  })
+  const agent = Toolkit.make(weather, askUser, finish)
+  const turnOf = (...calls: ReadonlyArray<ToolCall>): Turn => ({
+    items: calls,
+    usage: {},
+    stop_reason: "tool_calls",
+  })
+
+  it.effect("sorts a turn's calls: run, declared (decoded), invalid (closed)", () =>
+    Effect.gen(function* () {
+      const { run, declared, invalid } = yield* Toolkit.split(
+        agent,
+        turnOf(
+          call("weather", "1", `{"city":"Lisbon"}`),
+          call("ask_user", "2", `{"question":"Which city?"}`),
+          call("nope", "3"),
+          call("finish", "4", `{}`),
+        ),
+      )
+      expect(run.map((c) => c.call_id)).toEqual(["1", "3"])
+      expect(declared).toEqual([
+        {
+          tool: "ask_user",
+          call: call("ask_user", "2", `{"question":"Which city?"}`),
+          input: { question: "Which city?" },
+        },
+      ])
+      expect(invalid).toHaveLength(1)
+      expect(invalid[0]).toMatchObject({ call_id: "4", tool: "finish" })
+      expect(failureOf(invalid[0]!.result)).toBeInstanceOf(ToolOutput.InputInvalid)
+    }),
+  )
+
+  it.effect("declared calls are typed per tool: an exhaustive Match handles each", () =>
+    Effect.gen(function* () {
+      const { declared } = yield* Toolkit.split(
+        agent,
+        turnOf(call("finish", "1", `{"report":"done"}`), call("ask_user", "2", `{"question":"?"}`)),
+      )
+      const route = Match.type<Toolkit.DeclaredCall<typeof agent>>().pipe(
+        Match.discriminatorsExhaustive("tool")({
+          ask_user: (c) => `ask ${c.input.question}`,
+          finish: (c) => `end ${c.input.report}`,
+        }),
+      )
+      expect(declared.map(route)).toEqual(["end done", "ask ?"])
+      Match.type<Toolkit.DeclaredCall<typeof agent>>().pipe(
+        // @ts-expect-error finish is not handled
+        Match.discriminatorsExhaustive("tool")({ ask_user: () => "ask" }),
+      )
+      expectTypeOf<Toolkit.DeclaredCall<typeof agent>["tool"]>().toEqualTypeOf<
+        "ask_user" | "finish"
+      >()
+    }),
+  )
+
+  it.effect("complete answers a call with a value typed by outputSchema", () =>
+    Effect.gen(function* () {
+      const answered = yield* Toolkit.complete(agent, "ask_user", call("ask_user", "1"), "Lisbon")
+      expect(answered).toEqual({
+        _tag: "Output",
+        call_id: "1",
+        tool: "ask_user",
+        result: Result.succeed("Lisbon"),
+      })
+      const item = yield* Toolkit.output(agent, answered)
+      expect(yield* Toolkit.decode(agent, "ask_user", item)).toEqual(Result.succeed("Lisbon"))
+    }),
+  )
+
+  it.effect("complete fails with UndeclaredFailure for another tool's call", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        Toolkit.complete(agent, "ask_user", call("finish", "1"), "Lisbon"),
+      )
+      expect(error).toMatchObject({ _tag: "UndeclaredFailure", tool: "ask_user" })
+    }),
+  )
+
+  it("type: complete's value is the tool's output", () => {
+    // @ts-expect-error ask_user's outputSchema is String
+    Toolkit.complete(agent, "ask_user", call("ask_user", "1"), 42)
+    // @ts-expect-error finish has no outputSchema: nothing to complete with
+    Toolkit.complete(agent, "finish", call("finish", "1"), "done")
+  })
+})
+
 describe("Toolkit.next", () => {
   it.effect("forwards every event, then continues with the turn and encoded outputs appended", () =>
     Effect.gen(function* () {
@@ -530,7 +640,7 @@ describe("Toolkit.make, namespace and compose", () => {
 
   it("rejects a duplicate literal name at compile time", () => {
     const a = tool("search")
-    const b = Tool.make({ name: "search", description: "", inputSchema: Tool.noInput })
+    const b = Tool.declare({ name: "search", description: "", inputSchema: Tool.noInput })
     // @ts-expect-error Duplicate tool name: search
     Toolkit.make(a, b)
   })

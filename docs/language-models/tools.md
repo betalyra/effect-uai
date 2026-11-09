@@ -16,7 +16,7 @@ consumer in real time as partial results (sub-agent text, download progress)
 and whose last element is the value the model sees. `Tool.make` builds these.
 
 Some model-visible tools have **no** local `run`: the loop decides what a call
-means (a [tool without `run`](#tools-without-run)), or the provider executes it
+means (a [declared tool](#declared-tools)), or the provider executes it
 (a [provider tool](#provider-hosted-tools)). The executor never pretends to run
 them.
 
@@ -37,10 +37,11 @@ const getCurrentTime = Tool.make({
 ```
 
 A `Tool` is `{ name, description, inputSchema, outputSchema, failureSchema?,
-run?, strict? }`. `run` is `(input) => Effect<Output, E, R> | Stream<Output, E,
+run, strict? }`. `run` is `(input) => Effect<Output, E, R> | Stream<Output, E,
 R>`; `Tool.make` takes the output type from `outputSchema` and infers the error
 type `E` and the requirements `R` from the body, and the executor surfaces them
-(see [Failures](#failures)). A tool with `run` must declare `outputSchema`.
+(see [Failures](#failures)). `run` and `outputSchema` are required; a tool
+without `run` is [`Tool.declare`](#declared-tools).
 
 `strict` (default `true`) toggles the provider's strict-mode flag
 (OpenAI's `strict: true`, Gemini's equivalent). The framework never
@@ -93,38 +94,68 @@ Realtime) fail the request with `AiError.Unsupported`.
 
 ## Tool kinds
 
-Every tool is model-visible (it renders a descriptor). Two kinds,
+Every tool is model-visible (it renders a descriptor). Three kinds,
 discriminated by `_tag`:
 
-| Constructor     | Executed by                                            | Use for                                                   |
-| --------------- | ------------------------------------------------------ | --------------------------------------------------------- |
-| `Tool.make`     | your `run`, via `Toolkit.run`; without `run`, the loop | local tools; signals and calls answered elsewhere         |
-| `Tool.provider` | the provider                                           | provider-hosted web search, code execution, RAG grounding |
+| Constructor     | Executed by                   | Use for                                                   |
+| --------------- | ----------------------------- | --------------------------------------------------------- |
+| `Tool.make`     | your `run`, via `Toolkit.run` | local tools                                               |
+| `Tool.declare`  | the app (no `run`)            | signals and calls answered elsewhere                      |
+| `Tool.provider` | the provider                  | provider-hosted web search, code execution, RAG grounding |
 
-### Tools without `run`
+### Declared tools
 
-A tool without `run` is model-visible and decodable, but the loop decides what
-a call means: a **signal** (escalate, finish) or a call **answered elsewhere**
-(ask the user, hand off), whose answer `outputSchema` types. Decode the
-arguments with `Tool.decodeArgs(tool, call)` where the loop handles the call:
+A declared tool has no `run`. It is model-visible and decodable, but the loop
+decides what a call means: a **signal** (escalate, finish) or a call
+**answered elsewhere** (ask the user, hand off), whose answer the optional
+`outputSchema` types.
 
 ```ts
-const escalate = Tool.make({
-  name: "escalate",
-  description: "Hand the question to a stronger model.",
-  inputSchema: EscalateInput,
+const askUser = Tool.declare({
+  name: "ask_user",
+  description: "Ask the user a question.",
+  inputSchema: Schema.Struct({ question: Schema.String }),
+  outputSchema: Schema.String,
 })
-
-// in onTurnComplete:
-const call = Turn.getToolCalls(turn).find((c) => c.name === "escalate")
-if (call !== undefined) {
-  return Tool.decodeArgs(escalate, call).pipe(Effect.map((args) => next({ tier: 1, ...args })))
-}
+const finish = Tool.declare({
+  name: "finish",
+  description: "Hand in the report.",
+  inputSchema: Schema.Struct({ report: Schema.String }),
+})
+const toolkit = Toolkit.make(search, askUser, finish)
 ```
 
-Handling these calls is the app's job. If one is still passed to `Toolkit.run`,
-the executor closes it with an `UnknownTool` failure (`"escalate" has no run;
-the app handles its calls`) rather than crashing.
+`Toolkit.split(toolkit, turn)` sorts a turn's calls: `run` for `Toolkit.run`,
+`declared` decoded and typed per tool, and `invalid` (declared calls with bad
+arguments, closed with `InputInvalid` for the model). Handle `declared` with an
+exhaustive `Match`, and a new declared tool is a compile error until the loop
+handles it:
+
+```ts
+onTurnComplete((turn) =>
+  Effect.gen(function* () {
+    const { run, declared, invalid } = yield* Toolkit.split(toolkit, turn)
+    const route = Match.type<Toolkit.DeclaredCall<typeof toolkit>>().pipe(
+      Match.discriminatorsExhaustive("tool")({
+        ask_user: ({ call, input }) => ..., // input: { question: string }
+        finish: ({ input }) => ...,         // input: { report: string }
+      }),
+    )
+    const routes = declared.map(route)
+    // run the rest, then next / stop as the routes say
+  }),
+)
+```
+
+Answer a declared call with `Toolkit.complete(toolkit, "ask_user", call,
+"Lisbon")`: the success counterpart of `Toolkit.close`, typed by the tool's
+`outputSchema`. Both build the outcome `Toolkit.run` would emit, so history and
+the UI treat it like any other. A call the app leaves open must be answered
+before the next model call (see [History reconciliation](#history-reconciliation)).
+
+If a declared call still reaches `Toolkit.run`, the executor closes it with an
+`UnknownTool` failure (`"finish" has no run; the app handles its calls`) rather
+than crashing. `Tool.decodeArgs(tool, call)` decodes a single call by hand.
 
 `Tool.provider` carries `provider` and `config` for the provider adapter to
 render its hosted tool natively.
@@ -289,7 +320,8 @@ const observed = pipe(toolkit, Toolkit.wrap(logging), Toolkit.wrap(withAuthz))
 
 To override or mock a single tool while keeping its model-facing descriptor
 identical, spread the record and swap one `run` with `Tool.withRun`. It keeps
-the schemas, so the new `run` returns the same output type:
+the schemas, so the new `run` returns the same output type. On a declared tool
+(a spec shared with the browser) it makes a `Tool`:
 
 ```ts
 const dryRun = {
@@ -623,8 +655,8 @@ Items.userText(
 )
 ```
 
-`ToolOutput.success(call, outputSchema, value)` does the same for a value the
-user supplied. For a long-lived connection, where answers arrive while the run
+`Toolkit.complete(toolkit, "tool", call, value)` does the same for a value the
+user supplied, typed by the tool's `outputSchema`. For a long-lived connection, where answers arrive while the run
 waits, the [Tool call approval recipe](/recipes/tool-call-approval/) has a
 copyable answer-queue version, `fromQueue`, with a timeout.
 

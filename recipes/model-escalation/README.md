@@ -25,11 +25,11 @@ reviews, or anything else you would rather not trust to the cheap tier.
 
 - **The policy is prompt-level.** Change `CHEAP_TIER_SYSTEM_PROMPT` to
   decide what counts as "too hard".
-- **The escalation tool is a control signal.** `escalate` is a tool
-  without `run`: model-visible and decodable, but never executed.
-  The cheap model sees the descriptor; the recipe decodes and intercepts
-  the call at `onTurnComplete` (advancing a tier) instead of executing a
-  fake handler.
+- **The escalation tool is a control signal.** `escalate` is a declared
+  tool (`Tool.declare`, no `run`): model-visible and decodable, but never
+  executed. The cheap model sees the descriptor; the recipe takes the
+  decoded call from `Toolkit.split` at `onTurnComplete` (advancing a tier)
+  instead of executing a fake handler.
 - **The handoff is clean.** The strong tier sees the accumulated user
   conversation, but not the cheap tier's system prompt, cheap-tier
   answer, or `escalate` function call.
@@ -60,24 +60,25 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
           })
           .pipe(
             // `then` may return a step stream directly or an Effect of one:
-            // `stop()` for the guards, an Effect for the decode branch.
+            // `stop()` for the guard, an Effect for the decode branch.
             onTurnComplete((turn) => {
               if (current.tier === 1) return stop()
-              const call = Turn.getToolCalls(turn).find((c) => c.name === "escalate")
-              if (call === undefined) return stop()
 
-              // Decode against escalate's own schema - the tool already owns
-              // it, so there's no second decoder to keep in sync.
-              return Tool.decodeArgs(escalate, call).pipe(
-                Effect.map((args) =>
-                  nextAfter(Stream.succeed<EscalationEvent>({ _tag: "escalated", ...args }), {
-                    history: current.history,
-                    tier: 1,
-                    escalation: args,
-                  }),
-                ),
-                Effect.catch(() => Effect.succeed(stop)),
-              )
+              // `split` decodes the escalate call against its own schema.
+              // Bad arguments land in `invalid`: log and stop.
+              return Effect.gen(function* () {
+                const { declared, invalid } = yield* Toolkit.split(escalationToolkit, turn)
+                yield* Effect.forEach(invalid, (output) =>
+                  Effect.logError("escalate call had invalid arguments", output),
+                )
+                return Option.match(Arr.head(declared), {
+                  onNone: () => stop(),
+                  onSome: ({ input }) =>
+                    Stream.succeed(value<EscalationEvent>({ _tag: "escalated", ...input })).pipe(
+                      Stream.concat(next({ history: current.history, tier: 1, escalation: input })),
+                    ),
+                })
+              })
             }),
           )
 

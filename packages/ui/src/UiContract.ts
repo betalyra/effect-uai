@@ -60,12 +60,13 @@ export type Spec = {
 type InputOf<S> = S extends Schema.Top ? S["Type"] : S extends ToolInputSchema<infer A> ? A : Json
 // A core `Tool` carries its types; a spec has them in its schemas. Without
 // `outputSchema` a tool returns a `Content.Value`, and that is what arrives.
-type OutputOf<T> = T extends { readonly _tag: "LocalTool" }
+type CoreTool = { readonly _tag: "LocalTool" | "DeclaredTool" }
+type OutputOf<T> = T extends CoreTool
   ? Tool.ToolOutput<T>
   : T extends { readonly outputSchema: infer O extends Schema.Top }
     ? O["Type"]
     : Content.Value
-type FailureOf<T> = T extends { readonly _tag: "LocalTool" }
+type FailureOf<T> = T extends CoreTool
   ? Tool.ToolFailure<T>
   : T extends { readonly failureSchema: infer F extends Schema.Top }
     ? F["Type"]

@@ -34,10 +34,10 @@ import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Turn from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
-// The escalate signal. A tool without `run` is model-visible and decodable but
-// never executed: the loop intercepts the call at `onTurnComplete` and
-// translates it into a tier advance. No fake `run` to pretend it executes.
-// Only the descriptor is sent to the cheap tier.
+// The escalate signal. A declared tool (`Tool.declare`, no `run`) is
+// model-visible and decodable but never executed: the loop intercepts the call
+// at `onTurnComplete` and translates it into a tier advance. Only the
+// descriptor is sent to the cheap tier.
 // ---------------------------------------------------------------------------
 
 export const EscalateInput = Schema.Struct({
@@ -46,7 +46,7 @@ export const EscalateInput = Schema.Struct({
 })
 export type EscalateArgs = typeof EscalateInput.Type
 
-export const escalate = Tool.make({
+export const escalate = Tool.declare({
   name: "escalate",
   description:
     "Hand the question off to a stronger, more expensive model. Use when the question requires deep expertise that a fast model can't deliver with high confidence.",
@@ -157,30 +157,29 @@ export const conversation = (cheap: Tier, strong: Tier) => (state: State) =>
             onTurnComplete((turn) => {
               if (current.tier === 1) return stop()
 
-              const call = Turn.getToolCalls(turn).find((c) => c.name === "escalate")
-              if (call === undefined) return stop()
-
-              // Decode against escalate's own schema - the tool already owns
-              // it, so there's no second decoder to keep in sync. Bad arguments
-              // log and stop instead of escalating.
-              return Tool.decodeArgs(escalate, call).pipe(
-                Effect.map((args) =>
+              // `split` decodes calls to declared tools against their own
+              // schema. Bad arguments land in `invalid`: log and stop.
+              return Effect.gen(function* () {
+                const { declared, invalid } = yield* Toolkit.split(escalationToolkit, turn)
+                yield* Effect.forEach(invalid, (output) =>
+                  Effect.logError("escalate call had invalid arguments", output),
+                )
+                return Option.match(Arr.head(declared), {
+                  onNone: () => stop(),
                   // Strong tier sees the same accumulated history the cheap tier
                   // saw - no system prompt, no cheap-tier turn, no escalate call.
-                  Stream.succeed(value<EscalationEvent>({ _tag: "escalated", ...args })).pipe(
-                    Stream.concat(
-                      next({ history: current.history, tier: 1, escalation: args } satisfies State),
+                  onSome: ({ input }) =>
+                    Stream.succeed(value<EscalationEvent>({ _tag: "escalated", ...input })).pipe(
+                      Stream.concat(
+                        next({
+                          history: current.history,
+                          tier: 1,
+                          escalation: input,
+                        } satisfies State),
+                      ),
                     ),
-                  ),
-                ),
-                Effect.catch((error) =>
-                  Effect.logError("escalate call had invalid arguments", {
-                    call_id: call.call_id,
-                    arguments: call.arguments,
-                    cause: error.cause,
-                  }).pipe(Effect.as(stop())),
-                ),
-              )
+                })
+              })
             }),
           )
 

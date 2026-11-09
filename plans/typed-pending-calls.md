@@ -1,9 +1,51 @@
 # Typed pending calls: every tool call handled, checked by the compiler
 
-Status: direction agreed, details open. After 0.19. Follows
-`plans/tool-output-redesign.md` (R6: `Tool.declare` goes, `run` becomes
-optional). Until then, handling calls to tools without `run` is the app's job
-and not checked by the types.
+Status: parked. An intermediate step shipped in 0.19 (below); the pipeline
+stays an option for later. Spike: `experiments/tool-api-spike` (`Pending.ts`,
+`example.ts`, `type-errors.ts`, `NOTES.md`).
+
+## Shipped in 0.19: the intermediate step
+
+- **`Tool.declare` is back** (`_tag: "DeclaredTool"`), and `Tool.make` requires
+  `run`. The kind is in the type, which everything below needs.
+- **`Toolkit.split(toolkit, turn)`**: `run` (for `Toolkit.run`), `declared`
+  (decoded, typed per tool), `invalid` (closed with `InputInvalid`). An
+  exhaustive `Match` over `declared` makes a new declared tool a compile error,
+  with Effect's own types instead of a custom `NoPending` check:
+
+  ```ts
+  const { run, declared, invalid } = yield* Toolkit.split(toolkit, turn)
+  const route = Match.type<Toolkit.DeclaredCall<typeof toolkit>>().pipe(
+    Match.discriminatorsExhaustive("tool")({ ask_user: ..., escalate: ..., finish: ... }),
+  )
+  ```
+
+- **`Toolkit.complete(toolkit, "tool", call, value)`**: answers a call with a
+  value typed by `outputSchema`, the success side of `Toolkit.close`.
+- The app still decides how the loop goes on (`next` / `stop`), and gating stays
+  `ToolDecision` app code.
+
+## Why the pipeline is parked
+
+What the spike found (details in its `NOTES.md`):
+
+- **It works:** inference through `pipe`, readable `__error` messages, ten
+  mistakes caught at compile time.
+- **It costs:** new event types (`Call`, `Pending`, `Wait`, `Redirect`, `End`)
+  every consumer of `Toolkit.Event` must handle; a precedence rule in `next`;
+  checks only on the `next` path; error messages at the end of a long type.
+- **A bug in the design:** a `Redirect` (and an `End` whose conversation goes
+  on) leaves its call unanswered, so the next model call is rejected. Fix if it
+  comes back: `redirect(p, build)` / `end(p, result)` take the call and `next`
+  answers it.
+- **A type-level check on `defer`** (gated tools must be considered) needs a
+  phantom type and branded closings. Not worth it: which calls wait stays policy.
+
+`split` gets most of the benefit (declared tools handled, checked by the
+compiler) with two functions. Revisit the pipeline if loops with several
+declared tools and approvals keep repeating the same routing code.
+
+The original proposal follows, unchanged.
 
 ## The problem
 

@@ -112,14 +112,7 @@ export const toStream = <A, E, R>(
   out: Effect.Effect<A, E, R> | Stream.Stream<A, E, R>,
 ): Stream.Stream<A, E, R> => (Effect.isEffect(out) ? Stream.fromEffect(out) : out)
 
-/**
- * A model-visible tool. With `run`, `Toolkit.run` executes it: errors matching
- * `failureSchema` reach the model, any other error fails the stream. Without
- * `run`, the app handles its calls: a signal to the loop (`escalate`), or a call
- * answered elsewhere (`ask_user`, typed by `outputSchema`).
- */
-export type Tool<Name extends string, Input, Output, Failure = never, E = never, R = never> = {
-  readonly _tag: "LocalTool"
+type Described<Name extends string, Input, Output, Failure> = {
   readonly name: Name
   readonly description: string
   readonly inputSchema: ToolInputSchema<Input>
@@ -130,18 +123,39 @@ export type Tool<Name extends string, Input, Output, Failure = never, E = never,
    * errors the app closes calls with (`ToolDecision.Denied`, see `Toolkit.close`).
    */
   readonly failureSchema?: Schema.Codec<Failure, any>
-  readonly run?: Run<Input, Output, E, R>
   /** Render with the provider's strict-mode flag. Default: true. */
   readonly strict?: boolean
 }
 
-/** A tool with `run`, the only kind `Toolkit.run` executes. */
-export type Runnable<T extends AnyLocalTool = AnyLocalTool> = T & {
-  readonly run: NonNullable<T["run"]>
+/**
+ * A model-visible tool that `Toolkit.run` executes: errors matching
+ * `failureSchema` reach the model, any other error fails the stream.
+ */
+export type Tool<
+  Name extends string,
+  Input,
+  Output,
+  Failure = never,
+  E = never,
+  R = never,
+> = Described<Name, Input, Output, Failure> & {
+  readonly _tag: "LocalTool"
+  readonly run: Run<Input, Output, E, R>
 }
 
-export const hasRun = <T extends AnyLocalTool>(tool: T): tool is Runnable<T> =>
-  tool.run !== undefined
+/**
+ * A model-visible tool without `run`: the app handles its calls. A signal to
+ * the loop (`escalate`), or a call answered elsewhere (`ask_user`, typed by
+ * `outputSchema`). `Tool.withRun` turns it into a `Tool`.
+ */
+export type Declared<Name extends string, Input, Output = never, Failure = never> = Described<
+  Name,
+  Input,
+  Output,
+  Failure
+> & {
+  readonly _tag: "DeclaredTool"
+}
 
 /**
  * A provider-hosted tool (native web search, code execution, grounding), executed
@@ -159,7 +173,15 @@ export type ProviderTool<Name extends string, Input, Provider extends string, Co
 
 export type AnyLocalTool<E = any, R = any> = Tool<string, any, any, any, E, R>
 
-export type AnyTool<E = any, R = any> = AnyLocalTool<E, R> | ProviderTool<string, any, string, any>
+export type AnyDeclared = Declared<string, any, any, any>
+
+/** A tool with schemas the app sees: `Tool` or `Declared`. */
+export type AnyDescribed = AnyLocalTool | AnyDeclared
+
+export type AnyTool<E = any, R = any> =
+  | AnyLocalTool<E, R>
+  | AnyDeclared
+  | ProviderTool<string, any, string, any>
 
 /** Any tool kind with a decodable input schema. */
 export type DecodableTool<Input> = {
@@ -167,8 +189,14 @@ export type DecodableTool<Input> = {
   readonly inputSchema: ToolInputSchema<Input>
 }
 
-export type ToolOutput<T> = T extends Tool<string, any, infer O, any, any, any> ? O : never
-export type ToolFailure<T> = T extends Tool<string, any, any, infer F, any, any> ? F : never
+type DescribedTag = { readonly _tag: "LocalTool" | "DeclaredTool" }
+
+export type ToolOutput<T> = T extends DescribedTag & Described<string, any, infer O, any>
+  ? O
+  : never
+export type ToolFailure<T> = T extends DescribedTag & Described<string, any, any, infer F>
+  ? F
+  : never
 export type ToolE<T> = T extends Tool<string, any, any, any, infer E, any> ? E : never
 export type ToolR<T> = T extends Tool<string, any, any, any, any, infer R> ? R : never
 
@@ -185,27 +213,11 @@ type Spec<Name extends string, Input, Failure, FailureEncoded> = {
 }
 
 /**
- * Without `run`, the app handles the tool's calls: a signal to the loop
- * (no `outputSchema`), or a call answered elsewhere (typed by `outputSchema`).
+ * A tool `Toolkit.run` executes. `outputSchema` says what `run` returns and its
+ * encoded side must be JSON. `Content.Value` is the explicit "anything": text,
+ * JSON or media.
  */
-export function make<
-  const Name extends string,
-  Input,
-  Output = never,
-  Encoded extends Schema.Json = never,
-  Failure = never,
-  FailureEncoded extends Schema.Json = never,
->(
-  spec: Spec<Name, Input, Failure, FailureEncoded> & {
-    readonly outputSchema?: Schema.Codec<Output, Encoded>
-    readonly run?: undefined
-  },
-): Tool<Name, Input, Output, Failure>
-/**
- * With `run`, `outputSchema` says what it returns and its encoded side must be
- * JSON. `Content.Value` is the explicit "anything": text, JSON or media.
- */
-export function make<
+export const make = <
   const Name extends string,
   Input,
   Output,
@@ -219,22 +231,32 @@ export function make<
     readonly outputSchema: Schema.Codec<Output, Encoded>
     readonly run: Run<Input, Output, E, R>
   },
-): Tool<Name, Input, Output, Failure, E, R>
-export function make(
-  spec: Spec<string, unknown, unknown, unknown> & {
-    readonly outputSchema?: Schema.Codec<unknown, any> | undefined
-    readonly run?: Run<unknown, unknown, unknown, unknown> | undefined
+): Tool<Name, Input, Output, Failure, E, R> => ({
+  ...spec,
+  _tag: "LocalTool",
+  inputSchema: resolveInputSchema(spec.inputSchema),
+})
+
+/**
+ * A tool without `run`: the app handles its calls. A signal to the loop (no
+ * `outputSchema`), or a call answered elsewhere (typed by `outputSchema`).
+ */
+export const declare = <
+  const Name extends string,
+  Input,
+  Output = never,
+  Encoded extends Schema.Json = never,
+  Failure = never,
+  FailureEncoded extends Schema.Json = never,
+>(
+  spec: Spec<Name, Input, Failure, FailureEncoded> & {
+    readonly outputSchema?: Schema.Codec<Output, Encoded>
   },
-): AnyLocalTool {
-  const { outputSchema, inputSchema, run, ...rest } = spec
-  return {
-    _tag: "LocalTool",
-    ...rest,
-    inputSchema: resolveInputSchema(inputSchema),
-    ...(outputSchema === undefined ? {} : { outputSchema }),
-    ...(run === undefined ? {} : { run }),
-  }
-}
+): Declared<Name, Input, Output, Failure> => ({
+  ...spec,
+  _tag: "DeclaredTool",
+  inputSchema: resolveInputSchema(spec.inputSchema),
+})
 
 /** A provider-hosted tool. */
 export const provider = <const Name extends string, Input, Provider extends string, Config>(
@@ -254,13 +276,22 @@ export const withName = <N extends string, T extends AnyTool>(
 ): Omit<T, "name"> & { readonly name: N } => ({ ...tool, name })
 
 /**
- * Replace a tool's `run`, keeping everything else (name, description, schemas),
- * e.g. to mock it. The new `run` returns the same output type.
+ * Give a tool a `run`, keeping everything else (name, description, schemas):
+ * implement a declared tool (a spec shared with the browser), or mock a tool.
+ * The new `run` returns the same output type.
  */
-export const withRun = <Name extends string, Input, Output, Failure, E, R, E2 = never, R2 = never>(
-  tool: Tool<Name, Input, Output, Failure, E, R>,
+export const withRun = <Name extends string, Input, Output, Failure, E2 = never, R2 = never>(
+  tool: Tool<Name, Input, Output, Failure, any, any> | Declared<Name, Input, Output, Failure>,
   run: Run<Input, Output, E2, R2>,
-): Runnable<Tool<Name, Input, Output, Failure, E2, R2>> => ({ ...tool, run })
+): Tool<Name, Input, Output, Failure, E2, R2> => ({ ...tool, _tag: "LocalTool", run })
+
+/** The same kind of tool, with more failures. */
+export type WithFailures<T, F2> =
+  T extends Tool<infer N, infer I, infer O, infer F, infer E, infer R>
+    ? Tool<N, I, O, F | F2, E, R>
+    : T extends Declared<infer N, infer I, infer O, infer F>
+      ? Declared<N, I, O, F | F2>
+      : never
 
 /**
  * Add errors a call of this tool may end with, e.g. the app's `ToolDecision.Denied`
@@ -270,24 +301,16 @@ export const withRun = <Name extends string, Input, Output, Failure, E, R, E2 = 
 export const withFailures: {
   <F2, F2Encoded extends Schema.Json>(
     failures: Schema.Codec<F2, F2Encoded>,
-  ): <Name extends string, Input, Output, Failure, E, R>(
-    tool: Tool<Name, Input, Output, Failure, E, R>,
-  ) => Tool<Name, Input, Output, Failure | F2, E, R>
-  <Name extends string, Input, Output, Failure, E, R, F2, F2Encoded extends Schema.Json>(
-    tool: Tool<Name, Input, Output, Failure, E, R>,
+  ): <T extends AnyDescribed>(tool: T) => WithFailures<T, F2>
+  <T extends AnyDescribed, F2, F2Encoded extends Schema.Json>(
+    tool: T,
     failures: Schema.Codec<F2, F2Encoded>,
-  ): Tool<Name, Input, Output, Failure | F2, E, R>
-} = Function.dual(
-  2,
-  <Name extends string, Input, Output, Failure, E, R, F2>(
-    tool: Tool<Name, Input, Output, Failure, E, R>,
-    failures: Schema.Codec<F2, any>,
-  ): Tool<Name, Input, Output, Failure | F2, E, R> => ({
-    ...tool,
-    failureSchema:
-      tool.failureSchema === undefined ? failures : Schema.Union([tool.failureSchema, failures]),
-  }),
-)
+  ): WithFailures<T, F2>
+} = Function.dual(2, (tool: AnyDescribed, failures: Schema.Codec<unknown, any>): AnyDescribed => ({
+  ...tool,
+  failureSchema:
+    tool.failureSchema === undefined ? failures : Schema.Union([tool.failureSchema, failures]),
+}))
 
 // ---------------------------------------------------------------------------
 // Descriptors

@@ -12,7 +12,7 @@ icon: PiShieldCheck
 with a matching `function_call_output` in history, the wire-protocol
 invariant every modern provider enforces.
 
-The HITL integration is explicit stream composition. `Approval` groups the
+The HITL integration is explicit stream composition. `ToolDecision` groups the
 waiting calls by answer; the recipe then runs the approved ones with
 `Toolkit.run` and closes the rest with typed errors. Nothing in the executor
 knows about approval policy.
@@ -22,7 +22,7 @@ knows about approval policy.
 Same primitives, different approval planner:
 
 - **HTTP (primary)**: answers arrive synchronously bundled with the
-  next request. `Approval.Default.resolve(waiting, answers)` returns
+  next request. `ToolDecision.Default.resolve(waiting, answers)` returns
   `{ Approve, Deny, unanswered }`; unanswered calls are closed as
   cancelled. Pure function. No queue, no router fiber. The simplest path.
 - **Queue (enhancement)**: long-lived channel (WebSocket / SSE).
@@ -37,19 +37,19 @@ you've got a persistent connection and want a streaming UI.
 
 ## Answers and closings
 
-An answer is an `Approval.Default` decision for one call: approve, or deny
+An answer is an `ToolDecision.Default` decision for one call: approve, or deny
 with an optional reason.
 
 ```ts
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as ToolOutput from "@effect-uai/core/ToolOutput"
 
-export type Decision = typeof Approval.Default.schema.Type
-export type Answer = Approval.Answer<Decision>
-// { callId, decision: Approval.Default.Approve() | Approval.Default.Deny({ reason? }) }
+export type Decision = typeof ToolDecision.Default.schema.Type
+export type Answer = ToolDecision.Answer<Decision>
+// { callId, decision: ToolDecision.Default.Approve() | ToolDecision.Default.Deny({ reason? }) }
 ```
 
-A sensitive tool declares `Approval.Denied` in its `failureSchema`: its `run`
+A sensitive tool declares `ToolDecision.Denied` in its `failureSchema`: its `run`
 never raises it, but the app may close a call with it. Core's
 `ToolOutput.Cancelled` is possible for every tool.
 
@@ -59,12 +59,12 @@ const deleteUser = Tool.make({
   description: "Permanently delete a user account.",
   inputSchema: Schema.Struct({ user_id: Schema.String }),
   outputSchema: Schema.Struct({ status: Schema.String, user_id: Schema.String }),
-  failureSchema: Approval.Denied,
+  failureSchema: ToolDecision.Denied,
   run: ({ user_id }) => Effect.succeed({ status: "deleted", user_id }),
 })
 
 // The model sees a closed call like any failed one.
-export const close = (call: Items.ToolCall, error: Approval.Denied | ToolOutput.Cancelled) =>
+export const close = (call: Items.ToolCall, error: ToolDecision.Denied | ToolOutput.Cancelled) =>
   Toolkit.close(toolkit, call, error)
 ```
 
@@ -72,7 +72,7 @@ A denied or cancelled call becomes an `Output` event whose `result` is a
 `Result.fail`. Because the error is declared by the call's tool, `Toolkit.next`
 encodes it into history like any other outcome. `close` checks that when it
 runs: a `Denied` on `search_emails` fails with `UndeclaredFailure`. A tool from somewhere else
-(MCP, a library) gets the same with `Tool.withFailures(tool, Approval.Denied)`.
+(MCP, a library) gets the same with `Tool.withFailures(tool, ToolDecision.Denied)`.
 
 ## HTTP variant (primary)
 
@@ -83,7 +83,7 @@ onTurnComplete((turn) =>
     // No requested tools means there is nothing to approve or execute.
     if (calls.length === 0) return stop()
 
-    const { Approve, Deny, unanswered, invalid } = Approval.Default.resolve(
+    const { Approve, Deny, unanswered, invalid } = ToolDecision.Default.resolve(
       calls.filter(isSensitive),
       answers,
     )

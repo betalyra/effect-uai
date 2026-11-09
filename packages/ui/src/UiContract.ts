@@ -21,7 +21,7 @@
  *
  * A tool is a core `Tool` or a shared spec (`as const`, schemas only). Its
  * result is `Success { value } | Failure { error }`: the error is the tool's
- * `failureSchema` (app closings like `Approval.Denied` included) or core's
+ * `failureSchema` (app closings like `ToolDecision.Denied` included) or core's
  * `ToolOutput.CoreError`.
  * Without `outputSchema`, values are a `Content.Value` (media as classes).
  */

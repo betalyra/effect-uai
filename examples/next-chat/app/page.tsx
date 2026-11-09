@@ -1,7 +1,7 @@
 "use client"
 
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Input from "@effect-uai/ui/Input"
 import type { Outcome } from "@effect-uai/ui/RunEvent"
 import * as RunView from "@effect-uai/ui/RunView"
@@ -75,7 +75,7 @@ function ToolCard(props: { block: ToolBlock }) {
       Input.resolve([
         {
           callId: block.id,
-          decision: approved ? Approval.Default.Approve() : Approval.Default.Deny(),
+          decision: approved ? ToolDecision.Default.Approve() : ToolDecision.Default.Deny(),
         },
       ]),
     )

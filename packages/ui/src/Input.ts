@@ -12,7 +12,7 @@
  * Constructors build drafts without randomness; the id is assigned where an
  * input is sent (`Atoms.submit`, or `withId`).
  */
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Items from "@effect-uai/core/Items"
 import { Effect, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
@@ -27,12 +27,12 @@ export const UserMessage = Schema.Struct({
 export type UserMessage = typeof UserMessage.Type
 export type Content = UserMessage["content"][number]
 
-/** The answer to one waiting call, with a decision of the app's `Approval.decisions`. */
+/** The answer to one waiting call, with a decision of the app's `ToolDecision.make`. */
 export const answer = <D extends Schema.Top>(decision: D) =>
   Schema.Struct({ callId: Schema.String, decision })
 
-/** The default answer: `Approval.Default` (approve, or deny with an optional reason). */
-export const Decision = answer(Approval.Default.schema)
+/** The default answer: `ToolDecision.Default` (approve, or deny with an optional reason). */
+export const Decision = answer(ToolDecision.Default.schema)
 export type Decision = typeof Decision.Type
 
 const submitFields = {
@@ -50,7 +50,7 @@ const resolveFields = <D extends Schema.Top>(decision: D) => ({
 export const Submit = Schema.Struct(submitFields)
 export type Submit = typeof Submit.Type
 
-export const Resolve = Schema.Struct(resolveFields(Approval.Default.schema))
+export const Resolve = Schema.Struct(resolveFields(ToolDecision.Default.schema))
 export type Resolve = typeof Resolve.Type
 
 export const Input = Schema.Union([Submit, Resolve])
@@ -61,14 +61,14 @@ export const InputJson = Schema.toCodecJson(Input)
 
 /**
  * The preset with typed app `data` (required on `submit`, optional on
- * `resolve`) and, optionally, the app's decisions (`Approval.decisions(...).schema`).
+ * `resolve`) and, optionally, the app's decisions (`ToolDecision.make(...).schema`).
  */
-export function make<D extends Schema.Top>(data: D): Preset<D, typeof Approval.Default.schema>
+export function make<D extends Schema.Top>(data: D): Preset<D, typeof ToolDecision.Default.schema>
 export function make<D extends Schema.Top, A extends Schema.Top>(
   data: D,
   decisions: A,
 ): Preset<D, A>
-export function make(data: Schema.Top, decisions: Schema.Top = Approval.Default.schema) {
+export function make(data: Schema.Top, decisions: Schema.Top = ToolDecision.Default.schema) {
   return preset(data, decisions)
 }
 
@@ -136,23 +136,23 @@ export function submit(
   }
 }
 
-/** A resolve draft; the decision type defaults to `Approval.Default`'s. */
+/** A resolve draft; the decision type defaults to `ToolDecision.Default`'s. */
 export type ResolveDraft<A = Decision["decision"]> = {
   readonly id?: InputId
   readonly kind: "resolve"
-  readonly decisions: ReadonlyArray<Approval.Answer<A>>
+  readonly decisions: ReadonlyArray<ToolDecision.Answer<A>>
 }
 
 export function resolve<A = Decision["decision"]>(
-  decisions: ReadonlyArray<Approval.Answer<A>>,
+  decisions: ReadonlyArray<ToolDecision.Answer<A>>,
   options?: Id,
 ): ResolveDraft<A>
 export function resolve<A, D>(
-  decisions: ReadonlyArray<Approval.Answer<A>>,
+  decisions: ReadonlyArray<ToolDecision.Answer<A>>,
   options: Id & { readonly data: D },
 ): ResolveDraft<A> & { readonly data: D }
 export function resolve(
-  decisions: ReadonlyArray<Approval.Answer<unknown>>,
+  decisions: ReadonlyArray<ToolDecision.Answer<unknown>>,
   options?: Id & { readonly data?: unknown },
 ): ResolveDraft<unknown> & { readonly data?: unknown } {
   return { ...options, kind: "resolve", decisions }

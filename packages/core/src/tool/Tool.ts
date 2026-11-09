@@ -127,7 +127,7 @@ export type Tool<Name extends string, Input, Output, Failure = never, E = never,
   readonly outputSchema?: Schema.Codec<Output, any>
   /**
    * Every error a call may end with that the model sees: errors `run` raises and
-   * errors the app closes calls with (`Approval.Denied`, see `Toolkit.close`).
+   * errors the app closes calls with (`ToolDecision.Denied`, see `Toolkit.close`).
    */
   readonly failureSchema?: Schema.Codec<Failure, any>
   readonly run?: Run<Input, Output, E, R>
@@ -263,7 +263,7 @@ export const withRun = <Name extends string, Input, Output, Failure, E, R, E2 = 
 ): Runnable<Tool<Name, Input, Output, Failure, E2, R2>> => ({ ...tool, run })
 
 /**
- * Add errors a call of this tool may end with, e.g. the app's `Approval.Denied`
+ * Add errors a call of this tool may end with, e.g. the app's `ToolDecision.Denied`
  * for a tool that needs approval. Its `run` need not raise them; the app closes
  * calls with them (`Toolkit.close`).
  */

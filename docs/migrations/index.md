@@ -21,7 +21,7 @@ their editor).
   fail the run; history holds typed parts. `Toolkit.next` replaces
   `continueWithResults(appendToolResults(...))`, a tool with `run` requires
   `outputSchema`, a tool without `run` replaces `signal` / `interaction`,
-  `Approval.decisions` replaces `fromMap`, and the UI wire carries typed
+  `ToolDecision.make` replaces `fromMap`, and the UI wire carries typed
   outcomes (protocol v2).
 - [Migrating to 0.18](/migrations/v0-18/): one required action, upgrade to
   Effect 4.0 stable (`effect` peer `>=4.0.1 <5.0.0`); effect-uai renames

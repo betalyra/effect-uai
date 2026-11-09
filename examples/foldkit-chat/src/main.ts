@@ -8,7 +8,7 @@
  * Envelopes are decoded with the shared `ChatUi` contract on arrival, so the
  * thread is typed: a tool block narrowed by name has its tool's output.
  */
-import * as Approval from "@effect-uai/core/Approval"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Input from "@effect-uai/ui/Input"
 import { type Outcome, StreamId } from "@effect-uai/ui/RunEvent"
 import * as RunView from "@effect-uai/ui/RunView"
@@ -59,7 +59,7 @@ export const Message = defineMessageUnion({
   ChangedPrompt: { prompt: Schema.String },
   SubmittedPrompt: {},
   /** Approve or Deny on a call that waits for the user. */
-  ClickedVerdict: { callId: Schema.String, decision: Approval.Default.schema },
+  ClickedVerdict: { callId: Schema.String, decision: ToolDecision.Default.schema },
   CreatedInput: { input: Input.Input },
   ClickedStop: {},
   GotEnvelope: { envelope: ChatUi.Envelope },
@@ -83,7 +83,7 @@ const CreateMessage = Command.define("CreateMessage", {
 
 // The page only votes; the server checks the call is waiting, and decides.
 const CreateVerdict = Command.define("CreateVerdict", {
-  args: { callId: Schema.String, decision: Approval.Default.schema },
+  args: { callId: Schema.String, decision: ToolDecision.Default.schema },
   messages: [Message.CreatedInput],
   execute: ({ callId, decision }) => withId(Input.resolve([{ callId, decision }])),
 })
@@ -223,7 +223,7 @@ const toolCard = (h: HtmlBuilder<Message>, block: ToolBlock): Html =>
                 h.OnClick(
                   Message.ClickedVerdict({
                     callId: block.id,
-                    decision: Approval.Default.Approve(),
+                    decision: ToolDecision.Default.Approve(),
                   }),
                 ),
               ],
@@ -233,7 +233,10 @@ const toolCard = (h: HtmlBuilder<Message>, block: ToolBlock): Html =>
               [
                 h.Type("button"),
                 h.OnClick(
-                  Message.ClickedVerdict({ callId: block.id, decision: Approval.Default.Deny() }),
+                  Message.ClickedVerdict({
+                    callId: block.id,
+                    decision: ToolDecision.Default.Deny(),
+                  }),
                 ),
               ],
               ["Deny"],

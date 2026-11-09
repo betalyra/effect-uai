@@ -246,9 +246,9 @@
       "types": "./dist/tool/ToolOutput.d.mts",
       "import": "./dist/tool/ToolOutput.mjs"
     },
-    "./Approval": {
-      "types": "./dist/tool/Approval.d.mts",
-      "import": "./dist/tool/Approval.mjs"
+    "./ToolDecision": {
+      "types": "./dist/tool/ToolDecision.d.mts",
+      "import": "./dist/tool/ToolDecision.mjs"
     },
     "./HistoryCheck": {
       "types": "./dist/tool/HistoryCheck.d.mts",

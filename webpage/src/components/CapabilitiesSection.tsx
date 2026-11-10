@@ -12,6 +12,7 @@ import {
   PiImage,
   PiMagnifyingGlass,
   PiMusicNotes,
+  PiPlus,
   PiScales,
   PiStack,
   PiWaveform,
@@ -144,6 +145,13 @@ const markdownComponents: Components = {
   code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>,
 }
 
+const requestUrl =
+  "https://github.com/betalyra/effect-uai/issues/new?" +
+  new URLSearchParams({
+    title: "Capability request: ",
+    body: "What should your agent be able to do that effect-uai doesn't cover yet, and which providers would you use for it?",
+  }).toString()
+
 export default function CapabilitiesSection() {
   return (
     <section className="not-content border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12">
@@ -199,9 +207,33 @@ export default function CapabilitiesSection() {
             </Card>
           </a>
         ))}
+        <a
+          href={requestUrl}
+          target="_blank"
+          rel="noopener"
+          className="group block rounded-[14px] no-underline outline-none focus-visible:ring-1 focus-visible:ring-(--color-border) focus-visible:ring-offset-2 focus-visible:ring-offset-(--sl-color-bg) hover:focus-visible:ring-(--color-mark)"
+        >
+          <Card className="h-full gap-5 rounded-[14px] border-dashed border-border bg-transparent py-7 shadow-none transition-colors hover:border-(--color-mark)">
+            <CardHeader className="gap-3 px-7">
+              <div className="flex items-center gap-3">
+                <div className="flex aspect-square h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-dashed border-border text-muted-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
+                  <PiPlus className="h-4 w-4" />
+                </div>
+                <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
+                  Missing a capability?
+                </CardTitle>
+              </div>
+              <CardDescription className="text-sm leading-relaxed">
+                Tell us what your agent needs.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="mt-auto flex items-center gap-1.5 px-7 pt-1 text-sm text-muted-foreground transition-colors group-hover:text-(--color-mark)">
+              <span>Open an issue</span>
+              <PiArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </CardContent>
+          </Card>
+        </a>
       </div>
-
-      <p className="mt-6 text-sm text-muted-foreground">And more coming soon.</p>
     </section>
   )
 }

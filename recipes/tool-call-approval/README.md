@@ -19,7 +19,7 @@ knows about approval policy.
 
 ## Two transport flavors
 
-Same primitives, different approval planner:
+Same primitives, different way to collect answers:
 
 - **HTTP (primary)**: answers arrive synchronously bundled with the
   next request. `ToolDecision.Default.resolve(waiting, answers)` returns
@@ -37,7 +37,7 @@ you've got a persistent connection and want a streaming UI.
 
 ## Answers and closings
 
-An answer is an `ToolDecision.Default` decision for one call: approve, or deny
+An answer is a `ToolDecision.Default` decision for one call: approve, or deny
 with an optional reason.
 
 ```ts

@@ -124,5 +124,5 @@ batch, and ranks against an image query.
 - [Embedding model](/embeddings/): the concept page.
 - [Multivector embedding](/embeddings/multivector/): token-level
   retrieval when single-vector cosine isn't precise enough.
-- [Reranking](/reranking/) (coming soon): cross-encoder re-scoring
+- [Reranking](/reranking/): cross-encoder re-scoring
   for cross-modal precision.

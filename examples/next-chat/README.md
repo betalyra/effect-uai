@@ -31,8 +31,8 @@ The page reads `Atoms.thread` with `@effect/atom-react`. With
 `contract: ChatUi`, narrowing a tool block by name gives the tool's own types:
 
 ```tsx
-if (block.name === "get_weather" && block.output !== undefined)
-  block.output.observedAt.toLocaleTimeString() // a Date, decoded on arrival
+if (block.name === "get_weather" && block.outcome?._tag === "Success")
+  block.outcome.value.observedAt.toLocaleTimeString() // a Date, decoded on arrival
 ```
 
 Live metrics (time to first token, tok/s) are the contract's typed `live`

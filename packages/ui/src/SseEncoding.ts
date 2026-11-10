@@ -6,7 +6,7 @@
  * encoder and parser.
  * For NDJSON use `effect/encoding/Ndjson` with `RunEvent.EnvelopeJson`.
  */
-import { Effect, Option, Schema, SchemaTransformation, Stream } from "effect"
+import { type Duration, Effect, Option, Schema, SchemaTransformation, Stream } from "effect"
 import { Sse } from "effect/encoding"
 import { Envelope, EnvelopeJson } from "./RunEvent.js"
 
@@ -49,6 +49,23 @@ export const decode = <E, R>(
   self: Stream.Stream<Uint8Array, E, R>,
 ): Stream.Stream<Envelope, E | Sse.Retry | Sse.SseError | Schema.SchemaError, R> =>
   self.pipe(Stream.decodeText, Stream.pipeThroughChannelOrFail(Sse.decodeSchema(EnvelopeEvent)))
+
+const comment = new TextEncoder().encode(": heartbeat\n\n")
+
+/**
+ * Interleave an SSE comment every `interval`, so proxies don't close a stream
+ * that sits idle (a session between answers). Pipe after `encode`: each frame
+ * is one chunk, so a comment always lands between whole frames. Parsers
+ * (`EventSource`, `decode`) ignore comments. Ends with the event stream.
+ */
+export const heartbeat =
+  (interval: Duration.Input) =>
+  <E, R>(self: Stream.Stream<Uint8Array, E, R>): Stream.Stream<Uint8Array, E, R> =>
+    self.pipe(
+      Stream.merge(Stream.tick(interval).pipe(Stream.map(() => comment)), {
+        haltStrategy: "left",
+      }),
+    )
 
 /**
  * Headers an SSE response needs. Behind nginx-style proxies, also send

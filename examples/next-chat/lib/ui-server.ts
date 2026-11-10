@@ -30,7 +30,9 @@ import {
   HashMap,
   HashSet,
   Layer,
+  Match,
   Option,
+  Predicate,
   Ref,
   Schema,
   Stream,
@@ -105,36 +107,42 @@ const interrupted = (calls: ReadonlyArray<ToolCall>): RunEvent => ({
 // A call the app closes itself; the gated tools declare `Closings` in their `failureSchema`.
 const close = (call: ToolCall, error: typeof Closings.Type) => Toolkit.close(toolkit, call, error)
 
+const verdict = (outcome: Toolkit.Outcome) =>
+  outcome.result._tag === "Success" ? "approved" : "not run"
+
 // What one loop event adds to the chat's history: the turn's items, a tool's output.
-const historyOf = (source: Projection.Source): Effect.Effect<History, Schema.SchemaError> => {
-  if (Items.isToolCallOutput(source)) return Effect.succeed([source])
-  if (Turn.isTurnComplete(source)) return Effect.succeed(source.turn.items)
-  if (Toolkit.isOutcome(source)) return Effect.map(Toolkit.output(toolkit, source), Arr.of)
-  return Effect.succeed([])
-}
+const historyOf = (source: Projection.Source): Effect.Effect<History, Schema.SchemaError> =>
+  Match.value(source).pipe(
+    Match.when(Items.isToolCallOutput, (output) => Effect.succeed([output])),
+    Match.when(Turn.isTurnComplete, ({ turn }) => Effect.succeed(turn.items)),
+    Match.when(Toolkit.isOutcome, (outcome) =>
+      Effect.map(Toolkit.output(toolkit, outcome), Arr.of),
+    ),
+    Match.orElse(() => Effect.succeed([])),
+  )
 
 // METRICS: time to first token and throughput, sent as the contract's `live` values
 
 const estimateTokens = (event: Turn.TurnEvent): Effect.Effect<number> =>
   Effect.succeed(event._tag === "TextDelta" ? [...event.text].length / 4 : 0)
 
-const isFirstToken = (e: Metrics.MetricEvent): e is Metrics.TimeToFirstToken =>
-  e._tag === "TimeToFirstToken"
+// `MetricEvent` is open (apps add their own), so its built-in samples need refinements.
+const isFirstText = (e: Metrics.MetricEvent): e is Metrics.TimeToFirstToken =>
+  e._tag === "TimeToFirstToken" && Predicate.hasProperty(e, "kind") && e.kind === "text"
 const isThroughput = (e: Metrics.MetricEvent): e is Metrics.Throughput => e._tag === "Throughput"
 
 const liveMetric = (
   event: Metrics.MetricEvent,
-): Effect.Effect<ReadonlyArray<RunEvent>, Schema.SchemaError> => {
-  if (isFirstToken(event) && event.kind === "text") {
-    return ChatUi.live("ttftMs", Math.round(Duration.toMillis(event.elapsed))).pipe(
-      Effect.map(Arr.of),
-    )
-  }
-  if (isThroughput(event)) {
-    return ChatUi.live("tokensPerSecond", Math.round(event.ratePerSecond)).pipe(Effect.map(Arr.of))
-  }
-  return Effect.succeed([])
-}
+): Effect.Effect<ReadonlyArray<RunEvent>, Schema.SchemaError> =>
+  Match.value(event).pipe(
+    Match.when(isFirstText, ({ elapsed }) =>
+      ChatUi.live("ttftMs", Math.round(Duration.toMillis(elapsed))).pipe(Effect.map(Arr.of)),
+    ),
+    Match.when(isThroughput, ({ ratePerSecond }) =>
+      ChatUi.live("tokensPerSecond", Math.round(ratePerSecond)).pipe(Effect.map(Arr.of)),
+    ),
+    Match.orElse(() => Effect.succeed([])),
+  )
 
 // The loop's events go through `Projection`; metric samples become `live` events.
 const toRunEvents = <E, R>(self: Stream.Stream<Projection.Source | Metrics.MetricEvent, E, R>) =>
@@ -213,9 +221,7 @@ const makeChats = Effect.gen(function* () {
         ...input.messages,
       ])
       yield* Ref.set(chat.awaiting, kept)
-      yield* Ref.update(chat.held, (s) =>
-        kept.reduce((acc, call) => HashSet.add(acc, call.call_id), s),
-      )
+      yield* Ref.update(chat.held, HashSet.union(HashSet.fromIterable(kept.map((c) => c.call_id))))
       return superseded
     })
 
@@ -242,7 +248,7 @@ const makeChats = Effect.gen(function* () {
         Effect.map(Toolkit.output(toolkit, outcome), (item) =>
           HashSet.has(held, outcome.call_id)
             ? Items.userText(
-                `[${outcome.result._tag === "Success" ? "approved" : "not run"}] ${outcome.tool} (${outcome.call_id}): ${JSON.stringify(ToolOutput.value(item.output))}`,
+                `[${verdict(outcome)}] ${outcome.tool} (${outcome.call_id}): ${JSON.stringify(ToolOutput.value(item.output))}`,
               )
             : item,
         ),

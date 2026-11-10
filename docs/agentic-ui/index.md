@@ -143,6 +143,65 @@ messages sent during an answer queue up. Use `Transport.sessionHttp` with
 
 Start direct. Switch when a lost answer costs your user something.
 
+## Keeping a durable chat connected
+
+A session stream never ends on its own, so one that does fails with
+`Client.Disconnected`. `Transport.reconnect` resumes it from the last `seq`:
+
+```ts
+const transport = Transport.reconnect(Transport.sessionHttp({ send, events, stop }))
+```
+
+It retries what is worth retrying: a drop, a timeout, a transport error,
+408 / 429 / 5xx, and an SSE `retry:` line, waiting at least what the server
+asks for (`Retry-After`, `retry:`). Anything else (404, 401, a malformed
+frame) ends the stream with that error. The default backoff is exponential
+from 500 ms, capped at 10 s, with jitter. Pass your own with `schedule` and
+`times`, but cap an exponential one: the backoff resets only when a frame
+arrives, so an idle chat's waits would otherwise grow without bound.
+
+Any `Stream` is a session's `events`, a WebSocket or an RPC stream too. Only
+a clean close counts as a drop there; tell `reconnect` which of your errors
+are transient:
+
+```ts
+const transport = Transport.reconnect(Transport.session({ send, events: socketEvents }), {
+  while: (error) => error._tag === "SocketClosed",
+})
+```
+
+`Transport.durable` / `durableHttp` take the same `reconnect`: the run is
+followed until its terminal, and `submit` is never retried, so a message is
+never sent twice.
+
+**A stream that ends for good** (the chat was deleted, the login expired)
+leaves its error in the `open` atom's result. What it means is yours to
+decide: forget the chat, reload it, or sign in again.
+
+```ts
+registry.subscribe(chat.open, (result) => {
+  if (AsyncResult.isFailure(result)) forgetChat()
+})
+```
+
+**Idle connections.** A chat sits idle between answers, and proxies close
+idle connections. `SseEncoding.heartbeat` sends an SSE comment on an
+interval; browsers and `SseEncoding.decode` ignore it:
+
+```ts
+events.pipe(SseEncoding.encode, SseEncoding.heartbeat("15 seconds"))
+```
+
+**A chat loaded from your database.** Render it at once with `initial`, then
+follow the stream from where it ends, instead of replaying it from the start:
+
+```ts
+const chat = Atoms.sessionThread({ contract, runtime, transport, initial: hydrated })
+registry.set(chat.open, { streamId: chatId, after: hydrated.lastSeq })
+```
+
+`initial` only sets the state; `open` is what follows the chat.
+
 ## Your framework
 
 - [Next.js](/agentic-ui/nextjs/): keep `useChat`, or move to this package.

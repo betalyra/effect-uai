@@ -234,6 +234,9 @@ type BaseSessionOptions<I, S, E, R, ER, D> = {
 export type SessionOptions<I, S, E, R, ER, D = Envelope> = BaseSessionOptions<I, S, E, R, ER, D> &
   WithDecode<D>
 
+/** What `open` follows: a session from its start, or from `after` (e.g. a hydrated thread's `lastSeq`). */
+export type Open = StreamId | { readonly streamId: StreamId; readonly after: number }
+
 const buildSession = <I, S, E, R, ER, D>(
   options: BaseSessionOptions<I, S, E, R, ER, D> & { readonly decode: Decode<D> },
 ) => {
@@ -249,11 +252,13 @@ const buildSession = <I, S, E, R, ER, D>(
 
   // Non-concurrent: opening another session stops following the previous one.
   const open = options.runtime
-    .fn<StreamId>()((id) =>
-      Atom.set(streamId, id).pipe(
+    .fn<Open>()((target) => {
+      const { streamId: id, after } =
+        typeof target === "string" ? { streamId: target, after: 0 } : target
+      return Atom.set(streamId, id).pipe(
         Effect.andThen(
           options.transport
-            .events(id, 0)
+            .events(id, after)
             .pipe(
               Stream.runForEach((envelope) =>
                 options
@@ -267,8 +272,8 @@ const buildSession = <I, S, E, R, ER, D>(
             ),
         ),
         Effect.onExit(settle),
-      ),
-    )
+      )
+    })
     .pipe(Atom.keepAlive)
 
   const submit = options.runtime
@@ -305,7 +310,9 @@ type BuiltSession<I, S, E, R, ER> = ReturnType<typeof buildSession<I, S, E, R, E
 
 /**
  * State over a session transport. `open(streamId)` follows a session's
- * stream from its start (e.g. a chat id kept across reloads). `submit` sends
+ * stream from its start (e.g. a chat id kept across reloads);
+ * `open({ streamId, after })` from a position, for state hydrated elsewhere
+ * (pass it as `initial`; `initial` never opens anything). `submit` sends
  * an input; without an open session the server starts one, which is then
  * opened. Runs arrive on the followed stream, not as responses to `submit`.
  */
@@ -322,6 +329,8 @@ type SessionThreadOptions<I, E, R, ER, P extends Payloads> = {
   readonly runtime: Runtime<R, ER>
   readonly transport: Transport.Session<Input.Sent<I>, Thread.Thread<P>, E, R>
   readonly isBusy?: (thread: Thread.Thread<P>) => boolean
+  /** A thread hydrated elsewhere (e.g. from a database); follow it with `open({ streamId, after: lastSeq })`. */
+  readonly initial?: Thread.Thread<P>
 }
 
 /**
@@ -345,7 +354,7 @@ export function sessionThread<I extends Input.Input, E, R, ER>(
   return buildSession({
     runtime: options.runtime,
     transport: options.transport,
-    initial: fold.initial,
+    initial: options.initial ?? fold.initial,
     step: fold.step,
     decode: options.contract?.decode ?? identity,
     ...(options.isBusy !== undefined ? { isBusy: options.isBusy } : {}),

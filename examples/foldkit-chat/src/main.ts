@@ -10,17 +10,17 @@
  */
 import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Input from "@effect-uai/ui/Input"
-import { type Outcome, StreamId } from "@effect-uai/ui/RunEvent"
+import { StreamId } from "@effect-uai/ui/RunEvent"
 import * as RunView from "@effect-uai/ui/RunView"
 import * as Thread from "@effect-uai/ui/Thread"
 import * as Transport from "@effect-uai/ui/Transport"
-import { Effect, Match, Option, Schema, Stream } from "effect"
+import { Array as Arr, Effect, Match, Option, Schema, Stream } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { type HttpClient, HttpClientRequest } from "effect/http"
 import { Command, type Runtime, Subscription, type Update } from "foldkit"
 import type { Document, Html, HtmlBuilder } from "foldkit/html"
 import { defineMessageUnion } from "foldkit/message"
-import { type ChatPayloads, ChatUi } from "./chat-ui.ts"
+import { type ChatPayloads, ChatUi, type FindRestaurants } from "./chat-ui.ts"
 
 // TRANSPORT: one request per input (server.ts)
 
@@ -140,7 +140,10 @@ export const subscriptions = Subscription.make<Model, Message, HttpClient.HttpCl
             : transport.start(request.input, request.chatId).pipe(
                 Stream.mapEffect(ChatUi.decode),
                 Stream.map((envelope) => Message.GotEnvelope({ envelope })),
-                Stream.catchCause(() => Stream.empty),
+                // The request ends either way; log why, then `EndedRequest` settles it.
+                Stream.catchCause((cause) =>
+                  Stream.fromEffect(Effect.logError(cause)).pipe(Stream.drain),
+                ),
                 Stream.concat(Stream.make(Message.EndedRequest())),
               ),
       },
@@ -163,11 +166,12 @@ type Failure = ChatPayloads["tool"]["failure"]
 // The answer, or the refusal when the model declined.
 const answer = (run: Run) => RunView.text(run) || (RunView.refusal(run) ?? "")
 
-const runNote = (run: Run): string | undefined => {
-  if (run.status === "stopped") return "stopped"
-  if (run.status === "failed") return `failed: ${run.error?.reason}`
-  return undefined
-}
+const runNote = (run: Run): Option.Option<string> =>
+  Match.value(run).pipe(
+    Match.when({ status: "stopped" }, () => Option.some("stopped")),
+    Match.when({ status: "failed" }, (r) => Option.some(`failed: ${r.error?.reason}`)),
+    Match.orElse(() => Option.none()),
+  )
 
 // A failed call carries a typed error: the tool's own, core's, or the app's closing.
 const failure = (error: Failure): string =>
@@ -179,36 +183,50 @@ const failure = (error: Failure): string =>
     Match.orElse((e) => `failed: ${e.message}`),
   )
 
-// The value of a successful call, typed by the (narrowed) block's tool.
-const valueOf = <V, E>(block: { readonly outcome?: Outcome<V, E> }): V | undefined =>
-  block.outcome?._tag === "Success" ? block.outcome.value : undefined
+const restaurants = (found: typeof FindRestaurants.outputSchema.Type, note = "") =>
+  `restaurants in ${found.city}${note}: ${found.restaurants.map((r) => `${r.name} (${r.area}, ${r.rating}★)`).join(", ")}`
 
-// Narrowing by name gives the tool's own types: `observedAt`, `now`, `sentAt` are Dates.
-const toolSummary = (block: ToolBlock): string => {
-  if (block.outcome?._tag === "Failure") return `${block.name}: ${failure(block.outcome.error)}`
-  if (block.name === "get_weather") {
-    const weather = valueOf(block)
-    if (weather === undefined) return `weather: ${block.status}`
-    const { city, country, temperatureC, windSpeedKmh, observedAt } = weather
-    return `${city}, ${country}: ${temperatureC}°C, wind ${windSpeedKmh} km/h (${observedAt.toLocaleTimeString()})`
-  }
-  if (block.name === "get_date") {
-    const date = valueOf(block)
-    if (date === undefined) return `date: ${block.status}`
-    return `${date.now.toLocaleString(undefined, { timeZone: date.timezone })} (${date.timezone})`
-  }
-  if (block.name === "send_email" && block.input !== undefined) {
-    const sent = valueOf(block)?.sentAt
-    return sent === undefined
-      ? `email to ${block.input.to}: "${block.input.subject}"`
-      : `email sent to ${block.input.to} at ${sent.toLocaleTimeString()}`
-  }
-  if (block.name === "book_table" && block.input !== undefined) {
-    const { restaurant, time, guests } = block.input
-    return `${restaurant}, ${time}, ${guests} guests${valueOf(block) === undefined ? "" : ": booked"}`
-  }
-  return `${block.name}: ${block.status}`
-}
+// Each pattern narrows the block: by `name` to its tool's types (`observedAt`,
+// `now`, `sentAt` are Dates), by `outcome` to a value or an error, and
+// `input: Match.defined` once the model has sent the arguments.
+const toolSummary = Match.type<ToolBlock>().pipe(
+  Match.when({ outcome: { _tag: "Failure" } }, (b) => `${b.name}: ${failure(b.outcome.error)}`),
+  Match.when(
+    { name: "get_weather", outcome: { _tag: "Success" } },
+    ({ outcome: { value: w } }) =>
+      `${w.city}, ${w.country}: ${w.temperatureC}°C, wind ${w.windSpeedKmh} km/h (${w.observedAt.toLocaleTimeString()})`,
+  ),
+  Match.when(
+    { name: "get_date", outcome: { _tag: "Success" } },
+    ({ outcome: { value: d } }) =>
+      `${d.now.toLocaleString(undefined, { timeZone: d.timezone })} (${d.timezone})`,
+  ),
+  // While it streams, `partial` is the list so far; then the outcome.
+  Match.when({ name: "find_restaurants", outcome: { _tag: "Success" } }, ({ outcome }) =>
+    restaurants(outcome.value),
+  ),
+  Match.when({ name: "find_restaurants", partial: Match.defined }, ({ partial }) =>
+    restaurants(partial, " (searching…)"),
+  ),
+  Match.when(
+    { name: "send_email", input: Match.defined, outcome: { _tag: "Success" } },
+    ({ input, outcome }) =>
+      `email sent to ${input.to} at ${outcome.value.sentAt.toLocaleTimeString()}`,
+  ),
+  Match.when(
+    { name: "send_email", input: Match.defined },
+    ({ input }) => `email to ${input.to}: "${input.subject}"`,
+  ),
+  Match.when(
+    { name: "book_table", input: Match.defined, outcome: { _tag: "Success" } },
+    ({ input }) => `${input.restaurant}, ${input.time}, ${input.guests} guests: booked`,
+  ),
+  Match.when(
+    { name: "book_table", input: Match.defined },
+    ({ input }) => `${input.restaurant}, ${input.time}, ${input.guests} guests`,
+  ),
+  Match.orElse((b) => `${b.name}: ${b.status}`),
+)
 
 const toolCard = (h: HtmlBuilder<Message>, block: ToolBlock): Html =>
   h.div(
@@ -249,18 +267,19 @@ const toolCard = (h: HtmlBuilder<Message>, block: ToolBlock): Html =>
 const liveNote = (text: string) => (text === "" ? "thinking" : "streaming")
 
 // Live metrics (the contract's `live` values) while it streams; token usage once known.
-const stats = (run: Run): ReadonlyArray<string> => [
-  ...(run.live.ttftMs === undefined ? [] : [`TTFT ${run.live.ttftMs} ms`]),
-  ...(run.live.tokensPerSecond === undefined ? [] : [`${run.live.tokensPerSecond} tok/s`]),
-  ...(run.usage?.output_tokens === undefined
-    ? []
-    : [`${run.usage.input_tokens ?? "?"} in / ${run.usage.output_tokens} out tokens`]),
+const stats = (run: Run): ReadonlyArray<Option.Option<string>> => [
+  Option.map(Option.fromNullishOr(run.live.ttftMs), (ms) => `TTFT ${ms} ms`),
+  Option.map(Option.fromNullishOr(run.live.tokensPerSecond), (rate) => `${rate} tok/s`),
+  Option.map(
+    Option.fromNullishOr(run.usage?.output_tokens),
+    (out) => `${run.usage?.input_tokens ?? "?"} in / ${out} out tokens`,
+  ),
 ]
 
 const assistant = (h: HtmlBuilder<Message>, run: Run, live: boolean): Html => {
   const text = answer(run)
-  const note = live ? liveNote(text) : runNote(run)
-  const line = [...(note === undefined ? [] : [note]), ...stats(run)].join(" · ")
+  const note = live ? Option.some(liveNote(text)) : runNote(run)
+  const line = Arr.getSomes([note, ...stats(run)]).join(" · ")
   return h.div(
     [h.Class("assistant")],
     [

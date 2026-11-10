@@ -63,8 +63,7 @@ const conversation = (tiers: ReadonlyArray<Tier>, history: ReadonlyArray<Items.H
                 return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
               }),
             ),
-            Stream.catchTag("RateLimited", () => Stream.unwrap(advance)),
-            Stream.catchTag("Unavailable", () => Stream.unwrap(advance)),
+            Stream.catchTag(["RateLimited", "Unavailable"], () => Stream.unwrap(advance)),
           )
       }),
     ),
@@ -107,16 +106,17 @@ const fromMetric = (event: Metrics.MetricEvent): Result.Result<UIMessageStream.E
 // are dropped, and metrics become data parts / metadata.
 const toEmissions = (
   event: Turn.TurnEvent | ToolEvent.ToolEvent | Metrics.MetricEvent,
-): Effect.Effect<ReadonlyArray<UIMessageStream.Emission>, Schema.SchemaError> => {
-  if (Metrics.isMetricEvent(event)) {
-    return Effect.succeed(
-      Result.match(fromMetric(event), { onSuccess: Arr.of, onFailure: () => [] }),
-    )
-  }
-  if (event._tag === "Output") return Effect.map(Toolkit.output(toolkit, event), Arr.of)
-  if (event._tag === "Partial") return Effect.succeed([])
-  return Effect.succeed([event])
-}
+): Effect.Effect<ReadonlyArray<UIMessageStream.Emission>, Schema.SchemaError> =>
+  Match.value(event).pipe(
+    Match.when(Metrics.isMetricEvent, (metric) =>
+      Effect.succeed(Result.match(fromMetric(metric), { onSuccess: Arr.of, onFailure: () => [] })),
+    ),
+    Match.tag("Output", (output) => Effect.map(Toolkit.output(toolkit, output), Arr.of)),
+    // A streaming tool's partials (find_restaurants) aren't sent: the AI SDK page
+    // shows its result once it settles. The main page gets them live.
+    Match.tag("Partial", () => Effect.succeed([])),
+    Match.orElse((turnEvent) => Effect.succeed([turnEvent])),
+  )
 
 // ---------------------------------------------------------------------------
 // Abort: complete when the client disconnects (useChat's Stop button), so

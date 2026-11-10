@@ -47,6 +47,19 @@ export const GetDate = {
   failureSchema: UnknownTimezone,
 } as const
 
+// A streaming tool: each partial is the list so far, typed by `outputSchema`.
+export const FindRestaurants = {
+  name: "find_restaurants",
+  description: "Find restaurants in a city. Results stream in as they are found.",
+  inputSchema: Schema.Struct({ city: Schema.String }),
+  outputSchema: Schema.Struct({
+    city: Schema.String,
+    restaurants: Schema.Array(
+      Schema.Struct({ name: Schema.String, area: Schema.String, rating: Schema.Number }),
+    ),
+  }),
+} as const
+
 // The two below need the user's approval before they run (see the server).
 
 export const SendEmail = {
@@ -74,7 +87,7 @@ export const BookTable = {
 } as const
 
 export const ChatUi = UiContract.make({
-  tools: [GetWeather, GetDate, SendEmail, BookTable],
+  tools: [GetWeather, GetDate, FindRestaurants, SendEmail, BookTable],
   // Live metrics while an answer streams; the latest value of each wins.
   live: { ttftMs: Schema.Number, tokensPerSecond: Schema.Number },
 })

@@ -15,6 +15,13 @@ their editor).
 
 ## Versions
 
+- [Migrating to 0.20](/migrations/v0-20/): `@effect-uai/ui` durable
+  transports. `reconnect` moves from `sessionHttp` / `durableHttp` to
+  `Transport.reconnect`, which retries only transient errors; a stream that
+  ends early fails with `Client.Disconnected`; `Durable` carries `submit`.
+  Additive: `open({ streamId, after })`, `sessionThread({ initial })`,
+  `SseEncoding.heartbeat`, more `reasoning.effort` values. Effect peer
+  `>=4.1.0`.
 - [Migrating to 0.19](/migrations/v0-19/): tool output redesign. A tool's
   `run` returns an Effect or a Stream (no `emit`) of typed values, including
   images and files; declared errors (`failureSchema`) reach the model, others

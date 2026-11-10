@@ -160,4 +160,34 @@ describe("Atoms.sessionThread", () => {
       expect(replayed.messages.map((m) => m.role)).toEqual(["assistant", "assistant"])
     }),
   )
+
+  it.effect("a hydrated thread starts as `initial` and opens from its last seq", () =>
+    Effect.gen(function* () {
+      const { chatId, transport } = yield* fakeSession
+      const first = Atoms.sessionThread({ runtime, transport })
+      const elsewhere = AtomRegistry.make()
+      elsewhere.set(first.submit, Input.submit("first"))
+      const hydrated = yield* settledCount(elsewhere, first.state, 2)
+      elsewhere.set(first.submit, Input.submit("second"))
+      yield* settledCount(elsewhere, first.state, 4)
+
+      const opened = yield* Ref.make<ReadonlyArray<number>>([])
+      const spied = Transport.session({
+        send: transport.send,
+        events: (id, after) =>
+          Stream.unwrap(
+            Ref.update(opened, (a) => [...a, after]).pipe(Effect.as(transport.events(id, after))),
+          ),
+      })
+      const chat = Atoms.sessionThread({ runtime, transport: spied, initial: hydrated })
+      const registry = AtomRegistry.make()
+      expect(registry.get(chat.state)).toEqual(hydrated)
+      expect(registry.get(chat.streamId)).toBeNull()
+
+      registry.set(chat.open, { streamId: chatId, after: hydrated.lastSeq })
+      const thread = yield* settledCount(registry, chat.state, 3)
+      expect(yield* Ref.get(opened)).toEqual([hydrated.lastSeq])
+      expect(thread.messages.map((m) => m.role)).toEqual(["user", "assistant", "assistant"])
+    }),
+  )
 })

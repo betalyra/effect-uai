@@ -40,8 +40,10 @@ values, and each answer shows its token usage.
 
 ### Approvals
 
-The same four tools as the TanStack Start and FoldKit examples: `get_weather`
-(a REST call to Open-Meteo), `get_date`, and two stubs that need your yes,
+The same five tools as the TanStack Start and FoldKit examples: `get_weather`
+(a REST call to Open-Meteo), `get_date`, `find_restaurants` (returns a Stream,
+so its results arrive typed, one by one; the `useChat` page shows them once
+it settles), and two stubs that need your yes,
 `send_email` and `book_table`. A call that needs approval ends the run as
 interrupted and its card shows Approve / Deny. In
 [`lib/ui-server.ts`](lib/ui-server.ts), `needsApproval` picks the tools and

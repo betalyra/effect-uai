@@ -1,5 +1,5 @@
 import type { IconType } from "react-icons"
-import { PiArrowRight } from "react-icons/pi"
+import { PiArrowRight, PiPlus } from "react-icons/pi"
 import { RiOpenaiFill, RiSlackFill } from "react-icons/ri"
 import {
   SiAnthropic,
@@ -42,6 +42,13 @@ const providers: ReadonlyArray<Provider> = [
   { name: "CDP", href: "/browser/providers/cdp/" },
 ]
 
+const requestUrl =
+  "https://github.com/betalyra/effect-uai/issues/new?" +
+  new URLSearchParams({
+    title: "Provider request: ",
+    body: "Which provider (and which of its APIs: chat, speech, embeddings, ...) would you like to see, and what would you use it for?",
+  }).toString()
+
 export default function ProvidersSection() {
   return (
     <section className="not-content border-t border-border pt-8 pb-8 lg:pt-12 lg:pb-12">
@@ -74,6 +81,15 @@ export default function ProvidersSection() {
             {name}
           </a>
         ))}
+        <a
+          href={requestUrl}
+          target="_blank"
+          rel="noopener"
+          className="inline-flex items-center gap-2 rounded-full border border-dashed border-border px-4 py-2 text-sm font-medium text-muted-foreground no-underline transition-colors outline-none hover:border-(--color-mark) hover:text-(--color-mark) focus-visible:ring-1 focus-visible:ring-(--color-border) focus-visible:ring-offset-2 focus-visible:ring-offset-(--sl-color-bg) hover:focus-visible:ring-(--color-mark)"
+        >
+          <PiPlus className="h-3.5 w-3.5" aria-hidden />
+          Missing a provider?
+        </a>
       </div>
     </section>
   )

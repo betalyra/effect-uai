@@ -779,6 +779,43 @@ defer reducer helper).
    `TurnStart` is recorded as a clean future addition with one concrete
    trigger (loop-scope TTFT) if it ever becomes a real need.
 
+## 8. Follow-up: refinements for the built-in samples (open)
+
+Section 3.1 promises that the "`_tag` + typed fields serve a frontend that
+wants `e.ratePerSecond` with full types". It doesn't hold: `MetricEvent`'s
+`_tag` is `string` (open for custom events), so neither `e._tag ===
+"Throughput"` nor `Match.tag("Throughput", …)` narrows to `Throughput`.
+`isMetricEvent` checks only the brand; nothing narrows to a built-in.
+
+Evidence (2026-11-10): the three chat examples each hand-write
+`isFirstText` / `isThroughput` refinements
+(`examples/next-chat/lib/ui-server.ts`,
+`examples/tanstack-start-chat/src/server/chat.ts`,
+`examples/foldkit-chat/server.ts`), and `examples/next-chat/app/api/chat/route.ts`
+casts `event as Sample` to use `Match.tag`.
+
+**Change.** One refinement per built-in, next to `isMetricEvent`:
+
+```ts
+export const isTimeToFirstToken = (e: MetricEvent): e is TimeToFirstToken =>
+  e._tag === "TimeToFirstToken"
+export const isThroughput = (e: MetricEvent): e is Throughput => e._tag === "Throughput"
+export const isTokenTotals = (e: MetricEvent): e is TokenTotals => e._tag === "TokenTotals"
+export const isTimeToCompletion = (e: MetricEvent): e is TimeToCompletion =>
+  e._tag === "TimeToCompletion"
+
+// usage
+Match.value(event).pipe(
+  Match.when(Metrics.isTimeToFirstToken, ({ elapsed, kind }) => …),
+  Match.when(Metrics.isThroughput, ({ ratePerSecond }) => …),
+  Match.orElse(() => …),
+)
 ```
 
-```
+- Additive; the open `_tag` and custom events stay as they are.
+- Plain type checks: `isTimeToFirstToken` takes no `kind`; the app matches
+  `{ kind: "text" }` itself.
+- Then switch the three example servers and the AI SDK route to them (drops
+  the local refinements and the `as Sample` cast).
+- Related: the backlog's `@effect-uai/ai-sdk` item (native `MetricEvent`
+  mapping) builds on these.

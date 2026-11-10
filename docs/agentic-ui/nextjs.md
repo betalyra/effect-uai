@@ -31,7 +31,9 @@ export const { handler } = HttpRouter.toWebHandler(ChatRoute.pipe(Layer.provide(
 ```
 
 `ChatRoute` is the same route as on [TanStack Start](/agentic-ui/tanstack-start/):
-tools, the approval policy, metrics.
+tools, the approval policy, metrics. `find_restaurants` returns a Stream; this
+page shows its results as they arrive (typed `partial`), the `useChat` page
+once the call settles.
 
 The page is a client component over atoms:
 

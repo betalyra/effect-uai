@@ -46,7 +46,12 @@ it. Each message is echoed on the stream as soon as it is queued
 
 The page is plain DOM over `@effect-uai/ui`: `Atoms.sessionThread` with
 `Transport.sessionHttp`, which sends messages and follows the chat's stream.
-It keeps the chat id in `localStorage` and re-opens it on load.
+`Transport.reconnect` resumes a dropped stream from the last event; a 404
+(the chat is gone) ends it, and the page forgets the stored chat. It keeps
+the chat id in `localStorage` and re-opens it on load.
+
+The server interleaves `SseEncoding.heartbeat("15 seconds")` comments, so a
+proxy doesn't close a chat that sits idle between answers.
 
 ## Run it
 

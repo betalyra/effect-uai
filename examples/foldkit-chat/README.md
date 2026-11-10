@@ -20,8 +20,10 @@ page learns it from the first answer and sends it back.
 
 ## Tools and approvals
 
-The same four tools as the TanStack Start and Next.js examples, from one shared
-contract: `get_weather` (a REST call to Open-Meteo), `get_date`, and two stubs
+The same five tools as the TanStack Start and Next.js examples, from one shared
+contract: `get_weather` (a REST call to Open-Meteo), `get_date`,
+`find_restaurants` (returns a Stream, so its results arrive typed, one by one,
+in the card), and two stubs
 that need your yes, `send_email` and `book_table`. A call that needs approval
 ends the run as interrupted; its card shows Approve / Deny, which are plain
 messages (`ClickedVerdict`) whose Command sends `Input.resolve`. In
@@ -42,7 +44,7 @@ pnpm install
 OPENAI_API_KEY=sk-... pnpm dev
 ```
 
-`pnpm dev` starts the server on :4321 and Vite on :4320, which proxies `/api`
+`pnpm dev` starts the server on :4325 and Vite on :4320, which proxies `/api`
 to the server. Open http://localhost:4320.
 
 The packages come from the monorepo via `link:`, and `effect` is linked to the

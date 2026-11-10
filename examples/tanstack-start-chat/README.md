@@ -21,6 +21,13 @@ atoms. Tool results arrive typed through a shared contract
 Stop aborts the request; the server sees the request go away and stops the
 model. A reload starts a new chat.
 
+## Tools
+
+The same five tools as the Next.js and FoldKit examples: `get_weather` (a REST
+call to Open-Meteo), `get_date`, `find_restaurants` (returns a Stream, so its
+results arrive typed, one by one, in the card), and two stubs that need your
+yes, `send_email` and `book_table`.
+
 ## Approvals
 
 `send_email` and `book_table` (stubs) need your yes. The model's call ends the

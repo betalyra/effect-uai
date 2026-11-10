@@ -174,6 +174,16 @@ everything else stays provider-typed.
       OpenAI and Google realtime sessions; STT/TTS adapters (ElevenLabs, Inworld,
       Mistral, OpenAI realtime STT) and the Discord gateway / Slack socket still
       hand-roll it. Source: `plans/realtime.md:402`.
+- [ ] **`@effect-uai/browser` screencasts** (record demo videos with our own
+      browser provider instead of Playwright): a provider-specific
+      `Screencast` module (CDP `Page.startScreencast` frames as a `Stream`,
+      piped to ffmpeg), a scoped `Launch` helper that starts headless Chrome
+      with `--remote-debugging-port` (today `Connect` only attaches), and demo
+      input options (mouse glide in steps, per-character typing delay). Not in
+      the generic `Browser` service: recording is not an agent capability.
+      Then port `experiments/screencast/record.ts` onto it. Evidence: the CDP
+      client is internal (`browser/src/internal/cdp.ts`); `click` moves once
+      (`internal/session.ts:257`). Context: `internal-docs/media-pipeline.md`.
 - [ ] **Decision: fal reference-field discovery** learns the field name from
       a 422 (`fal/src/codec.ts:104`), against the "no runtime guesswork" rule.
       Needs a decision (encoding table vs keep), not just code.

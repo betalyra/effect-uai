@@ -545,6 +545,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.20", slug: "migrations/v0-20" },
             { label: "Migrating to 0.19", slug: "migrations/v0-19" },
             { label: "Migrating to 0.18", slug: "migrations/v0-18" },
             { label: "Migrating to 0.17", slug: "migrations/v0-17" },

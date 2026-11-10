@@ -68,10 +68,12 @@ the Responses protocol. Most apps leave it unset.
 ```ts
 interface ResponsesRequest extends Omit<CommonRequest, "model"> {
   readonly model: OpenAIModel // narrows CommonRequest.model: string
-  readonly reasoning?: { readonly effort: "low" | "medium" | "high" }
+  readonly reasoning?: { readonly effort: ReasoningEffort }
   readonly store?: boolean
   readonly previousResponseId?: string
 }
+
+type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
 ```
 
 On top of the core `CommonRequest` (`history`, `model`, `tools`,
@@ -82,7 +84,11 @@ On top of the core `CommonRequest` (`history`, `model`, `tools`,
 - **`reasoning.effort`** - reasoning depth for `gpt-5.x` models. With
   `effort` set, the model produces reasoning tokens before any output
   tokens, so streaming text deltas don't start immediately. Drop it for
-  latency-sensitive flows.
+  latency-sensitive flows. Which values a model accepts varies: `low` /
+  `medium` / `high` everywhere, `none` / `minimal` / `xhigh` on newer models.
+  With `store: false`, ask for the encrypted reasoning so the next turn can
+  send it back: `extraBody: { include: ["reasoning.encrypted_content"] }`.
+  It isn't added for you, because models without reasoning reject it.
 - **`store`** - persist the response on OpenAI's side so it can be
   referenced via `previousResponseId` on a later turn.
 - **`previousResponseId`** - resume from a stored response without

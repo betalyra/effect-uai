@@ -36,13 +36,19 @@ import {
 // Public types
 // ---------------------------------------------------------------------------
 
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
+
 export type ResponsesRequest = Omit<CommonRequest, "model"> & {
   /**
    * Narrows `CommonRequest.model` (`string`) to the typed `OpenAIModel`
    * literal union for autocomplete.
    */
   readonly model: OpenAIModel
-  readonly reasoning?: { readonly effort: "low" | "medium" | "high" }
+  /**
+   * Reasoning effort. Which values a model accepts varies: `none` (GPT-5.1+),
+   * `minimal` (GPT-5), `xhigh` (GPT-5.2+); `low` / `medium` / `high` everywhere.
+   */
+  readonly reasoning?: { readonly effort: ReasoningEffort }
   readonly store?: boolean
   readonly previousResponseId?: string
   readonly instructions?: string

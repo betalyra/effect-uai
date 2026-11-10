@@ -49,7 +49,9 @@ const server = (model: string, page: { readonly html: string; readonly js: strin
       const request = yield* HttpServerRequest.HttpServerRequest
       const from = SseEncoding.lastEventId(request.headers).pipe(Option.getOrElse(() => after ?? 0))
       const stream = yield* chats.events(id, from)
-      return HttpServerResponse.stream(stream.pipe(SseEncoding.encode), {
+      // A comment every 15 s keeps proxies from closing a chat that sits idle.
+      const body = stream.pipe(SseEncoding.encode, SseEncoding.heartbeat("15 seconds"))
+      return HttpServerResponse.stream(body, {
         headers: { ...SseEncoding.responseHeaders, "x-accel-buffering": "no" },
       })
     }).pipe(

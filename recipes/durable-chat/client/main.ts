@@ -13,10 +13,10 @@ import { StreamId } from "@effect-uai/ui/RunEvent"
 import * as RunView from "@effect-uai/ui/RunView"
 import type * as Thread from "@effect-uai/ui/Thread"
 import * as Transport from "@effect-uai/ui/Transport"
-import { Effect, Layer, Option, Schedule, Schema } from "effect"
+import { Effect, Layer, Match, Option, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClientRequest, HttpIncomingMessage } from "effect/http"
-import { Atom, AtomRegistry } from "effect/reactivity"
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity"
 
 // A module, not a script: recipe clients would otherwise share one global scope.
 export {}
@@ -30,25 +30,28 @@ const STORAGE_KEY = "durable-chat:chat"
 const SendBody = Schema.Struct({ chatId: Schema.optionalKey(StreamId), input: Input.SubmitJson })
 const SendResponse = Schema.Struct({ chatId: StreamId })
 
-const transport = Transport.sessionHttp({
-  // No chat id: the server starts a chat and answers `{ chatId }`.
-  send: (chatId, input: Input.Sent<Input.Submit>) =>
-    HttpClientRequest.post("/chats/messages").pipe(
-      HttpClientRequest.schemaBodyJson(SendBody)(
-        Option.match(chatId, {
-          onNone: () => ({ input }),
-          onSome: (id) => ({ chatId: id, input }),
-        }),
+// The chat's stream never ends on its own: `reconnect` resumes a dropped one
+// from the last seq. A 404 (the chat is gone) ends it instead.
+const transport = Transport.reconnect(
+  Transport.sessionHttp({
+    // No chat id: the server starts a chat and answers `{ chatId }`.
+    send: (chatId, input: Input.Sent<Input.Submit>) =>
+      HttpClientRequest.post("/chats/messages").pipe(
+        HttpClientRequest.schemaBodyJson(SendBody)(
+          Option.match(chatId, {
+            onNone: () => ({ input }),
+            onSome: (id) => ({ chatId: id, input }),
+          }),
+        ),
+        Effect.flatMap(Client.execute),
+        Effect.flatMap(HttpIncomingMessage.schemaBodyJson(SendResponse)),
+        Effect.map((response) => response.chatId),
       ),
-      Effect.flatMap(Client.execute),
-      Effect.flatMap(HttpIncomingMessage.schemaBodyJson(SendResponse)),
-      Effect.map((response) => response.chatId),
-    ),
-  events: (chatId, after) => HttpClientRequest.get(`/chats/${chatId}/events?after=${after}`),
-  stop: (chatId) => HttpClientRequest.post(`/chats/${chatId}/stop`),
-  // The chat's stream never ends on its own: keep reconnecting.
-  reconnect: Schedule.spaced("1 second"),
-})
+    events: (chatId, after) =>
+      HttpClientRequest.get(`/chats/${chatId}/events`, { urlParams: { after } }),
+    stop: (chatId) => HttpClientRequest.post(`/chats/${chatId}/stop`),
+  }),
+)
 
 const chat = Atoms.sessionThread({
   runtime: Atom.runtime(Layer.mergeAll(FetchHttpClient.layer, SecureRandom.layerWebCrypto)),
@@ -78,11 +81,12 @@ const bubble = (role: "user" | "assistant", text: string, note?: string) => {
   return el
 }
 
-const note = (run: RunView.RunView): string | undefined => {
-  if (run.status === "stopped") return "stopped"
-  if (run.status === "failed") return `failed: ${run.error?.reason}`
-  return undefined
-}
+const note = (run: RunView.RunView): string | undefined =>
+  Match.value(run).pipe(
+    Match.when({ status: "stopped" }, () => "stopped"),
+    Match.when({ status: "failed" }, (r) => `failed: ${r.error?.reason}`),
+    Match.orElse(() => undefined),
+  )
 
 // The answer, or the refusal when the model declined.
 const answer = (run: RunView.RunView) => RunView.text(run) || (RunView.refusal(run) ?? "")
@@ -114,6 +118,11 @@ const registry = AtomRegistry.make()
 registry.subscribe(chat.state, render, { immediate: true })
 registry.subscribe(chat.streamId, (id) => {
   if (id !== null) localStorage.setItem(STORAGE_KEY, id)
+})
+// The stream ended for good (in memory, a server restart forgets every chat):
+// forget the stored chat, so the next message starts a new one.
+registry.subscribe(chat.open, (result) => {
+  if (AsyncResult.isFailure(result)) localStorage.removeItem(STORAGE_KEY)
 })
 
 form.addEventListener("submit", (e) => {

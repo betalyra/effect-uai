@@ -64,7 +64,8 @@ const serviceFor = (
     Match.when("google", () =>
       Effect.flatMap(key("GOOGLE_API_KEY"), (apiKey) => makeGemini({ apiKey })),
     ),
-    Match.orElse(() => responses("REQUESTY_API_KEY", "https://router.eu.requesty.ai/v1")),
+    Match.when("requesty", () => responses("REQUESTY_API_KEY", "https://router.eu.requesty.ai/v1")),
+    Match.exhaustive,
   )
 
 /** One service and the two model ids the route's fallback loop steps through. */

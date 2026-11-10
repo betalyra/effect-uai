@@ -1,5 +1,6 @@
 import { describe, it } from "@effect/vitest"
-import { Effect, Option, Stream } from "effect"
+import { Effect, Fiber, Option, Schedule, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import { expect } from "vitest"
 import { type Envelope, RunId, StreamId } from "./RunEvent.js"
 import * as SseEncoding from "./SseEncoding.js"
@@ -43,4 +44,22 @@ describe("SseEncoding", () => {
   ])("lastEventId reads $label", ({ headers, seq }) => {
     expect(SseEncoding.lastEventId(headers)).toEqual(seq)
   })
+
+  it.effect("heartbeat interleaves comments, ends with the events, and decodes away", () =>
+    Effect.gen(function* () {
+      const fiber = yield* Stream.fromIterable(envelopes).pipe(
+        Stream.schedule(Schedule.spaced("1 second")),
+        SseEncoding.encode,
+        SseEncoding.heartbeat("400 millis"),
+        Stream.runCollect,
+        Effect.forkChild,
+      )
+      yield* TestClock.adjust("3 seconds")
+      const bytes = yield* Fiber.join(fiber)
+      const text = new TextDecoder().decode(Buffer.concat(bytes))
+      expect(text.split(": heartbeat\n\n").length).toBeGreaterThan(2)
+      const decoded = yield* Stream.fromIterable(bytes).pipe(SseEncoding.decode, Stream.runCollect)
+      expect(decoded).toEqual(envelopes)
+    }),
+  )
 })

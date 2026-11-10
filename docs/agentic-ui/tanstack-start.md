@@ -66,7 +66,9 @@ const stop = useAtomSet(chat.stop)
 
 `thread.messages` are the settled turns, `thread.active` the run that is
 streaming. With `contract: ChatUi` a tool block narrowed by name has its
-tool's types on `partial` and `outcome`, a `Date` included.
+tool's types on `partial` and `outcome`, a `Date` included. The example's
+`find_restaurants` returns a Stream, so its card fills in from `partial` as
+results arrive.
 
 ## Run it
 

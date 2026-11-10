@@ -35,7 +35,9 @@ export const ChatUi = UiContract.make({ tools: [GetWeather, GetDate] })
 ```
 
 The server builds its tools with `Tool.make({ ...GetWeather, run })` and
-serves the run over an Effect `HttpRouter` route (`server.ts`).
+serves the run over an Effect `HttpRouter` route (`server.ts`). A tool whose
+`run` returns a Stream (the example's `find_restaurants`) sends each element
+as a typed `partial`, so its card fills in as results arrive.
 
 ## The Model holds the thread
 
@@ -100,4 +102,4 @@ pnpm install
 OPENAI_API_KEY=sk-... pnpm dev
 ```
 
-Open http://localhost:4320; the server runs on :4321 and Vite proxies `/api` to it.
+Open http://localhost:4320; the server runs on :4325 and Vite proxies `/api` to it.

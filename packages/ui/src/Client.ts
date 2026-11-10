@@ -42,26 +42,27 @@ export const ndjson = (request: HttpClientRequest.HttpClientRequest) =>
  * Keep events flowing across dropped connections: `connect(after)` is
  * re-invoked with the last seen `seq` on failure, per `schedule`; duplicates
  * are dropped. A connection that ends cleanly before the end counts as a
- * failure (`Disconnected`), so it is retried too.
+ * failure (`Disconnected`), so it is retried too. Without `schedule` nothing
+ * is retried: an early end just fails with `Disconnected`.
  *
  * `until: "terminal"` (default) follows one run and completes after its
  * terminal. `until: "never"` follows a session stream that carries many runs
  * (a durable chat) and never completes on its own.
  */
-export const resumable = <E, R, X>(
+export const resumable = <E, R, X = never>(
   connect: (after: number) => Stream.Stream<Envelope, E, R>,
-  options: {
+  options?: {
     readonly from?: number
     readonly until?: "terminal" | "never"
-    readonly schedule: Schedule.Schedule<X, E | Disconnected>
+    readonly schedule?: Schedule.Schedule<X, E | Disconnected>
   },
 ): Stream.Stream<Envelope, E | Disconnected, R> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const untilTerminal = options.until !== "never"
+      const untilTerminal = options?.until !== "never"
       const ends = (envelope: Envelope) => untilTerminal && isTerminal(envelope.event)
       // The last seen seq, and whether the run's terminal arrived.
-      const position = yield* Ref.make({ seq: options.from ?? 0, done: false })
+      const position = yield* Ref.make({ seq: options?.from ?? 0, done: false })
       const attempt = Stream.unwrap(
         Ref.get(position).pipe(
           Effect.map(({ seq: after }) =>
@@ -87,6 +88,7 @@ export const resumable = <E, R, X>(
           ),
         ),
       )
-      return attempt.pipe(Stream.retry(options.schedule))
+      const schedule = options?.schedule
+      return schedule === undefined ? attempt : attempt.pipe(Stream.retry(schedule))
     }),
   )

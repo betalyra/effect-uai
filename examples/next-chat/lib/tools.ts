@@ -4,9 +4,17 @@
  */
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-import { DateTime, Effect, Option, Schema } from "effect"
+import { Array as Arr, DateTime, Effect, Schedule, Schema, Stream } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
-import { BookTable, CityNotFound, GetDate, GetWeather, SendEmail, UnknownTimezone } from "./chat-ui"
+import {
+  BookTable,
+  CityNotFound,
+  FindRestaurants,
+  GetDate,
+  GetWeather,
+  SendEmail,
+  UnknownTimezone,
+} from "./chat-ui"
 
 // A tool over a REST API: Open-Meteo (public, no key). Geocode the city, then
 // read its current weather; each response is decoded with a Schema.
@@ -37,8 +45,10 @@ const getWeather = Tool.make({
           urlParams: { name: city, count: 1 },
         })
         .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Geocoding)))
-      const place = geo.results?.[0]
-      if (place === undefined) return yield* new CityNotFound({ city })
+      const place = yield* Arr.head(geo.results ?? []).pipe(
+        Effect.fromOption,
+        Effect.mapError(() => new CityNotFound({ city })),
+      )
       const forecast = yield* client
         .get("https://api.open-meteo.com/v1/forecast", {
           urlParams: {
@@ -62,12 +72,30 @@ const getWeather = Tool.make({
 const getDate = Tool.make({
   ...GetDate,
   run: ({ timezone }) =>
-    Effect.gen(function* () {
-      if (Option.isNone(DateTime.zoneMakeNamed(timezone))) {
-        return yield* new UnknownTimezone({ timezone })
-      }
-      return { timezone, now: DateTime.toDate(yield* DateTime.now) }
-    }),
+    DateTime.zoneMakeNamed(timezone).pipe(
+      Effect.fromOption,
+      Effect.mapError(() => new UnknownTimezone({ timezone })),
+      Effect.andThen(DateTime.now),
+      Effect.map((now) => ({ timezone, now: DateTime.toDate(now) })),
+    ),
+})
+
+// A tool that returns a Stream: every element reaches the page as a typed
+// partial, and the last one is the result the model sees. Stub data.
+const PLACES = [
+  { name: "Tasca do Largo", area: "Alfama", rating: 4.7 },
+  { name: "Casa do Mar", area: "Cais do Sodré", rating: 4.6 },
+  { name: "Jardim da Estrela", area: "Estrela", rating: 4.5 },
+  { name: "Mercado Novo", area: "Chiado", rating: 4.4 },
+]
+
+const findRestaurants = Tool.make({
+  ...FindRestaurants,
+  run: ({ city }) =>
+    Stream.range(1, PLACES.length).pipe(
+      Stream.schedule(Schedule.spaced("700 millis")),
+      Stream.map((n) => ({ city, restaurants: PLACES.slice(0, n) })),
+    ),
 })
 
 // Stubs: a real app sends the email and books the table here.
@@ -82,7 +110,7 @@ const bookTable = Tool.make({
 })
 
 /** The `useChat` page (`/ai-sdk`): no approval flow there, so only the tools that run freely. */
-export const basicToolkit = Toolkit.make(getWeather, getDate)
+export const basicToolkit = Toolkit.make(getWeather, getDate, findRestaurants)
 
-/** The main page: all four; `lib/ui-server.ts` decides which need approval. */
-export const toolkit = Toolkit.make(getWeather, getDate, sendEmail, bookTable)
+/** The main page: all five; `lib/ui-server.ts` decides which need approval. */
+export const toolkit = Toolkit.make(getWeather, getDate, findRestaurants, sendEmail, bookTable)

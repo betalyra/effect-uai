@@ -1,6 +1,6 @@
 {
   "name": "@effect-uai/ui",
-  "version": "0.17.0",
+  "version": "0.19.0",
   "description": "Agentic UI primitives for @effect-uai/core: a resumable run-event protocol, projection, client folds and Effect atoms.",
   "keywords": [
     "agents",

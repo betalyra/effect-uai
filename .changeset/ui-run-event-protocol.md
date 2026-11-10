@@ -10,7 +10,7 @@ New package `@effect-uai/ui`: stream an agent's runs to a browser and turn them 
 - `Projection`: an effect-uai loop as `RunEvent`s (`toRunEvents`). `providerData` never leaves the server.
 - `Run`: server operators, one job each: `start`, `complete` (one terminal last), `stopWhen`, `failed`, `sequence` (per-stream `seq`), `coalesce` (merge deltas).
 - `SseEncoding`: envelopes as SSE on Effect's `Sse` (`id` = seq, `event` = type), `responseHeaders`, and `lastEventId` for reconnects.
-- `RunView`: one run as plain data, folded with `initial` + `step`: ordered blocks in core's shapes, tool calls with status (`error` apart from `output`), objects (`partial` while streaming, `value` once done), `live` values, summed usage. Idempotent on `seq`, so replays are safe.
+- `RunView`: one run as plain data, folded with `initial` + `step`: ordered blocks in core's shapes, tool calls with status, a typed `partial` while they stream and a typed `outcome` (`Success | Failure`) once they settle, objects (`partial` while streaming, `value` once done), `live` values, summed usage. Idempotent on `seq`, so replays are safe.
 - `Thread`: an optional chat fold over `RunView` (`Thread.make({ toUser, settle, decodeInput })`, or the preset). Inputs sent during a run wait in `pending` until a `run-started` lists them. A call approved after its run was interrupted updates the card it was asked from (`RunView.applyToolUpdate`; `updateTool` in a custom fold).
 - `Client`: `sse`, `ndjson`, and `resumable` (reconnect from the last `seq` on a `Schedule`).
 - `Transport`: per run `direct`, `durable`, `local`; per session `session`. `durableHttp` / `sessionHttp` read SSE and reconnect. Any source is a transport: `{ start: (input, state) => stream }`.

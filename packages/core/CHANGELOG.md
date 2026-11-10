@@ -1,5 +1,43 @@
 # @effect-uai/core
 
+## 0.19.0
+
+### Minor Changes
+
+- ed0656c: Remove `Approval.fromQueue` (with `Verdict` and `FromQueueOptions`) from core. A verdict queue with a router fiber and a timeout is a pattern, not a primitive; it now lives in the `tool-call-approval` recipe, which you can copy from. See the 0.19 migration page.
+- 13dc342: Tool output redesign: tools return typed values, including images and files.
+
+  - A tool's `run` returns an `Effect` or a `Stream` (no `emit`): each stream element is a typed `ToolEvent.Partial` as soon as it is produced, and the last is also the result. `Tool.make` requires `run` and `outputSchema`, whose encoded side must be JSON; `Content.Value` is the explicit "anything" (text, JSON, `Content.Image` / `Content.File`, or an array of JSON and media). `Tool.declare` builds a tool without `run`, model-visible and handled by the loop (a signal, or a call answered elsewhere); `Tool.withRun` turns it into a `Tool`. `Toolkit.split(toolkit, turn)` sorts a turn's calls into `run`, `declared` (decoded, typed per tool for an exhaustive `Match`) and `invalid`; `Toolkit.complete` answers a call with a value typed by `outputSchema`.
+  - Errors listed in a tool's `failureSchema` reach the model as typed values; any other error fails `Toolkit.run`'s stream. Calls that never ran fail with `InputInvalid`, `OutputInvalid` or `UnknownTool`. `Toolkit.describeFailures` maps undeclared errors to `ToolFailed`, or keeps them fatal when `describe` returns `undefined`.
+  - History holds typed parts: `ToolCallOutput.output` is `input_text | input_json | input_image | input_file` plus `isError`. `Toolkit.output` encodes an outcome with the tool's schemas, `Toolkit.decode` reads it back. Each provider serializes once: native media parts on Responses and Anthropic (`is_error` on Anthropic), an object in Gemini's `functionResponse` with media in `parts`, and `AiError.Unsupported` for media on text-only tool messages (Chat Completions, Mistral, OpenAI Realtime). MCP images, audio and resources arrive as media.
+  - `Toolkit.next(toolkit, state, turn)` replaces `continueWithResults(appendToolResults(...))`; `continueWith` and `appendResults` remain as its halves. `Tool.declare` replaces `Tool.signal` / `Tool.interaction`. Removed: `ToolResult`, `Tool.execute`, `Toolkit.collectResults`, `ToolEvent.Progress` / `ApprovalRequested`.
+  - `Approval` is renamed `ToolDecision` (`Approval.decisions` is `ToolDecision.make`): answers are any decision about a waiting tool call, not only approval. `ToolDecision.make` defines the possible answers and groups waiting calls (`resolve`: `answered` for an exhaustive `Match`, groups per tag, and `invalid` for answers it doesn't take or conflicting ones); `ToolDecision.closesWith` marks an answer that ends the call with its error; `ToolDecision.byTool` gives each tool its own answers. `ToolDecision.Default` and `ToolDecision.Denied` cover the common case. Decisions stay app code: a gated tool only declares its closings in `failureSchema` (or `Tool.withFailures`), and `Toolkit.close(toolkit, "tool", call, error)` builds the outcome. `fromMap` and the decision helpers are removed. `HistoryCheck.cancelAllPending` returns `Cancelled` outputs ready to append.
+  - `@effect-uai/ui` protocol v2: `tool-partial` and `tool-result { result: Success | Failure }`, typed per tool by the contract (failures from each tool's `failureSchema` and core's errors). `Projection.toRunEvents({ contract })` encodes (contract required), `Content.Value` travels as typed parts so JSON can't pass for media, `Input` answers carry typed decisions.
+  - `Loop.loop` and `onTurnComplete` infer a body's outer Effect error separately from its stream's.
+
+  See the 0.19 migration page.
+
+- 20b58b6: `Tool.make` takes an `outputSchema` (an Effect Schema whose encoded side is JSON). `run` returns the schema's type; `Toolkit.run` checks every value against it, and the schema encodes the value for history and the UI (a `Schema.DateFromString` field becomes an ISO string). A value the schema rejects ends the call with `OutputInvalid` instead of passing through unchecked. For "anything", use `outputSchema: Content.Value`.
+
+  Because the schemas live in a plain object, a tool's spec can be shared with a client and spread into `Tool.make` next to a server-side `run`:
+
+  ```ts
+  const GetWeather = {
+    name: "get_weather",
+    description: "…",
+    inputSchema: Input,
+    outputSchema: Weather,
+  } as const
+  const getWeather = Tool.make({ ...GetWeather, run: ({ city }) => fetchWeather(city) })
+  ```
+
+  `Tool.withRun` keeps the descriptor and the schemas; the replacement `run` returns the same output type.
+
+### Patch Changes
+
+- 20b58b6: `Image.ImageSource` is now typed as a `Schema.Codec` that needs no services, instead of a cast to `Schema.Schema`. Schemas that embed it decode and encode without an `unknown` requirement. The URL variant's `mimeType` is now an exact optional key, matching the `ImageSource` type.
+- bf41ba3: `bodyMultipart` keeps the multipart boundary on Bun. It read the encoded body's `content-type` after consuming the body, and Bun answers `null` for that header once the body is read, so the request went out as a bare `multipart/form-data` and the server could not parse it: every OpenAI transcription and image edit failed with "Could not parse multipart form". The header is now read first.
+
 ## 0.18.0
 
 ### Minor Changes

@@ -50,29 +50,23 @@ loop((state) =>
           reasoning: { effort: "low" },
         })
         .pipe(
-          onTurnComplete((turn) =>
-            Effect.sync(() =>
-              nextAfter(Stream.empty, withSummary(state /* extract text from turn */)),
-            ),
-          ),
+          onTurnComplete((turn) => next(withSummary(state, Turn.assistantTexts(turn).join(" ")))),
         )
     }
 
     // Normal turn: bigger model, stream a response, inject the next user prompt or stop.
     return oai.streamTurn({ history: state.history, model: "gpt-5.4", tools: [] }).pipe(
-      onTurnComplete((turn) =>
-        Effect.sync(() => {
-          const next = advance(state, turn)
-          if (state.pendingPrompts.length === 0) return stop()
-          const [nextPrompt, ...rest] = state.pendingPrompts
-          // The next user prompt is just another Item appended to history.
-          return nextAfter(Stream.empty, {
-            ...next,
-            history: [...next.history, Items.userText(nextPrompt!)],
-            pendingPrompts: rest,
-          })
-        }),
-      ),
+      onTurnComplete((turn) => {
+        const nextState = advance(state, turn)
+        if (state.pendingPrompts.length === 0) return stop()
+        const [nextPrompt, ...rest] = state.pendingPrompts
+        // The next user prompt is just another Item appended to history.
+        return next({
+          ...nextState,
+          history: [...nextState.history, Items.userText(nextPrompt!)],
+          pendingPrompts: rest,
+        })
+      }),
     )
   }),
 )

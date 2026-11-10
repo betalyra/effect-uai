@@ -45,13 +45,13 @@ const conversation = (pauseLatch: Latch.Latch, turnsCompleted: Ref.Ref<number>) 
           onTurnComplete((turn) =>
             Effect.gen(function* () {
               yield* Ref.update(turnsCompleted, (n) => n + 1)
-              const next = advance(state, turn)
-              if (next.pendingPrompts.length === 0) return stop()
-              const [nextPrompt, ...rest] = next.pendingPrompts
+              const nextState = advance(state, turn)
+              if (nextState.pendingPrompts.length === 0) return stop()
+              const [nextPrompt, ...rest] = nextState.pendingPrompts
               // Resume continues from this state after the latch opens again.
-              return nextAfter(Stream.empty, {
-                ...next,
-                history: [...next.history, Items.userText(nextPrompt!)],
+              return next({
+                ...nextState,
+                history: [...nextState.history, Items.userText(nextPrompt!)],
                 pendingPrompts: rest,
               })
             }),

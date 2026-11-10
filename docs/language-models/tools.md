@@ -523,16 +523,14 @@ const outputs =
 The full pattern is in [Basic usage](/recipes/basic-usage/). The body:
 
 ```ts
-onTurnComplete((turn) =>
-  Effect.sync(() => {
-    const calls = Turn.getToolCalls(turn)
-    // If the model did not ask for tools, this conversation is done.
-    if (calls.length === 0) return stop()
+onTurnComplete((turn) => {
+  const calls = Turn.getToolCalls(turn)
+  // If the model did not ask for tools, this conversation is done.
+  if (calls.length === 0) return stop()
 
-    // Forward the tool events, then continue with the turn and its outputs appended.
-    return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
-  }),
-)
+  // Forward the tool events, then continue with the turn and its outputs appended.
+  return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
+})
 ```
 
 `Toolkit.next` appends the turn's items (including the `ToolCall`s

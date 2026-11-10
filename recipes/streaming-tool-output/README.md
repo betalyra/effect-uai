@@ -112,16 +112,14 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
 Identical to basic-usage; the only difference is the toolkit:
 
 ```ts
-onTurnComplete((turn) =>
-  Effect.sync(() => {
-    const calls = Turn.getToolCalls(turn)
-    if (calls.length === 0) return stop()
+onTurnComplete((turn) => {
+  const calls = Turn.getToolCalls(turn)
+  if (calls.length === 0) return stop()
 
-    return Toolkit.run(toolkit, calls).pipe(
-      Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
-    )
-  }),
-)
+  return Toolkit.run(toolkit, calls).pipe(
+    Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
+  )
+})
 ```
 
 `Toolkit.next` forwards every event, encodes each outcome with the tool's

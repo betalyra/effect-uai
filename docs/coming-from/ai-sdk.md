@@ -1,88 +1,17 @@
 ---
 title: Coming from the AI SDK
-description: How to move a Vercel AI SDK (useChat) backend to effect-uai without changing your frontend.
+description: Where the Vercel AI SDK's concepts live in effect-uai, and how to run effect-uai behind a useChat frontend without changing it.
 ---
 
-You have a `useChat` app and you want to run effect-uai behind it. Your
-frontend stays exactly as it is: the hook, your components, the way you render
-messages. The only file you rewrite is the route handler, because that is the
-only place `streamText` lives. This is the same whether your `useChat` comes
-from `@ai-sdk/react`, Svelte, Vue, or Angular: the adapter works at the
-protocol level, not the framework level.
+You know the Vercel AI SDK: `streamText`, `tool(...)`, `generateObject`,
+maybe a `useChat` frontend. This page maps those concepts onto effect-uai.
+The short version: where the AI SDK gives you one function with options,
+effect-uai gives you a service you resolve from a `Layer` and a loop you
+write yourself.
 
-`@effect-uai/ai-sdk` speaks the AI SDK's UI Message Stream protocol (the `v1`
-wire format, unchanged across AI SDK v5, v6, and v7), so the browser can't tell
-the backend was swapped.
-
-This page is about the AI SDK's **chat UI**. If you use the AI SDK's other
-functions on the server (`generateObject`, `embed`, and so on), you don't need
-a compat layer at all: see [the rest of the AI SDK](#the-rest-of-the-ai-sdk),
-where each one maps onto an effect-uai primitive you call directly.
-
-```sh
-pnpm add @effect-uai/ai-sdk
-```
-
-## Your handler today
-
-A typical `useChat` backend looks like this:
-
-```ts
-import { openai } from "@ai-sdk/openai"
-import { convertToModelMessages, streamText } from "ai"
-
-export async function POST(req: Request) {
-  const { messages } = await req.json()
-  const result = streamText({
-    model: openai("gpt-4o"),
-    system: "You are helpful.",
-    messages: convertToModelMessages(messages),
-    tools: { getWeather /* … */ },
-  })
-  return result.toUIMessageStreamResponse()
-}
-```
-
-Three things happen: the request messages are converted, `streamText` runs the
-model and any tools, and the result is streamed back in the format `useChat`
-reads. Migrating is replacing each of those three with its effect-uai piece.
-
-## The same handler, on effect-uai
-
-```ts
-import * as Messages from "@effect-uai/ai-sdk/Messages"
-import * as UIMessageStream from "@effect-uai/ai-sdk/UIMessageStream"
-import * as SSE from "@effect-uai/core/SSE"
-import { Stream } from "effect"
-
-export async function POST(request: Request): Promise<Response> {
-  const { messages } = await request.json()
-
-  // 1. incoming useChat messages -> effect-uai history
-  const history = Messages.decodeMessages(messages)
-
-  // 2. your loop (below), with the provider Layer provided in
-  const events = agent(history).pipe(Stream.provide(OpenAILayer))
-
-  // 3. loop events -> the format useChat reads
-  const body = events.pipe(
-    UIMessageStream.toUIMessageStream(crypto.randomUUID()),
-    SSE.toBytes,
-    Stream.toReadableStream,
-  )
-  return new Response(body, { headers: UIMessageStream.responseHeaders })
-}
-```
-
-Same three steps: decode, run, encode. `convertToModelMessages` becomes
-`decodeMessages`, `toUIMessageStreamResponse` becomes `toUIMessageStream`
-plus `SSE.toBytes`, and the required protocol headers come from
-`responseHeaders`. What actually changes is the middle: `streamText` was one
-call that hid the loop, and now you write the loop.
-
-Running `@effect/platform`'s `HttpServer` instead of a web `Response`? Feed the
-same `SSE.toBytes` stream to `HttpServerResponse.stream(...)` with the same
-`responseHeaders`. The package owns no HTTP layer, so it fits either way.
+If you have a `useChat` app, you can keep the frontend exactly as it is and
+swap only the route handler: see [Keep your `useChat`
+frontend](#keep-your-usechat-frontend).
 
 ## The loop that replaces `streamText`
 
@@ -104,13 +33,11 @@ const agent = (history: ReadonlyArray<HistoryItem>) =>
       Effect.gen(function* () {
         const lm = yield* LanguageModel
         return lm.streamTurn({ history: state.history, model: "gpt-5.4-mini", tools }).pipe(
-          onTurnComplete((turn) =>
-            Effect.sync(() => {
-              const calls = Turn.getToolCalls(turn)
-              if (calls.length === 0) return stop() // no tool calls -> answer is done
-              return Toolkit.run(tools, calls).pipe(Toolkit.next(tools, state, turn))
-            }),
-          ),
+          onTurnComplete((turn) => {
+            const calls = Turn.getToolCalls(turn)
+            if (calls.length === 0) return stop() // no tool calls -> answer is done
+            return Toolkit.run(tools, calls).pipe(Toolkit.next(tools, state, turn))
+          }),
         )
       }),
     ),
@@ -119,8 +46,7 @@ const agent = (history: ReadonlyArray<HistoryItem>) =>
 
 Your tools move from a plain object to `Tool.make` + `Toolkit.make`. That is
 the one part with real API surface to learn; the [Tools and
-toolkits](/language-models/tools/) page walks through it. Everything else in
-the handler is glue.
+toolkits](/language-models/tools/) page walks through it.
 
 ## Where your `streamText` options go
 
@@ -128,56 +54,25 @@ The options you passed to `streamText` do not disappear. They become ordinary
 code in and around the loop, which is the point: when a request goes sideways,
 you debug a loop you wrote, not a lifecycle you patched from the outside.
 
-| In `streamText(...)`              | In your loop                                                             |
-| --------------------------------- | ------------------------------------------------------------------------ |
-| `model: openai("gpt-4o")`         | the `model` on `streamTurn`, plus the provider `Layer` you provide       |
-| `system: "…"`                     | an `Items.systemText(…)` at the front of the initial history             |
-| `tools: { … }`                    | `Tool.make` + `Toolkit.make`, run in `onTurnComplete`                    |
-| `stopWhen` / `maxSteps`           | your own check: return `stop()` (e.g. count turns in state)              |
-| `maxRetries`                      | a retry `Schedule`, or a fallback tier list guarded by `Stream.catchTag` |
-| `onError`                         | `Stream.catchTag` on typed failures (`RateLimited`, `Unavailable`, …)    |
-| `messageMetadata` on the response | `UIMessageStream.messageMetadata(…)` emissions                           |
-| the request `AbortSignal`         | `Stream.interruptWhen(…)` on `request.signal`                            |
+| In `streamText(...)`      | In your loop                                                             |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `model: openai("gpt-4o")` | the `model` on `streamTurn`, plus the provider `Layer` you provide       |
+| `system: "…"`             | an `Items.systemText(…)` at the front of the initial history             |
+| `tools: { … }`            | `Tool.make` + `Toolkit.make`, run in `onTurnComplete`                    |
+| `stopWhen` / `maxSteps`   | your own check: return `stop()` (e.g. count turns in state)              |
+| `maxRetries`              | a retry `Schedule`, or a fallback tier list guarded by `Stream.catchTag` |
+| `onError`                 | `Stream.catchTag` on typed failures (`RateLimited`, `Unavailable`, …)    |
+| the request `AbortSignal` | `Stream.interruptWhen(…)` on `request.signal`                            |
 
 Retry and fallback are worth calling out. In the AI SDK they are flags on the
 call; in effect-uai they are data and control flow you can see. A fallback is a
 list of tiers and a `catchTag` that advances to the next one, and it only
 touches the loop body.
 
-## Your frontend does not change
-
-Everything the loop produces reaches the client through `useChat` features you
-already use. Text, reasoning, and tool calls arrive as `message.parts`. Settled
-usage lands on `message.metadata`. Anything custom you stream (live tok/s, a
-status line, sources) arrives via `onData`, using `UIMessageStream.dataPart` on
-the server. Cancellation is the client's existing `stop()`, which aborts the
-request and, through structured concurrency, tears down the loop and drops the
-provider call. None of this adds effect-uai to the browser.
-
-## When `useChat` stops being enough
-
-Keep `useChat` while it works. Move the frontend to
-[`@effect-uai/ui`](/agentic-ui/) when you hit one of these:
-
-| You want                                      | `useChat`                                    | `@effect-uai/ui`                                    |
-| --------------------------------------------- | -------------------------------------------- | --------------------------------------------------- |
-| Tool results typed in the browser             | generic `UIMessage` types; dates are strings | a shared `UiContract`; a `Date` arrives as a `Date` |
-| History on the server                         | sends the whole history by default           | the client sends the new message only               |
-| An answer that survives a reload              | `resume` plus your own stream store          | `Transport.sessionHttp`, replay from the last `seq` |
-| Messages sent mid-answer                      | one request at a time                        | queued, answered together                           |
-| State outside React (FoldKit, Vue, plain DOM) | one hook per framework                       | pure folds and `effect/reactivity` atoms            |
-
-`useObject` maps to object blocks in a run (`partial` while streaming,
-`value` when done); a contract types `value`. [Next.js](/agentic-ui/nextjs/)
-shows both approaches in one app.
-
 ## The rest of the AI SDK
 
-The compat layer on this page exists because the chat UI is a wire protocol you
-have to match. Everywhere else there is nothing to match: the AI SDK's
-top-level functions each correspond to an effect-uai primitive you call
-directly, and you drop the AI SDK on the server entirely. Find the function you
-use and follow the link for the full version.
+The AI SDK's other top-level functions each correspond to an effect-uai
+primitive you call directly. Find the function you use and follow the link.
 
 | AI SDK                                      | effect-uai equivalent                     |                                          |
 | ------------------------------------------- | ----------------------------------------- | ---------------------------------------- |
@@ -187,19 +82,86 @@ use and follow the link for the full version.
 | `embed` / `embedMany`                       | the `Embedding` model                     | [Read more](/embeddings/)                |
 | `transcribe`                                | the `Transcriber` model                   | [Read more](/speech/transcription/)      |
 | `generateSpeech`                            | the `SpeechSynthesizer` model             | [Read more](/speech/synthesis/)          |
-| `generateImage`                             | an `ImageGenerator` tag                   | [Coming soon](/image-generation/)        |
-| `rerank`                                    | a `Reranker` tag                          | [Coming soon](/reranking/)               |
+| `generateImage`                             | the `ImageGenerator` model                | [Read more](/image-generation/)          |
+| `rerank`                                    | the `Reranker` model                      | [Read more](/reranking/)                 |
 
-The pattern is the same across the table: where the AI SDK gives you one
-function with options, effect-uai gives you a service you resolve from a
-`Layer` and drive explicitly. Switching provider stays a `Layer` swap in every
-row.
+Switching provider stays a `Layer` swap in every row.
 
-## A full example
+## Keep your `useChat` frontend
 
+`@effect-uai/ai-sdk` speaks the AI SDK's UI Message Stream protocol (the `v1`
+wire format, unchanged across AI SDK v5, v6, and v7), so the browser can't tell
+the backend was swapped. It works at the protocol level, so it doesn't matter
+whether your `useChat` comes from React, Svelte, Vue, or Angular. The only file
+you rewrite is the route handler.
+
+```sh
+pnpm add @effect-uai/ai-sdk
+```
+
+A typical `useChat` backend:
+
+```ts
+import { openai } from "@ai-sdk/openai"
+import { convertToModelMessages, streamText } from "ai"
+
+export async function POST(req: Request) {
+  const { messages } = await req.json()
+  const result = streamText({
+    model: openai("gpt-4o"),
+    system: "You are helpful.",
+    messages: convertToModelMessages(messages),
+    tools: { getWeather /* … */ },
+  })
+  return result.toUIMessageStreamResponse()
+}
+```
+
+The same handler on effect-uai, with `agent` from [the loop
+above](#the-loop-that-replaces-streamtext):
+
+```ts
+import * as Messages from "@effect-uai/ai-sdk/Messages"
+import * as UIMessageStream from "@effect-uai/ai-sdk/UIMessageStream"
+import * as SSE from "@effect-uai/core/SSE"
+import { Stream } from "effect"
+
+export async function POST(request: Request): Promise<Response> {
+  const { messages } = await request.json()
+
+  // 1. incoming useChat messages -> effect-uai history
+  const history = Messages.decodeMessages(messages)
+
+  // 2. your loop, with the provider Layer provided in
+  const events = agent(history).pipe(Stream.provide(OpenAILayer))
+
+  // 3. loop events -> the format useChat reads
+  const body = events.pipe(
+    UIMessageStream.toUIMessageStream(crypto.randomUUID()),
+    SSE.toBytes,
+    Stream.toReadableStream,
+  )
+  return new Response(body, { headers: UIMessageStream.responseHeaders })
+}
+```
+
+Decode, run, encode: `convertToModelMessages` becomes `decodeMessages`,
+`toUIMessageStreamResponse` becomes `toUIMessageStream` plus `SSE.toBytes`,
+and the protocol headers come from `responseHeaders`. On `@effect/platform`'s
+`HttpServer`, feed the same `SSE.toBytes` stream to
+`HttpServerResponse.stream(...)` with the same headers.
+
+Everything the loop produces reaches the client through `useChat` features you
+already use. Text, reasoning and tool calls arrive as `message.parts`. Settled
+usage lands on `message.metadata` (`UIMessageStream.messageMetadata`). Anything
+custom you stream (live tok/s, a status line, sources) arrives via `onData`,
+using `UIMessageStream.dataPart` on the server. The client's `stop()` aborts
+the request and, through structured concurrency, tears down the loop and the
+provider call.
+
+Keep `useChat` while it works. When you want typed tool results in the
+browser, history kept on the server, or answers that survive a reload, move the
+frontend to [`@effect-uai/ui`](/agentic-ui/). [Next.js](/agentic-ui/nextjs/)
+compares both approaches, and
 [`examples/next-chat`](https://github.com/betalyra/effect-uai/tree/main/examples/next-chat)
-is a Next.js app that does exactly this: a stock `useChat` frontend and one
-effect-uai route with a tool loop, model fallback, live metrics, and a working
-Stop button. Its README has the line-by-line diff for the handler. The same
-app has a second page on `@effect-uai/ui` with the same tools, so you can
-compare both; see [Next.js](/agentic-ui/nextjs/).
+runs them side by side over the same tools.

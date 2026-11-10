@@ -295,17 +295,15 @@ export const queueConversation = (
       Effect.gen(function* () {
         const lm = yield* LanguageModel
         return lm.streamTurn({ history: current.history, model, tools: toolkit }).pipe(
-          onTurnComplete((turn) =>
-            Effect.sync(() => {
-              const calls = Turn.getToolCalls(turn)
-              if (calls.length === 0) return stop()
-              // Stream.unwrap supplies the Scope the router fiber lives in: it
-              // stays alive as long as the consumer pulls.
-              return Stream.unwrap(fromQueue(isSensitive, answers)(calls)).pipe(
-                Toolkit.next(toolkit, current, turn),
-              )
-            }),
-          ),
+          onTurnComplete((turn) => {
+            const calls = Turn.getToolCalls(turn)
+            if (calls.length === 0) return stop()
+            // Stream.unwrap supplies the Scope the router fiber lives in: it
+            // stays alive as long as the consumer pulls.
+            return Stream.unwrap(fromQueue(isSensitive, answers)(calls)).pipe(
+              Toolkit.next(toolkit, current, turn),
+            )
+          }),
         )
       }),
     ),

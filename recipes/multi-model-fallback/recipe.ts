@@ -61,7 +61,7 @@ export const conversation = (tiers: ReadonlyArray<Tier>) =>
 
         return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
           // Success path: first complete turn ends the whole loop.
-          onTurnComplete(() => Effect.sync(stop)),
+          onTurnComplete(() => stop()),
           Stream.catchTag("RateLimited", () => Stream.unwrap(advanceTier("rate-limited"))),
           Stream.catchTag("Unavailable", () => Stream.unwrap(advanceTier("unavailable"))),
         )

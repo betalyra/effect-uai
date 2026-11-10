@@ -133,15 +133,13 @@ export const buildConversation = <T extends Toolkit.Toolkit>(
       Effect.gen(function* () {
         const lm = yield* LanguageModel
         return lm.streamTurn({ history: state.history, model, tools: toolkit }).pipe(
-          onTurnComplete((turn) =>
-            Effect.sync(() => {
-              const calls = Turn.getToolCalls(turn)
-              if (calls.length === 0) return stop()
-              return Toolkit.run(toolkit, calls).pipe(
-                Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
-              )
-            }),
-          ),
+          onTurnComplete((turn) => {
+            const calls = Turn.getToolCalls(turn)
+            if (calls.length === 0) return stop()
+            return Toolkit.run(toolkit, calls).pipe(
+              Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
+            )
+          }),
         )
       }),
     ),

@@ -125,6 +125,13 @@ everything else stays provider-typed.
       directives (outcome, wait, redirect, end), and `Toolkit.next` only accepts
       a stream with none left. Spiked in `experiments/tool-api-spike`.
       Source: `plans/typed-pending-calls.md`.
+- [ ] **`Metrics` refinements for the built-in samples** (`isTimeToFirstToken`,
+      `isThroughput`, `isTokenTotals`, `isTimeToCompletion`): `MetricEvent`'s
+      `_tag` is an open `string`, so a tag check never narrows to `Throughput`
+      etc. The chat examples hand-write refinements and the Next.js AI SDK
+      route casts `as Sample`. Additive; then switch the examples over.
+      Prerequisite for the `@effect-uai/ai-sdk` `MetricEvent` item under Compat.
+      Source: `plans/metrics.md` §8. Evidence: `observability/Metrics.ts:53`.
 - [ ] **`Loop.loopFrom`**: loop seeded by a `Stream<I>`, usable as a stream
       operator. Source: `internal-docs/roadmap-from-assessments.md:44` (§ at :641).
 - [ ] **Widen `LoopBody` to allow `Scope`** in the Effect-returning variant,

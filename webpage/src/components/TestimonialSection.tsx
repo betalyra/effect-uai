@@ -5,6 +5,7 @@ interface Testimonial {
   // Markdown: bold marks the phrase to emphasize, as in the feature cards.
   readonly quote: string
   readonly name: string
+  readonly title: string
   readonly handle: string
   readonly href: string
   readonly avatarSrc: string
@@ -16,6 +17,7 @@ const testimonials: ReadonlyArray<Testimonial> = [
     quote:
       "Most frameworks do too much or too little, and I was worried about having to use other frameworks like LangChain or Vercel without knowing how they integrate into Effect. We found Effect-UAI at the perfect time and love that we can **control our own destiny with Effectful tooling**.",
     name: "Ani",
+    title: "CTO & Co-founder, GP-LP Match",
     handle: "@aniravi24",
     href: "https://github.com/aniravi24",
     avatarSrc: "https://github.com/aniravi24.png?size=96",
@@ -42,7 +44,10 @@ const TestimonialCard = ({ t }: { t: Testimonial }) => (
         className="h-9 w-9 rounded-full border border-border"
       />
       <span className="flex flex-col">
-        <span className="text-sm font-semibold text-foreground">{t.name}</span>
+        <span className="text-sm text-foreground">
+          <span className="font-semibold">{t.name}</span>
+          <span className="text-muted-foreground"> · {t.title}</span>
+        </span>
         <a
           href={t.href}
           target="_blank"

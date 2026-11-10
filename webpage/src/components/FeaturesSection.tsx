@@ -12,8 +12,6 @@ import {
 } from "react-icons/pi"
 import ReactMarkdown, { type Components } from "react-markdown"
 
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-
 interface Feature {
   readonly title: string
   readonly description: string
@@ -91,28 +89,21 @@ export default function FeaturesSection() {
         Features
       </h2>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
+      {/* Statements, not destinations: a borderless list, so it doesn't read as
+          a second card grid after Capabilities. */}
+      <ul className="m-0 grid list-none grid-cols-1 gap-x-10 gap-y-7 p-0 sm:grid-cols-2 lg:grid-cols-3">
         {features.map(({ title, description, Icon }) => (
-          <Card
-            key={title}
-            className="group h-full gap-3 rounded-[14px] border-border bg-card py-6 shadow-none transition-colors hover:border-(--color-mark)"
-          >
-            <CardHeader className="gap-3 px-6">
-              <div className="flex items-center gap-3">
-                <div className="flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-border text-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
-                  <Icon className="h-4 w-4" />
-                </div>
-                <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
-                  {title}
-                </CardTitle>
-              </div>
-              <CardDescription className="text-sm leading-relaxed">
+          <li key={title} className="m-0 flex gap-3.5">
+            <Icon className="mt-0.5 h-5 w-5 shrink-0 text-(--color-mark)" aria-hidden />
+            <div className="flex flex-col gap-1">
+              <span className="text-base font-semibold text-foreground">{title}</span>
+              <span className="text-sm leading-relaxed text-muted-foreground">
                 <ReactMarkdown components={markdownComponents}>{description}</ReactMarkdown>
-              </CardDescription>
-            </CardHeader>
-          </Card>
+              </span>
+            </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   )
 }

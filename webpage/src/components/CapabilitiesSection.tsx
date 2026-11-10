@@ -21,7 +21,7 @@ import { RiSlackFill } from "react-icons/ri"
 import { SiDiscord, SiNextdotjs, SiTanstack, SiTelegram } from "react-icons/si"
 import ReactMarkdown, { type Components } from "react-markdown"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface Capability {
   readonly title: string
@@ -145,6 +145,14 @@ const markdownComponents: Components = {
   code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>,
 }
 
+// The whole card is the link; the arrow only confirms it on hover.
+const HoverArrow = () => (
+  <PiArrowRight
+    aria-hidden
+    className="ml-auto h-3.5 w-3.5 shrink-0 text-(--color-mark) opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100 group-focus-visible:opacity-100"
+  />
+)
+
 const requestUrl =
   "https://github.com/betalyra/effect-uai/issues/new?" +
   new URLSearchParams({
@@ -166,22 +174,23 @@ export default function CapabilitiesSection() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
         {capabilities.map(({ title, description, href, Icon, worksWith }) => (
           <a
             key={href}
             href={href}
             className="group block rounded-[14px] no-underline outline-none focus-visible:ring-1 focus-visible:ring-(--color-border) focus-visible:ring-offset-2 focus-visible:ring-offset-(--sl-color-bg) hover:focus-visible:ring-(--color-mark)"
           >
-            <Card className="h-full gap-5 rounded-[14px] border-border bg-card py-7 shadow-none transition-colors hover:border-(--color-mark)">
-              <CardHeader className="gap-3 px-7">
+            <Card className="h-full gap-0 rounded-[14px] border-border bg-card py-5 shadow-none transition-colors hover:border-(--color-mark)">
+              <CardHeader className="gap-2.5 px-6">
                 <div className="flex items-center gap-3">
-                  <div className="flex aspect-square h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-border text-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
+                  <div className="flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-border text-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
                     <Icon className="h-4 w-4" />
                   </div>
                   <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
                     {title}
                   </CardTitle>
+                  <HoverArrow />
                 </div>
                 <CardDescription className="text-sm leading-relaxed">
                   <ReactMarkdown components={markdownComponents}>{description}</ReactMarkdown>
@@ -200,10 +209,6 @@ export default function CapabilitiesSection() {
                   </div>
                 )}
               </CardHeader>
-              <CardContent className="mt-auto flex items-center gap-1.5 px-7 pt-1 text-sm text-muted-foreground transition-colors group-hover:text-(--color-mark)">
-                <span>Explore</span>
-                <PiArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-              </CardContent>
             </Card>
           </a>
         ))}
@@ -213,24 +218,21 @@ export default function CapabilitiesSection() {
           rel="noopener"
           className="group block rounded-[14px] no-underline outline-none focus-visible:ring-1 focus-visible:ring-(--color-border) focus-visible:ring-offset-2 focus-visible:ring-offset-(--sl-color-bg) hover:focus-visible:ring-(--color-mark)"
         >
-          <Card className="h-full gap-5 rounded-[14px] border-dashed border-border bg-transparent py-7 shadow-none transition-colors hover:border-(--color-mark)">
-            <CardHeader className="gap-3 px-7">
+          <Card className="h-full gap-0 rounded-[14px] border-dashed border-border bg-transparent py-5 shadow-none transition-colors hover:border-(--color-mark)">
+            <CardHeader className="gap-2.5 px-6">
               <div className="flex items-center gap-3">
-                <div className="flex aspect-square h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-dashed border-border text-muted-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
+                <div className="flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-dashed border-border text-muted-foreground transition-colors group-hover:border-(--color-mark) group-hover:text-(--color-mark)">
                   <PiPlus className="h-4 w-4" />
                 </div>
                 <CardTitle className="text-base text-foreground transition-colors group-hover:text-(--color-mark)">
                   Missing a capability?
                 </CardTitle>
+                <HoverArrow />
               </div>
               <CardDescription className="text-sm leading-relaxed">
-                Tell us what your agent needs.
+                Tell us what your agent needs. Open an issue on GitHub.
               </CardDescription>
             </CardHeader>
-            <CardContent className="mt-auto flex items-center gap-1.5 px-7 pt-1 text-sm text-muted-foreground transition-colors group-hover:text-(--color-mark)">
-              <span>Open an issue</span>
-              <PiArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-            </CardContent>
           </Card>
         </a>
       </div>

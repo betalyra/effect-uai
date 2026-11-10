@@ -1,6 +1,13 @@
 import { Array as Arr, Match, Option, Result, Schema, pipe } from "effect"
 import { Base64 } from "effect/encoding"
-import type { ContentBlock, InputImage, HistoryItem } from "@effect-uai/core/Items"
+import type {
+  ContentBlock,
+  HistoryItem,
+  InputFile,
+  InputImage,
+  ToolOutputContent,
+} from "@effect-uai/core/Items"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -203,6 +210,33 @@ const imageSourceToUrl = Match.type<InputImage["source"]>().pipe(
   Match.exhaustive,
 )
 
+const fileSourceToInput = Match.type<InputFile["source"]>().pipe(
+  Match.tag("url", (s) => ({ file_url: s.url })),
+  Match.tag("base64", (s) => ({ file_data: `data:${s.mimeType};base64,${s.base64}` })),
+  Match.tag("bytes", (s) => ({
+    file_data: `data:${s.mimeType};base64,${Base64.encode(s.bytes)}`,
+  })),
+  Match.exhaustive,
+)
+
+const toolOutputPart = Match.type<ToolOutputContent>().pipe(
+  Match.discriminatorsExhaustive("type")({
+    input_text: (p) => ({ type: "input_text", text: ToolOutput.partText(p) }),
+    input_json: (p) => ({ type: "input_text", text: ToolOutput.partText(p) }),
+    input_image: (p) => ({ type: "input_image", image_url: imageSourceToUrl(p.source) }),
+    input_file: (p) => ({
+      type: "input_file",
+      ...fileSourceToInput(p.source),
+      ...(p.filename !== undefined && { filename: p.filename }),
+    }),
+  }),
+)
+
+// Text and JSON only: one string (the widest supported form). With media: native parts.
+// No error flag on this wire: a failure is told by its content.
+const toolOutput = (parts: ReadonlyArray<ToolOutputContent>): string | ReadonlyArray<object> =>
+  Option.getOrElse(ToolOutput.text(parts), () => parts.map(toolOutputPart))
+
 const contentBlockToInput = Match.type<ContentBlock>().pipe(
   Match.discriminatorsExhaustive("type")({
     input_text: (b) => ({ type: "input_text", text: b.text }),
@@ -239,7 +273,7 @@ const itemToInput = (item: HistoryItem): Record<string, unknown> =>
       function_call_output: (o) => ({
         type: "function_call_output",
         call_id: o.call_id,
-        output: o.output,
+        output: toolOutput(o.output),
       }),
       reasoning: (r) => ({
         type: "reasoning",

@@ -19,6 +19,7 @@ import {
   decodeChunk,
   emptyAccumulator,
   itemsToMessages,
+  rejectToolOutputMedia,
   responseFormatWire,
   toolChoiceWire,
   toolsWire,
@@ -123,6 +124,7 @@ const buildStream = (cfg: Config) => {
           reason:
             "Assistant messages carry no image on this wire. Use `Turn.imagesAsInput` to resend it as user content.",
         })
+        yield* rejectToolOutputMedia("mistral", request.history)
         const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.setHeader("authorization", `Bearer ${Redacted.value(cfg.apiKey)}`),
           HttpClientRequest.bodyJsonUnsafe(buildRequestBody(request)),

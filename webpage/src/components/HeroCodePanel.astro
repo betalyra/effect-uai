@@ -25,7 +25,7 @@ const lines = [
   },
   { code: "      .pipe(", label: "", description: "" },
   {
-    code: "        onTurnComplete((turn) => Effect.sync(() => {",
+    code: "        onTurnComplete((turn) => {",
     label: "React at boundaries",
     description: "Show live output while it streams, then decide what happens after the turn completes.",
   },
@@ -45,18 +45,12 @@ const lines = [
     description: "Run typed Effect tools with streaming output, errors, scopes, and dependencies.",
   },
   {
-    code: "            Toolkit.continueWithResults(",
+    code: "            Toolkit.next(toolkit, state, turn),",
     label: "Keep events visible",
-    description: "Forward intermediate work to users while collecting final outputs for the next turn.",
+    description: "Forward tool events to users while folding typed results into the next turn's history, in your state shape.",
   },
-  {
-    code: "              Toolkit.appendToolResults(state, turn),",
-    label: "Persist your way",
-    description: "Fold tool results into history with your state shape. Keep the library out of your session model.",
-  },
-  { code: "            ),", label: "", description: "" },
   { code: "          )", label: "", description: "" },
-  { code: "        })),", label: "", description: "" },
+  { code: "        }),", label: "", description: "" },
   { code: "      )", label: "", description: "" },
   { code: "  }))", label: "", description: "" },
 ] as const

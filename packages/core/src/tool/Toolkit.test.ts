@@ -1,530 +1,670 @@
-import { Context, Effect, Layer, pipe, Schema, Stream } from "effect"
-import { describe, expect, expectTypeOf, it } from "vitest"
-import * as AiError from "../domain/AiError.js"
-import type { ToolCall } from "../domain/Items.js"
-import { type ToolEvent, isOutput, isProgress } from "./ToolEvent.js"
-import { isFailure, isOk, toToolCallOutput } from "./ToolResult.js"
+import { describe, expect, expectTypeOf, it } from "@effect/vitest"
+import {
+  Cause,
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  Layer,
+  Match,
+  pipe,
+  Result,
+  Schema,
+  Stream,
+} from "effect"
+import { imageBytes } from "../domain/Image.js"
+import type { HistoryItem, ToolCall } from "../domain/Items.js"
+import type { Turn } from "../domain/Turn.js"
+import * as Content from "./Content.js"
 import * as Tool from "./Tool.js"
 import * as Toolkit from "./Toolkit.js"
+import * as ToolOutput from "./ToolOutput.js"
 
-const Empty = Schema.Struct({})
-const toolCall = (name: string, id: string, args = "{}"): ToolCall => ({
+const call = (name: string, id: string, args = "{}"): ToolCall => ({
   type: "function_call",
   call_id: id,
   name,
   arguments: args,
 })
-const runToArray = <T extends Toolkit.Toolkit>(
+
+const collect = <T extends Toolkit.Toolkit>(
   toolkit: T,
   calls: ReadonlyArray<ToolCall>,
   options?: Toolkit.ExecuteOptions,
-) =>
-  Toolkit.run(toolkit, calls, options).pipe(
+) => Stream.runCollect(Toolkit.run(toolkit, calls, options))
+
+// In call order: concurrency 1.
+const outcomes = <T extends Toolkit.Toolkit>(toolkit: T, calls: ReadonlyArray<ToolCall>) =>
+  Toolkit.run(toolkit, calls, { concurrency: 1 }).pipe(
+    Stream.filter(Toolkit.isOutcome),
     Stream.runCollect,
-    Effect.map((events): ReadonlyArray<ToolEvent> => Array.from(events)),
   )
 
-describe("Tool.toDescriptors", () => {
-  const GetWeatherInput = Schema.Struct({ city: Schema.String })
+const failureOf = <R extends Result.Result<unknown, unknown>>(
+  r: R,
+): Extract<R, { readonly _tag: "Failure" }>["failure"] | undefined =>
+  r._tag === "Failure" ? r.failure : undefined
 
-  const getWeather = Tool.make({
-    name: "get_weather",
-    description: "Look up the current temperature for a city.",
-    inputSchema: Tool.fromEffectSchema(GetWeatherInput),
-    run: ({ city }) => Effect.succeed({ city, tempC: 18 }),
+class CityNotFound extends Schema.TaggedError<CityNotFound>()("CityNotFound", {
+  city: Schema.String,
+}) {}
+class ApiDown extends Schema.TaggedError<ApiDown>()("ApiDown", {}) {}
+
+const Weather = Schema.Struct({ city: Schema.String, at: Schema.DateFromString })
+const at = new Date("2026-01-01T12:00:00.000Z")
+
+const weather = Tool.make({
+  name: "weather",
+  description: "Weather for a city.",
+  inputSchema: Schema.Struct({ city: Schema.String }),
+  outputSchema: Weather,
+  failureSchema: CityNotFound,
+  run: ({ city }) =>
+    Effect.gen(function* () {
+      if (city === "Atlantis") return yield* new CityNotFound({ city })
+      if (city === "down") return yield* new ApiDown()
+      if (city === "bug") return yield* Effect.die("defect")
+      return { city, at }
+    }),
+})
+
+const search = Tool.make({
+  name: "search",
+  description: "Search, reporting hits as it reads pages.",
+  inputSchema: Schema.Struct({ query: Schema.String }),
+  outputSchema: Schema.Struct({ hits: Schema.Number }),
+  run: () => Stream.fromIterable([{ hits: 1 }, { hits: 3 }, { hits: 4 }]),
+})
+
+// A declared tool: the loop handles its calls.
+const escalate = Tool.declare({ name: "escalate", description: "", inputSchema: Tool.noInput })
+
+const kit = Toolkit.make(weather, search, escalate)
+
+describe("Toolkit.run", () => {
+  it.effect("emits each of a Stream tool's values as a partial, then the last as the result", () =>
+    Effect.gen(function* () {
+      const events = yield* collect(kit, [call("search", "s1", '{"query":"x"}')])
+      expect(events.map((e) => (e._tag === "Partial" ? e.value : e.result))).toEqual([
+        { hits: 1 },
+        { hits: 3 },
+        { hits: 4 },
+        Result.succeed({ hits: 4 }),
+      ])
+    }),
+  )
+
+  it.effect("emits a partial as soon as the tool produces it, not when the next arrives", () =>
+    Effect.gen(function* () {
+      const gate = yield* Deferred.make<void>()
+      const slow = Tool.make({
+        name: "slow",
+        description: "",
+        inputSchema: Tool.noInput,
+        outputSchema: Schema.String,
+        run: () =>
+          Stream.concat(
+            Stream.succeed("searching..."),
+            Stream.fromEffect(Effect.as(Deferred.await(gate), "found")),
+          ),
+      })
+      // The second value waits for the first partial: a delayed partial deadlocks.
+      const events = yield* Toolkit.run(Toolkit.make(slow), [call("slow", "1")]).pipe(
+        Stream.tap((e) =>
+          e._tag === "Partial" && e.value === "searching..."
+            ? Deferred.succeed(gate, undefined)
+            : Effect.void,
+        ),
+        Stream.runCollect,
+      )
+      expect(events.map((e) => (e._tag === "Partial" ? e.value : e.result))).toEqual([
+        "searching...",
+        "found",
+        Result.succeed("found"),
+      ])
+    }),
+  )
+
+  it.effect("an Effect tool emits only its result, also after describeFailures", () =>
+    Effect.gen(function* () {
+      const lisbon = [call("weather", "w1", '{"city":"Lisbon"}')]
+      const plain = yield* collect(kit, lisbon)
+      const described = yield* collect(
+        Toolkit.describeFailures(kit, () => "failed"),
+        lisbon,
+      )
+      expect(plain.map((e) => e._tag)).toEqual(["Output"])
+      expect(described.map((e) => e._tag)).toEqual(["Output"])
+    }),
+  )
+
+  it.effect("hands on decoded values: a DateFromString field stays a Date", () =>
+    Effect.gen(function* () {
+      const [event] = yield* outcomes(kit, [call("weather", "w1", '{"city":"Lisbon"}')])
+      expect(event?.result).toEqual(Result.succeed({ city: "Lisbon", at }))
+    }),
+  )
+
+  it.effect("a declared error becomes a Failure; an undeclared one fails the stream", () =>
+    Effect.gen(function* () {
+      const [event] = yield* outcomes(kit, [call("weather", "w1", '{"city":"Atlantis"}')])
+      expect(failureOf(event!.result)).toEqual(new CityNotFound({ city: "Atlantis" }))
+
+      const down = yield* Effect.flip(collect(kit, [call("weather", "w2", '{"city":"down"}')]))
+      expect(down).toEqual(new ApiDown())
+
+      const bug = yield* Effect.exit(collect(kit, [call("weather", "w3", '{"city":"bug"}')]))
+      expect(Exit.isFailure(bug) && Cause.hasDies(bug.cause)).toBe(true)
+    }),
+  )
+
+  it.effect("reports what it could not run as core errors, without stopping other calls", () =>
+    Effect.gen(function* () {
+      const events = yield* outcomes(kit, [
+        call("weather", "1", '{"city":7}'),
+        call("weather", "2", "not json"),
+        call("nope", "3"),
+        call("escalate", "4"),
+        call("constructor", "5"),
+        call("search", "6", '{"query":"x"}'),
+      ])
+      expect(events.map((e) => failureOf(e.result)?._tag)).toEqual([
+        "InputInvalid",
+        "InputInvalid",
+        "UnknownTool",
+        "UnknownTool",
+        "UnknownTool",
+        undefined,
+      ])
+      expect(failureOf(events[0]!.result)).toMatchObject({
+        message: expect.stringContaining("city"),
+      })
+    }),
+  )
+
+  it.effect("reports a value outputSchema rejects, or no value at all, as OutputInvalid", () =>
+    Effect.gen(function* () {
+      const count = (values: ReadonlyArray<number>) =>
+        Tool.make({
+          name: "count",
+          description: "",
+          inputSchema: Tool.noInput,
+          outputSchema: Schema.Int,
+          run: () => Stream.fromIterable(values),
+        })
+      const [rejected] = yield* outcomes(Toolkit.make(count([1, 1.5])), [call("count", "1")])
+      const [empty] = yield* outcomes(Toolkit.make(count([])), [call("count", "2")])
+      expect(failureOf(rejected!.result)).toBeInstanceOf(ToolOutput.OutputInvalid)
+      expect(failureOf(empty!.result)).toBeInstanceOf(ToolOutput.OutputInvalid)
+    }),
+  )
+
+  it("type: events narrow per tool, the stream fails with each tool's undeclared errors", () => {
+    const stream = Toolkit.run(kit, [])
+    expectTypeOf<Stream.Error<typeof stream>>().toEqualTypeOf<ApiDown>()
+    type Done = Extract<
+      Stream.Success<typeof stream>,
+      { readonly _tag: "Output"; readonly tool: "weather" }
+    >
+    type Value = Extract<Done["result"], { readonly _tag: "Success" }>["success"]
+    type Error = Extract<Done["result"], { readonly _tag: "Failure" }>["failure"]
+    expectTypeOf<Value>().toEqualTypeOf<{ readonly city: string; readonly at: Date }>()
+    expectTypeOf<Error>().toEqualTypeOf<CityNotFound | ToolOutput.RunError>()
   })
 
-  it("renders the input schema as a JSON Schema document", () => {
-    const [desc] = Tool.toDescriptors([getWeather])
-    expect(desc?.name).toBe("get_weather")
-    expect(desc?.description).toBe("Look up the current temperature for a city.")
-    expect(desc?.inputSchema).toMatchObject({
-      type: "object",
-      properties: { city: { type: "string" } },
-      required: ["city"],
+  it("type: an error one tool declares still fails the stream when another throws it", () => {
+    const loose = Tool.make({
+      name: "loose",
+      description: "",
+      inputSchema: Tool.noInput,
+      outputSchema: Schema.String,
+      run: () => Effect.fail(new CityNotFound({ city: "x" })),
     })
+    expectTypeOf<
+      Toolkit.ToolkitE<ReturnType<typeof Toolkit.make<[typeof weather, typeof loose]>>>
+    >().toEqualTypeOf<ApiDown | CityNotFound>()
   })
 
-  it("includes strict flag only when set on the tool", () => {
-    const strictTool = Tool.make({
-      name: "strict_one",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(GetWeatherInput),
-      run: () => Effect.succeed({}),
-      strict: true,
+  it.effect("provides each tool's own requirements", () =>
+    Effect.gen(function* () {
+      class Geo extends Context.Service<Geo, { readonly place: string }>()("test/Geo") {}
+      const where = Tool.make({
+        name: "where",
+        description: "",
+        inputSchema: Tool.noInput,
+        outputSchema: Schema.String,
+        run: () =>
+          Effect.gen(function* () {
+            return (yield* Geo).place
+          }),
+      })
+      const stream = Toolkit.run(Toolkit.make(where), [call("where", "1")])
+      expectTypeOf<Stream.Services<typeof stream>>().toEqualTypeOf<Geo>()
+      const [event] = yield* stream.pipe(
+        Stream.filter(Toolkit.isOutcome),
+        Stream.runCollect,
+        Effect.provide(Layer.succeed(Geo, { place: "Lisbon" })),
+      )
+      expect(event?.result).toEqual(Result.succeed("Lisbon"))
+    }),
+  )
+})
+
+describe("Toolkit.output and Toolkit.decode", () => {
+  it.effect("encode with the tool's schemas and decode back to the same typed Result", () =>
+    Effect.gen(function* () {
+      const events = yield* outcomes(kit, [
+        call("weather", "1", '{"city":"Lisbon"}'),
+        call("weather", "2", '{"city":"Atlantis"}'),
+      ])
+      const items = yield* Effect.forEach(events, Toolkit.output(kit))
+      expect(items.map((i) => [i.output, i.isError])).toEqual([
+        [[{ type: "input_json", value: { city: "Lisbon", at: at.toISOString() } }], undefined],
+        [[{ type: "input_json", value: { _tag: "CityNotFound", city: "Atlantis" } }], true],
+      ])
+
+      const decoded = yield* Effect.forEach(items, (item) => Toolkit.decode(kit, "weather", item))
+      expect(decoded).toEqual(events.map((e) => e.result))
+      expectTypeOf(decoded[0]!).toEqualTypeOf<
+        Result.Result<
+          { readonly city: string; readonly at: Date },
+          CityNotFound | ToolOutput.CoreError
+        >
+      >()
+    }),
+  )
+
+  it.effect("with Content.Value, media gets its own part and reads back as a class", () =>
+    Effect.gen(function* () {
+      const png = Content.image(imageBytes(new Uint8Array([1, 2]), "image/png"))
+      const shot = Tool.make({
+        name: "shot",
+        description: "",
+        inputSchema: Tool.noInput,
+        outputSchema: Content.Value,
+        run: () => Effect.succeed([{ title: "Home" }, png]),
+      })
+      const shots = Toolkit.make(shot)
+      const [event] = yield* outcomes(shots, [call("shot", "1")])
+      const item = yield* Toolkit.output(shots, event!)
+      expect(item.output.map((p) => p.type)).toEqual(["input_json", "input_image"])
+      expect(yield* Toolkit.decode(shots, "shot", item)).toEqual(
+        Result.succeed([{ title: "Home" }, png]),
+      )
+    }),
+  )
+
+  it.effect("decodes a call closed with core's Cancelled", () =>
+    Effect.gen(function* () {
+      const cancelled = new ToolOutput.Cancelled({ message: "user moved on" })
+      const item = yield* ToolOutput.failure({ call_id: "1" }, ToolOutput.CoreError, cancelled)
+      expect(yield* Toolkit.decode(kit, "weather", item)).toEqual(Result.fail(cancelled))
+    }),
+  )
+})
+
+describe("Tool.withFailures and Toolkit.close", () => {
+  class Denied extends Schema.TaggedError<Denied>()("Denied", { message: Schema.String }) {}
+
+  // Only the tool that needs approval may be closed with `Denied`.
+  const gated = Toolkit.make(Tool.withFailures(weather, Denied), search)
+  const denied = new Denied({ message: "not now" })
+
+  it.effect("a closing the tool declares round-trips through history", () =>
+    Effect.gen(function* () {
+      const closed = yield* Toolkit.close(gated, call("weather", "1"), denied)
+      const item = yield* Toolkit.output(gated, closed)
+      expect(item.isError).toBe(true)
+      expect(yield* Toolkit.decode(gated, "weather", item)).toEqual(Result.fail(denied))
+    }),
+  )
+
+  it.effect("closing with an error the call's tool doesn't declare fails at close", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(Toolkit.close(gated, call("search", "2"), denied))
+      expect(error).toBeInstanceOf(Toolkit.UndeclaredFailure)
+      expect(error.tool).toBe("search")
+    }),
+  )
+
+  it.effect("with the tool's name, close checks the call belongs to that tool", () =>
+    Effect.gen(function* () {
+      const closed = yield* Toolkit.close(gated, "weather", call("weather", "5"), denied)
+      expect(closed.tool).toBe("weather")
+      const error = yield* Effect.flip(Toolkit.close(gated, "weather", call("search", "6"), denied))
+      expect(error).toBeInstanceOf(Toolkit.UndeclaredFailure)
+    }),
+  )
+
+  it("type: with the tool's name, the error must be that tool's", () => {
+    // @ts-expect-error search declares no Denied, though weather does
+    Toolkit.close(gated, "search", call("search", "7"), denied)
+  })
+
+  it.effect("core's errors close any call", () =>
+    Effect.gen(function* () {
+      const cancelled = new ToolOutput.Cancelled({ message: "moved on" })
+      const closed = yield* Toolkit.close(gated, call("search", "3"), cancelled)
+      expect(closed.result).toEqual(Result.fail(cancelled))
+    }),
+  )
+
+  it.effect("Toolkit.withFailures declares the closing on every local tool", () =>
+    Effect.gen(function* () {
+      const all = Toolkit.withFailures(kit, Denied)
+      const closed = yield* Toolkit.close(all, call("search", "4"), denied)
+      const item = yield* Toolkit.output(all, closed)
+      expect(yield* Toolkit.decode(all, "search", item)).toEqual(Result.fail(denied))
+    }),
+  )
+
+  it.effect("keeps the tool's own failures declared", () =>
+    Effect.gen(function* () {
+      const [event] = yield* outcomes(gated, [call("weather", "3", '{"city":"Atlantis"}')])
+      expect(failureOf(event!.result)).toEqual(new CityNotFound({ city: "Atlantis" }))
+    }),
+  )
+
+  it("type: close takes only errors the toolkit declares", () => {
+    const decoded = Toolkit.decode(gated, "weather", {
+      type: "function_call_output",
+      call_id: "1",
+      output: [],
     })
-    const looseTool = Tool.make({
-      name: "loose_one",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(GetWeatherInput),
-      run: () => Effect.succeed({}),
-    })
-    const [s, l] = Tool.toDescriptors([strictTool, looseTool])
-    expect(s?.strict).toBe(true)
-    expect(l).not.toHaveProperty("strict")
+    expectTypeOf<Effect.Success<typeof decoded>>().toEqualTypeOf<
+      Result.Result<
+        { readonly city: string; readonly at: Date },
+        CityNotFound | Denied | ToolOutput.CoreError
+      >
+    >()
+    // @ts-expect-error ApiDown is no tool's declared failure
+    Toolkit.close(gated, call("weather", "4"), new ApiDown())
   })
 })
 
-describe("Toolkit.run - tools with R requirements", () => {
-  // Two distinct services, modelling the "typed per-tool context" use case
-  // (cf. AI SDK 7's `toolsContext`). In Effect each tool declares its R, the
-  // compiler enforces it, and `run` surfaces the union for the caller
-  // to provide via Layer.
-  type WeatherApiKeyShape = { readonly key: string }
-  class WeatherApiKey extends Context.Service<WeatherApiKey, WeatherApiKeyShape>()(
-    "test/WeatherApiKey",
-  ) {}
-
-  type GeoApiKeyShape = { readonly key: string }
-  class GeoApiKey extends Context.Service<GeoApiKey, GeoApiKeyShape>()("test/GeoApiKey") {}
-
-  const Empty = Schema.Struct({})
-
-  const getWeather = Tool.make({
-    name: "get_weather",
+describe("Toolkit.split and Toolkit.complete", () => {
+  const askUser = Tool.declare({
+    name: "ask_user",
     description: "",
-    inputSchema: Tool.fromEffectSchema(Empty),
-    run: () =>
-      Effect.gen(function* () {
-        const { key } = yield* WeatherApiKey
-        return { source: "weather", key }
-      }),
+    inputSchema: Schema.Struct({ question: Schema.String }),
+    outputSchema: Schema.String,
   })
-
-  const getCoords = Tool.make({
-    name: "get_coords",
+  const finish = Tool.declare({
+    name: "finish",
     description: "",
-    inputSchema: Tool.fromEffectSchema(Empty),
-    run: () =>
-      Effect.gen(function* () {
-        const { key } = yield* GeoApiKey
-        return { source: "geo", key }
-      }),
+    inputSchema: Schema.Struct({ report: Schema.String }),
+  })
+  const agent = Toolkit.make(weather, askUser, finish)
+  const turnOf = (...calls: ReadonlyArray<ToolCall>): Turn => ({
+    items: calls,
+    usage: {},
+    stop_reason: "tool_calls",
   })
 
-  const call = (name: string, id: string): ToolCall => ({
-    type: "function_call",
-    call_id: id,
-    name,
-    arguments: "{}",
-  })
+  it.effect("sorts a turn's calls: run, declared (decoded), invalid (closed)", () =>
+    Effect.gen(function* () {
+      const { run, declared, invalid } = yield* Toolkit.split(
+        agent,
+        turnOf(
+          call("weather", "1", `{"city":"Lisbon"}`),
+          call("ask_user", "2", `{"question":"Which city?"}`),
+          call("nope", "3"),
+          call("finish", "4", `{}`),
+        ),
+      )
+      expect(run.map((c) => c.call_id)).toEqual(["1", "3"])
+      expect(declared).toEqual([
+        {
+          tool: "ask_user",
+          call: call("ask_user", "2", `{"question":"Which city?"}`),
+          input: { question: "Which city?" },
+        },
+      ])
+      expect(invalid).toHaveLength(1)
+      expect(invalid[0]).toMatchObject({ call_id: "4", tool: "finish" })
+      expect(failureOf(invalid[0]!.result)).toBeInstanceOf(ToolOutput.InputInvalid)
+    }),
+  )
 
-  it("propagates each tool's R into the resulting Stream's requirements", () => {
-    const stream = Toolkit.run(Toolkit.make(getWeather, getCoords), [])
-    expectTypeOf(stream).toEqualTypeOf<
-      Stream.Stream<import("./ToolEvent.js").ToolEvent, never, WeatherApiKey | GeoApiKey>
-    >()
-  })
+  it.effect("declared calls are typed per tool: an exhaustive Match handles each", () =>
+    Effect.gen(function* () {
+      const { declared } = yield* Toolkit.split(
+        agent,
+        turnOf(call("finish", "1", `{"report":"done"}`), call("ask_user", "2", `{"question":"?"}`)),
+      )
+      const route = Match.type<Toolkit.DeclaredCall<typeof agent>>().pipe(
+        Match.discriminatorsExhaustive("tool")({
+          ask_user: (c) => `ask ${c.input.question}`,
+          finish: (c) => `end ${c.input.report}`,
+        }),
+      )
+      expect(declared.map(route)).toEqual(["end done", "ask ?"])
+      Match.type<Toolkit.DeclaredCall<typeof agent>>().pipe(
+        // @ts-expect-error finish is not handled
+        Match.discriminatorsExhaustive("tool")({ ask_user: () => "ask" }),
+      )
+      expectTypeOf<Toolkit.DeclaredCall<typeof agent>["tool"]>().toEqualTypeOf<
+        "ask_user" | "finish"
+      >()
+    }),
+  )
 
-  it("runs each tool with its own service injected", async () => {
-    const layer = Layer.mergeAll(
-      Layer.succeed(WeatherApiKey, { key: "weather-123" }),
-      Layer.succeed(GeoApiKey, { key: "geo-456" }),
-    )
+  it.effect("complete answers a call with a value typed by outputSchema", () =>
+    Effect.gen(function* () {
+      const answered = yield* Toolkit.complete(agent, "ask_user", call("ask_user", "1"), "Lisbon")
+      expect(answered).toEqual({
+        _tag: "Output",
+        call_id: "1",
+        tool: "ask_user",
+        result: Result.succeed("Lisbon"),
+      })
+      const item = yield* Toolkit.output(agent, answered)
+      expect(yield* Toolkit.decode(agent, "ask_user", item)).toEqual(Result.succeed("Lisbon"))
+    }),
+  )
 
-    const program = Toolkit.run(Toolkit.make(getWeather, getCoords), [
-      call("get_weather", "c1"),
-      call("get_coords", "c2"),
-    ]).pipe(Stream.runCollect, Effect.provide(layer))
+  it.effect("complete fails with UndeclaredFailure for another tool's call", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        Toolkit.complete(agent, "ask_user", call("finish", "1"), "Lisbon"),
+      )
+      expect(error).toMatchObject({ _tag: "UndeclaredFailure", tool: "ask_user" })
+    }),
+  )
 
-    const events = await Effect.runPromise(program)
-    const outputs = Array.from(events).filter(isOutput)
-    const byCall = new Map(outputs.map((e) => [e.result.call_id, e.result]))
-
-    const w = byCall.get("c1")
-    const g = byCall.get("c2")
-    expect(w !== undefined && isOk(w) && w.value).toEqual({
-      source: "weather",
-      key: "weather-123",
-    })
-    expect(g !== undefined && isOk(g) && g.value).toEqual({
-      source: "geo",
-      key: "geo-456",
-    })
-  })
-
-  it("reports non-local kinds as non_local_tool while local calls in the same turn still run", async () => {
-    const escalate = Tool.signal({
-      name: "escalate",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-    })
-    const localPlain = Tool.make({
-      name: "plain",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Effect.succeed({ ok: true }),
-    })
-
-    const events = await Effect.runPromise(
-      Toolkit.run(Toolkit.make(localPlain, escalate), [
-        call("escalate", "s1"),
-        call("plain", "p1"),
-        call("ghost", "g1"),
-      ]).pipe(Stream.runCollect),
-    )
-    const byCall = new Map(
-      Array.from(events)
-        .filter(isOutput)
-        .map((e) => [e.result.call_id, e.result] as const),
-    )
-
-    // Signal tool: model-visible but no local executor.
-    const s = byCall.get("s1")
-    expect(s?._tag === "Failure" && s.kind).toBe("non_local_tool")
-    // Unknown tool stays distinct from non-local.
-    const g = byCall.get("g1")
-    expect(g?._tag === "Failure" && g.kind).toBe("unknown_tool")
-    // The local call still executed despite the non-local sibling.
-    const p = byCall.get("p1")
-    expect(p !== undefined && isOk(p) && p.value).toEqual({ ok: true })
-  })
-
-  it("with no service-needing tools, R is never", () => {
-    const plain = Tool.make({
-      name: "plain",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Effect.succeed(0),
-    })
-    const stream = Toolkit.run(Toolkit.make(plain), [])
-    expectTypeOf(stream).toEqualTypeOf<
-      Stream.Stream<import("./ToolEvent.js").ToolEvent, never, never>
-    >()
+  it("type: complete's value is the tool's output", () => {
+    // @ts-expect-error ask_user's outputSchema is String
+    Toolkit.complete(agent, "ask_user", call("ask_user", "1"), 42)
+    // @ts-expect-error finish has no outputSchema: nothing to complete with
+    Toolkit.complete(agent, "finish", call("finish", "1"), "done")
   })
 })
 
-describe("Toolkit.make / compose / namespace - uniqueness", () => {
-  const Empty = Schema.Struct({})
-  const tool = (name: string) =>
+describe("Toolkit.next", () => {
+  it.effect("forwards every event, then continues with the turn and encoded outputs appended", () =>
+    Effect.gen(function* () {
+      const calls = [
+        call("weather", "1", '{"city":"Lisbon"}'),
+        call("search", "2", '{"query":"x"}'),
+      ]
+      const turn: Turn = { items: calls, usage: {}, stop_reason: "tool_calls" }
+      const state = { history: [] as ReadonlyArray<HistoryItem>, round: 1 }
+
+      const steps = yield* Toolkit.run(kit, calls, { concurrency: 1 }).pipe(
+        Toolkit.next(kit, state, turn),
+        Stream.runCollect,
+      )
+      // weather: Output; search: three partials and its Output.
+      expect(steps.map((s) => s._tag)).toEqual([
+        "Value",
+        "Value",
+        "Value",
+        "Value",
+        "Value",
+        "Next",
+      ])
+
+      const last = steps.at(-1)
+      expect(last?._tag === "Next" && last.state).toEqual({
+        round: 1,
+        history: [
+          ...calls,
+          {
+            type: "function_call_output",
+            call_id: "1",
+            output: [{ type: "input_json", value: { city: "Lisbon", at: at.toISOString() } }],
+          },
+          {
+            type: "function_call_output",
+            call_id: "2",
+            output: [{ type: "input_json", value: { hits: 4 } }],
+          },
+        ],
+      })
+    }),
+  )
+})
+
+describe("Toolkit.wrap and Toolkit.describeFailures", () => {
+  class Audit extends Context.Service<
+    Audit,
+    { readonly record: (name: string) => Effect.Effect<void> }
+  >()("test/Audit") {}
+  const audited: Toolkit.Middleware<Audit> = (run, name) => (input) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        yield* (yield* Audit).record(name)
+        return run(input)
+      }),
+    )
+
+  it.effect("wrap runs local tools through the middleware and tracks its requirement", () =>
+    Effect.gen(function* () {
+      const recorded: Array<string> = []
+      const wrapped = pipe(kit, Toolkit.wrap(audited))
+      const stream = Toolkit.run(
+        wrapped,
+        [call("search", "1", '{"query":"x"}'), call("escalate", "2")],
+        { concurrency: 1 },
+      )
+      expectTypeOf<Stream.Services<typeof stream>>().toEqualTypeOf<Audit>()
+
+      const events = yield* stream.pipe(
+        Stream.filter(Toolkit.isOutcome),
+        Stream.runCollect,
+        Effect.provideService(Audit, { record: (n) => Effect.sync(() => void recorded.push(n)) }),
+      )
+      expect(recorded).toEqual(["search"])
+      expect(events.map((e) => e.result._tag)).toEqual(["Success", "Failure"])
+    }),
+  )
+
+  it.effect("wrap keeps each tool's shape: an Effect tool emits no partials", () =>
+    Effect.gen(function* () {
+      const wrapped = pipe(kit, Toolkit.wrap(audited))
+      const events = yield* Toolkit.run(
+        wrapped,
+        [call("weather", "1", '{"city":"Lisbon"}'), call("search", "2", '{"query":"x"}')],
+        { concurrency: 1 },
+      ).pipe(Stream.runCollect, Effect.provideService(Audit, { record: () => Effect.void }))
+      expect(events.map((e) => `${e.tool}:${e._tag}`)).toEqual([
+        "weather:Output",
+        "search:Partial",
+        "search:Partial",
+        "search:Partial",
+        "search:Output",
+      ])
+    }),
+  )
+
+  it.effect(
+    "describeFailures turns undeclared errors into ToolFailed and keeps declared ones",
+    () =>
+      Effect.gen(function* () {
+        const described = Toolkit.describeFailures(kit, (e) => `upstream: ${e._tag}`)
+        expectTypeOf<Toolkit.ToolkitE<typeof described>>().toEqualTypeOf<never>()
+
+        const events = yield* outcomes(described, [
+          call("weather", "1", '{"city":"down"}'),
+          call("weather", "2", '{"city":"Atlantis"}'),
+        ])
+        expect(events.map((e) => failureOf(e.result))).toEqual([
+          new Tool.ToolFailed({ message: "upstream: ApiDown" }),
+          new CityNotFound({ city: "Atlantis" }),
+        ])
+        const item = yield* Toolkit.output(described, events[0]!)
+        expect(item.output).toEqual([
+          { type: "input_json", value: { _tag: "ToolFailed", message: "upstream: ApiDown" } },
+        ])
+      }),
+  )
+
+  it.effect("describeFailures keeps an error fatal when describe returns undefined", () =>
+    Effect.gen(function* () {
+      class SessionGone extends Schema.TaggedError<SessionGone>()("SessionGone", {}) {}
+      const click = Tool.make({
+        name: "click",
+        description: "",
+        inputSchema: Schema.Struct({ ref: Schema.String }),
+        outputSchema: Schema.String,
+        run: ({ ref }) =>
+          Effect.gen(function* () {
+            if (ref === "gone") return yield* new SessionGone()
+            return yield* new ApiDown()
+          }),
+      })
+      const kit = Toolkit.describeFailures(Toolkit.make(click), (e) =>
+        e._tag === "ApiDown" ? "the button did nothing" : undefined,
+      )
+      expectTypeOf<Toolkit.ToolkitE<typeof kit>>().toEqualTypeOf<ApiDown | SessionGone>()
+
+      const [stale] = yield* outcomes(kit, [call("click", "1", '{"ref":"b1"}')])
+      expect(failureOf(stale!.result)).toEqual(
+        new Tool.ToolFailed({ message: "the button did nothing" }),
+      )
+      const gone = yield* Effect.flip(collect(kit, [call("click", "2", '{"ref":"gone"}')]))
+      expect(gone).toEqual(new SessionGone())
+    }),
+  )
+})
+
+describe("Toolkit.make, namespace and compose", () => {
+  const tool = <N extends string>(name: N) =>
     Tool.make({
       name,
       description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
+      inputSchema: Tool.noInput,
+      outputSchema: Schema.Number,
       run: () => Effect.succeed(0),
     })
 
   it("rejects a duplicate literal name at compile time", () => {
     const a = tool("search")
-    const b = Tool.provider({
-      name: "search",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      provider: "demo",
-      config: {},
-    })
+    const b = Tool.declare({ name: "search", description: "", inputSchema: Tool.noInput })
     // @ts-expect-error Duplicate tool name: search
     Toolkit.make(a, b)
   })
 
-  it("fails compose with DuplicateToolName naming the colliding sources (dynamic)", async () => {
-    const github = Toolkit.fromArray([tool("search")])
-    const linear = Toolkit.fromArray([tool("search")])
-    const exit = await Effect.runPromiseExit(Toolkit.compose(github, linear))
-    expect(exit._tag).toBe("Failure")
-    if (exit._tag === "Failure") {
-      const json = JSON.stringify(exit.cause)
-      expect(json).toContain("DuplicateToolName")
-      expect(json).toContain("toolkit-0")
-      expect(json).toContain("toolkit-1")
-    }
-  })
-
-  it("namespaces names so generic names from two sources compose cleanly", async () => {
-    const github = Toolkit.namespace("github", Toolkit.fromArray([tool("search")]))
-    const linear = Toolkit.namespace("linear", Toolkit.fromArray([tool("search")]))
-    const composed = await Effect.runPromise(Toolkit.compose(github, linear))
-    expect(Object.keys(composed).sort()).toEqual(["github__search", "linear__search"])
-  })
-
-  it("preserves each tool's R through compose", () => {
-    const stream = Effect.gen(function* () {
-      const composed = yield* Toolkit.compose(Toolkit.make(tool("a")), Toolkit.make(tool("b")))
-      return Toolkit.run(composed, [])
-    })
-    // No service-needing tools here -> R stays never (compose didn't poison it).
-    expectTypeOf(stream).toEqualTypeOf<
-      Effect.Effect<
-        Stream.Stream<import("./ToolEvent.js").ToolEvent, never, never>,
-        Toolkit.DuplicateToolName
-      >
-    >()
-  })
-})
-
-describe("Toolkit.namespace - typed toolkits", () => {
-  const Query = Schema.Struct({ q: Schema.String })
-  type GeoShape = { readonly lookup: (q: string) => Effect.Effect<string> }
-  class Geo extends Context.Service<Geo, GeoShape>()("test/Geo") {}
-
-  const search = Tool.make({
-    name: "search",
-    description: "",
-    inputSchema: Tool.fromEffectSchema(Query),
-    run: ({ q }) =>
-      Effect.gen(function* () {
-        const geo = yield* Geo
-        if (q === "") return yield* Effect.fail("empty_query" as const)
-        return yield* geo.lookup(q)
-      }),
-  })
-
-  const kit = Toolkit.namespace("geo", Toolkit.make(search))
-
-  it("type: prefixes the name literal of a service-requiring tool", () => {
-    expectTypeOf(kit.geo__search.name).toEqualTypeOf<"geo__search">()
-  })
-
-  it("type: preserves E and R through namespace", () => {
-    expectTypeOf<Toolkit.ToolkitE<typeof kit>>().toEqualTypeOf<"empty_query">()
-    expectTypeOf<Toolkit.ToolkitR<typeof kit>>().toEqualTypeOf<Geo>()
-  })
-
-  it("type: preserves E and R through makeNamespaced", () => {
-    const namespaced = Toolkit.makeNamespaced("geo", search)
-    expectTypeOf(namespaced.geo__search.name).toEqualTypeOf<"geo__search">()
-    expectTypeOf<Toolkit.ToolkitE<typeof namespaced>>().toEqualTypeOf<"empty_query">()
-    expectTypeOf<Toolkit.ToolkitR<typeof namespaced>>().toEqualTypeOf<Geo>()
-  })
-
-  it("type: Toolkit.run surfaces the namespaced tool's R (string E is absorbed)", () => {
-    const stream = Toolkit.run(kit, [])
-    expectTypeOf(stream).toEqualTypeOf<
-      Stream.Stream<import("./ToolEvent.js").ToolEvent, never, Geo>
-    >()
-  })
-
-  it("runtime: renames the tool and executes it under the prefixed name", async () => {
-    const call: ToolCall = {
-      type: "function_call",
-      call_id: "call_1",
-      name: "geo__search",
-      arguments: '{"q":"lisbon"}',
-    }
-    const events = await Effect.runPromise(
-      Stream.runCollect(Toolkit.run(kit, [call])).pipe(
-        Effect.provide(Layer.succeed(Geo, { lookup: (q) => Effect.succeed(`geo:${q}`) })),
-      ),
-    )
-    const outputs = events.filter(isOutput).map((e) => e.result)
-    expect(outputs).toHaveLength(1)
-    expect(outputs[0]).toMatchObject({ _tag: "Ok", tool: "geo__search", value: "geo:lisbon" })
-  })
-})
-
-describe("Toolkit.wrap - middleware", () => {
-  const Empty = Schema.Struct({})
-  type AuditShape = { readonly record: (name: string) => Effect.Effect<void> }
-  class Audit extends Context.Service<Audit, AuditShape>()("test/Audit") {}
-
-  const getWeather = Tool.make({
-    name: "get_weather",
-    description: "",
-    inputSchema: Tool.fromEffectSchema(Empty),
-    run: () => Effect.succeed({ tempC: 18 }),
-  })
-  const escalate = Tool.signal({
-    name: "escalate",
-    description: "",
-    inputSchema: Tool.fromEffectSchema(Empty),
-  })
-
-  // A middleware that needs the Audit service -> R2 = Audit.
-  const audited: Toolkit.Middleware<Audit> = (run, name) => (input, emit) =>
+  it.effect("compose fails on a clash between dynamic toolkits, naming both sources", () =>
     Effect.gen(function* () {
-      const a = yield* Audit
-      yield* a.record(name)
-      return yield* run(input, emit)
-    })
+      const error = yield* Effect.flip(
+        Toolkit.compose(Toolkit.fromArray([tool("search")]), Toolkit.fromArray([tool("search")])),
+      )
+      expect(error).toEqual(
+        new Toolkit.DuplicateToolName({ name: "search", sources: ["toolkit-0", "toolkit-1"] }),
+      )
+    }),
+  )
 
-  const call = (name: string, id: string): ToolCall => ({
-    type: "function_call",
-    call_id: id,
-    name,
-    arguments: "{}",
-  })
+  it.effect("namespaced tools compose and run under their prefixed, typed names", () =>
+    Effect.gen(function* () {
+      const github = Toolkit.makeNamespaced("github", tool("search"))
+      const linear = Toolkit.namespace("linear", Toolkit.make(tool("search")))
+      expectTypeOf(github.github__search.name).toEqualTypeOf<"github__search">()
 
-  it("unions the middleware's R2 into the toolkit's requirements", () => {
-    const wrapped = Toolkit.wrap(Toolkit.make(getWeather), audited)
-    const stream = Toolkit.run(wrapped, [])
-    expectTypeOf(stream).toEqualTypeOf<
-      Stream.Stream<import("./ToolEvent.js").ToolEvent, never, Audit>
-    >()
-  })
-
-  it("runs the wrapped handler and leaves non-local kinds untouched", async () => {
-    const recorded: Array<string> = []
-    const wrapped = pipe(Toolkit.make(getWeather, escalate), Toolkit.wrap(audited))
-
-    const events = await Effect.runPromise(
-      Toolkit.run(wrapped, [call("get_weather", "w1"), call("escalate", "s1")]).pipe(
-        Stream.runCollect,
-        Effect.provideService(Audit, { record: (n) => Effect.sync(() => void recorded.push(n)) }),
-      ),
-    )
-    const byCall = new Map(
-      Array.from(events)
-        .filter(isOutput)
-        .map((e) => [e.result.call_id, e.result] as const),
-    )
-
-    // Local tool ran through the middleware (audit fired).
-    expect(recorded).toEqual(["get_weather"])
-    const w = byCall.get("w1")
-    expect(w !== undefined && isOk(w) && w.value).toEqual({ tempC: 18 })
-    // Signal kind is left alone by wrap -> still reported non-local.
-    const s = byCall.get("s1")
-    expect(s?._tag === "Failure" && s.kind).toBe("non_local_tool")
-  })
-})
-
-describe("Toolkit.run - executor outcomes", () => {
-  const plain = <N extends string>(name: N, out: unknown) =>
-    Tool.make({
-      name,
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Effect.succeed(out),
-    })
-
-  it("absorbs a bare string failure as a tool_failed result", async () => {
-    const t = Tool.make({
-      name: "t",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Effect.fail("nope"),
-    })
-    const events = await Effect.runPromise(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
-    const result = events.filter(isOutput)[0]?.result
-    expect(result).toMatchObject({ _tag: "Failure", kind: "tool_failed", reason: "nope" })
-  })
-
-  it("absorbs Tool.fail with a custom kind", async () => {
-    const t = Tool.make({
-      name: "t",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Tool.fail("missing", { kind: "not_found" }),
-    })
-    const events = await Effect.runPromise(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
-    const result = events.filter(isOutput)[0]?.result
-    expect(result).toMatchObject({ _tag: "Failure", kind: "not_found", reason: "missing" })
-  })
-
-  it("propagates a typed non-sentinel failure on the stream", async () => {
-    const t = Tool.make({
-      name: "t",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Effect.fail(new AiError.RateLimited({ provider: "x", raw: null })),
-    })
-    const exit = await Effect.runPromiseExit(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
-    expect(exit._tag).toBe("Failure")
-  })
-
-  it("dies on a defect instead of masking it as a result", async () => {
-    const t = Tool.make({
-      name: "t",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Effect.die(new Error("boom")),
-    })
-    const exit = await Effect.runPromiseExit(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
-    expect(exit._tag).toBe("Failure")
-  })
-
-  it("streams progress events strictly before the terminal output", async () => {
-    const t = Tool.make({
-      name: "t",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: (_input, emit) =>
-        emit("a").pipe(Effect.andThen(emit("b")), Effect.andThen(Effect.succeed("done"))),
-    })
-    const events = await Effect.runPromise(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
-    expect(events.map((e) => e._tag)).toEqual(["Progress", "Progress", "Output"])
-    expect(events.filter(isProgress).map((p) => p.data)).toEqual(["a", "b"])
-  })
-
-  it("reports input validation failures as a result carrying the issue detail", async () => {
-    const t = Tool.make({
-      name: "t",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Schema.Struct({ x: Schema.Number })),
-      run: () => Effect.succeed(1),
-    })
-    const events = await Effect.runPromise(
-      runToArray(Toolkit.make(t), [toolCall("t", "1", '{"x":"nope"}')]),
-    )
-    const result = events.filter(isOutput)[0]?.result
-    expect(result).toMatchObject({ _tag: "Failure", kind: "input_validation_error" })
-    expect(result !== undefined && isFailure(result) && result.reason).toBeTruthy()
-  })
-
-  it("normalizes empty arguments to {} for a zero-arg tool", async () => {
-    const events = await Effect.runPromise(
-      runToArray(Toolkit.make(plain("t", "ok")), [toolCall("t", "1", "")]),
-    )
-    const result = events.filter(isOutput)[0]?.result
-    expect(result).toMatchObject({ _tag: "Ok", value: "ok" })
-  })
-
-  it("reports unparseable arguments as input_validation_error", async () => {
-    const events = await Effect.runPromise(
-      runToArray(Toolkit.make(plain("t", "ok")), [toolCall("t", "1", "not json")]),
-    )
-    const result = events.filter(isOutput)[0]?.result
-    expect(result).toMatchObject({ _tag: "Failure", kind: "input_validation_error" })
-  })
-
-  it("a call named constructor is unknown_tool, not non_local_tool", async () => {
-    const events = await Effect.runPromise(
-      runToArray(Toolkit.make(plain("t", "ok")), [toolCall("constructor", "1")]),
-    )
-    const result = events.filter(isOutput)[0]?.result
-    expect(result).toMatchObject({ _tag: "Failure", kind: "unknown_tool" })
-  })
-
-  it('serializes an undefined output as "null" on the wire', async () => {
-    const t = Tool.make({
-      name: "t",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Effect.void,
-    })
-    const events = await Effect.runPromise(runToArray(Toolkit.make(t), [toolCall("t", "1")]))
-    const result = events.filter(isOutput)[0]?.result
-    expect(result !== undefined && toToolCallOutput(result).output).toBe("null")
-  })
-
-  it("preserves call order with concurrency 1", async () => {
-    const kit = Toolkit.make(plain("a", "A"), plain("b", "B"))
-    const events = await Effect.runPromise(
-      runToArray(kit, [toolCall("a", "a1"), toolCall("b", "b1")], { concurrency: 1 }),
-    )
-    expect(events.filter(isOutput).map((e) => e.result.call_id)).toEqual(["a1", "b1"])
-  })
-
-  it("type: run of a describeFailures toolkit has no stream error", () => {
-    const t = Tool.make({
-      name: "t",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Effect.fail(new AiError.RateLimited({ provider: "x", raw: null })),
-    })
-    const kit = Toolkit.describeFailures(Toolkit.make(t), AiError.describe)
-    const stream = Toolkit.run(kit, [])
-    expectTypeOf(stream).toEqualTypeOf<Stream.Stream<ToolEvent, never, never>>()
-  })
-
-  it("type: run of a typed toolkit propagates the tool's E", () => {
-    const t = Tool.make({
-      name: "t",
-      description: "",
-      inputSchema: Tool.fromEffectSchema(Empty),
-      run: () => Effect.fail(new AiError.RateLimited({ provider: "x", raw: null })),
-    })
-    const stream = Toolkit.run(Toolkit.make(t), [])
-    expectTypeOf(stream).toEqualTypeOf<Stream.Stream<ToolEvent, AiError.RateLimited, never>>()
-  })
+      const both = yield* Toolkit.compose(github, linear)
+      const [event] = yield* outcomes(both, [call("linear__search", "1")])
+      expect(event).toMatchObject({ tool: "linear__search", result: Result.succeed(0) })
+    }),
+  )
 })

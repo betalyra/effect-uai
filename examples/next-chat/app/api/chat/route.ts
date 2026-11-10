@@ -1,0 +1,169 @@
+/**
+ * The `useChat` page's route (`/`). It replaces a typical
+ * `streamText(...).toUIMessageStreamResponse()` handler with an effect-uai
+ * agent loop, and showcases what the framework gives you for free:
+ *
+ *   - an agentic tool loop (weather from Open-Meteo, the date; `lib/tools.ts`)
+ *   - realistic model fallback (primary -> secondary on retryable failures)
+ *   - live throughput metrics (tok/s + TTFT) streamed as AI SDK data parts,
+ *     with settled usage as message metadata
+ *   - structured mid-stream abort (the client's Stop button interrupts the
+ *     provider call via the request's AbortSignal)
+ *
+ * `app/page.tsx` stays a stock `useChat` client.
+ */
+import * as Messages from "@effect-uai/ai-sdk/Messages"
+import * as UIMessageStream from "@effect-uai/ai-sdk/UIMessageStream"
+import * as Items from "@effect-uai/core/Items"
+import type { LanguageModelService } from "@effect-uai/core/LanguageModel"
+import { loop, next, onTurnComplete, stop } from "@effect-uai/core/Loop"
+import * as Metrics from "@effect-uai/core/Metrics"
+import * as SSE from "@effect-uai/core/SSE"
+import type * as ToolEvent from "@effect-uai/core/ToolEvent"
+import * as Toolkit from "@effect-uai/core/Toolkit"
+import * as Turn from "@effect-uai/core/Turn"
+import { Array as Arr, Duration, Effect, Match, Result, Schema, Stream, pipe } from "effect"
+import { FetchHttpClient } from "effect/http"
+import { readProvider } from "../../../lib/model"
+import { basicToolkit as toolkit } from "../../../lib/tools"
+
+// ---------------------------------------------------------------------------
+// The loop: agentic tool calls, with a realistic model fallback. Each tier is
+// tried in order; a retryable failure (RateLimited / Unavailable) advances to
+// the next tier on the same history. First clean turn without tool calls ends.
+// ---------------------------------------------------------------------------
+
+type Tier = {
+  readonly name: string
+  readonly model: string
+  readonly service: LanguageModelService
+}
+
+type State = { readonly history: ReadonlyArray<Items.HistoryItem>; readonly tier: number }
+
+const conversation = (tiers: ReadonlyArray<Tier>, history: ReadonlyArray<Items.HistoryItem>) =>
+  pipe(
+    { history, tier: 0 } satisfies State,
+    loop((state: State) =>
+      Effect.gen(function* () {
+        const tier = tiers[state.tier]
+        if (tier === undefined) return stop()
+
+        const advance = Effect.logWarning(`${tier.name} unavailable, falling back`).pipe(
+          Effect.as(next({ ...state, tier: state.tier + 1 })),
+        )
+
+        return tier.service
+          .streamTurn({ history: state.history, model: tier.model, tools: toolkit })
+          .pipe(
+            onTurnComplete((turn) =>
+              Effect.sync(() => {
+                const calls = Turn.getToolCalls(turn)
+                if (calls.length === 0) return stop()
+                return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
+              }),
+            ),
+            Stream.catchTag("RateLimited", () => Stream.unwrap(advance)),
+            Stream.catchTag("Unavailable", () => Stream.unwrap(advance)),
+          )
+      }),
+    ),
+  )
+
+// ---------------------------------------------------------------------------
+// Metrics -> AI SDK emissions. `allMetrics` passes InteractionEvents through
+// and injects MetricEvents; we map those onto transient `data-metrics` parts
+// (live tok/s + TTFT badge) and settled `message-metadata` (usage footer).
+// ---------------------------------------------------------------------------
+
+const estimateTokens = (event: Turn.TurnEvent): Effect.Effect<number> =>
+  Effect.succeed(event._tag === "TextDelta" ? [...event.text].length / 4 : 0)
+
+type Sample =
+  | Metrics.TimeToFirstToken
+  | Metrics.Throughput
+  | Metrics.TokenTotals
+  | Metrics.TimeToCompletion
+
+const liveMetric = (data: unknown): UIMessageStream.Emission =>
+  UIMessageStream.dataPart("metrics", data, { id: "metrics", transient: true })
+
+const fromMetric = (event: Metrics.MetricEvent): Result.Result<UIMessageStream.Emission, void> =>
+  Match.value(event as Sample).pipe(
+    Match.tag("TimeToFirstToken", (e) =>
+      Result.succeed(liveMetric({ ttftMs: Math.round(Duration.toMillis(e.elapsed)) })),
+    ),
+    Match.tag("Throughput", (e) =>
+      Result.succeed(liveMetric({ tokps: Math.round(e.ratePerSecond) })),
+    ),
+    Match.tag("TokenTotals", (e) =>
+      Result.succeed(UIMessageStream.messageMetadata({ usage: e.usage })),
+    ),
+    Match.orElse(() => Result.failVoid),
+  )
+
+// Normalize the loop's wide event stream into encoder emissions: TurnEvents
+// pass through, a tool's outcome becomes its `function_call_output`, partials
+// are dropped, and metrics become data parts / metadata.
+const toEmissions = (
+  event: Turn.TurnEvent | ToolEvent.ToolEvent | Metrics.MetricEvent,
+): Effect.Effect<ReadonlyArray<UIMessageStream.Emission>, Schema.SchemaError> => {
+  if (Metrics.isMetricEvent(event)) {
+    return Effect.succeed(
+      Result.match(fromMetric(event), { onSuccess: Arr.of, onFailure: () => [] }),
+    )
+  }
+  if (event._tag === "Output") return Effect.map(Toolkit.output(toolkit, event), Arr.of)
+  if (event._tag === "Partial") return Effect.succeed([])
+  return Effect.succeed([event])
+}
+
+// ---------------------------------------------------------------------------
+// Abort: complete when the client disconnects (useChat's Stop button), so
+// `Stream.interruptWhen` tears the loop down and drops the provider request.
+// ---------------------------------------------------------------------------
+
+const whenAborted = (signal: AbortSignal): Effect.Effect<void> =>
+  Effect.callback<void>((resume) => {
+    if (signal.aborted) return resume(Effect.void)
+    const onAbort = () => resume(Effect.void)
+    signal.addEventListener("abort", onAbort, { once: true })
+    return Effect.sync(() => signal.removeEventListener("abort", onAbort))
+  })
+
+// ---------------------------------------------------------------------------
+
+// The provider comes from the environment (`lib/model.ts`), so the two tiers
+// below are one service and two model ids.
+
+const buildStream = (history: ReadonlyArray<Items.HistoryItem>) =>
+  Effect.gen(function* () {
+    const { fallback, model, service } = yield* readProvider
+    const tiers: ReadonlyArray<Tier> = [
+      { name: model, model, service },
+      { name: fallback, model: fallback, service },
+    ]
+    return conversation(tiers, history)
+  })
+
+export async function POST(request: Request): Promise<Response> {
+  const { messages } = await request.json()
+  const history = Messages.decodeMessages(messages)
+
+  const events = Stream.unwrap(buildStream(history)).pipe(
+    Metrics.allMetrics({
+      throughput: { every: "500 millis", unit: "token", tokenizer: estimateTokens },
+    }),
+    Stream.mapEffect(toEmissions),
+    Stream.flattenIterable,
+    Stream.interruptWhen(whenAborted(request.signal)),
+    Stream.provide(FetchHttpClient.layer),
+  )
+
+  const body = events.pipe(
+    UIMessageStream.toUIMessageStream(crypto.randomUUID()),
+    SSE.toBytes,
+    Stream.toReadableStream,
+  )
+  return new Response(body, { headers: UIMessageStream.responseHeaders })
+}

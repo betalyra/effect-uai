@@ -29,6 +29,7 @@
     "@effect-uai/tavily": "workspace:*",
     "@effect-uai/telegram": "workspace:*",
     "@effect-uai/typesafe-ai": "workspace:*",
+    "@effect-uai/ui": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

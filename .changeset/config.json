@@ -29,6 +29,7 @@
       "@effect-uai/tavily",
       "@effect-uai/telegram",
       "@effect-uai/typesafe-ai",
+      "@effect-uai/ui",
       "effect-uai"
     ]
   ],
@@ -37,6 +38,10 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": ["@effect-uai/recipes", "@effect-uai/recipe-kit"],
+  "snapshot": {
+    "useCalculatedVersion": true,
+    "prereleaseTemplate": "{tag}-{datetime}"
+  },
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
   }

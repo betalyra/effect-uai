@@ -4,9 +4,8 @@
  * dim underneath. Recipes rendering a loop this way should use this rather
  * than re-deriving it.
  */
-import { Effect, Match } from "effect"
-import { ToolEvent } from "@effect-uai/core/ToolEvent"
-import { ToolResult } from "@effect-uai/core/ToolResult"
+import { Effect, Match, Result } from "effect"
+import type { ToolEvent } from "@effect-uai/core/ToolEvent"
 import type { TurnEvent } from "@effect-uai/core/Turn"
 
 /** What an agent loop emits: model events plus tool-execution events. */
@@ -29,10 +28,16 @@ export type RenderOptions = {
 const truncate = (s: string, max: number | undefined): string =>
   max === undefined || s.length <= max ? s : `${s.slice(0, max)}…`
 
-const renderResult = (result: ToolResult, max: number | undefined): string =>
-  ToolResult.$match(result, {
-    Ok: ({ value }) => truncate(JSON.stringify(value), max),
-    Failure: ({ kind, reason }) => `failed: ${kind}${reason === undefined ? "" : ` (${reason})`}`,
+// Bytes print as their size, not as a byte-by-byte object.
+const show = (value: unknown): string =>
+  JSON.stringify(value, (_key, v: unknown) =>
+    v instanceof Uint8Array ? `<${v.length} bytes>` : v,
+  ) ?? String(value)
+
+const renderResult = (result: Result.Result<unknown, unknown>, max: number | undefined): string =>
+  Result.match(result, {
+    onSuccess: (value) => truncate(show(value), max),
+    onFailure: (error) => `failed: ${truncate(show(error), max)}`,
   })
 
 /**

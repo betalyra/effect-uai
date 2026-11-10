@@ -141,3 +141,10 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | Recipe                                       | One-line                                                                                                                            |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | [Messenger agent](/recipes/messenger-agent/) | Put the agent where people already are. Mention it in Telegram; it types, searches, draws, and streams the answer into one message. |
+
+## Agentic UI
+
+| Recipe                                 | One-line                                                                                                        |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [Direct chat](/recipes/direct-chat/)   | A chat page where each message is one request and its response is the answer. The server remembers the chat.    |
+| [Durable chat](/recipes/durable-chat/) | A chat that survives a page reload: answers keep going on the server, messages queue, the page re-opens it all. |

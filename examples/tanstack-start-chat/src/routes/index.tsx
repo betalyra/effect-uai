@@ -1,0 +1,178 @@
+import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import * as ToolDecision from "@effect-uai/core/ToolDecision"
+import * as Input from "@effect-uai/ui/Input"
+import type { Outcome } from "@effect-uai/ui/RunEvent"
+import * as RunView from "@effect-uai/ui/RunView"
+import type * as Thread from "@effect-uai/ui/Thread"
+import { createFileRoute } from "@tanstack/react-router"
+import { Match } from "effect"
+import { useState } from "react"
+import { Streamdown } from "streamdown"
+import { chat } from "../chat"
+import type { ChatPayloads } from "../chat-ui"
+
+export const Route = createFileRoute("/")({ component: Chat })
+
+type Run = RunView.RunView<ChatPayloads>
+type ToolBlock = Extract<RunView.Block<ChatPayloads>, { type: "tool" }>
+type Failure = ChatPayloads["tool"]["failure"]
+
+// The answer, or the refusal when the model declined.
+const answer = (run: Run) => RunView.text(run) || (RunView.refusal(run) ?? "")
+
+const runNote = (run: Run): string | undefined => {
+  if (run.status === "stopped") return "stopped"
+  if (run.status === "failed") return `failed: ${run.error?.reason}`
+  return undefined
+}
+
+// A failed call carries a typed error: the tool's own, core's, or the app's closing.
+const failure = (error: Failure): string =>
+  Match.value(error).pipe(
+    Match.tag("Denied", () => "you declined"),
+    Match.tag("Superseded", () => "skipped: you asked something else"),
+    Match.tag("CityNotFound", (e) => `no city called ${e.city}`),
+    Match.tag("UnknownTimezone", (e) => `unknown timezone ${e.timezone}`),
+    Match.orElse((e) => `failed: ${e.message}`),
+  )
+
+// The value of a successful call, typed by the (narrowed) block's tool.
+const valueOf = <V, E>(block: { readonly outcome?: Outcome<V, E> }): V | undefined =>
+  block.outcome?._tag === "Success" ? block.outcome.value : undefined
+
+// Narrowing by name gives the tool's own types: `observedAt`, `now`, `sentAt` are Dates.
+const toolSummary = (block: ToolBlock): string => {
+  if (block.outcome?._tag === "Failure") return `${block.name}: ${failure(block.outcome.error)}`
+  if (block.name === "get_weather") {
+    const weather = valueOf(block)
+    if (weather === undefined) return `weather: ${block.status}`
+    const { city, country, temperatureC, windSpeedKmh, observedAt } = weather
+    return `${city}, ${country}: ${temperatureC}°C, wind ${windSpeedKmh} km/h (${observedAt.toLocaleTimeString()})`
+  }
+  if (block.name === "get_date") {
+    const date = valueOf(block)
+    if (date === undefined) return `date: ${block.status}`
+    return `${date.now.toLocaleString(undefined, { timeZone: date.timezone })} (${date.timezone})`
+  }
+  if (block.name === "send_email" && block.input !== undefined) {
+    const sent = valueOf(block)?.sentAt
+    return sent === undefined
+      ? `email to ${block.input.to}: "${block.input.subject}"`
+      : `email sent to ${block.input.to} at ${sent.toLocaleTimeString()}`
+  }
+  if (block.name === "book_table" && block.input !== undefined) {
+    const { restaurant, time, guests } = block.input
+    return `${restaurant}, ${time}, ${guests} guests${valueOf(block) === undefined ? "" : ": booked"}`
+  }
+  return `${block.name}: ${block.status}`
+}
+
+function ToolCard(props: { block: ToolBlock }) {
+  const submit = useAtomSet(chat.submit)
+  const { block } = props
+  // The page only votes; the server checks the call is waiting, and decides.
+  const vote = (approved: boolean) =>
+    submit(
+      Input.resolve([
+        {
+          callId: block.id,
+          decision: approved ? ToolDecision.Default.Approve() : ToolDecision.Default.Deny(),
+        },
+      ]),
+    )
+  return (
+    <div className="tool">
+      <span>{toolSummary(block)}</span>
+      {block.status === "awaiting-approval" && (
+        <>
+          <button type="button" onClick={() => vote(true)}>
+            Approve
+          </button>
+          <button type="button" onClick={() => vote(false)}>
+            Deny
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+const liveNote = (text: string) => (text === "" ? "thinking" : "streaming")
+
+// A verdict has no text; only messages show as bubbles.
+function UserBubble(props: { value: Thread.UserContent }) {
+  const text = Input.text(props.value)
+  return text === "" ? null : <div className="user">{text}</div>
+}
+
+// Live metrics (the contract's `live` values) while it streams; token usage once known.
+const stats = (run: Run): ReadonlyArray<string> => [
+  ...(run.live.ttftMs === undefined ? [] : [`TTFT ${run.live.ttftMs} ms`]),
+  ...(run.live.tokensPerSecond === undefined ? [] : [`${run.live.tokensPerSecond} tok/s`]),
+  ...(run.usage?.output_tokens === undefined
+    ? []
+    : [`${run.usage.input_tokens ?? "?"} in / ${run.usage.output_tokens} out tokens`]),
+]
+
+function Assistant(props: { run: Run; live: boolean }) {
+  const text = answer(props.run)
+  const note = props.live ? liveNote(text) : runNote(props.run)
+  const line = [...(note === undefined ? [] : [note]), ...stats(props.run)].join(" · ")
+  return (
+    <div className="assistant">
+      {text === "" && props.live ? "…" : <Streamdown className="markdown">{text}</Streamdown>}
+      {props.run.blocks.flatMap((b) =>
+        b.type === "tool" ? [<ToolCard key={b.id} block={b} />] : [],
+      )}
+      {line !== "" && <small>{line}</small>}
+    </div>
+  )
+}
+
+function Chat() {
+  const thread = useAtomValue(chat.state)
+  const submit = useAtomSet(chat.submit)
+  const stop = useAtomSet(chat.stop)
+  const [prompt, setPrompt] = useState("")
+  const busy = thread.active !== null
+
+  return (
+    <main>
+      <h1>TanStack Start chat</h1>
+      <div id="log">
+        <div>
+          {thread.messages.map((m) =>
+            m.role === "user" ? (
+              <UserBubble key={m.id} value={m.value} />
+            ) : (
+              <Assistant key={m.id} run={m.value} live={false} />
+            ),
+          )}
+          {thread.active !== null && <Assistant run={thread.active} live />}
+        </div>
+      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          const text = prompt.trim()
+          if (text === "") return
+          submit(Input.submit(text))
+          setPrompt("")
+        }}
+      >
+        <input
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Ask about the weather, or to send an email or book a table"
+          autoFocus
+        />
+        <button type="submit" disabled={busy}>
+          Send
+        </button>
+        <button type="button" disabled={!busy} onClick={() => stop()}>
+          Stop
+        </button>
+      </form>
+    </main>
+  )
+}

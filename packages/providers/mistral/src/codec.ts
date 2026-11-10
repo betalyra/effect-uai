@@ -11,12 +11,14 @@ export {
   accumulatorToTurn,
   applyChunk,
   emptyAccumulator,
+  rejectToolOutputMedia,
   responseFormatWire,
   toolsWire,
 } from "@effect-uai/chat-completions/codec"
 import {
   type WireChunk,
   decodeChunk as decodeChunkShared,
+  toolOutputText,
 } from "@effect-uai/chat-completions/codec"
 
 // ---------------------------------------------------------------------------
@@ -105,7 +107,7 @@ const foldItem = (acc: ReadonlyArray<WireMessage>, item: HistoryItem): ReadonlyA
       function_call: (f) => appendToolCall(acc, f.call_id, f.name, f.arguments),
       function_call_output: (o) => [
         ...acc,
-        { role: "tool", tool_call_id: o.call_id, content: o.output },
+        { role: "tool", tool_call_id: o.call_id, content: toolOutputText(o) },
       ],
       // Reasoning items are not replayed to the chat-completions endpoint.
       reasoning: () => acc,

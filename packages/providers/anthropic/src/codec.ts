@@ -2,6 +2,7 @@ import { Array as Arr, Match, Option, Order, Result, Schema, pipe } from "effect
 import { Base64 } from "effect/encoding"
 import * as Items from "@effect-uai/core/Items"
 import { JsonParseError } from "@effect-uai/core/JSONL"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import type { Turn } from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
@@ -60,8 +61,19 @@ type RequestTextContent = {
 type RequestToolResultContent = {
   readonly type: "tool_result"
   readonly tool_use_id: string
-  readonly content: string
+  readonly content: string | ReadonlyArray<RequestToolResultBlock>
+  readonly is_error?: boolean
 }
+
+type RequestDocumentContent = {
+  readonly type: "document"
+  readonly source:
+    | { readonly type: "url"; readonly url: string }
+    | { readonly type: "base64"; readonly media_type: string; readonly data: string }
+  readonly title?: string
+}
+
+type RequestToolResultBlock = RequestTextContent | RequestImageContent | RequestDocumentContent
 
 type RequestToolUseContent = {
   readonly type: "tool_use"
@@ -135,6 +147,45 @@ const imageSourceToWire = Match.type<Items.InputImage["source"]>().pipe(
   Match.exhaustive,
 )
 
+const fileSourceToWire = Match.type<Items.InputFile["source"]>().pipe(
+  Match.tag("url", (s): RequestDocumentContent["source"] => ({ type: "url", url: s.url })),
+  Match.tag("base64", (s): RequestDocumentContent["source"] => ({
+    type: "base64",
+    media_type: s.mimeType,
+    data: s.base64,
+  })),
+  Match.tag("bytes", (s): RequestDocumentContent["source"] => ({
+    type: "base64",
+    media_type: s.mimeType,
+    data: Base64.encode(s.bytes),
+  })),
+  Match.exhaustive,
+)
+
+const toolResultBlock = Match.type<Items.ToolOutputContent>().pipe(
+  Match.discriminatorsExhaustive("type")({
+    input_text: (p): RequestToolResultBlock => ({ type: "text", text: ToolOutput.partText(p) }),
+    input_json: (p): RequestToolResultBlock => ({ type: "text", text: ToolOutput.partText(p) }),
+    input_image: (p): RequestToolResultBlock => ({
+      type: "image",
+      source: imageSourceToWire(p.source),
+    }),
+    input_file: (p): RequestToolResultBlock => ({
+      type: "document",
+      source: fileSourceToWire(p.source),
+      ...(p.filename !== undefined && { title: p.filename }),
+    }),
+  }),
+)
+
+// Text and JSON only: one string. With media: image and document blocks.
+const toolResult = (o: Items.ToolCallOutput): RequestToolResultContent => ({
+  type: "tool_result",
+  tool_use_id: o.call_id,
+  content: Option.getOrElse(ToolOutput.text(o.output), () => o.output.map(toolResultBlock)),
+  ...(o.isError === true && { is_error: true }),
+})
+
 const userContentBlock = (
   block: Items.ContentBlock,
 ): Result.Result<RequestUserContentBlock, void> =>
@@ -179,9 +230,7 @@ const itemToUserBlocks = (item: Items.HistoryItem): ReadonlyArray<RequestUserCon
       message: (m): ReadonlyArray<RequestUserContentBlock> =>
         m.role === "user" ? pipe(m.content, Arr.filterMap(userContentBlock)) : [],
       function_call: (): ReadonlyArray<RequestUserContentBlock> => [],
-      function_call_output: (o): ReadonlyArray<RequestUserContentBlock> => [
-        { type: "tool_result", tool_use_id: o.call_id, content: o.output },
-      ],
+      function_call_output: (o): ReadonlyArray<RequestUserContentBlock> => [toolResult(o)],
       reasoning: (): ReadonlyArray<RequestUserContentBlock> => [],
     }),
   )

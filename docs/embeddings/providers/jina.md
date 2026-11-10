@@ -186,4 +186,4 @@ encoding) maps to `AiError.InvalidRequest` with `param: "encoding"`.
 - [Embedding model](/embeddings/): the cross-provider concept.
 - [Multivector embedding](/embeddings/multivector/): late-interaction
   scenario built on `jina-embeddings-v4`.
-- [Reranking](/reranking/): coming soon, same provider, same auth.
+- [Reranking](/reranking/): `JinaReranker`, same provider, same auth.

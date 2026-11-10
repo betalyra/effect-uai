@@ -17,8 +17,8 @@ effect-uai is not a framework. There's no runtime to learn, no
 orchestrator to override, no graph to fight. You get typed streaming
 primitives (one turn, one tool call) and compose the loop yourself.
 
-OpenAI Responses, Anthropic, Gemini, and any OpenAI-compatible gateway
-normalize to one `TurnEvent` union. State is yours. The loop is yours.
+OpenAI Responses, Anthropic, Gemini, Mistral, and any OpenAI-compatible
+gateway normalize to one `TurnEvent` union. State is yours. The loop is yours.
 
 <p align="center">
   <a href="https://effect-uai.com/intro/?play=1&ref=readme">
@@ -68,18 +68,14 @@ export const conversation = loop(initial, (state) =>
     return oai
       .streamTurn({ history: state.history, model, tools: toolkit }) // stream text, reasoning, tool events
       .pipe(
-        onTurnComplete((turn) =>
-          Effect.sync(() => {
-            const calls = Turn.getToolCalls(turn) // approve, deny, audit, batch (it's your code)
-            if (calls.length === 0) return stop() // stop on a final answer, a budget, your call
-            return Toolkit.run(toolkit, calls).pipe(
-              // run typed Effect tools
-              Toolkit.continueWithResults(
-                Toolkit.appendToolResults(state, turn), // fold results back into your state
-              ),
-            )
-          }),
-        ),
+        onTurnComplete((turn) => {
+          const calls = Turn.getToolCalls(turn) // approve, deny, audit, batch (it's your code)
+          if (calls.length === 0) return stop() // stop on a final answer, a budget, your call
+          return Toolkit.run(toolkit, calls).pipe(
+            // run typed Effect tools
+            Toolkit.next(toolkit, state, turn), // fold results back into your state
+          )
+        }),
       )
   }),
 )
@@ -117,6 +113,7 @@ fallback, see the [docs](#docs--learn) or the
 | [`@effect-uai/telegram`](./packages/providers/telegram)                 | Telegram `Messenger`: your agent as a bot over the Bot API. DMs, group mentions and commands in, streamed HTML replies, media and reactions out. Long-polling, no SDK.                                                                                                                                                                      |
 | [`@effect-uai/discord`](./packages/providers/discord)                   | Discord `Messenger`: one gateway websocket plus the v10 REST API. DMs, mentions, threads and buttons in, streamed markdown replies, media and reactions out. No discord.js.                                                                                                                                                                 |
 | [`@effect-uai/slack`](./packages/providers/slack)                       | Slack `Messenger`: Socket Mode plus the Web API. Mentions, DMs, slash commands and buttons in, streamed markdown replies in a thread, files and reactions out. No Bolt.                                                                                                                                                                     |
+| [`@effect-uai/ui`](./packages/ui)                                       | Agentic UI: a resumable run-event protocol, projection from your loop, and client folds and Effect atoms that turn it into typed state for any framework (React, FoldKit, plain DOM).                                                                                                                                                       |
 | [`@effect-uai/ai-sdk`](./packages/compat/ai-sdk)                        | Vercel AI SDK compatibility: render a `TurnEvent` stream as a `useChat` UI Message Stream.                                                                                                                                                                                                                                                  |
 
 Each provider is its own package - edge / browser builds only pull in
@@ -128,6 +125,8 @@ what you actually use.
 .
 ├── packages/
 │   ├── core/                  # @effect-uai/core - primitives, no provider deps
+│   ├── ui/                    # @effect-uai/ui - agentic UI protocol, folds, atoms
+│   ├── retrieval/             # @effect-uai/retrieval - chunking, rank fusion, tokenizer
 │   ├── compat/
 │   │   └── ai-sdk/            # @effect-uai/ai-sdk - Vercel AI SDK UI Message Stream
 │   └── providers/
@@ -153,15 +152,14 @@ what you actually use.
 │       ├── telegram/          # @effect-uai/telegram - Messenger over the Bot API
 │       ├── discord/           # @effect-uai/discord - Messenger over gateway + REST
 │       └── slack/             # @effect-uai/slack - Messenger over Socket Mode + Web API
-│   └── retrieval/             # @effect-uai/retrieval - chunking, rank fusion, tokenizer
-├── recipes/                   # 42 worked recipes (type-checked, tested) covering
+├── recipes/                   # 40+ worked recipes (type-checked, tested) covering
 │                              # tools, approvals, fallback, voice, realtime, retrieval, MCP, chat bots, …
 ├── recipes-extras/            # 3 recipes needing extra infra (agentic-search,
 │                              # contextual-retrieval, sandbox-code-interpreter)
 ├── docs/                      # Source for the docs site (concepts, recipes, providers)
 ├── webpage/                   # Astro/Starlight site that renders docs/
 ├── skills/                    # Agent skills that teach a coding agent this library
-├── examples/                  # Standalone apps; installed on their own, not workspace-globbed
+├── examples/                  # Standalone apps (Next.js, TanStack Start, FoldKit); installed on their own
 └── integration-tests/         # Live-system smoke tests; run manually, not part of CI
 ```
 
@@ -169,12 +167,9 @@ A recipe folder typically contains:
 
 - `recipe.ts` - the building blocks (tools, state, body), reusable in tests
 - `app.ts` - provider wiring and rendering, runtime-agnostic
-- `run-node.ts` / `run-bun.ts` / `run-deno.ts` - attach that runtime's `HttpClient`
+- `run.ts` - the entry point; attaches the platform `HttpClient` for whichever runtime starts it
 - `recipe.test.ts` - vitest tests against `MockProvider`
 - `README.md` - the page that's mirrored in the docs site
-
-Older recipes still use a flatter `index.ts` / `index.test.ts` / `run.ts`
-shape; both are current, and recipes migrate as they're touched.
 
 ## Docs / learn
 
@@ -186,9 +181,9 @@ Recommended reading order:
 
 1. [One turn is a stream](https://effect-uai.com/start/getting-started/) - the smallest provider-agnostic primitive.
 2. [Basic usage](https://effect-uai.com/recipes/basic-usage/) - the core agent harness: state, stream, tools, continuation.
-3. [The loop primitive](https://effect-uai.com/language-models/loop/) - what `loop` is, its shape, and `streamUntilComplete`.
+3. [The loop primitive](https://effect-uai.com/language-models/loop/) - what `loop` is, its step type, and `onTurnComplete`.
 4. [Items and turns](https://effect-uai.com/language-models/items-and-turns/) - the conversation as a flat list, the assembled turn, the event stream.
-5. [Tools and toolkits](https://effect-uai.com/language-models/tools/) - `Tool.make` (with progress via `emit`), `Toolkit.make`, approval planners, `ToolEvent`.
+5. [Tools and toolkits](https://effect-uai.com/language-models/tools/) - `Tool.make` (an Effect or a Stream, typed outputs and errors), `Tool.declare`, `Toolkit.run` / `Toolkit.next`, `ToolEvent`.
 6. [MCP](https://effect-uai.com/language-models/mcp/) - point at an MCP server and its tools become a `Toolkit`.
 
 Then dip into recipes for whatever pattern you need.
@@ -201,10 +196,12 @@ pnpm test          # vitest run across all workspaces
 pnpm typecheck     # tsc --noEmit
 ```
 
-To run a recipe end-to-end against real providers:
+To run a recipe end-to-end against a real provider (here any OpenAI-compatible
+gateway; each recipe's README lists its flags and keys):
 
 ```bash
-OPENAI_API_KEY=sk-... pnpm tsx recipes/basic-usage/run-node.ts
+LLM_API_KEY=... pnpm tsx recipes/basic-usage/run.ts \
+  --base-url https://router.requesty.ai/v1 --model moonshotai/kimi-k3 --provider requesty
 ```
 
 ### Nix dev shell (optional)
@@ -224,6 +221,24 @@ nix develop          # drops you into a shell with node, pnpm and deno
 The repo also ships an `.envrc`, so with [direnv](https://direnv.net/)
 installed the shell loads automatically when you `cd` in - just run
 `direnv allow` once. Without direnv the file is inert and ignored.
+
+## Contributing
+
+Development happens on the `dev` branch; `main` tracks the latest release. Base
+your branch and pull request on `dev`.
+
+- **Open an issue first** for anything that changes the design: a new core
+  primitive, a change to an existing API, a different way of doing something
+  the library already does. We'd rather agree on the shape before you write
+  the code, so you don't spend time on work we can't adopt as is or would
+  have to change substantially.
+- **Pull requests are welcome** for bug fixes, docs fixes and small
+  improvements, and for additions that follow the existing design: a new
+  provider, a capability for an existing service, a recipe. Look at a
+  neighbouring package or recipe and match its shape.
+
+Before you open a pull request, run `pnpm typecheck` and `pnpm test`. If it
+changes a published package, add a changeset with `pnpm changeset`.
 
 ## Contributors
 

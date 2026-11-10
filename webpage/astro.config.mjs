@@ -120,11 +120,17 @@ export default defineConfig({
           label: "Language models",
           items: [
             { label: "Overview", slug: "language-models" },
-            { label: "Items and turns", slug: "language-models/items-and-turns" },
+            {
+              label: "Items and turns",
+              slug: "language-models/items-and-turns",
+            },
             { label: "The loop primitive", slug: "language-models/loop" },
             { label: "Tools and toolkits", slug: "language-models/tools" },
             { label: "MCP", slug: "language-models/mcp" },
-            { label: "Images in a turn", slug: "language-models/images-in-turns" },
+            {
+              label: "Images in a turn",
+              slug: "language-models/images-in-turns",
+            },
             {
               label: "Advanced",
               collapsed: true,
@@ -140,7 +146,10 @@ export default defineConfig({
                 { label: "Google", slug: "providers/gemini" },
                 { label: "Anthropic", slug: "providers/anthropic" },
                 { label: "Mistral", slug: "providers/mistral" },
-                { label: "Chat Completions (legacy)", slug: "providers/openai-compatible" },
+                {
+                  label: "Chat Completions (legacy)",
+                  slug: "providers/openai-compatible",
+                },
               ],
             },
             {
@@ -190,25 +199,109 @@ export default defineConfig({
           ],
         },
         {
-          label: "Image generation",
+          label: "Agentic UI",
           items: [
-            { label: "Overview", slug: "image-generation" },
+            { label: "Overview", slug: "agentic-ui" },
             {
-              label: "Providers",
+              label: "Frameworks",
               items: [
-                { label: "OpenAI", slug: "image-generation/providers/openai" },
-                { label: "Google", slug: "image-generation/providers/google" },
-                { label: "Fal", slug: "image-generation/providers/fal" },
+                { label: "Next.js", slug: "agentic-ui/nextjs" },
+                { label: "TanStack Start", slug: "agentic-ui/tanstack-start" },
+                { label: "FoldKit", slug: "agentic-ui/foldkit" },
               ],
             },
             {
               label: "Recipes",
               collapsed: true,
               items: [
-                { label: "Storyboard", slug: "recipes/storyboard" },
+                { label: "Direct chat", slug: "recipes/direct-chat" },
+                { label: "Durable chat", slug: "recipes/durable-chat" },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Embeddings",
+          items: [
+            { label: "Overview", slug: "embeddings" },
+            { label: "Multimodal embedding", slug: "embeddings/multimodal" },
+            { label: "Multivector embedding", slug: "embeddings/multivector" },
+            {
+              label: "Providers",
+              items: [
                 {
-                  label: "Conversational image edit",
-                  slug: "recipes/conversational-image-edit",
+                  label: "OpenAI",
+                  slug: "embeddings/providers/openai",
+                },
+                { label: "Google", slug: "embeddings/providers/gemini" },
+                { label: "Jina", slug: "embeddings/providers/jina" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Basic embedding", slug: "recipes/basic-embedding" },
+                {
+                  label: "Multimodal embedding",
+                  slug: "embeddings/multimodal",
+                },
+                {
+                  label: "Multivector embedding",
+                  slug: "embeddings/multivector",
+                },
+                {
+                  label: "Retrieve and rerank",
+                  slug: "recipes/retrieve-and-rerank",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Retrieval",
+          items: [
+            { label: "Overview", slug: "retrieval" },
+            { label: "Chunking", slug: "retrieval/chunking" },
+            { label: "Reranking", slug: "reranking" },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                {
+                  label: "Retrieve and rerank",
+                  slug: "recipes/retrieve-and-rerank",
+                },
+                { label: "Agentic search", slug: "recipes/agentic-search" },
+                {
+                  label: "Contextual retrieval",
+                  slug: "recipes/contextual-retrieval",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Web search",
+          items: [
+            { label: "Overview", slug: "search" },
+            {
+              label: "Providers",
+              items: [
+                { label: "Perplexity", slug: "search/providers/perplexity" },
+                { label: "Exa", slug: "search/providers/exa" },
+                { label: "Tavily", slug: "search/providers/tavily" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Grounded answer", slug: "recipes/grounded-answer" },
+                { label: "Deep research", slug: "recipes/deep-research" },
+                {
+                  label: "Native deep research",
+                  slug: "recipes/native-deep-research",
                 },
               ],
             },
@@ -256,6 +349,50 @@ export default defineConfig({
           ],
         },
         {
+          label: "Messenger",
+          items: [
+            { label: "Overview", slug: "messenger" },
+            {
+              label: "Providers",
+              items: [
+                { label: "Telegram", slug: "messenger/providers/telegram" },
+                { label: "Discord", slug: "messenger/providers/discord" },
+                { label: "Slack", slug: "messenger/providers/slack" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Messenger agent", slug: "recipes/messenger-agent" }],
+            },
+          ],
+        },
+        {
+          label: "Image generation",
+          items: [
+            { label: "Overview", slug: "image-generation" },
+            {
+              label: "Providers",
+              items: [
+                { label: "OpenAI", slug: "image-generation/providers/openai" },
+                { label: "Google", slug: "image-generation/providers/google" },
+                { label: "Fal", slug: "image-generation/providers/fal" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                { label: "Storyboard", slug: "recipes/storyboard" },
+                {
+                  label: "Conversational image edit",
+                  slug: "recipes/conversational-image-edit",
+                },
+              ],
+            },
+          ],
+        },
+        {
           label: "Realtime",
           items: [
             { label: "Overview", slug: "realtime" },
@@ -271,9 +408,102 @@ export default defineConfig({
               label: "Recipes",
               collapsed: true,
               items: [
-                { label: "Realtime voice agent", slug: "recipes/realtime-voice-agent" },
+                {
+                  label: "Realtime voice agent",
+                  slug: "recipes/realtime-voice-agent",
+                },
                 { label: "Camera assistant", slug: "recipes/camera-assistant" },
               ],
+            },
+          ],
+        },
+        {
+          label: "Web reading",
+          items: [
+            { label: "Overview", slug: "web-reading" },
+            {
+              label: "Providers",
+              items: [
+                { label: "Firecrawl", slug: "web-reading/providers/firecrawl" },
+                { label: "Jina", slug: "web-reading/providers/jina" },
+                { label: "Exa", slug: "web-reading/providers/exa" },
+                { label: "Tavily", slug: "web-reading/providers/tavily" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Market intel", slug: "recipes/market-intel" }],
+            },
+          ],
+        },
+        {
+          label: "Sandboxes",
+          items: [
+            { label: "Overview", slug: "sandboxes" },
+            {
+              label: "Providers",
+              items: [
+                {
+                  label: "Microsandbox",
+                  slug: "sandboxes/providers/microsandbox",
+                },
+                { label: "Deno", slug: "sandboxes/providers/deno" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                {
+                  label: "Run, fix, repeat",
+                  slug: "recipes/sandbox-code-interpreter",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Browser",
+          items: [
+            { label: "Overview", slug: "browser" },
+            {
+              label: "Providers",
+              items: [{ label: "Generic CDP", slug: "browser/providers/cdp" }],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [
+                {
+                  label: "Agent usability testing",
+                  slug: "recipes/browser-usability",
+                },
+                {
+                  label: "Dashboard briefing",
+                  slug: "recipes/dashboard-briefing",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Decision models",
+          items: [
+            { label: "Overview", slug: "decisions" },
+            {
+              label: "Providers",
+              items: [
+                {
+                  label: "TypeSafe AI",
+                  slug: "decisions/providers/typesafe-ai",
+                },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Ticket triage", slug: "recipes/ticket-triage" }],
             },
           ],
         },
@@ -311,175 +541,11 @@ export default defineConfig({
           ],
         },
         {
-          label: "Embeddings",
-          items: [
-            { label: "Overview", slug: "embeddings" },
-            { label: "Multimodal embedding", slug: "embeddings/multimodal" },
-            { label: "Multivector embedding", slug: "embeddings/multivector" },
-            {
-              label: "Providers",
-              items: [
-                {
-                  label: "OpenAI",
-                  slug: "embeddings/providers/openai",
-                },
-                { label: "Google", slug: "embeddings/providers/gemini" },
-                { label: "Jina", slug: "embeddings/providers/jina" },
-              ],
-            },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [
-                { label: "Basic embedding", slug: "recipes/basic-embedding" },
-                { label: "Multimodal embedding", slug: "embeddings/multimodal" },
-                { label: "Multivector embedding", slug: "embeddings/multivector" },
-                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
-              ],
-            },
-          ],
-        },
-        {
-          label: "Retrieval",
-          items: [
-            { label: "Overview", slug: "retrieval" },
-            { label: "Chunking", slug: "retrieval/chunking" },
-            { label: "Reranking", slug: "reranking" },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [
-                { label: "Retrieve and rerank", slug: "recipes/retrieve-and-rerank" },
-                { label: "Agentic search", slug: "recipes/agentic-search" },
-                { label: "Contextual retrieval", slug: "recipes/contextual-retrieval" },
-              ],
-            },
-          ],
-        },
-        {
-          label: "Decision models",
-          items: [
-            { label: "Overview", slug: "decisions" },
-            {
-              label: "Providers",
-              items: [{ label: "TypeSafe AI", slug: "decisions/providers/typesafe-ai" }],
-            },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [{ label: "Ticket triage", slug: "recipes/ticket-triage" }],
-            },
-          ],
-        },
-        {
-          label: "Web search",
-          items: [
-            { label: "Overview", slug: "search" },
-            {
-              label: "Providers",
-              items: [
-                { label: "Perplexity", slug: "search/providers/perplexity" },
-                { label: "Exa", slug: "search/providers/exa" },
-                { label: "Tavily", slug: "search/providers/tavily" },
-              ],
-            },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [
-                { label: "Grounded answer", slug: "recipes/grounded-answer" },
-                { label: "Deep research", slug: "recipes/deep-research" },
-                { label: "Native deep research", slug: "recipes/native-deep-research" },
-              ],
-            },
-          ],
-        },
-        {
-          label: "Web reading",
-          items: [
-            { label: "Overview", slug: "web-reading" },
-            {
-              label: "Providers",
-              items: [
-                { label: "Firecrawl", slug: "web-reading/providers/firecrawl" },
-                { label: "Jina", slug: "web-reading/providers/jina" },
-                { label: "Exa", slug: "web-reading/providers/exa" },
-                { label: "Tavily", slug: "web-reading/providers/tavily" },
-              ],
-            },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [{ label: "Market intel", slug: "recipes/market-intel" }],
-            },
-          ],
-        },
-        {
-          label: "Sandboxes",
-          items: [
-            { label: "Overview", slug: "sandboxes" },
-            {
-              label: "Providers",
-              items: [
-                { label: "Microsandbox", slug: "sandboxes/providers/microsandbox" },
-                { label: "Deno", slug: "sandboxes/providers/deno" },
-              ],
-            },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [{ label: "Run, fix, repeat", slug: "recipes/sandbox-code-interpreter" }],
-            },
-          ],
-        },
-        {
-          label: "Browser",
-          items: [
-            { label: "Overview", slug: "browser" },
-            {
-              label: "Providers",
-              items: [{ label: "Generic CDP", slug: "browser/providers/cdp" }],
-            },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [
-                {
-                  label: "Agent usability testing",
-                  slug: "recipes/browser-usability",
-                },
-                {
-                  label: "Dashboard briefing",
-                  slug: "recipes/dashboard-briefing",
-                },
-              ],
-            },
-          ],
-        },
-        {
-          label: "Messenger",
-          items: [
-            { label: "Overview", slug: "messenger" },
-            {
-              label: "Providers",
-              items: [
-                { label: "Telegram", slug: "messenger/providers/telegram" },
-                { label: "Discord", slug: "messenger/providers/discord" },
-                { label: "Slack", slug: "messenger/providers/slack" },
-              ],
-            },
-            {
-              label: "Recipes",
-              collapsed: true,
-              items: [{ label: "Messenger agent", slug: "recipes/messenger-agent" }],
-            },
-          ],
-        },
-        {
           label: "Migrations",
           collapsed: true,
           items: [
             { label: "Overview", slug: "migrations" },
+            { label: "Migrating to 0.19", slug: "migrations/v0-19" },
             { label: "Migrating to 0.18", slug: "migrations/v0-18" },
             { label: "Migrating to 0.17", slug: "migrations/v0-17" },
             { label: "Migrating to 0.16", slug: "migrations/v0-16" },

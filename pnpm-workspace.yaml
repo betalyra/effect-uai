@@ -19,13 +19,13 @@ allowBuilds:
 # Single source of truth for versions shared across packages. Bump here, not in
 # each package.json. `catalog:` is resolved to the literal version on publish.
 catalog:
-  "@effect/platform-bun": 4.0.1
-  "@effect/platform-node": 4.0.1
+  "@effect/platform-bun": 4.1.2
+  "@effect/platform-node": 4.1.2
   "@effect/tsgo": ^0.48.1
-  "@effect/vitest": 4.0.1
+  "@effect/vitest": 4.1.2
   "@types/node": ^26.2.0
   "@types/ws": ^8.5.13
-  effect: 4.0.1
+  effect: 4.1.2
   tsx: ^4.23.12
   typescript: ^7.0.2
   vitest: ^5.0.3
@@ -42,12 +42,13 @@ catalogs:
     typescript: ^6.0.3
 
 minimumReleaseAgeExclude:
-  - "@effect/platform-bun@4.0.1"
-  - "@effect/platform-deno@4.0.1"
-  - "@effect/platform-node-shared@4.0.1"
-  - "@effect/platform-node@4.0.1"
-  - "@effect/vitest@4.0.1"
-  - effect@4.0.1
+  - "@effect/platform-bun@4.1.2"
+  - "@effect/platform-deno@4.1.2"
+  - "@effect/platform-node-shared@4.1.2"
+  - "@effect/platform-node@4.1.2"
+  - "@effect/sql-libsql@4.1.2"
+  - "@effect/vitest@4.1.2"
+  - effect@4.1.2
   - "@effect/tsgo-darwin-arm64@0.48.1"
   - "@effect/tsgo-darwin-x64@0.48.1"
   - "@effect/tsgo-linux-arm64@0.48.1"

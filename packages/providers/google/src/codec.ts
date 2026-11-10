@@ -3,9 +3,12 @@ import { Base64 } from "effect/encoding"
 import * as AiError from "@effect-uai/core/AiError"
 import type { ImageSource } from "@effect-uai/core/Image"
 import { imageBase64 } from "@effect-uai/core/Image"
+import type { FileSource } from "@effect-uai/core/File"
 import type {
   ContentBlock,
   ToolCall,
+  ToolCallOutput,
+  ToolOutputContent,
   InputImage,
   HistoryItem,
   Message,
@@ -153,10 +156,9 @@ type RequestPart =
       readonly thoughtSignature?: string
     }
   | {
-      readonly functionResponse: {
+      readonly functionResponse: FunctionResponseBody & {
         readonly id?: string
         readonly name: string
-        readonly response: Record<string, unknown>
       }
     }
 
@@ -295,31 +297,98 @@ const allMessages = (history: ReadonlyArray<HistoryItem>): ReadonlyArray<Message
 // ---------------------------------------------------------------------------
 // Function-call round-trip
 //
-// `ToolCall.arguments` and `ToolCallOutput.output` are JSON-encoded
-// strings; Gemini's `functionCall.args` and `functionResponse.response`
-// expect parsed JSON *objects*. Decode via Schema:
-//   - object payload → use as-is
-//   - scalar / array / malformed → wrap as `{ output: <raw string> }` so the
-//     model still sees *some* response without crashing the request.
+// `ToolCall.arguments` is a JSON string; Gemini's `functionCall.args` wants
+// an object (malformed or non-object arguments become `{}`).
 // ---------------------------------------------------------------------------
 
 const JsonObject = Schema.Record(Schema.String, Schema.Unknown)
 const decodeJsonObject = Schema.decodeResult(Schema.fromJsonString(JsonObject))
 
-const parsedJsonObject =
-  (fallback: (raw: string) => Record<string, unknown>) =>
-  (encoded: string): Record<string, unknown> =>
-    pipe(
-      decodeJsonObject(encoded),
-      Result.match({
-        onSuccess: (v) => v,
-        onFailure: () => fallback(encoded),
-      }),
-    )
+const parsedArgs = (encoded: string): Record<string, unknown> =>
+  pipe(
+    decodeJsonObject(encoded),
+    Result.getOrElse(() => ({})),
+  )
 
-const parsedArgs = parsedJsonObject(() => ({}))
-/** A `ToolCallOutput.output` string as the object `functionResponse` wants. */
-export const parsedResponse = parsedJsonObject((raw) => ({ output: raw }))
+type MediaPart =
+  | {
+      readonly inlineData: {
+        readonly mimeType: string
+        readonly data: string
+        readonly displayName?: string
+      }
+    }
+  | {
+      readonly fileData: {
+        readonly fileUri: string
+        readonly mimeType?: string
+        readonly displayName?: string
+      }
+    }
+
+const mediaPart = (
+  source: ImageSource | FileSource,
+  displayName: string | undefined,
+): MediaPart => {
+  const named = displayName === undefined ? {} : { displayName }
+  return Match.value(source).pipe(
+    Match.tagsExhaustive({
+      url: (s) => ({
+        fileData: {
+          fileUri: s.url,
+          ...(s.mimeType !== undefined && { mimeType: s.mimeType }),
+          ...named,
+        },
+      }),
+      base64: (s) => ({ inlineData: { mimeType: s.mimeType, data: s.base64, ...named } }),
+      bytes: (s) => ({
+        inlineData: { mimeType: s.mimeType, data: Base64.encode(s.bytes), ...named },
+      }),
+    }),
+  )
+}
+
+/** Gemini's `functionResponse` body for a tool output, without `id` / `name`. */
+export type FunctionResponseBody = {
+  readonly response: Record<string, unknown>
+  readonly parts?: ReadonlyArray<MediaPart>
+}
+
+/**
+ * Text and JSON go into `response.output` (or `response.error` when the call
+ * failed) as values, never stringified: one value as itself, several as an
+ * array. Media goes into `parts`.
+ */
+export const functionResponseBody = (output: ToolCallOutput): FunctionResponseBody => {
+  const values = Arr.filterMap(
+    output.output,
+    Match.type<ToolOutputContent>().pipe(
+      Match.discriminatorsExhaustive("type")({
+        input_text: (p) => Result.succeed<unknown>(p.text),
+        input_json: (p) => Result.succeed<unknown>(p.value),
+        input_image: () => Result.failVoid,
+        input_file: () => Result.failVoid,
+      }),
+    ),
+  )
+  const media = Arr.filterMap(
+    output.output,
+    Match.type<ToolOutputContent>().pipe(
+      Match.discriminatorsExhaustive("type")({
+        input_text: () => Result.failVoid,
+        input_json: () => Result.failVoid,
+        input_image: (p) => Result.succeed(mediaPart(p.source, undefined)),
+        input_file: (p) => Result.succeed(mediaPart(p.source, p.filename)),
+      }),
+    ),
+  )
+  const key = output.isError === true ? "error" : "output"
+  const response = Arr.match(values, {
+    onEmpty: () => ({}),
+    onNonEmpty: (all) => ({ [key]: all.length === 1 ? Arr.headNonEmpty(all) : all }),
+  })
+  return media.length === 0 ? { response } : { response, parts: media }
+}
 
 /**
  * `ToolCallOutput` only carries `call_id`; Gemini's `functionResponse`
@@ -423,7 +492,7 @@ const itemToContent =
                     onNone: () => ({}),
                   }),
                   name: Option.getOrElse(nameForCallId(history, o.call_id), () => o.call_id),
-                  response: parsedResponse(o.output),
+                  ...functionResponseBody(o),
                 },
               },
             ],

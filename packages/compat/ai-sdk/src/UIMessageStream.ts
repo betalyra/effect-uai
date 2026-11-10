@@ -15,9 +15,14 @@
  * module synthesizes them: one block id per turn, opened on the first delta
  * and closed on `TurnComplete`.
  */
+import type { FileSource } from "@effect-uai/core/File"
+import type { ImageSource } from "@effect-uai/core/Image"
+import type * as Items from "@effect-uai/core/Items"
 import type * as SSE from "@effect-uai/core/SSE"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as Turn from "@effect-uai/core/Turn"
 import { Match, Option, Stream } from "effect"
+import { Base64 } from "effect/encoding"
 
 /**
  * The stream parts `useChat` consumes. Names and shapes are the wire
@@ -48,6 +53,7 @@ export type Part =
       readonly toolCallId: string
       readonly output: unknown
     }
+  | { readonly type: "tool-output-error"; readonly toolCallId: string; readonly errorText: string }
   | {
       readonly type: `data-${string}`
       readonly id?: string
@@ -112,9 +118,44 @@ export const responseHeaders: Record<string, string> = {
 
 const parseJson = Option.liftThrowable(JSON.parse)
 
-// Tool arguments/output cross effect-uai as JSON strings; hand the client the
+// Tool arguments cross effect-uai as a JSON string; hand the client the
 // decoded value, falling back to the raw string when it isn't JSON.
 const decode = (raw: string): unknown => Option.getOrElse(parseJson(raw), () => raw)
+
+// Media goes to the client as a URL; inline bytes as a data URL.
+const sourceUrl = Match.type<ImageSource | FileSource>().pipe(
+  Match.tagsExhaustive({
+    url: (s) => s.url,
+    base64: (s) => `data:${s.mimeType};base64,${s.base64}`,
+    bytes: (s) => `data:${s.mimeType};base64,${Base64.encode(s.bytes)}`,
+  }),
+)
+
+const partJson = Match.type<Items.ToolOutputContent>().pipe(
+  Match.discriminatorsExhaustive("type")({
+    input_text: (p): unknown => p.text,
+    input_json: (p) => p.value,
+    input_image: (p) => ({ type: "image", url: sourceUrl(p.source) }),
+    input_file: (p) => ({
+      type: "file",
+      url: sourceUrl(p.source),
+      ...(p.filename !== undefined && { filename: p.filename }),
+    }),
+  }),
+)
+
+const outputJson = (o: Items.ToolCallOutput): unknown => ToolOutput.single(o.output.map(partJson))
+
+const toolOutputPart = (o: Items.ToolCallOutput): Part => {
+  const output = outputJson(o)
+  return o.isError === true
+    ? {
+        type: "tool-output-error",
+        toolCallId: o.call_id,
+        errorText: typeof output === "string" ? output : JSON.stringify(output),
+      }
+    : { type: "tool-output-available", toolCallId: o.call_id, output }
+}
 
 const event = (part: Part | "[DONE]"): SSE.Event => ({
   data: part === "[DONE]" ? "[DONE]" : JSON.stringify(part),
@@ -199,10 +240,7 @@ const step = (s: State, ev: Emission): Step =>
     }),
     // The non-`_tag` arm of InteractionEvent: a resolved tool result the loop
     // appended after running the tool.
-    Match.when({ type: "function_call_output" }, (o): Step => [
-      s,
-      [{ type: "tool-output-available", toolCallId: o.call_id, output: decode(o.output) }],
-    ]),
+    Match.when({ type: "function_call_output" }, (o): Step => [s, [toolOutputPart(o)]]),
     // Caller-interleaved emissions.
     Match.when({ kind: "data" }, (d): Step => [s, [toDataPart(d)]]),
     Match.when({ kind: "metadata" }, (m): Step => [

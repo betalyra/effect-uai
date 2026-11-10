@@ -90,22 +90,18 @@ export const groundedAnswer = (cfg: GroundedAnswerConfig) => {
         model: cfg.model,
         ...(lastRound ? {} : { tools: toolkit }),
       }).pipe(
-        onTurnComplete((turn) =>
-          Effect.sync(() => {
-            const calls = lastRound ? [] : Turn.getToolCalls(turn)
+        onTurnComplete((turn) => {
+          const calls = lastRound ? [] : Turn.getToolCalls(turn)
 
-            // No tool calls - the assistant is done.
-            if (calls.length === 0) return stop()
+          // No tool calls - the assistant is done.
+          if (calls.length === 0) return stop()
 
-            // Tool calls: stream tool events to the consumer, then continue
-            // the loop with the appended turn + results.
-            return Toolkit.run(toolkit, calls).pipe(
-              Toolkit.continueWithResults(
-                Toolkit.appendToolResults({ ...state, round: state.round + 1 }, turn),
-              ),
-            )
-          }),
-        ),
+          // Tool calls: stream tool events to the consumer, then continue
+          // the loop with the appended turn + results.
+          return Toolkit.run(toolkit, calls).pipe(
+            Toolkit.next(toolkit, { ...state, round: state.round + 1 }, turn),
+          )
+        }),
       )
     }),
   )

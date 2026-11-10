@@ -95,7 +95,8 @@ const server: Layer.Layer<ServerServices, Config.ConfigError | HttpServerError.S
       }),
       bun: Effect.gen(function* () {
         const { BunHttpServer } = yield* Effect.promise(() => import("@effect/platform-bun"))
-        return BunHttpServer.layer({ port: yield* port })
+        // Open SSE streams never end on their own; don't wait Bun's default 20s for them.
+        return BunHttpServer.layer({ port: yield* port, gracefulShutdownTimeout: "1 second" })
       }),
       deno: Effect.gen(function* () {
         const { DenoHttpServer } = yield* Effect.promise(() => import("@effect/platform-deno"))

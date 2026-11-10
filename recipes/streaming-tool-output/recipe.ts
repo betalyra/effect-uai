@@ -1,18 +1,15 @@
 /**
- * Streaming tool output: two patterns of a tool whose `run` emits events.
+ * Streaming tool output: two tools whose `run` returns a `Stream`.
  *
  *   - Sub-agent (`makeSubAgent`)
- *       run: consumes an inner agent's `Stream<TurnEvent>`, emitting each
- *       event and folding the text deltas into the final answer
+ *       run: an inner agent's text, as the answer so far
  *
- *   - Progress + result (`makeDownloadTool`)
- *       run: emits one progress event per chunk, then folds the terminal
- *       result event into the model-facing output
+ *   - Progress (`makeDownloadTool`)
+ *       run: one snapshot per chunk, then the completed download
  *
- * Both flow inner events through to the consumer as `ToolEvent.Progress`s in
- * real time via `emit`, while `run` returns the single structured `Output`
- * the model sees. The dual-view pattern (rich UI for the user, clean data for
- * the model) is the point of a streaming tool.
+ * Every element but the last reaches the consumer as a `ToolEvent.Partial`;
+ * the last is the result the model sees. A partial has the tool's own output
+ * type, so a UI decodes and renders it with the same schema as the result.
  *
  * This file exports the building blocks; `app.ts` wires the provider.
  */
@@ -32,9 +29,8 @@ import * as Turn from "@effect-uai/core/Turn"
 
 const SubAgentInput = Schema.Struct({ question: Schema.String })
 
-export interface SubAgentOutput {
-  readonly answer: string
-}
+export const SubAgentOutput = Schema.Struct({ answer: Schema.String })
+export type SubAgentOutput = typeof SubAgentOutput.Type
 
 export const makeSubAgent = (
   runInner: (question: string) => Stream.Stream<Turn.TurnEvent, unknown, never>,
@@ -42,36 +38,34 @@ export const makeSubAgent = (
   Tool.make({
     name: "ask_subagent",
     description: "Ask a specialist sub-agent for help with a hard question.",
-    inputSchema: Tool.fromEffectSchema(SubAgentInput),
-    // Emit each inner event to the consumer in real time while folding the
-    // text deltas into the model-facing answer (single pass, no buffering).
-    run: ({ question }, emit) =>
+    inputSchema: SubAgentInput,
+    outputSchema: SubAgentOutput,
+    // The answer so far, one snapshot per text delta; the last is the full answer.
+    run: ({ question }) =>
       runInner(question).pipe(
-        Stream.runFoldEffect(
+        Turn.textDeltas,
+        Stream.scan(
           () => "",
-          (answer, event) =>
-            emit(event).pipe(Effect.as(event._tag === "TextDelta" ? answer + event.text : answer)),
+          (answer, text: string) => answer + text,
         ),
-        Effect.map((answer): SubAgentOutput => ({ answer })),
+        Stream.map((answer): SubAgentOutput => ({ answer })),
       ),
     strict: true,
   })
 
 // ---------------------------------------------------------------------------
-// Pattern 2: progress + terminal result. `run` emits one `progress` event per
-// chunk plus one terminal `result` event, folding them into the model-facing
-// output (bytes from the result event, chunk count from the progress events).
+// Pattern 2: progress. One snapshot per chunk while running, then the
+// completed download. Progress is part of the output type, so the model's
+// final value carries it too.
 // ---------------------------------------------------------------------------
 
-export type DownloadEvent =
-  | { readonly type: "progress"; readonly pct: number; readonly chunk: number }
-  | { readonly type: "result"; readonly bytes: string }
-
-export interface DownloadOutput {
-  readonly status: "completed" | "failed"
-  readonly bytes: string
-  readonly chunks: number
-}
+export const DownloadOutput = Schema.Struct({
+  status: Schema.Literals(["running", "completed"]),
+  pct: Schema.Number,
+  chunks: Schema.Number,
+  bytes: Schema.String,
+})
+export type DownloadOutput = typeof DownloadOutput.Type
 
 const DownloadInput = Schema.Struct({
   url: Schema.String,
@@ -87,52 +81,31 @@ export const makeDownloadTool = (perChunkDelay: Duration.Input = "150 millis") =
   Tool.make({
     name: "download_artifact",
     description:
-      "Download bytes from a URL. Emits progress events while running; the model receives the final byte payload.",
-    inputSchema: Tool.fromEffectSchema(DownloadInput),
-    run: ({ url, chunks }, emit) => {
+      "Download bytes from a URL. Reports progress while running; the model receives the final byte payload.",
+    inputSchema: DownloadInput,
+    outputSchema: DownloadOutput,
+    run: ({ url, chunks }) => {
       const total = chunks ?? 4
-      const next = (i: number): readonly [DownloadEvent, number] | undefined => {
-        if (i > total) return undefined
-        if (i === total) return [{ type: "result", bytes: `bytes-of-${url}` }, i + 1]
-        return [
-          {
-            type: "progress",
-            pct: Math.round(((i + 1) / total) * 100),
-            chunk: i + 1,
-          },
-          i + 1,
-        ]
-      }
-      const events = Stream.unfold(0, (i: number) => {
-        const step = next(i)
-        // `undefined` is unfold's "stop" sentinel here, not a void result, so
-        // Effect.void would not typecheck against `[event, state] | undefined`.
-        // @effect-diagnostics-next-lineeffectSucceedWithVoid:off
-        if (step === undefined) return Effect.succeed(undefined)
-        return step[0].type === "result"
-          ? Effect.succeed(step)
-          : Effect.delay(Effect.succeed(step), perChunkDelay)
-      })
-      // Emit each event to the consumer while folding to the model-facing
-      // output: the result event carries the bytes, progress events are counted.
-      return events.pipe(
-        Stream.runFoldEffect(
-          () => ({ bytes: "", chunks: 0, completed: false }),
-          (acc, event) =>
-            emit(event).pipe(
-              Effect.as(
-                event.type === "result"
-                  ? { ...acc, bytes: event.bytes, completed: true }
-                  : { ...acc, chunks: acc.chunks + 1 },
-              ),
-            ),
-        ),
-        Effect.map((acc): DownloadOutput =>
-          acc.completed
-            ? { status: "completed", bytes: acc.bytes, chunks: acc.chunks }
-            : { status: "failed", bytes: "", chunks: acc.chunks },
+      const running = Stream.range(1, total).pipe(
+        Stream.mapEffect((chunk) =>
+          Effect.delay(
+            Effect.succeed<DownloadOutput>({
+              status: "running",
+              pct: Math.round((chunk / total) * 100),
+              chunks: chunk,
+              bytes: "",
+            }),
+            perChunkDelay,
+          ),
         ),
       )
+      const completed = Stream.succeed<DownloadOutput>({
+        status: "completed",
+        pct: 100,
+        chunks: total,
+        bytes: `bytes-of-${url}`,
+      })
+      return Stream.concat(running, completed)
     },
     strict: true,
   })
@@ -149,36 +122,25 @@ export interface State {
 export const DEFAULT_MODEL = "gpt-5.4-mini"
 
 /** Build a conversation against the given toolkit. */
-export const buildConversation = (
-  toolkit: Toolkit.Toolkit,
+export const buildConversation = <T extends Toolkit.Toolkit>(
+  toolkit: T,
   initial: State,
   model = DEFAULT_MODEL,
 ) =>
   pipe(
     initial,
-    loop((state) =>
+    loop((state: State) =>
       Effect.gen(function* () {
         const lm = yield* LanguageModel
-        return lm
-          .streamTurn({
-            history: state.history,
-            model,
-            tools: toolkit,
-          })
-          .pipe(
-            onTurnComplete((turn) =>
-              Effect.sync(() => {
-                const calls = Turn.getToolCalls(turn)
-                if (calls.length === 0) return stop()
-
-                return Toolkit.run(toolkit, calls).pipe(
-                  Toolkit.continueWithResults(
-                    Toolkit.appendToolResults({ ...state, index: state.index + 1 }, turn),
-                  ),
-                )
-              }),
-            ),
-          )
+        return lm.streamTurn({ history: state.history, model, tools: toolkit }).pipe(
+          onTurnComplete((turn) => {
+            const calls = Turn.getToolCalls(turn)
+            if (calls.length === 0) return stop()
+            return Toolkit.run(toolkit, calls).pipe(
+              Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
+            )
+          }),
+        )
       }),
     ),
   )

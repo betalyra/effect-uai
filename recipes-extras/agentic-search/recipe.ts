@@ -211,6 +211,9 @@ export const searchTool = (options: SearchToolOptions) =>
     description:
       "Search the indexed corpus for passages relevant to a query. Combines keyword and semantic search. Call it more than once with different phrasings if the first results are thin.",
     inputSchema: Tool.fromEffectSchema(SearchInput),
+    outputSchema: Schema.Struct({
+      passages: Schema.Array(Schema.Struct({ id: Schema.Number, text: Schema.String })),
+    }),
     run: ({ query }) =>
       hybridSearch(query, options).pipe(
         Effect.tap((stages) => options.onStages?.(stages) ?? Effect.void),
@@ -273,9 +276,7 @@ export const agent = (cfg: AgentConfig) => {
               const calls = lastRound ? [] : Turn.getToolCalls(turn)
               if (calls.length === 0) return stop()
               return Toolkit.run(toolkit, calls).pipe(
-                Toolkit.continueWithResults(
-                  Toolkit.appendToolResults({ ...state, round: state.round + 1 }, turn),
-                ),
+                Toolkit.next(toolkit, { ...state, round: state.round + 1 }, turn),
               )
             }),
           ),

@@ -33,7 +33,7 @@ rest is the lowest common denominator across providers:
 interface CommonRequest {
   readonly history: ReadonlyArray<HistoryItem>
   readonly model: string
-  readonly tools?: ReadonlyArray<ToolDescriptor>
+  readonly tools?: Toolkit
   readonly toolChoice?: "auto" | "required" | "none" | { type: "function"; name: string }
   readonly temperature?: number
   readonly topP?: number

@@ -21,9 +21,10 @@ export const bodyMultipart = (
 > =>
   Effect.gen(function* () {
     const encoded = new Response(form)
+    // Read before the body: once it is consumed, Bun answers `null` for this
+    // header (Node keeps it), which would drop the boundary and leave the
+    // server unable to parse the parts.
+    const contentType = encoded.headers.get("content-type") ?? "multipart/form-data"
     const buffer = yield* Effect.tryPromise(() => encoded.arrayBuffer())
-    return HttpClientRequest.bodyUint8Array(
-      new Uint8Array(buffer),
-      encoded.headers.get("content-type") ?? "multipart/form-data",
-    )
+    return HttpClientRequest.bodyUint8Array(new Uint8Array(buffer), contentType)
   })

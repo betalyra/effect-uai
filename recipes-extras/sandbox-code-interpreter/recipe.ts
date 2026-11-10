@@ -14,7 +14,6 @@ import { loop, onTurnComplete, stop } from "@effect-uai/core/Loop"
 import type { SandboxInstance } from "@effect-uai/core/Sandbox"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-import { toToolCallOutput } from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
 import { Array as Arr, Effect, Schema, pipe } from "effect"
 
@@ -32,6 +31,12 @@ const makeRunPython = (sb: SandboxInstance) =>
     description:
       "Run a Python program inside a sandboxed microVM. Returns exit code, stdout, and stderr. Use this to compute precise answers.",
     inputSchema: Tool.fromEffectSchema(RunPythonInput),
+    outputSchema: Schema.Struct({
+      exitCode: Schema.Number,
+      stdout: Schema.String,
+      stderr: Schema.String,
+      durationMs: Schema.Number,
+    }),
     run: ({ code }) =>
       sb.exec({ cmd: ["python3", "-c", code] }).pipe(
         Effect.map((r) => ({
@@ -79,13 +84,7 @@ export const conversation = (service: LanguageModelService, model: string, sb: S
       onEmpty: () => stop(),
       onNonEmpty: (calls) =>
         Toolkit.run(toolkit, calls).pipe(
-          Toolkit.continueWithResults((results) =>
-            Turn.appendToHistory(
-              { ...state, index: state.index + 1 },
-              turn,
-              results.map(toToolCallOutput),
-            ),
-          ),
+          Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
         ),
     })
 
@@ -94,7 +93,7 @@ export const conversation = (service: LanguageModelService, model: string, sb: S
     loop((state) =>
       service
         .streamTurn({ history: state.history, model, tools: toolkit })
-        .pipe(onTurnComplete((turn) => Effect.sync(() => nextStep(state, turn)))),
+        .pipe(onTurnComplete((turn) => nextStep(state, turn))),
     ),
   )
 }

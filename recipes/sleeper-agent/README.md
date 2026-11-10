@@ -91,7 +91,7 @@ When the queue is empty the loop runs a model turn immediately. When a
 pipeline is pending it blocks until the polling fiber resolves the
 `Deferred`. No provider call is open, no HTTP connection is held. Tool
 results are folded back into history with
-`Toolkit.continueWithResults(Toolkit.appendToolResults({ history }, turn))`,
+`Toolkit.next(toolkit, { history }, turn)`,
 the same pattern the other tool-using recipes share.
 
 ## Deferred vs Latch

@@ -24,6 +24,7 @@ const lookUp = Tool.make({
   name: "web_search",
   description: "Search the web.",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ query: Schema.String })),
+  outputSchema: Schema.Struct({ query: Schema.String, results: Schema.Array(Schema.String) }),
   run: ({ query }) =>
     Effect.succeed({ query, results: ["a result"] }).pipe(Effect.delay("30 millis")),
 })
@@ -115,7 +116,7 @@ describe("camera assistant", () => {
 
       const [result] = sentOf(sent, "ToolResult")
       expect(result?.output.call_id).toBe("fc_1")
-      expect(result?.output.output).toContain("a result")
+      expect(JSON.stringify(result?.output.output)).toContain("a result")
       expect(status.map((e) => e.type)).toEqual(["assistant-started", "tool-call", "tool-done"])
     }),
   )

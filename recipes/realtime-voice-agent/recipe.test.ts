@@ -22,6 +22,7 @@ const getTime = Tool.make({
   name: "get_current_time",
   description: "The current time.",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ timezone: Schema.String })),
+  outputSchema: Schema.Struct({ timezone: Schema.String, iso: Schema.String }),
   run: ({ timezone }) =>
     Effect.succeed({ timezone, iso: "2026-09-12T12:00:00Z" }).pipe(Effect.delay("30 millis")),
 })
@@ -90,7 +91,8 @@ describe("realtime voice agent", () => {
 
       const [result] = sentOf(sent, "ToolResult")
       expect(result?.output.call_id).toBe("call_1")
-      expect(result?.output.output).toContain("2026-09-12")
+      expect(result?.output.output).toMatchObject([{ type: "input_json" }])
+      expect(JSON.stringify(result?.output.output)).toContain("2026-09-12")
       expect(status.map((e) => e.type)).toEqual(["assistant-started", "tool-call", "tool-done"])
     }),
   )

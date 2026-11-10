@@ -12,6 +12,7 @@ import {
   Duration,
   Effect,
   Match,
+  Option,
   Pull,
   Queue,
   Redacted,
@@ -31,14 +32,30 @@ import {
   RealtimeEvent,
   type RealtimeInput,
 } from "@effect-uai/core/Realtime"
+import type { ToolCallOutput } from "@effect-uai/core/Items"
 import type { RealtimeSessionHandle } from "@effect-uai/core/RealtimeSession"
 import type { ToolDescriptor } from "@effect-uai/core/Tool"
+import * as ToolOutput from "@effect-uai/core/ToolOutput"
 import * as WebSocketSession from "@effect-uai/core/WebSocketSession"
 import { WebSocket as WSWebSocket } from "ws"
 import type { OpenAIRealtimeModel } from "./models.js"
 import { type OpenAiRegion, resolveHost } from "./region.js"
 
 const PROVIDER = "openai"
+
+// A realtime tool output is one string: text and JSON joined; media fails.
+const toolOutputString = (output: ToolCallOutput): Effect.Effect<string, AiError.Unsupported> =>
+  Option.match(ToolOutput.text(output.output), {
+    onSome: Effect.succeed,
+    onNone: () =>
+      Effect.fail(
+        new AiError.Unsupported({
+          provider: PROVIDER,
+          capability: "tool_output_media",
+          reason: "Realtime tool outputs carry text only.",
+        }),
+      ),
+  })
 
 /** `baseUrl` plus `headers` are what make a compatible gateway reachable. */
 export type Config = {
@@ -561,14 +578,11 @@ const handleInput = (
             }),
           )
         }
+        const output = yield* toolOutputString(i.output)
         yield* send(
           JSON.stringify({
             type: "conversation.item.create",
-            item: {
-              type: "function_call_output",
-              call_id: i.output.call_id,
-              output: i.output.output,
-            },
+            item: { type: "function_call_output", call_id: i.output.call_id, output },
           }),
         )
         // The adapter resumes generation, so the caller never sends this. A

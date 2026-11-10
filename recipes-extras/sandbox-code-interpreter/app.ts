@@ -105,7 +105,6 @@ export const main = Effect.gen(function* () {
           ),
       }),
       Match.when({ _tag: "Output" }, ({ result }) => Effect.logInfo("tool result", { result })),
-      Match.when({ _tag: "Progress" }, () => Effect.void),
       Match.orElse(() => Effect.void),
     ),
   )

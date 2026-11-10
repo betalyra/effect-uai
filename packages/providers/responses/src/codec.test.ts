@@ -1,3 +1,6 @@
+import { fileBase64, fileUrl } from "@effect-uai/core/File"
+import { imageBytes } from "@effect-uai/core/Image"
+import * as Items from "@effect-uai/core/Items"
 import type { HistoryItem } from "@effect-uai/core/Items"
 import { describe, expect, it } from "vitest"
 import { itemsToInput, wireItemToItem } from "./codec.js"
@@ -82,6 +85,56 @@ describe("providerData is a shared slot", () => {
     ]
     expect(itemsToInput(history)).toEqual([
       { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+    ])
+  })
+})
+
+describe("tool output", () => {
+  const output = (parts: Items.ToolCallOutput["output"], isError?: boolean) =>
+    itemsToInput([
+      {
+        type: "function_call_output",
+        call_id: "c1",
+        output: parts,
+        ...(isError !== undefined && { isError }),
+      },
+    ])
+
+  it("sends text and JSON as one string, JSON serialized once", () => {
+    expect(
+      output([Items.text("found 2"), Items.json({ hits: [1, 2], note: 'a "quote"' })], true),
+    ).toEqual([
+      {
+        type: "function_call_output",
+        call_id: "c1",
+        output: 'found 2\n{"hits":[1,2],"note":"a \\"quote\\""}',
+      },
+    ])
+  })
+
+  it("sends media as native parts: images as image_url, files as file_data or file_url", () => {
+    expect(
+      output([
+        Items.json({ title: "Home" }),
+        Items.image(imageBytes(new Uint8Array([1, 2, 3]), "image/png")),
+        Items.file(fileBase64("JVBE", "application/pdf"), "report.pdf"),
+        Items.file(fileUrl("https://x/a.pdf")),
+      ]),
+    ).toEqual([
+      {
+        type: "function_call_output",
+        call_id: "c1",
+        output: [
+          { type: "input_text", text: '{"title":"Home"}' },
+          { type: "input_image", image_url: "data:image/png;base64,AQID" },
+          {
+            type: "input_file",
+            file_data: "data:application/pdf;base64,JVBE",
+            filename: "report.pdf",
+          },
+          { type: "input_file", file_url: "https://x/a.pdf" },
+        ],
+      },
     ])
   })
 })

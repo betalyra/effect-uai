@@ -31,6 +31,7 @@ const getTime = Tool.make({
   name: "get_time",
   description: "Get the current time for a timezone.",
   inputSchema: Tool.fromEffectSchema(Schema.Struct({ timezone: Schema.String })),
+  outputSchema: Schema.Struct({ timezone: Schema.String, iso: Schema.String }),
   run: ({ timezone }) => Effect.succeed({ timezone, iso: "2026-05-04T12:00:00Z" }),
   strict: true,
 })

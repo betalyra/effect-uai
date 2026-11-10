@@ -18,7 +18,7 @@
  * usable as a selector). That even works against a partial CDP engine like
  * obscura, which has no accessibility domain and needs no screenshots.
  */
-import { Data, Effect, Option, pipe, Schema, Stream } from "effect"
+import { Data, Effect, Option, pipe, Predicate, Result, Schema, Stream } from "effect"
 import type * as AiError from "@effect-uai/core/AiError"
 import * as CoreBrowser from "@effect-uai/core/Browser"
 import * as BrowserError from "@effect-uai/core/BrowserError"
@@ -29,12 +29,11 @@ import * as Loop from "@effect-uai/core/Loop"
 import * as Tool from "@effect-uai/core/Tool"
 import type * as ToolEvent from "@effect-uai/core/ToolEvent"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-import * as ToolResult from "@effect-uai/core/ToolResult"
 import * as Turn from "@effect-uai/core/Turn"
 
 // ---------------------------------------------------------------------------
-// The finish signal: how the run ends. A signal tool is model-visible but
-// never executed - the loop intercepts it, decodes the report from its
+// The finish signal: how the run ends. A declared tool (no `run`) is model-visible
+// but never executed: the loop intercepts it, decodes the report from its
 // arguments, and stops. Keeping the report schema on the tool (rather than
 // a structured-output turn) stays in tool space, which every provider's
 // tool-calling path supports.
@@ -53,7 +52,7 @@ const FinishArgs = Schema.Struct({
   }),
 })
 
-const finishTool = Tool.signal({
+const finishTool = Tool.declare({
   name: "finish",
   description:
     "End the usability test and file the report. Call it as soon as the goal is met, or when you are stuck with no way forward.",
@@ -100,6 +99,7 @@ const readPageTool = (session: CoreBrowser.BrowserSession) =>
     description:
       "Read the current page: its full main content as markdown plus the interactive elements, each with an @ref usable in browser_click / browser_fill. Call it after navigating or acting to see the result.",
     inputSchema: Tool.noInput,
+    outputSchema: Schema.String,
     run: () =>
       Effect.gen(function* () {
         const { elements, markdown, url } = yield* Effect.all(
@@ -128,10 +128,8 @@ const readPageTool = (session: CoreBrowser.BrowserSession) =>
   })
 
 // A failed action (stale ref, dead control, timeout) is signal the model can
-// adapt to, so describe it to a model-visible string. Session/infra errors
-// stay typed on the error channel and end the run - the model cannot revive a
-// dead session. This selective mapping is the middleware pattern from the
-// tool-failure design.
+// adapt to, so describe it to the model. Session/infra errors stay typed on
+// the error channel and end the run - the model cannot revive a dead session.
 const MODEL_ACTIONABLE: ReadonlyArray<string> = [
   "BrowserTimeout",
   "BrowserActionFailed",
@@ -139,13 +137,8 @@ const MODEL_ACTIONABLE: ReadonlyArray<string> = [
   "BrowserUnsupported",
 ]
 
-const recoverActionable: Toolkit.Middleware<never, string> = (run) => (input, emit) =>
-  run(input, emit).pipe(
-    Effect.mapError((e) => {
-      const err = e as BrowserError.BrowserError
-      return MODEL_ACTIONABLE.includes(err._tag) ? BrowserError.describe(err) : e
-    }),
-  )
+const recoverActionable = (e: BrowserError.BrowserError): string | undefined =>
+  MODEL_ACTIONABLE.includes(e._tag) ? BrowserError.describe(e) : undefined
 
 // ---------------------------------------------------------------------------
 // Report types.
@@ -186,6 +179,7 @@ export type UsabilityError =
   | Tool.ToolError
   | Tool.ToolValidationError
   | Toolkit.DuplicateToolName
+  | Schema.SchemaError
 
 // ---------------------------------------------------------------------------
 // Prompt.
@@ -214,20 +208,25 @@ const clip = (s: string, max = 120): string => (s.length > max ? `${s.slice(0, m
 
 const summarizeCall = (call: Items.ToolCall): string => `${call.name} ${clip(call.arguments, 80)}`
 
-const outcomeOf = (results: ReadonlyArray<ToolResult.ToolResult>, call: Items.ToolCall): string =>
-  Option.match(Option.fromNullishOr(results.find((r) => r.call_id === call.call_id)), {
+// Every failure that reaches a result (ToolFailed, core's errors) carries a `message`.
+const messageOf = (error: unknown): string =>
+  Predicate.hasProperty(error, "message") ? String(error.message) : String(error)
+
+const outcomeOf = (outcomes: ReadonlyArray<Toolkit.Outcome>, call: Items.ToolCall): string =>
+  Option.match(Option.fromNullishOr(outcomes.find((o) => o.call_id === call.call_id)), {
     onNone: () => "(no result)",
-    onSome: ToolResult.ToolResult.$match({
-      Ok: ({ value }) => clip(String(value)),
-      Failure: (f) => `failed (${f.kind})${f.reason === undefined ? "" : `: ${f.reason}`}`,
-    }),
+    onSome: ({ result }) =>
+      Result.match(result, {
+        onSuccess: (value) => clip(String(value)),
+        onFailure: (error) => `failed: ${clip(messageOf(error))}`,
+      }),
   })
 
 const appendTrail = (
   trail: ReadonlyArray<StepRecord>,
   turn: Turn.Turn,
   calls: ReadonlyArray<Items.ToolCall>,
-  results: ReadonlyArray<ToolResult.ToolResult>,
+  results: ReadonlyArray<Toolkit.Outcome>,
 ): ReadonlyArray<StepRecord> => {
   const reasoning = Turn.assistantText(turn).trim()
   return [
@@ -269,7 +268,11 @@ const exhaustedReport = (cfg: UsabilityConfig, trail: ReadonlyArray<StepRecord>)
 type BodyEvent = UsabilityReport | ToolEvent.ToolEvent
 type BodyStep = Loop.Step<BodyEvent, State>
 /** Error union every `onTurnComplete` branch unifies to. */
-type BodyError = BrowserError.BrowserError | Tool.ToolError | Tool.ToolValidationError
+type BodyError =
+  | BrowserError.BrowserError
+  | Tool.ToolError
+  | Tool.ToolValidationError
+  | Schema.SchemaError
 
 const emitAndStop = (report: UsabilityReport): Stream.Stream<BodyStep, BodyError> =>
   Stream.concat(Stream.make(Loop.value(report)), Loop.stop())
@@ -295,7 +298,7 @@ export const runUsabilityTest = (
       // Browser action verbs + the recipe-local read-page tool + the finish
       // signal, with actionable failures described to the model and session
       // errors left typed to end the run.
-      const actions = Toolkit.wrap(
+      const actions = Toolkit.describeFailures(
         yield* Toolkit.compose(
           browserToolkit(session),
           Toolkit.make(readPageTool(session), finishTool),
@@ -369,20 +372,19 @@ export const runUsabilityTest = (
               // Execute the calls in order (browser actions are order-
               // dependent: fill, then press Enter) and continue with the
               // results appended to history and trail.
-              const act: Stream.Stream<BodyStep, BrowserError.BrowserError> = Toolkit.run(
-                actions,
-                calls,
-                { concurrency: 1 },
-              ).pipe(
-                Toolkit.continueWithResults((results) =>
-                  Toolkit.appendToolResults(
+              const act: Stream.Stream<BodyStep, BodyError> = Toolkit.run(actions, calls, {
+                concurrency: 1,
+              }).pipe(
+                Toolkit.continueWith((outcomes) =>
+                  Toolkit.appendResults(
+                    actions,
                     {
                       ...state,
                       round: state.round + 1,
-                      trail: appendTrail(state.trail, turn, calls, results),
+                      trail: appendTrail(state.trail, turn, calls, outcomes),
                     },
                     turn,
-                  )(results),
+                  )(outcomes),
                 ),
               )
               return act

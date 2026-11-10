@@ -1,0 +1,31 @@
+# @effect-uai/ui
+
+## 0.19.0
+
+### Minor Changes
+
+- 13dc342: Tool output redesign: tools return typed values, including images and files.
+
+  - A tool's `run` returns an `Effect` or a `Stream` (no `emit`): each stream element is a typed `ToolEvent.Partial` as soon as it is produced, and the last is also the result. `Tool.make` requires `run` and `outputSchema`, whose encoded side must be JSON; `Content.Value` is the explicit "anything" (text, JSON, `Content.Image` / `Content.File`, or an array of JSON and media). `Tool.declare` builds a tool without `run`, model-visible and handled by the loop (a signal, or a call answered elsewhere); `Tool.withRun` turns it into a `Tool`. `Toolkit.split(toolkit, turn)` sorts a turn's calls into `run`, `declared` (decoded, typed per tool for an exhaustive `Match`) and `invalid`; `Toolkit.complete` answers a call with a value typed by `outputSchema`.
+  - Errors listed in a tool's `failureSchema` reach the model as typed values; any other error fails `Toolkit.run`'s stream. Calls that never ran fail with `InputInvalid`, `OutputInvalid` or `UnknownTool`. `Toolkit.describeFailures` maps undeclared errors to `ToolFailed`, or keeps them fatal when `describe` returns `undefined`.
+  - History holds typed parts: `ToolCallOutput.output` is `input_text | input_json | input_image | input_file` plus `isError`. `Toolkit.output` encodes an outcome with the tool's schemas, `Toolkit.decode` reads it back. Each provider serializes once: native media parts on Responses and Anthropic (`is_error` on Anthropic), an object in Gemini's `functionResponse` with media in `parts`, and `AiError.Unsupported` for media on text-only tool messages (Chat Completions, Mistral, OpenAI Realtime). MCP images, audio and resources arrive as media.
+  - `Toolkit.next(toolkit, state, turn)` replaces `continueWithResults(appendToolResults(...))`; `continueWith` and `appendResults` remain as its halves. `Tool.declare` replaces `Tool.signal` / `Tool.interaction`. Removed: `ToolResult`, `Tool.execute`, `Toolkit.collectResults`, `ToolEvent.Progress` / `ApprovalRequested`.
+  - `Approval` is renamed `ToolDecision` (`Approval.decisions` is `ToolDecision.make`): answers are any decision about a waiting tool call, not only approval. `ToolDecision.make` defines the possible answers and groups waiting calls (`resolve`: `answered` for an exhaustive `Match`, groups per tag, and `invalid` for answers it doesn't take or conflicting ones); `ToolDecision.closesWith` marks an answer that ends the call with its error; `ToolDecision.byTool` gives each tool its own answers. `ToolDecision.Default` and `ToolDecision.Denied` cover the common case. Decisions stay app code: a gated tool only declares its closings in `failureSchema` (or `Tool.withFailures`), and `Toolkit.close(toolkit, "tool", call, error)` builds the outcome. `fromMap` and the decision helpers are removed. `HistoryCheck.cancelAllPending` returns `Cancelled` outputs ready to append.
+  - `@effect-uai/ui` protocol v2: `tool-partial` and `tool-result { result: Success | Failure }`, typed per tool by the contract (failures from each tool's `failureSchema` and core's errors). `Projection.toRunEvents({ contract })` encodes (contract required), `Content.Value` travels as typed parts so JSON can't pass for media, `Input` answers carry typed decisions.
+  - `Loop.loop` and `onTurnComplete` infer a body's outer Effect error separately from its stream's.
+
+  See the 0.19 migration page.
+
+- 20b58b6: New package `@effect-uai/ui`: stream an agent's runs to a browser and turn them into state any framework can render.
+
+  - `RunEvent`: the wire protocol. Every event a run produces (lifecycle with exactly one terminal, steps, text, refusal and reasoning deltas, citations, images, structured objects, tool calls and results, usage, persisted `data`, transient `live`, and the `input-accepted` echo of a queueing server), wrapped in `Envelope { streamId, seq, runId?, event }`. Branded `StreamId`, `RunId`, `InputId`. `EnvelopeJson` carries image bytes over JSON.
+  - `Input`: what a client sends, with a client-generated id for optimistic UI. Preset: `submit` (core user messages) and `resolve` (approvals); `Input.make(DataSchema)` adds typed app `data`.
+  - `UiContract`: types shared by server and client, from Schemas only (`make({ tools, objects, data, live, metadata })`). The wire stays JSON; the client decodes each envelope once, so a tool block narrowed by name has its tool's input and output types. `Envelope`, `RunView` and `Thread` schemas encode typed state back; `data`, `live`, `metadata` are typed server constructors.
+  - `Projection`: an effect-uai loop as `RunEvent`s (`toRunEvents`). `providerData` never leaves the server.
+  - `Run`: server operators, one job each: `start`, `complete` (one terminal last), `stopWhen`, `failed`, `sequence` (per-stream `seq`), `coalesce` (merge deltas).
+  - `SseEncoding`: envelopes as SSE on Effect's `Sse` (`id` = seq, `event` = type), `responseHeaders`, and `lastEventId` for reconnects.
+  - `RunView`: one run as plain data, folded with `initial` + `step`: ordered blocks in core's shapes, tool calls with status, a typed `partial` while they stream and a typed `outcome` (`Success | Failure`) once they settle, objects (`partial` while streaming, `value` once done), `live` values, summed usage. Idempotent on `seq`, so replays are safe.
+  - `Thread`: an optional chat fold over `RunView` (`Thread.make({ toUser, settle, decodeInput })`, or the preset). Inputs sent during a run wait in `pending` until a `run-started` lists them. A call approved after its run was interrupted updates the card it was asked from (`RunView.applyToolUpdate`; `updateTool` in a custom fold).
+  - `Client`: `sse`, `ndjson`, and `resumable` (reconnect from the last `seq` on a `Schedule`).
+  - `Transport`: per run `direct`, `durable`, `local`; per session `session`. `durableHttp` / `sessionHttp` read SSE and reconnect. Any source is a transport: `{ start: (input, state) => stream }`.
+  - `Atoms`: state on `effect/reactivity`. `make` / `thread` for per-run transports, `session` / `sessionThread` for sessions; `contract` types the state. The runtime provides `SecureRandom` for input ids.

@@ -82,7 +82,7 @@ interface MicrosandboxCreateRequest extends Omit<CommonCreateRequest, "secrets">
 }
 ```
 
-On top of [`CommonCreateRequest`](/sandboxes/#picking-an-image)
+On top of [`CommonCreateRequest`](/sandboxes/#pick-an-image)
 (`image`, `timeout`, `env`, `network`, `volumes`):
 
 - **`name`**: explicit sandbox id. Microsandbox keys by name; omit it
@@ -125,7 +125,7 @@ later Effect.
 
 ### Secrets
 
-See the [secrets section](/sandboxes/#secrets-what-theyre-for-and-why-a-placeholder)
+See the [secrets section](/sandboxes/#inject-secrets)
 in the overview for what `BoundSecret` is and why it exists.
 
 ```ts

@@ -99,8 +99,8 @@ drop the `Stream.catch` and let the failure propagate out of
 
 Running the same prompt through all three providers is also the
 fastest way to verify the common
-[`LanguageModelService`](/language-models/loop/#streamuntilcomplete)
-abstraction holds: same history shape in, same `TurnDelta` stream
+[`LanguageModelService`](/language-models/)
+abstraction holds: same history shape in, same `TurnEvent` stream
 out, same `Turn` shape on completion. The token accounting carries
 the cached-tokens / reasoning-tokens detail across providers
 identically.

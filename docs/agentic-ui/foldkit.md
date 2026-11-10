@@ -27,7 +27,7 @@ export const GetWeather = {
   outputSchema: Schema.Struct({
     city: Schema.String,
     temperatureC: Schema.Number,
-    observedAt: Schema.Date,
+    observedAt: Schema.DateFromString,
   }),
 } as const
 
@@ -83,11 +83,12 @@ The input id is random, so a Command creates it (`Input.withId`) and
 
 ## In the view
 
-Narrowing a tool block by name gives its decoded output:
+Narrowing a tool block by name types its `partial` and `outcome` (a decoded
+`Success` or a typed `Failure`):
 
 ```ts
-if (block.name === "get_weather" && block.output !== undefined) {
-  const { city, temperatureC, observedAt } = block.output // observedAt: Date
+if (block.name === "get_weather" && block.outcome?._tag === "Success") {
+  const { city, temperatureC, observedAt } = block.outcome.value // observedAt: Date
 }
 ```
 

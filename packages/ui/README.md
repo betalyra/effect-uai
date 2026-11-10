@@ -38,7 +38,8 @@ const ChatUi = UiContract.make({ tools: [GetWeather] })
 // client: the state is typed by the contract
 const chat = Atoms.thread({ contract: ChatUi, runtime, transport, busy: "block" })
 for (const b of thread.active?.blocks ?? [])
-  if (b.type === "tool" && b.name === "get_weather") b.output?.observedAt // Date
+  if (b.type === "tool" && b.name === "get_weather" && b.outcome?._tag === "Success")
+    b.outcome.value.observedAt // Date
 ```
 
 Client:

@@ -48,40 +48,31 @@ uses to decide what to do next.
 
 ```ts
 export const conversation = (service: LanguageModelService, model: string, sb: SandboxInstance) => {
-  const toolkit = Toolkit.make([makeRunPython(sb)])
-  const tools = Toolkit.toDescriptors(toolkit)
+  const toolkit = Toolkit.make(makeRunPython(sb))
 
   // After each turn: tool calls → run them and continue; no tool calls → stop.
   const nextStep = (state: State, turn: Turn.Turn) =>
-    Arr.match(Turn.functionCalls(turn), {
-      onEmpty: () => stop,
+    Arr.match(Turn.getToolCalls(turn), {
+      onEmpty: () => stop(),
       onNonEmpty: (calls) =>
-        Toolkit.executeAll(toolkit.tools, calls).pipe(
-          Toolkit.continueWith((results) =>
-            Turn.appendTurn(
-              { ...state, index: state.index + 1 },
-              turn,
-              results.map(toFunctionCallOutput),
-            ),
-          ),
+        Toolkit.run(toolkit, calls).pipe(
+          Toolkit.next(toolkit, { ...state, index: state.index + 1 }, turn),
         ),
     })
 
   return pipe(
     initial,
     loop((state) =>
-      Effect.succeed(
-        service
-          .streamTurn({ history: state.history, model, tools })
-          .pipe(onTurnComplete((turn) => Effect.sync(() => nextStep(state, turn)))),
-      ),
+      service
+        .streamTurn({ history: state.history, model, tools: toolkit })
+        .pipe(onTurnComplete((turn) => nextStep(state, turn))),
     ),
   )
 }
 ```
 
 This is the exact same harness as [basic-usage](/recipes/basic-usage/).
-The only difference is what `makeRunPython` does — every iteration the
+The only difference is what `makeRunPython` does: every iteration the
 model either calls the tool (sandbox runs Python, output appended to
 history, loop continues) or doesn't (the model produced its final
 answer, loop stops).

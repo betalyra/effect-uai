@@ -135,5 +135,5 @@ the patterns side by side.
   full `Embedding` union and `Vector.*` primitives.
 - [Multimodal embedding](/embeddings/multimodal/): when you want
   cross-modal retrieval, not deeper single-modality precision.
-- [Reranking](/reranking/) (coming soon): different precision tool,
+- [Reranking](/reranking/): different precision tool,
   same problem class.

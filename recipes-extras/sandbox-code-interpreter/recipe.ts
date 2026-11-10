@@ -93,7 +93,7 @@ export const conversation = (service: LanguageModelService, model: string, sb: S
     loop((state) =>
       service
         .streamTurn({ history: state.history, model, tools: toolkit })
-        .pipe(onTurnComplete((turn) => Effect.sync(() => nextStep(state, turn)))),
+        .pipe(onTurnComplete((turn) => nextStep(state, turn))),
     ),
   )
 }

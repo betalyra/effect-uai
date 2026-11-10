@@ -47,7 +47,7 @@ Done and dropped items are listed at the end so they don't get re-proposed.
       Evidence: only `decodeJsonLines` / `decodeJsonLinesRecoverable` exist
       (`structured-format/StructuredFormat.ts:159-172`).
 - [ ] **AbortSignal → interruption helper** (`interruptOnAbort(signal)`):
-      `examples/ai-sdk-next` and the `mid-stream-abort` recipe each roll their own.
+      `examples/next-chat` and the `mid-stream-abort` recipe each roll their own.
       Planned as `@effect-uai/ui/Run`; move to core if non-UI callers want it.
       Evidence: no `AbortSignal` handling in `packages/core/src`.
 - [ ] **Speakable-chunk operator for streaming TTS input**: regroup LLM text
@@ -143,7 +143,9 @@ everything else stays provider-typed.
 - [x] **Multimodal tool-call output** (done in 0.19): `ToolCallOutput.output` is a string
       only; MCP rich content depends on this. Source: `plans/mcp.md:153`.
 - [ ] **`Turn.imagesAsInput` → per-item, renamed (e.g. `mediaAsInput`)**.
-      Source: `plans/image-generation.md` (~506). Evidence: `domain/Turn.ts:152`.
+      Non-breaking path: add `mediaAsInput(item)`, keep `imagesAsInput` as
+      `@deprecated` (`history.flatMap(mediaAsInput)`), remove in a later breaking
+      release. Source: `plans/image-generation.md` (~506). Evidence: `domain/Turn.ts:152`.
 - [ ] **Tests for `imagesAsInput` and `Capabilities.warnDroppedBlocks`**.
       Source: `plans/image-generation.md`.
 - [ ] **Music continuation** (`reference?: AudioSource` on the request).
@@ -247,7 +249,7 @@ update of `plans/mcp.md`). `@effect-uai/mcp` is client-only today.
 ## Compat
 
 - [ ] **`@effect-uai/ai-sdk`: accept `ToolEvent` (and pass through
-      `MetricEvent` mapping) natively**: `examples/ai-sdk-next` hand-writes
+      `MetricEvent` mapping) natively**: `examples/next-chat` hand-writes
       `toEmission` to merge `TurnEvent | ToolEvent | MetricEvent`.
 
 ## Done or dropped (do not re-propose)

@@ -205,16 +205,14 @@ export const conversation = (
 
             const lm = yield* LanguageModel
             return lm.streamTurn({ history, model, tools: toolkit }).pipe(
-              Loop.onTurnComplete((turn) =>
-                Effect.sync(() => {
-                  const calls = Turn.getToolCalls(turn)
-                  if (calls.length === 0) return Loop.stop()
+              Loop.onTurnComplete((turn) => {
+                const calls = Turn.getToolCalls(turn)
+                if (calls.length === 0) return Loop.stop()
 
-                  // `Toolkit.next` streams tool events to the consumer and
-                  // folds their outputs into the next state's history.
-                  return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, { history }, turn))
-                }),
-              ),
+                // `Toolkit.next` streams tool events to the consumer and
+                // folds their outputs into the next state's history.
+                return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, { history }, turn))
+              }),
             )
           }),
         ),

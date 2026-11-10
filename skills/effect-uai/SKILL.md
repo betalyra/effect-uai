@@ -259,17 +259,15 @@ export const conversation = pipe(
     Effect.gen(function* () {
       const oai = yield* Responses
       return oai.streamTurn({ history: state.history, model: "gpt-5.4-mini", tools: toolkit }).pipe(
-        onTurnComplete((turn) =>
-          Effect.sync(() => {
-            const calls = Turn.getToolCalls(turn)
+        onTurnComplete((turn) => {
+          const calls = Turn.getToolCalls(turn)
 
-            // No tool calls: assistant is done.
-            if (calls.length === 0) return stop()
+          // No tool calls: assistant is done.
+          if (calls.length === 0) return stop()
 
-            // Tool calls: execute, append outputs, loop again.
-            return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
-          }),
-        ),
+          // Tool calls: execute, append outputs, loop again.
+          return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, state, turn))
+        }),
       )
     }),
   ),

@@ -146,17 +146,15 @@ Match.value(settled).pipe(
   }),
 )
 
-onTurnComplete((turn) =>
-  Effect.sync(() => {
-    const calls = Turn.getToolCalls(turn)
-    if (calls.length === 0) return stop()
-    // Stream.unwrap supplies the Scope the router fiber lives in: it
-    // stays alive as long as the consumer pulls.
-    return Stream.unwrap(fromQueue(isSensitive, answers)(calls)).pipe(
-      Toolkit.next(toolkit, current, turn),
-    )
-  }),
-)
+onTurnComplete((turn) => {
+  const calls = Turn.getToolCalls(turn)
+  if (calls.length === 0) return stop()
+  // Stream.unwrap supplies the Scope the router fiber lives in: it
+  // stays alive as long as the consumer pulls.
+  return Stream.unwrap(fromQueue(isSensitive, answers)(calls)).pipe(
+    Toolkit.next(toolkit, current, turn),
+  )
+})
 ```
 
 The consumer side typically taps `ApprovalRequested` events, offers

@@ -23,7 +23,7 @@ list is exhausted.
   and `Gemini.make`, then selecting between them by an index threaded
   through state.
 - Catching specific `AiError` tags with `Stream.catchTag` to convert a
-  failure into a state advance (`nextAfter(Stream.empty, { tier: tier + 1 })`)
+  failure into a state advance (`next({ ...state, tier: state.tier + 1 })`)
   instead of letting it terminate the stream.
 - Letting non-retryable errors fall through unchanged - the rest of the
   union (`ContentFiltered`, `InvalidRequest`, etc.) crosses the loop
@@ -38,16 +38,16 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
     loop((state) =>
       Effect.gen(function* () {
         const tier = tiers[state.tier]
-        if (tier === undefined) return stop // exhausted
+        if (tier === undefined) return stop() // exhausted
 
         // Fallback is a state transition: same history, next provider tier.
         const advanceTier = (reason: string) =>
           Effect.logWarning(`${tier.name}: ${reason} - falling back`).pipe(
-            Effect.as(nextAfter(Stream.empty, { ...state, tier: state.tier + 1 })),
+            Effect.as(next({ ...state, tier: state.tier + 1 })),
           )
 
         return tier.service.streamTurn({ history: state.history, model: tier.model }).pipe(
-          onTurnComplete(() => Effect.sync(() => stop)),
+          onTurnComplete(() => stop()),
           // Only retry errors become continuation; everything else crosses the boundary.
           Stream.catchTag("RateLimited", () => Stream.unwrap(advanceTier("rate-limited"))),
           Stream.catchTag("Unavailable", () => Stream.unwrap(advanceTier("unavailable"))),
@@ -58,7 +58,7 @@ const conversation = (tiers: ReadonlyArray<Tier>) =>
 ```
 
 The same `state.history` is reused on the fallback because the body
-returned `nextAfter(..., { ...state, tier: state.tier + 1 })` rather than
+returned `next({ ...state, tier: state.tier + 1 })` rather than
 calling `Turn.appendToHistory(state, turn)` - we never advanced past the failed
 turn.
 

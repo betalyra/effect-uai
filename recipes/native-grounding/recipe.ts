@@ -70,19 +70,17 @@ export const nativeGrounding = (cfg: NativeGroundingConfig) => {
         model: cfg.model,
         ...(lastRound ? {} : { tools: toolkit }),
       }).pipe(
-        onTurnComplete((turn) =>
-          Effect.sync(() => {
-            // The hosted web search runs inside the provider turn — it never
-            // appears as a local tool call — so a grounded answer just stops
-            // the loop. (Local `Tool.make` tools, if you added any, would run
-            // through `Toolkit.run` here and continue the loop.)
-            const calls = lastRound ? [] : Turn.getToolCalls(turn)
-            if (calls.length === 0) return stop()
-            return Toolkit.run(toolkit, calls).pipe(
-              Toolkit.next(toolkit, { ...state, round: state.round + 1 }, turn),
-            )
-          }),
-        ),
+        onTurnComplete((turn) => {
+          // The hosted web search runs inside the provider turn (it never
+          // appears as a local tool call), so a grounded answer just stops
+          // the loop. Local `Tool.make` tools, if you added any, would run
+          // through `Toolkit.run` here and continue the loop.
+          const calls = lastRound ? [] : Turn.getToolCalls(turn)
+          if (calls.length === 0) return stop()
+          return Toolkit.run(toolkit, calls).pipe(
+            Toolkit.next(toolkit, { ...state, round: state.round + 1 }, turn),
+          )
+        }),
       )
     }),
   )

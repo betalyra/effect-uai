@@ -108,10 +108,7 @@ export const conversation = (model = DEFAULT_MODEL, summaryModel = DEFAULT_SUMMA
             })
             .pipe(
               onTurnComplete((turn) =>
-                Effect.sync(() => {
-                  const summary = Turn.assistantTexts(turn).join(" ")
-                  return next(withSummary(state, summary))
-                }),
+                next(withSummary(state, Turn.assistantTexts(turn).join(" "))),
               ),
             )
         }
@@ -127,18 +124,16 @@ export const conversation = (model = DEFAULT_MODEL, summaryModel = DEFAULT_SUMMA
           })
           .pipe(
             Stream.tap((delta) => Effect.logDebug("delta", { delta })),
-            onTurnComplete((turn) =>
-              Effect.sync(() => {
-                const nextState = advance(state, turn)
-                if (state.pendingPrompts.length === 0) return stop()
-                const [nextPrompt, ...rest] = state.pendingPrompts
-                return next({
-                  ...nextState,
-                  history: [...nextState.history, Items.userText(nextPrompt!)],
-                  pendingPrompts: rest,
-                })
-              }),
-            ),
+            onTurnComplete((turn) => {
+              const nextState = advance(state, turn)
+              if (state.pendingPrompts.length === 0) return stop()
+              const [nextPrompt, ...rest] = state.pendingPrompts
+              return next({
+                ...nextState,
+                history: [...nextState.history, Items.userText(nextPrompt!)],
+                pendingPrompts: rest,
+              })
+            }),
           )
       }),
     ),

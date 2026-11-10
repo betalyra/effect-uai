@@ -69,24 +69,22 @@ export const conversation = (
 
         const lm = yield* LanguageModel
         return lm.streamTurn({ history, model: "gpt-5.4-mini", tools: toolkit }).pipe(
-          onTurnComplete((turn) =>
-            Effect.sync(() => {
-              const calls = Turn.getToolCalls(turn)
+          onTurnComplete((turn) => {
+            const calls = Turn.getToolCalls(turn)
 
-              // No tool calls - the assistant is done. Continue with
-              // the appended turn; the next iteration will block on
-              // the queue for the next user message.
-              if (calls.length === 0) {
-                return next(Turn.appendToHistory({ history }, turn))
-              }
+            // No tool calls - the assistant is done. Continue with
+            // the appended turn; the next iteration will block on
+            // the queue for the next user message.
+            if (calls.length === 0) {
+              return next(Turn.appendToHistory({ history }, turn))
+            }
 
-              // Tool calls: stream tool events to the consumer and
-              // emit one `Loop.next` carrying the appended turn. The
-              // next iteration runs the model again to incorporate
-              // the outputs, skipping the queue check.
-              return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, { history }, turn))
-            }),
-          ),
+            // Tool calls: stream tool events to the consumer and
+            // emit one `Loop.next` carrying the appended turn. The
+            // next iteration runs the model again to incorporate
+            // the outputs, skipping the queue check.
+            return Toolkit.run(toolkit, calls).pipe(Toolkit.next(toolkit, { history }, turn))
+          }),
         )
       }),
     ),

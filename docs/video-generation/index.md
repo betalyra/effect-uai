@@ -55,17 +55,35 @@ already running at the provider instead of paying for a second clip.
 ```ts
 const RefJson = Schema.fromJsonString(VideoGenerator.VideoJobRef)
 
-const ref = yield * VideoGenerator.submit({ model, prompt })
-yield * fs.writeFileString("ref.json", yield * Schema.encodeEffect(RefJson)(ref))
+const start = Effect.gen(function* () {
+  const ref = yield* VideoGenerator.submit({ model, prompt })
+  yield* fs.writeFileString("ref.json", yield* Schema.encodeEffect(RefJson)(ref))
+})
 
 // later, possibly in another process
-const saved = yield * Schema.decodeEffect(RefJson)(yield * fs.readFileString("ref.json"))
-const { videos } = yield * VideoGenerator.collect(saved, { pollInterval: "5 seconds" })
+const finish = Effect.gen(function* () {
+  const saved = yield* Schema.decodeEffect(RefJson)(yield* fs.readFileString("ref.json"))
+  const { videos } = yield* VideoGenerator.collect(saved, { pollInterval: "5 seconds" })
+  return videos
+})
 ```
 
 The schema gives the ref back its type, so a persisted ref needs no
 cast. Interrupting `collect` or `watch` leaves the job running, which is
-what makes this work; `generate` is the one that cancels.
+what makes this work; `generate` is the one that cancels, on any exit
+but success, its own timeout included.
+
+The same property makes `collect` the place to retry. A failed poll (a
+dropped connection, a 503) ends `collect` but not the job, so running it
+again picks up where it was. Retrying `generate` submits again and pays
+for a second clip.
+
+```ts
+VideoGenerator.collect(saved).pipe(Retry.effect(Schedule.exponential("2 seconds")))
+```
+
+A ref names the provider that minted it. Handing it to another
+provider's service fails `InvalidRequest` before anything is sent.
 
 ## Reading the video
 
@@ -82,8 +100,8 @@ the provider:
 You never branch on which one you got. Read through the provider:
 
 ```ts
-yield * VideoGenerator.toStream(video).pipe(Stream.run(fs.sink("clip.mp4")))
-const { bytes } = yield * VideoGenerator.toBytes(video)
+const save = VideoGenerator.toStream(video).pipe(Stream.run(fs.sink("clip.mp4")))
+const inMemory = VideoGenerator.toBytes(video) // Uint8Array; the type is `video.mimeType`
 ```
 
 `toStream` streams a URL without holding the clip in memory, sends the
@@ -121,10 +139,13 @@ providers disagree too much on whether and how it can be asked for.
 
 | Situation                                    | Error                                      |
 | -------------------------------------------- | ------------------------------------------ |
-| The provider failed or refused the job       | `GenerationFailed`, with its reason        |
+| The provider failed the job                  | `GenerationFailed`, with its reason        |
+| The provider refused the prompt              | `ContentFiltered`, where it says so        |
 | The job never settled within `timeout`       | `Timeout`                                  |
 | A role, ratio or tier the provider cannot do | `Unsupported`, before the request goes out |
+| Another provider's job ref                   | `InvalidRequest`, before the request       |
 | Reading an expired or revoked link           | `InvalidRequest`, naming the provider      |
+| A download that breaks off                   | `Unavailable`, safe to retry               |
 | Reading another provider's `ref`             | `Unsupported`                              |
 
 ## Providers

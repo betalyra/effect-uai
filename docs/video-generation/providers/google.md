@@ -117,12 +117,13 @@ prompting first, since a fixed task constrains the model.
 
 ## Errors
 
-| Situation                                 | Error                               |
-| ----------------------------------------- | ----------------------------------- |
-| Omni failed, cancelled or refused the job | `GenerationFailed`, with its reason |
-| A ratio, tier or input mix Omni lacks     | `Unsupported`, before the request   |
-| Rate limited                              | `RateLimited`                       |
-| Bad key                                   | `AuthFailed`                        |
+| Situation                              | Error                               |
+| -------------------------------------- | ----------------------------------- |
+| Omni failed or cancelled the job       | `GenerationFailed`, with its reason |
+| A safety filter blocked prompt or clip | `ContentFiltered`, with its reason  |
+| A ratio, tier or input mix Omni lacks  | `Unsupported`, before the request   |
+| Rate limited                           | `RateLimited`                       |
+| Bad key                                | `AuthFailed`                        |
 
 ## Cost
 

@@ -17,7 +17,30 @@ const serving = (status: number) =>
   )
 
 describe("read", () => {
+  it.effect("treats a body that breaks off mid-stream as transient, not as an expired link", () =>
+    Effect.gen(function* () {
+      const broken = new ReadableStream<Uint8Array>({
+        start: (controller) => {
+          controller.enqueue(new Uint8Array(8))
+          controller.error(new Error("connection reset"))
+        },
+      })
+      const error = yield* Effect.flip(
+        Stream.runDrain(read(videoUrl("https://cdn.example/clip.mp4"), { provider: "fal" })),
+      ).pipe(
+        Effect.provideService(
+          HttpClient.HttpClient,
+          HttpClient.make((request) =>
+            Effect.succeed(HttpClientResponse.fromWeb(request, new Response(broken))),
+          ),
+        ),
+      )
+      expect(error).toMatchObject({ _tag: "Unavailable", provider: "fal" })
+    }),
+  )
+
   it.effect.each([
+    [401, "AuthFailed"],
     [403, "InvalidRequest"],
     [404, "InvalidRequest"],
     [429, "RateLimited"],

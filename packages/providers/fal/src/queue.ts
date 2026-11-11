@@ -1,7 +1,8 @@
-import { Effect, Match, Option, Redacted, Schema, pipe } from "effect"
+import { Array as Arr, Effect, Match, Option, Redacted, Schema, pipe } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Job from "@effect-uai/core/Job"
+import * as Retry from "@effect-uai/core/Retry"
 import { PROVIDER, httpError, transportFailure } from "./codec.js"
 
 /**
@@ -72,43 +73,47 @@ const readBody = <A, E>(
 // answer, so the app is read back off it rather than guessed.
 // ---------------------------------------------------------------------------
 
-const REQUESTS = "/requests/"
-const RESPONSE_URL = /^https?:\/\/[^/]+\/(.+)\/requests\/[^/]+$/
-const REF = /^(.+)\/([^/]+)$/
+const decodeUrl = Schema.decodeUnknownOption(Schema.URLFromString)
 
-const first = (match: RegExpExecArray | null): Option.Option<string> =>
+const nonEmpty = (segments: ReadonlyArray<string>): Option.Option<string> =>
+  segments.length === 0 ? Option.none() : Option.some(segments.join("/"))
+
+/** The app in `https://queue.fal.run/{app}/requests/{id}`: every segment before `requests`. */
+export const appOf = (responseUrl: string): Option.Option<string> =>
   pipe(
-    Option.fromNullOr(match),
-    Option.flatMap(([, group]) => (group === undefined ? Option.none() : Option.some(group))),
-  )
-
-/** The endpoint id is the fallback for a `response_url` shaped unexpectedly. */
-const appOf = (responseUrl: string, endpoint: string): string =>
-  Option.getOrElse(first(RESPONSE_URL.exec(responseUrl)), () => endpoint)
-
-const splitRef = (id: string): Option.Option<readonly [string, string]> =>
-  pipe(
-    Option.fromNullOr(REF.exec(id)),
-    Option.flatMap(([, app, requestId]) =>
-      app !== undefined && requestId !== undefined
-        ? Option.some([app, requestId] as const)
-        : Option.none(),
+    decodeUrl(responseUrl),
+    Option.map((url) => url.pathname.split("/").filter((segment) => segment.length > 0)),
+    Option.flatMap((segments) =>
+      Option.flatMap(
+        Arr.findLastIndex(segments, (s) => s === "requests"),
+        (i) => nonEmpty(segments.slice(0, i)),
+      ),
     ),
   )
 
+/** `{app}/{requestId}` split at its last segment. */
+const splitRef = (id: string): Option.Option<readonly [string, string]> => {
+  const segments = id.split("/")
+  return Option.flatMap(Arr.last(segments), (requestId) =>
+    Option.map(nonEmpty(segments.slice(0, -1)), (app) => [app, requestId] as const),
+  )
+}
+
 /** `{base}/{app}/requests/{id}`, the prefix status, result and cancel share. */
 const urlOf = (cfg: Config, ref: Job.JobRef<string>): Effect.Effect<string, AiError.AiError> =>
-  Option.match(splitRef(ref.id), {
-    onNone: () =>
-      Effect.fail(
-        new AiError.InvalidRequest({
-          provider: PROVIDER,
-          param: "ref",
-          raw: `"${ref.id}" is not a fal queue reference.`,
-        }),
-      ),
-    onSome: ([app, requestId]) => Effect.succeed(`${host(cfg)}/${app}${REQUESTS}${requestId}`),
-  })
+  Effect.flatMap(Job.own(PROVIDER)(ref), (own) =>
+    Option.match(splitRef(own.id), {
+      onNone: () =>
+        Effect.fail(
+          new AiError.InvalidRequest({
+            provider: PROVIDER,
+            param: "ref",
+            raw: `"${own.id}" is not a fal queue reference.`,
+          }),
+        ),
+      onSome: ([app, requestId]) => Effect.succeed(`${host(cfg)}/${app}/requests/${requestId}`),
+    }),
+  )
 
 // ---------------------------------------------------------------------------
 // Operations
@@ -138,15 +143,27 @@ export const enqueue = (
     ),
   )
 
-/** The ref a submission earned, or the rejection it earned instead. */
-export const accept = (
-  endpoint: string,
-  raw: Raw,
-): Effect.Effect<Job.JobRef<string>, AiError.AiError> =>
+/**
+ * The ref a submission earned, or the rejection it earned instead. A
+ * `response_url` we cannot read fails here: guessing the app would only
+ * turn every later poll into a 404.
+ */
+export const accept = (raw: Raw): Effect.Effect<Job.JobRef<string>, AiError.AiError> =>
   raw.status >= 400
     ? rejected(raw)
-    : Effect.map(readBody(decodeSubmitted, raw, "queue submission"), (wire) =>
-        Job.jobRef<string>(PROVIDER, `${appOf(wire.response_url, endpoint)}/${wire.request_id}`),
+    : Effect.flatMap(readBody(decodeSubmitted, raw, "queue submission"), (wire) =>
+        Option.match(appOf(wire.response_url), {
+          onNone: () =>
+            Effect.fail(
+              new AiError.GenerationFailed({
+                provider: PROVIDER,
+                message: `fal accepted ${wire.request_id} but its response_url names no queue app.`,
+                raw: raw.body,
+              }),
+            ),
+          onSome: (app) =>
+            Effect.succeed(Job.jobRef<string>(PROVIDER, `${app}/${wire.request_id}`)),
+        }),
       )
 
 const Status = Schema.Struct({
@@ -162,17 +179,24 @@ const queued = (position: number | null | undefined): Job.JobState<string> =>
 /**
  * The finished run as its raw output body. fal splits status from result: a
  * settled request says only that it settled, and the result endpoint holds
- * both the output and the failure.
+ * both the output and the failure. A transient error on that fetch fails the
+ * poll, so the next one can still collect the result; anything else is the
+ * run's own failure, classified (a refusal is `ContentFiltered`).
  */
 const settled = (
   cfg: Config,
-  ref: Job.JobRef<string>,
   url: string,
 ): Effect.Effect<Job.JobState<string>, AiError.AiError, HttpClient.HttpClient> =>
-  Effect.map(send(cfg, HttpClientRequest.get(url)), (raw) =>
-    raw.status >= 400
-      ? Job.JobState.Failed({ reason: `fal returned ${raw.status} for ${ref.id}.`, raw: raw.body })
-      : Job.JobState.Succeeded({ result: raw.body }),
+  Effect.flatMap(
+    send(cfg, HttpClientRequest.get(url)),
+    (raw): Effect.Effect<Job.JobState<string>, AiError.AiError> =>
+      raw.status >= 400
+        ? Effect.flatMap(httpError(raw.status, raw.body), (error) =>
+            Retry.isRetryable(error)
+              ? Effect.fail(error)
+              : Effect.succeed(Job.JobState.Failed({ error })),
+          )
+        : Effect.succeed(Job.JobState.Succeeded({ result: raw.body })),
   )
 
 /**
@@ -195,7 +219,7 @@ export const status = (
     return yield* Match.value(wire.status).pipe(
       Match.when("IN_QUEUE", () => Effect.succeed(queued(wire.queue_position))),
       Match.when("IN_PROGRESS", () => Effect.succeed(Job.JobState.Running())),
-      Match.orElse(() => settled(cfg, ref, url)),
+      Match.orElse(() => settled(cfg, url)),
     )
   })
 

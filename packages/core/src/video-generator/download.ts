@@ -13,22 +13,36 @@ export type ReadOptions = {
   readonly headers?: Readonly<Record<string, string>>
 }
 
+const statusFailure = (provider: string, status: number, raw: unknown): AiError.AiError =>
+  Match.value(status).pipe(
+    Match.when(429, (): AiError.AiError => new AiError.RateLimited({ provider, raw })),
+    // Only a keyed file URL answers 401; an expired signed link answers 400 or 403.
+    Match.when(
+      401,
+      (): AiError.AiError => new AiError.AuthFailed({ provider, subtype: "auth", raw }),
+    ),
+    Match.when(
+      (s) => s >= 500,
+      (s): AiError.AiError => new AiError.Unavailable({ provider, status: s, raw }),
+    ),
+    // Mostly an expired link: provider URLs live an hour to thirty days.
+    Match.orElse(
+      (): AiError.AiError => new AiError.InvalidRequest({ provider, param: "video", raw }),
+    ),
+  )
+
+/** A body that breaks off mid-stream still carries its 200, so the reason decides first. */
 const httpFailure =
   (provider: string) =>
   (error: HttpClientError.HttpClientError): AiError.AiError =>
-    Option.match(Option.fromNullishOr(error.response?.status), {
-      onNone: () => new AiError.Unavailable({ provider, raw: error }),
-      onSome: (status) =>
-        Match.value(status).pipe(
-          Match.when(429, () => new AiError.RateLimited({ provider, raw: error })),
-          Match.when(
-            (s) => s >= 500,
-            () => new AiError.Unavailable({ provider, status, raw: error }),
-          ),
-          // Mostly an expired link: provider URLs live an hour to thirty days.
-          Match.orElse(() => new AiError.InvalidRequest({ provider, param: "video", raw: error })),
-        ),
-    })
+    Match.value(error.reason).pipe(
+      Match.tag("StatusCodeError", (r) => statusFailure(provider, r.response.status, error)),
+      Match.tag(
+        "InvalidUrlError",
+        (): AiError.AiError => new AiError.InvalidRequest({ provider, param: "video", raw: error }),
+      ),
+      Match.orElse((): AiError.AiError => new AiError.Unavailable({ provider, raw: error })),
+    )
 
 const decodeFailure =
   (provider: string) =>

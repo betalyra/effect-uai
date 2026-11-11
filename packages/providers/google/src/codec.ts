@@ -602,6 +602,85 @@ export const httpStatusError =
       Match.orElse((): AiError.AiError => new AiError.InvalidRequest({ provider, raw: body })),
     )
 
+// ---------------------------------------------------------------------------
+// Interactions API errors
+//
+// A rejected request answers `{ error: { code, message } }`; a background
+// interaction that failed records the same pairs in its `errors` list.
+// Reference: https://aistudio.google.com/docs/api-errors
+// ---------------------------------------------------------------------------
+
+export const InteractionError = Schema.Struct({
+  code: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+})
+export type InteractionError = typeof InteractionError.Type
+
+/** Google's "generation blocked" codes, plus `jailbreak` from its safety guide. */
+const Blocked = Schema.Literals([
+  "safety",
+  "recitation",
+  "language",
+  "prohibited_content",
+  "spii",
+  "blocklist",
+  "jailbreak",
+  "image_safety",
+  "image_prohibited_content",
+  "image_recitation",
+  "image_other",
+  "content_blocked",
+])
+const isBlocked = Schema.is(Blocked)
+
+const blockedBy = (errors: ReadonlyArray<InteractionError>): Option.Option<InteractionError> =>
+  Arr.findFirst(errors, (e) => isBlocked(e.code))
+
+const refused = (provider: string, error: InteractionError, raw: unknown): AiError.AiError =>
+  new AiError.ContentFiltered({
+    provider,
+    ...(error.message !== undefined && { reason: error.message }),
+    raw,
+  })
+
+/** A failed interaction's `errors`: a block is `ContentFiltered`, anything else `GenerationFailed`. */
+export const interactionFailure = (
+  provider: string,
+  errors: ReadonlyArray<InteractionError>,
+  fallback: string,
+  raw: unknown,
+): AiError.AiError =>
+  Option.match(blockedBy(errors), {
+    onSome: (error) => refused(provider, error, raw),
+    onNone: () =>
+      new AiError.GenerationFailed({
+        provider,
+        message: pipe(
+          Arr.findFirst(errors, (e) => e.message !== undefined),
+          Option.flatMap((e) => Option.fromNullishOr(e.message)),
+          Option.getOrElse(() => fallback),
+        ),
+        raw,
+      }),
+  })
+
+const decodeErrorBody = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ error: InteractionError })),
+)
+
+/** {@link httpStatusError}, except that a request the safety filter blocked is `ContentFiltered`. */
+export const interactionHttpError =
+  (provider: string) =>
+  (status: number, body: string): AiError.AiError =>
+    pipe(
+      decodeErrorBody(body),
+      Option.filter(({ error }) => isBlocked(error.code)),
+      Option.match({
+        onSome: ({ error }) => refused(provider, error, body),
+        onNone: () => httpStatusError(provider)(status, body),
+      }),
+    )
+
 /**
  * URL-form images need Gemini's Files API (upload, then `fileData`); we
  * don't pre-upload, so such a part would otherwise vanish from the request.

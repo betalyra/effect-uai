@@ -93,8 +93,11 @@ export const jobStateOf = (wire: WireResponseCompleted): ResearchState =>
     })),
     Match.whenOr("failed", "cancelled", (): ResearchState => ({
       _tag: "Failed",
-      ...(wire.error?.message != null && { reason: wire.error.message }),
-      raw: wire,
+      error: new AiError.GenerationFailed({
+        provider: "responses",
+        message: wire.error?.message ?? `research ended as ${wire.status}`,
+        raw: wire,
+      }),
     })),
     Match.orElse((): ResearchState => ({ _tag: "Running" })),
   )
@@ -159,7 +162,8 @@ const pollJob = (
 ): Effect.Effect<ResearchState, AiError.AiError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    const httpRequest = HttpClientRequest.get(`${resolveHost(cfg)}/responses/${ref.id}`).pipe(
+    const own = yield* Job.own("responses")(ref)
+    const httpRequest = HttpClientRequest.get(`${resolveHost(cfg)}/responses/${own.id}`).pipe(
       HttpClientRequest.bearerToken(cfg.apiKey),
     )
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
@@ -178,8 +182,9 @@ const cancelJob = (
 ): Effect.Effect<void, AiError.AiError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
+    const own = yield* Job.own("responses")(ref)
     const httpRequest = HttpClientRequest.post(
-      `${resolveHost(cfg)}/responses/${ref.id}/cancel`,
+      `${resolveHost(cfg)}/responses/${own.id}/cancel`,
     ).pipe(HttpClientRequest.bearerToken(cfg.apiKey))
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))
     if (response.status >= 400) {

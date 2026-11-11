@@ -17,23 +17,34 @@ second one.
 ## Submit, persist, watch, read
 
 ```ts
+import * as Job from "@effect-uai/core/Job"
 import * as VideoGenerator from "@effect-uai/core/VideoGenerator"
 
-// 1. Returns as soon as the provider accepts the job. The ref is plain data.
-const ref = yield * VideoGenerator.submit({ model: "gemini-omni-1.2-flash", prompt })
+const program = Effect.gen(function* () {
+  // 1. Returns as soon as the provider accepts the job. The ref is plain data.
+  const ref = yield* VideoGenerator.submit({ model: "gemini-omni-1.2-flash", prompt })
 
-// 2. Persist it before polling: a crash from here on loses nothing.
-yield * fs.writeFileString("ref.json", yield * Schema.encodeEffect(RefJson)(ref))
+  // 2. Persist it before polling: a crash from here on loses nothing.
+  yield* fs.writeFileString("ref.json", yield* Schema.encodeEffect(RefJson)(ref))
 
-// 3. Poll until the job settles. The cadence is yours.
-const states = VideoGenerator.watch(ref, { pollInterval: "5 seconds" })
+  // 3. Poll until the job settles, logging each state. The cadence is yours.
+  const { videos } = yield* VideoGenerator.watch(ref, { pollInterval: "5 seconds" }).pipe(
+    Stream.tap((state) => Effect.logInfo(`job ${state._tag}`)),
+    Job.result(ref),
+  )
 
-// 4. Read the clip through the provider that produced it, straight to disk.
-yield * VideoGenerator.toStream(video.video).pipe(Stream.run(fs.sink("clip-0.mp4")))
+  // 4. Read the clip through the provider that produced it, straight to disk.
+  yield* VideoGenerator.toStream(videos[0]!.video).pipe(Stream.run(fs.sink("clip-0.mp4")))
+})
 ```
 
 `RefJson` is `Schema.fromJsonString(VideoGenerator.VideoJobRef)`, so a
-ref read back from disk is typed again without a cast.
+ref read back from disk is typed again without a cast. `Job.result`
+returns what the last state carries: the videos, or the job's own error.
+
+A failed poll leaves the job running, so the recipe retries step 3 a few
+times; retrying step 1 would pay for a second clip. On resume, the layer
+comes from the ref's provider, whatever `--model` says.
 
 The recipe yields the generic `VideoGenerator` service; `--model` picks
 the provider's Layer, so the same body runs against both.

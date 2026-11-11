@@ -2,14 +2,7 @@ import { Bytes, Context, Effect, Stream } from "effect"
 import type { Duration } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { AspectRatio, ProviderData } from "../domain/Media.js"
-import type {
-  GeneratedVideo,
-  VideoBytesSource,
-  VideoInput,
-  VideoResolution,
-  VideoSource,
-} from "../domain/Video.js"
-import { videoBytes } from "../domain/Video.js"
+import type { GeneratedVideo, VideoInput, VideoResolution, VideoSource } from "../domain/Video.js"
 import * as Job from "../job/Job.js"
 
 export type {
@@ -145,13 +138,11 @@ export const toStream = (
 ): Stream.Stream<Uint8Array, AiError.AiError, VideoGenerator> =>
   Stream.unwrap(Effect.map(VideoGenerator, (s) => s.read(video)))
 
-/** {@link toStream}, collected into memory. */
+/** {@link toStream}, collected into memory. The MIME type is the source's, where it has one. */
 export const toBytes = (
   video: VideoSource,
-): Effect.Effect<VideoBytesSource, AiError.AiError, VideoGenerator> =>
-  Effect.map(Stream.runCollect(toStream(video)), (chunks) =>
-    videoBytes(Bytes.concat(chunks), video.mimeType ?? "video/mp4"),
-  )
+): Effect.Effect<Uint8Array, AiError.AiError, VideoGenerator> =>
+  Effect.map(Stream.runCollect(toStream(video)), Bytes.concat)
 
 // The loops. Cadence and the overall cap are arguments, see `Job.JobConfig`.
 

@@ -29,7 +29,12 @@ import type {
   VideoUsage,
 } from "@effect-uai/core/VideoGenerator"
 import { VideoGenerator } from "@effect-uai/core/VideoGenerator"
-import { httpStatusError, transportFailure } from "./codec.js"
+import {
+  InteractionError,
+  interactionFailure,
+  interactionHttpError,
+  transportFailure,
+} from "./codec.js"
 import type { GeminiOmniVideoModel } from "./models.js"
 
 const PROVIDER = "gemini"
@@ -189,22 +194,25 @@ const planOf = (inputs: ReadonlyArray<VideoInput>): Effect.Effect<Plan, AiError.
   )
 }
 
-const ASPECT_RATIOS = new Set(["16:9", "9:16"])
-const RESOLUTIONS = new Set(["360p", "720p", "1080p", "4k"])
+const AspectRatio = Schema.Literals(["16:9", "9:16"])
+const Resolution = Schema.Literals(["360p", "720p", "1080p", "4k"])
 
+/** A value Omni has no spelling for fails before the request, naming the ones it has. */
 const checked = <A extends string>(
-  value: A | undefined,
-  allowed: ReadonlySet<string>,
+  schema: Schema.Literals<ReadonlyArray<A>>,
   field: string,
+  value: string | undefined,
 ): Effect.Effect<Option.Option<A>, AiError.AiError> =>
   Option.match(Option.fromNullishOr(value), {
     onNone: () => Effect.succeedNone,
     onSome: (v) =>
-      allowed.has(v)
-        ? Effect.succeedSome(v)
-        : Effect.fail(
-            unsupported(field, `Omni takes ${field} ${[...allowed].join(", ")}, not ${v}.`),
+      Option.match(Schema.decodeUnknownOption(schema)(v), {
+        onNone: () =>
+          Effect.fail(
+            unsupported(field, `Omni takes ${field} ${schema.literals.join(", ")}, not ${v}.`),
           ),
+        onSome: Effect.succeedSome,
+      }),
   })
 
 const optionalField = <A>(key: string, value: Option.Option<A>): Record<string, A> =>
@@ -225,8 +233,8 @@ export const buildBody = (
     const plan = yield* planOf(request.inputs ?? [])
     const images = yield* Effect.forEach(plan.images, imagePart)
     const videos = yield* Effect.forEach(plan.videos, (video) => videoPart(host, video))
-    const aspectRatio = yield* checked(request.aspectRatio, ASPECT_RATIOS, "aspectRatio")
-    const resolution = yield* checked(request.resolution, RESOLUTIONS, "resolution")
+    const aspectRatio = yield* checked(AspectRatio, "aspectRatio", request.aspectRatio)
+    const resolution = yield* checked(Resolution, "resolution", request.resolution)
     // Whole seconds, spelled "8s"; Omni renders 3 to 15.
     const duration = Option.map(
       Option.fromNullishOr(request.duration),
@@ -283,12 +291,8 @@ export const WireInteraction = Schema.Struct({
       total_tokens: Schema.optionalKey(Schema.Finite),
     }),
   ),
-  error: Schema.optionalKey(
-    Schema.Struct({
-      message: Schema.optionalKey(Schema.String),
-      code: Schema.optionalKey(Schema.String),
-    }),
-  ),
+  /** Where a failed background interaction records why. */
+  errors: Schema.optionalKey(Schema.Array(InteractionError)),
 })
 export type WireInteraction = typeof WireInteraction.Type
 
@@ -356,8 +360,9 @@ const usageOf = (wire: WireInteraction): VideoUsage => ({
   ...(wire.usage?.total_tokens !== undefined && { totalTokens: wire.usage.total_tokens }),
 })
 
+/** A safety block is `ContentFiltered`; the rest `GenerationFailed`, with Omni's message. */
 const failed = (wire: WireInteraction, reason: string): VideoState =>
-  Job.JobState.Failed({ reason: wire.error?.message ?? reason, raw: wire })
+  Job.JobState.Failed({ error: interactionFailure(PROVIDER, wire.errors ?? [], reason, wire) })
 
 const settled = (wire: WireInteraction): Effect.Effect<VideoState, AiError.AiError> => {
   const parts = videoPartsOf(wire)
@@ -369,18 +374,26 @@ const settled = (wire: WireInteraction): Effect.Effect<VideoState, AiError.AiErr
 }
 
 /**
- * The Interactions status, all eight values. Unknown ones fail loudly rather
- * than poll on as `Running` until the timeout.
+ * The Interactions status. Every value that needs the caller to act
+ * (`requires_action`, `requires_continuation`) ends the job: a video
+ * generation has nothing to answer them with. An unknown one keeps polling:
+ * the job may still be running (and billing), and the timeout bounds the wait.
  */
 export const stateOf = (wire: WireInteraction): Effect.Effect<VideoState, AiError.AiError> =>
   Match.value(wire.status).pipe(
     Match.when("queued", () => Effect.succeed<VideoState>(Job.JobState.Pending({}))),
     Match.when("in_progress", () => Effect.succeed<VideoState>(Job.JobState.Running())),
     Match.when("completed", () => settled(wire)),
-    Match.whenOr("failed", "cancelled", "incomplete", "budget_exceeded", "requires_action", (s) =>
-      Effect.succeed(failed(wire, `Omni ended the job as ${s}.`)),
+    Match.whenOr(
+      "failed",
+      "cancelled",
+      "incomplete",
+      "budget_exceeded",
+      "requires_action",
+      "requires_continuation",
+      (s) => Effect.succeed(failed(wire, `Omni ended the job as ${s}.`)),
     ),
-    Match.orElse((s) => Effect.succeed(failed(wire, `Omni reported an unknown status "${s}".`))),
+    Match.orElse(() => Effect.succeed<VideoState>(Job.JobState.Running())),
   )
 
 // ---------------------------------------------------------------------------
@@ -401,13 +414,23 @@ const send = (
       .pipe(Effect.mapError(transportFailure(PROVIDER)))
     if (response.status >= 400) {
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-      return yield* httpStatusError(PROVIDER)(response.status, text)
+      return yield* interactionHttpError(PROVIDER)(response.status, text)
     }
-    return yield* response.json.pipe(Effect.mapError(transportFailure(PROVIDER)))
+    return yield* response.json.pipe(Effect.mapError(unreadable))
   })
 
-const interaction = (json: unknown) =>
-  decodeInteraction(json).pipe(Effect.mapError(transportFailure(PROVIDER)))
+/**
+ * A 2xx we cannot read is not transient: `Retry` would resend a `submit`
+ * Omni already accepted and pay for a second clip.
+ */
+const unreadable = (cause: unknown): AiError.AiError =>
+  new AiError.GenerationFailed({
+    provider: PROVIDER,
+    message: "Omni returned a response we could not read.",
+    raw: cause,
+  })
+
+const interaction = (json: unknown) => decodeInteraction(json).pipe(Effect.mapError(unreadable))
 
 const submit = (cfg: Config, request: GeminiOmniVideoGenerateRequest) =>
   Effect.gen(function* () {
@@ -423,12 +446,21 @@ const submit = (cfg: Config, request: GeminiOmniVideoGenerateRequest) =>
   })
 
 const status = (cfg: Config, ref: VideoJobRef) =>
-  Effect.flatMap(send(cfg, HttpClientRequest.get(`${host(cfg)}/interactions/${ref.id}`)), (json) =>
-    Effect.flatMap(interaction(json), stateOf),
+  Job.own(PROVIDER)(ref).pipe(
+    Effect.flatMap((own) =>
+      send(cfg, HttpClientRequest.get(`${host(cfg)}/interactions/${own.id}`)),
+    ),
+    Effect.flatMap(interaction),
+    Effect.flatMap(stateOf),
   )
 
 const cancel = (cfg: Config, ref: VideoJobRef) =>
-  Effect.asVoid(send(cfg, HttpClientRequest.post(`${host(cfg)}/interactions/${ref.id}/cancel`)))
+  Job.own(PROVIDER)(ref).pipe(
+    Effect.flatMap((own) =>
+      send(cfg, HttpClientRequest.post(`${host(cfg)}/interactions/${own.id}/cancel`)),
+    ),
+    Effect.asVoid,
+  )
 
 /**
  * Our own refs download from the Files API with the key; everything else

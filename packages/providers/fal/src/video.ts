@@ -24,6 +24,13 @@ export type VideoWire = {
   readonly duration: Option.Option<(seconds: number) => string | number>
   /** Spellings this family accepts, by portable tier. */
   readonly resolutions: { readonly [K in VideoResolution]?: string }
+  /**
+   * Where `aspect_ratio` is a field: on every endpoint, only on the
+   * text-to-video ones (an image endpoint takes the ratio from the frame),
+   * or nowhere.
+   */
+  readonly aspectRatio: "always" | "text" | "never"
+  readonly seed: boolean
 }
 
 type Frames = Pick<VideoWire, "firstFrame" | "lastFrame">
@@ -44,61 +51,95 @@ const seconds = Option.some((s: number) => s)
 const secondsText = Option.some((s: number) => `${s}`)
 const secondsSuffixed = Option.some((s: number) => `${s}s`)
 
-/** Prefixes are disjoint, so the first match is the only match. */
-const FAMILIES: ReadonlyArray<readonly [string, VideoWire]> = [
+const VEO: Omit<VideoWire, keyof Frames> = {
+  duration: secondsSuffixed,
+  resolutions: { "720p": "720p", "1080p": "1080p", "4k": "4k" },
+  aspectRatio: "always",
+  seed: true,
+}
+
+const prefix = (p: string) => (endpoint: string) => endpoint.startsWith(p)
+
+/** Ordered: the first match wins, so a narrower row sits above its family. */
+const FAMILIES: ReadonlyArray<readonly [(endpoint: string) => boolean, VideoWire]> = [
   [
-    "minimax/",
+    prefix("minimax/"),
     {
       ...IMAGE_FRAMES,
       duration: seconds,
       // 768P has no portable tier; ask for it through `wire`.
       resolutions: { "480p": "480P", "1080p": "1080P" },
+      aspectRatio: "text",
+      seed: true,
     },
   ],
   [
-    "bytedance/",
+    prefix("bytedance/"),
     {
       ...IMAGE_FRAMES,
       duration: secondsText,
       resolutions: { "480p": "480p", "720p": "720p", "1080p": "1080p" },
+      aspectRatio: "always",
+      seed: false,
     },
   ],
   [
-    "lightricks/",
+    prefix("lightricks/"),
     {
       ...IMAGE_FRAMES,
       duration: seconds,
       resolutions: { "720p": "720p", "1080p": "1080p", "4k": "2160p" },
+      aspectRatio: "always",
+      seed: false,
     },
   ],
   [
-    "alibaba/",
+    prefix("alibaba/"),
     {
       ...START_FRAMES,
       duration: seconds,
       resolutions: { "480p": "480p", "720p": "720p", "1080p": "1080p" },
+      aspectRatio: "always",
+      seed: true,
+    },
+  ],
+  // Veo's frame-to-frame endpoints name both frames their own way.
+  [
+    (endpoint) => endpoint.startsWith("fal-ai/veo") && endpoint.includes("first-last-frame"),
+    {
+      firstFrame: Option.some("first_frame_url"),
+      lastFrame: Option.some("last_frame_url"),
+      ...VEO,
     },
   ],
   [
-    "fal-ai/veo",
-    {
-      ...IMAGE_FRAMES,
-      duration: secondsSuffixed,
-      resolutions: { "720p": "720p", "1080p": "1080p", "4k": "4k" },
-    },
+    prefix("fal-ai/veo"),
+    { firstFrame: Option.some("image_url"), lastFrame: Option.none(), ...VEO },
   ],
   // Resolution is not a field on Kling v3 pro; 4K is its own endpoint.
-  ["fal-ai/kling-video/", { ...START_FRAMES, duration: secondsText, resolutions: {} }],
+  [
+    prefix("fal-ai/kling-video/"),
+    { ...START_FRAMES, duration: secondsText, resolutions: {}, aspectRatio: "text", seed: false },
+  ],
   // Frame-counted rather than timed, and sized by a `video_size` preset.
-  ["fal-ai/ltx-2", { ...NO_FRAMES, duration: Option.none(), resolutions: {} }],
+  [
+    prefix("fal-ai/ltx-2"),
+    { ...NO_FRAMES, duration: Option.none(), resolutions: {}, aspectRatio: "never", seed: true },
+  ],
 ]
 
 /** Everything portable goes through `wire`, loudly rather than guessed. */
-const UNKNOWN: VideoWire = { ...NO_FRAMES, duration: Option.none(), resolutions: {} }
+const UNKNOWN: VideoWire = {
+  ...NO_FRAMES,
+  duration: Option.none(),
+  resolutions: {},
+  aspectRatio: "never",
+  seed: false,
+}
 
 export const wireOf = (endpoint: string): VideoWire =>
   pipe(
-    Arr.findFirst(FAMILIES, ([prefix]) => endpoint.startsWith(prefix)),
+    Arr.findFirst(FAMILIES, ([matches]) => matches(endpoint)),
     Option.match({ onNone: () => UNKNOWN, onSome: ([, wire]) => wire }),
   )
 
@@ -166,6 +207,30 @@ const encodeResolution = (
         onNone: () => Effect.fail(unsupportedTier(wire, endpoint, resolution)),
         onSome: (spelling) => Effect.succeed({ resolution: spelling }),
       })
+
+export const aspectRatioField = (
+  wire: VideoWire,
+  endpoint: string,
+  aspectRatio: string | undefined,
+  hasFrame: boolean,
+): Effect.Effect<Record<string, unknown>> =>
+  Option.match(Option.fromNullishOr(aspectRatio), {
+    onNone: () => Effect.succeed<Record<string, unknown>>({}),
+    onSome: (ratio) =>
+      wire.aspectRatio === "always" || (wire.aspectRatio === "text" && !hasFrame)
+        ? Effect.succeed({ aspect_ratio: ratio })
+        : dropped("aspect_ratio", endpoint),
+  })
+
+export const seedField = (
+  wire: VideoWire,
+  endpoint: string,
+  seed: number | undefined,
+): Effect.Effect<Record<string, unknown>> =>
+  Option.match(Option.fromNullishOr(seed), {
+    onNone: () => Effect.succeed<Record<string, unknown>>({}),
+    onSome: (s) => (wire.seed ? Effect.succeed({ seed: s }) : dropped("seed", endpoint)),
+  })
 
 export const resolutionField = (
   wire: VideoWire,

@@ -1,4 +1,14 @@
-import { Context, Duration, Effect, Layer, Match, Option, Schema, Stream } from "effect"
+import {
+  Array as Arr,
+  Context,
+  Duration,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Schema,
+  Stream,
+} from "effect"
 import { HttpClient } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Job from "@effect-uai/core/Job"
@@ -18,7 +28,7 @@ import { PROVIDER, dataUri, referenceUrl } from "./codec.js"
 import type { FalVideoModel } from "./models.js"
 import * as Queue from "./queue.js"
 import type { VideoWire } from "./video.js"
-import { durationField, resolutionField, wireOf } from "./video.js"
+import { aspectRatioField, durationField, resolutionField, seedField, wireOf } from "./video.js"
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -105,20 +115,42 @@ const frameField =
     })
   }
 
+/** One field per frame role: a second first frame would silently replace the first. */
+const repeatedFrame = (inputs: ReadonlyArray<VideoInput>): Option.Option<string> =>
+  Arr.findFirst(
+    ["FirstFrame", "LastFrame"] as const,
+    (tag) => inputs.filter((input) => input._tag === tag).length > 1,
+  )
+
 const buildBody = (
   request: FalVideoGenerateRequest,
 ): Effect.Effect<Record<string, unknown>, AiError.AiError> =>
   Effect.gen(function* () {
+    const inputs = request.inputs ?? []
+    yield* Option.match(repeatedFrame(inputs), {
+      onNone: () => Effect.void,
+      onSome: (tag) =>
+        Effect.fail(
+          new AiError.Unsupported({
+            provider: PROVIDER,
+            capability: tag,
+            reason: `fal endpoints take one ${tag}.`,
+          }),
+        ),
+    })
     const wire = wireOf(request.model)
-    const frames = yield* Effect.forEach(request.inputs ?? [], frameField(wire, request.model))
+    const frames = yield* Effect.forEach(inputs, frameField(wire, request.model))
     const duration = yield* durationField(wire, request.model, request.duration)
     const resolution = yield* resolutionField(wire, request.model, request.resolution)
+    const hasFrame = inputs.some((input) => input._tag === "FirstFrame")
+    const aspectRatio = yield* aspectRatioField(wire, request.model, request.aspectRatio, hasFrame)
+    const seed = yield* seedField(wire, request.model, request.seed)
     return {
       prompt: request.prompt,
       ...duration,
       ...resolution,
-      ...(request.aspectRatio !== undefined && { aspect_ratio: request.aspectRatio }),
-      ...(request.seed !== undefined && { seed: request.seed }),
+      ...aspectRatio,
+      ...seed,
       ...Object.fromEntries(frames),
       ...request.wire,
     }
@@ -215,7 +247,13 @@ const toState = (body: string): Effect.Effect<VideoState, AiError.AiError> =>
     ),
     Effect.map((wire) =>
       filesOf(wire).length === 0
-        ? Job.JobState.Failed({ reason: "fal returned no video.", raw: body })
+        ? Job.JobState.Failed({
+            error: new AiError.GenerationFailed({
+              provider: PROVIDER,
+              message: "fal returned no video.",
+              raw: body,
+            }),
+          })
         : Job.JobState.Succeeded({ result: toResponse(wire) }),
     ),
   )
@@ -257,7 +295,7 @@ const submit = (
   Effect.gen(function* () {
     const body = yield* buildBody(request)
     const raw = yield* Queue.enqueue(cfg, request.model, body)
-    return asVideoRef(yield* Queue.accept(request.model, raw))
+    return asVideoRef(yield* Queue.accept(raw))
   })
 
 /** The queue reports the output as a raw body; only `Succeeded` decodes. */

@@ -152,6 +152,11 @@ const completionToTurn = (wire: WireCompletion): Turn => {
   }
 }
 
+const failed = (wire: WireJob, message: string): ResearchState => ({
+  _tag: "Failed",
+  error: new AiError.GenerationFailed({ provider: "perplexity", message, raw: wire }),
+})
+
 // Map Perplexity's four job states onto the generic `JobState`, carrying the
 // assembled `Turn` on `Succeeded` and the provider message on `Failed`.
 const jobStateOf = (wire: WireJob): ResearchState =>
@@ -161,13 +166,9 @@ const jobStateOf = (wire: WireJob): ResearchState =>
     Match.when("COMPLETED", (): ResearchState =>
       wire.response != null
         ? { _tag: "Succeeded", result: completionToTurn(wire.response) }
-        : { _tag: "Failed", reason: "job completed with no response body", raw: wire },
+        : failed(wire, "job completed with no response body"),
     ),
-    Match.when("FAILED", (): ResearchState => ({
-      _tag: "Failed",
-      ...(wire.error_message != null && { reason: wire.error_message }),
-      raw: wire,
-    })),
+    Match.when("FAILED", (): ResearchState => failed(wire, wire.error_message ?? "job failed")),
     Match.exhaustive,
   )
 
@@ -179,6 +180,13 @@ const baseUrl = (cfg: Config): string => cfg.baseUrl ?? "https://api.perplexity.
 
 const authHeader = (cfg: Config) =>
   HttpClientRequest.setHeader("authorization", `Bearer ${Redacted.value(cfg.apiKey)}`)
+
+const unreadable = (cause: unknown): AiError.AiError =>
+  new AiError.GenerationFailed({
+    provider: "perplexity",
+    message: "the submission was accepted but its response was unreadable",
+    raw: cause,
+  })
 
 const submitBody = (request: PerplexityResearchRequest): Record<string, unknown> => ({
   request: {
@@ -203,8 +211,9 @@ const submitJob = (
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
       return yield* httpStatusError(response.status, text)
     }
-    const json = yield* response.json.pipe(Effect.mapError(transportFailure))
-    const wire = yield* decodeJob(json).pipe(Effect.mapError(transportFailure))
+    // Not `Unavailable`: retrying an accepted submit would start a second job.
+    const json = yield* response.json.pipe(Effect.mapError(unreadable))
+    const wire = yield* decodeJob(json).pipe(Effect.mapError(unreadable))
     return Job.jobRef<Turn>("perplexity", wire.id)
   })
 
@@ -214,7 +223,8 @@ const pollJob = (
 ): Effect.Effect<ResearchState, AiError.AiError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    const httpRequest = HttpClientRequest.get(`${baseUrl(cfg)}/v1/async/sonar/${ref.id}`).pipe(
+    const own = yield* Job.own("perplexity")(ref)
+    const httpRequest = HttpClientRequest.get(`${baseUrl(cfg)}/v1/async/sonar/${own.id}`).pipe(
       authHeader(cfg),
     )
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))

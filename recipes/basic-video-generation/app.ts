@@ -16,6 +16,9 @@ import { defaultPrompt, save, settle, start } from "./recipe.js"
 
 const RefJson = Schema.fromJsonString(VideoGenerator.VideoJobRef)
 
+/** A ref names the adapter that minted it; this maps it back to its `--model` provider. */
+const REF_PROVIDERS: Record<string, string> = { gemini: "google", fal: "fal" }
+
 export const main = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio
   const fs = yield* FileSystem.FileSystem
@@ -32,12 +35,20 @@ export const main = Effect.gen(function* () {
     onSome: (file) => Effect.map(fs.readFileString(file), (s) => s.trim()),
   })
 
+  const resumed = yield* Option.match(flagValue("ref", argv), {
+    onNone: () => Effect.succeedNone,
+    onSome: (file) =>
+      Effect.asSome(Effect.flatMap(fs.readFileString(file), Schema.decodeEffect(RefJson))),
+  })
+  // A resumed job is polled by the provider holding it, whatever `--model` says.
+  const provider = Option.match(resumed, {
+    onNone: () => spec.provider,
+    onSome: (r) => REF_PROVIDERS[r.provider] ?? r.provider,
+  })
+
   const program = Effect.gen(function* () {
-    const ref = yield* Option.match(flagValue("ref", argv), {
-      onSome: (file) =>
-        Effect.tap(Effect.flatMap(fs.readFileString(file), Schema.decodeEffect(RefJson)), (r) =>
-          Effect.logInfo(`resuming ${r.provider} job ${r.id}`),
-        ),
+    const ref = yield* Option.match(resumed, {
+      onSome: (r) => Effect.as(Effect.logInfo(`resuming ${r.provider} job ${r.id}`), r),
       onNone: () =>
         Effect.gen(function* () {
           yield* Effect.logInfo(`submitting to ${spec.provider} ${spec.model}`)
@@ -57,5 +68,5 @@ export const main = Effect.gen(function* () {
     )
   })
 
-  yield* program.pipe(Effect.provide(videoGeneratorLayer(spec)))
+  yield* program.pipe(Effect.provide(videoGeneratorLayer({ ...spec, provider })))
 }).pipe(Effect.tapCause((cause) => Effect.logError("[main] failed", { cause })))

@@ -146,7 +146,9 @@ send a URL the app serves; bytes are for small files. `RunView` gains a
 
 **2. Job state is `data`, not a new event.** A generation in flight is an
 app entry: `data { name: "clip", id, value: { job, title, ... } }`. The
-contract types it with a new core `Job.JobStateSchema(result)` (U1);
+contract types it with a new core `Job.JobStateSchema(result, error)`
+(U1), shaped like `RunEvent.outcome(value, error)`: `AiError` has no
+schema, so the app picks how a failure crosses the wire;
 `Job.watch` already shipped in PR 1. No ui helper: mapping
 a state onto `data` is one line.
 

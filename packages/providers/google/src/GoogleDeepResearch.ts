@@ -27,7 +27,12 @@ import * as Job from "@effect-uai/core/Job"
 import type { ResearchJobRef, ResearchRequest, ResearchState } from "@effect-uai/core/Research"
 import * as SSE from "@effect-uai/core/SSE"
 import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
-import { GroundingMetadata, groundingToAnnotations } from "./codec.js"
+import {
+  GroundingMetadata,
+  InteractionError,
+  groundingToAnnotations,
+  interactionFailure,
+} from "./codec.js"
 import type { GoogleDeepResearchModel } from "./models.js"
 
 // ---------------------------------------------------------------------------
@@ -98,14 +103,8 @@ export const WireInteraction = Schema.Struct({
   outputs: Schema.optional(Schema.NullOr(Schema.Array(WireTextPart))),
   steps: Schema.optional(Schema.NullOr(Schema.Array(WireStep))),
   groundingMetadata: Schema.optional(Schema.NullOr(GroundingMetadata)),
-  error: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        message: Schema.optional(Schema.NullOr(Schema.String)),
-        code: Schema.optional(Schema.NullOr(Schema.String)),
-      }),
-    ),
-  ),
+  /** Where a failed background interaction records why. */
+  errors: Schema.optional(Schema.NullOr(Schema.Array(InteractionError))),
 })
 export type WireInteraction = typeof WireInteraction.Type
 const decodeInteraction = Schema.decodeUnknownEffect(WireInteraction)
@@ -226,8 +225,12 @@ export const jobStateOf = (wire: WireInteraction): ResearchState =>
     })),
     Match.whenOr("failed", "error", "cancelled", (): ResearchState => ({
       _tag: "Failed",
-      ...(wire.error?.message != null && { reason: wire.error.message }),
-      raw: wire,
+      error: interactionFailure(
+        "google",
+        wire.errors ?? [],
+        `research ended as ${wire.status}`,
+        wire,
+      ),
     })),
     Match.orElse((): ResearchState => ({ _tag: "Running" })),
   )
@@ -244,6 +247,13 @@ const authHeader = (cfg: Config) =>
 
 const transportFailure = (cause: unknown): AiError.AiError =>
   new AiError.Unavailable({ provider: "google", raw: cause })
+
+const unreadable = (cause: unknown): AiError.AiError =>
+  new AiError.GenerationFailed({
+    provider: "google",
+    message: "the submission was accepted but its response was unreadable",
+    raw: cause,
+  })
 
 const httpStatusError = (status: number, body: string): AiError.AiError => {
   const provider = "google"
@@ -293,8 +303,9 @@ const submitJob = (
       const text = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
       return yield* httpStatusError(response.status, text)
     }
-    const json = yield* response.json.pipe(Effect.mapError(transportFailure))
-    const wire = yield* decodeSubmit(json).pipe(Effect.mapError(transportFailure))
+    // Not `Unavailable`: retrying an accepted submit would start a second job.
+    const json = yield* response.json.pipe(Effect.mapError(unreadable))
+    const wire = yield* decodeSubmit(json).pipe(Effect.mapError(unreadable))
     return Job.jobRef<Turn>("google", wire.id)
   })
 
@@ -304,7 +315,8 @@ const pollJob = (
 ): Effect.Effect<ResearchState, AiError.AiError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    const httpRequest = HttpClientRequest.get(`${baseUrl(cfg)}/interactions/${ref.id}`).pipe(
+    const own = yield* Job.own("google")(ref)
+    const httpRequest = HttpClientRequest.get(`${baseUrl(cfg)}/interactions/${own.id}`).pipe(
       authHeader(cfg),
     )
     const response = yield* client.execute(httpRequest).pipe(Effect.mapError(transportFailure))

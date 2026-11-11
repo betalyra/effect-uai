@@ -181,16 +181,19 @@ a convention.
 Being generic in the result type costs a little ceremony, via the
 `WithGenerics` and `Kind` helpers:
 
+As shipped (`Failed` carries the adapter's classified error, like
+`RunEvent.Outcome`'s `Failure`, rather than a reason string):
+
 ```ts
-export type JobState<A> = Data.TaggedEnum<{
-  Pending: {}
-  Running: { readonly progress?: number; readonly queuePosition?: number }
+export type JobState<A, E = AiError.AiError> = Data.TaggedEnum<{
+  Pending: { readonly queuePosition?: number }
+  Running: {}
   Succeeded: { readonly result: A }
-  Failed: { readonly reason?: string; readonly raw?: unknown }
+  Failed: { readonly error: E }
 }>
 
-interface JobStateDef extends Data.TaggedEnum.WithGenerics<1> {
-  readonly taggedEnum: JobState<this["A"]>
+interface JobStateDef extends Data.TaggedEnum.WithGenerics<2> {
+  readonly taggedEnum: JobState<this["A"], this["B"]>
 }
 
 export const JobState = Data.taggedEnum<JobStateDef>()
@@ -305,10 +308,10 @@ recipe needs to distinguish.
 **`delivery: "uri"` does not return early.** The create call still blocks
 (in the synchronous mode) and comes back `completed`; the polling in
 Google's samples is against the Files API for `ACTIVE`, not against the
-generation. It is a fix for payloads over roughly 4 MB, nothing more. And
-a later `GET /interactions/{id}` returns inline base64 even when the
-interaction was created with `delivery: "uri"`, so the URI must be
-captured from the create response.
+generation. It is a fix for payloads over roughly 4 MB, nothing more.
+(Research claimed a later `GET /interactions/{id}` returns inline base64
+regardless; the live spike on 2026-11-11 showed the settled background
+poll carrying the `uri`, which is what the adapter reads.)
 
 **Chaining to an `in_progress` interaction returns 400.** Multi-turn
 conversational edits must be serialised, which matters if a recipe ever
@@ -806,8 +809,8 @@ the runnable example and the live end-to-end check.
    describe the override header but never state the default.
 3. ~~Confirm `background: true` is accepted for `gemini-omni-1.2-flash`.~~
    Verified 2026-11-11, see Phase 4, as is what a settled poll carries
-   with `delivery: "uri"` (the authenticated URI). Open: how the adapter
-   exposes that URI.
+   with `delivery: "uri"` (the authenticated URI), exposed as a `ref`
+   source (`files/{id}`) read through the service's `read`.
 4. Pin BFL FLUX 3 Video's wire shape before phase 5 item 3.
 5. Confirm whether fal's `sync_mode` (base64 instead of a CDN URL) is
    worth exposing. It exists on the MiniMax H3 family and LTX-2-19b but

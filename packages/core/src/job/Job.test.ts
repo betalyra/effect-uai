@@ -2,6 +2,7 @@ import { describe, it } from "@effect/vitest"
 import { Effect, Fiber, Ref, Schema, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { expect, expectTypeOf } from "vitest"
+import * as AiError from "../domain/AiError.js"
 import { type JobRef, JobState, collect, jobRef, refSchema, run, watch } from "./Job.js"
 
 const ref = jobRef<string>("test", "job-1")
@@ -61,24 +62,13 @@ describe("collect", () => {
     }),
   )
 
-  it.effect("carries the provider's reason and raw payload into the failure", () =>
+  it.effect("fails with the error the provider classified, not a generic one", () =>
     Effect.gen(function* () {
-      const { poll } = yield* scripted([
-        JobState.Failed({ reason: "content filtered", raw: { code: 1026 } }),
-      ])
+      const refused = new AiError.ContentFiltered({ provider: "test", raw: { code: 1026 } })
+      const { poll } = yield* scripted([JobState.Failed({ error: refused })])
 
       const error = yield* Effect.flip(collect(poll, ref, { pollInterval: "1 second" }))
-      expect(error._tag).toBe("GenerationFailed")
-      expect(error).toMatchObject({ message: "content filtered", raw: { code: 1026 } })
-    }),
-  )
-
-  it.effect("falls back to the ref when the provider reports no reason", () =>
-    Effect.gen(function* () {
-      const { poll } = yield* scripted([JobState.Failed({})])
-
-      const error = yield* Effect.flip(collect(poll, ref, { pollInterval: "1 second" }))
-      expect(error).toMatchObject({ message: "job failed", raw: ref })
+      expect(error).toBe(refused)
     }),
   )
 
@@ -127,6 +117,26 @@ describe("run", () => {
       yield* TestClock.adjust("2 seconds")
       yield* Fiber.interrupt(fiber)
 
+      expect(yield* Ref.get(cancelled)).toBe(true)
+    }),
+  )
+
+  it.effect("cancels the server job when its own timeout gives up on it", () =>
+    Effect.gen(function* () {
+      const cancelled = yield* Ref.make(false)
+      const { poll } = yield* scripted([JobState.Running()])
+
+      const fiber = yield* Effect.forkChild(
+        Effect.flip(
+          run(
+            { submit: Effect.succeed(ref), poll, cancel: () => Ref.set(cancelled, true) },
+            { pollInterval: "1 second", timeout: "5 seconds" },
+          ),
+        ),
+      )
+      yield* TestClock.adjust("6 seconds")
+
+      expect((yield* Fiber.join(fiber))._tag).toBe("Timeout")
       expect(yield* Ref.get(cancelled)).toBe(true)
     }),
   )

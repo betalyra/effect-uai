@@ -54,10 +54,23 @@ describe("stateOf", () => {
     }),
   )
 
-  it.effect("ends an unknown status as Failed instead of polling it as Running", () =>
+  // Shape from Google's safety guide: a failed background interaction lists its errors.
+  it.effect.each([
+    ["safety", "ContentFiltered"],
+    ["content_blocked", "ContentFiltered"],
+    ["api_error", "GenerationFailed"],
+  ] as const)("settles a failed interaction with error code %s as %s", ([code, tag]) =>
+    Effect.gen(function* () {
+      const message = "Request blocked due to safety violations (harmful content)."
+      const wire = yield* decode({ id: "v1_x", status: "failed", errors: [{ code, message }] })
+      expect(yield* stateOf(wire)).toMatchObject({ _tag: "Failed", error: { _tag: tag } })
+    }),
+  )
+
+  it.effect("keeps polling an unknown status: the job may still be running", () =>
     Effect.gen(function* () {
       const wire = yield* decode({ id: "v1_x", status: "paused_for_review" })
-      expect((yield* stateOf(wire))._tag).toBe("Failed")
+      expect((yield* stateOf(wire))._tag).toBe("Running")
     }),
   )
 })

@@ -4,9 +4,9 @@
  * polls until the job settles, `toStream` reads the video through the
  * provider that produced it. `app.ts` picks the provider with `--model`.
  */
-import { Effect, FileSystem, Match, Option, Stream } from "effect"
-import * as AiError from "@effect-uai/core/AiError"
+import { Effect, FileSystem, Schedule, Stream } from "effect"
 import * as Job from "@effect-uai/core/Job"
+import * as Retry from "@effect-uai/core/Retry"
 import type { GeneratedVideo } from "@effect-uai/core/Video"
 import * as VideoGenerator from "@effect-uai/core/VideoGenerator"
 
@@ -16,22 +16,17 @@ export const defaultPrompt =
 /** Start a generation. Returns as soon as the provider accepts it. */
 export const start = (model: string, prompt: string) => VideoGenerator.submit({ model, prompt })
 
-/** Poll until the job settles, logging every state. The loop is ours, so is its cadence. */
+/**
+ * Poll until the job settles, logging every state. The loop is ours, so is
+ * its cadence. A failed poll leaves the job running, so a few retries are
+ * safe here, where retrying `start` would pay for a second clip.
+ */
 export const settle = (ref: VideoGenerator.VideoJobRef) =>
   VideoGenerator.watch(ref, { pollInterval: "5 seconds", timeout: "15 minutes" }).pipe(
     Stream.tap((state) => Effect.logInfo(`job ${state._tag}`)),
-    Stream.runLast,
-    Effect.flatMap((last) =>
-      Match.value(Option.getOrElse(last, () => Job.JobState.Running())).pipe(
-        Match.tag("Succeeded", (s) => Effect.succeed(s.result)),
-        Match.tag("Failed", (s) => Effect.fail(failure(ref, s.reason ?? "job failed", s.raw))),
-        Match.orElse((s) => Effect.fail(failure(ref, "job did not settle", s))),
-      ),
-    ),
+    Job.result(ref),
+    Retry.effect(Schedule.exponential("2 seconds").pipe(Schedule.upTo({ times: 3 }))),
   )
-
-const failure = (ref: VideoGenerator.VideoJobRef, message: string, raw: unknown) =>
-  new AiError.GenerationFailed({ provider: ref.provider, message, raw })
 
 /** Stream a produced clip to disk. Nothing is fetched until this runs. */
 export const save = (video: GeneratedVideo, path: string) =>

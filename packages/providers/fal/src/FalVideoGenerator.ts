@@ -1,12 +1,13 @@
-import { Context, Duration, Effect, Layer, Match, Option, Schema } from "effect"
-import { HttpClient } from "effect/unstable/http"
+import { Context, Duration, Effect, Layer, Match, Option, Schema, Stream } from "effect"
+import { HttpClient } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Job from "@effect-uai/core/Job"
+import type { ImageSource } from "@effect-uai/core/Image"
 import type { GeneratedVideo } from "@effect-uai/core/Video"
 import { VideoInput, videoBase64, videoUrl } from "@effect-uai/core/Video"
+import * as VideoDownload from "@effect-uai/core/VideoDownload"
 import type {
   CommonVideoGenerateRequest,
-  VideoGeneratorService,
   VideoGeneratorServiceShape,
   VideoJobRef,
   VideoResponse,
@@ -72,31 +73,37 @@ export type Config = Queue.Config
 // Codec - request
 // ---------------------------------------------------------------------------
 
-/**
- * The two frame roles have a field per family; a reference image does not,
- * so it stays explicit rather than guessed at.
- */
-const fieldFor = (wire: VideoWire): ((input: VideoInput) => Option.Option<string>) =>
-  VideoInput.$match({
-    FirstFrame: () => wire.firstFrame,
-    LastFrame: () => wire.lastFrame,
-    ReferenceImage: () => Option.none(),
-  })
+type Field = Effect.Effect<readonly [string, string], AiError.AiError>
 
+const noField = (endpoint: string, input: VideoInput): Field =>
+  Effect.fail(
+    new AiError.Unsupported({
+      provider: PROVIDER,
+      capability: input._tag,
+      reason: `\`${endpoint}\` takes no ${input._tag}. Pass it through \`wire\` if the endpoint documents a field for it.`,
+    }),
+  )
+
+/**
+ * The two frame roles have a field per family; references do not (one family
+ * says `reference_video_urls`, the next `video_urls`), so they stay explicit
+ * through `wire` rather than guessed at.
+ */
 const frameField =
   (wire: VideoWire, endpoint: string) =>
-  (input: VideoInput): Effect.Effect<readonly [string, string], AiError.AiError> =>
-    Option.match(fieldFor(wire)(input), {
-      onNone: () =>
-        Effect.fail(
-          new AiError.Unsupported({
-            provider: PROVIDER,
-            capability: input._tag,
-            reason: `\`${endpoint}\` takes no ${input._tag}. Pass it through \`wire\` if the endpoint documents a field for it.`,
-          }),
-        ),
-      onSome: (field) => Effect.succeed([field, referenceUrl(input.image)] as const),
+  (input: VideoInput): Field => {
+    const frame = (field: Option.Option<string>, image: ImageSource): Field =>
+      Option.match(field, {
+        onNone: () => noField(endpoint, input),
+        onSome: (name) => Effect.succeed([name, referenceUrl(image)] as const),
+      })
+    return VideoInput.$match(input, {
+      FirstFrame: ({ image }) => frame(wire.firstFrame, image),
+      LastFrame: ({ image }) => frame(wire.lastFrame, image),
+      ReferenceImage: () => noField(endpoint, input),
+      ReferenceVideo: () => noField(endpoint, input),
     })
+  }
 
 const buildBody = (
   request: FalVideoGenerateRequest,
@@ -280,27 +287,25 @@ export const make = (
       submit: (request) => provide(submit(cfg, request)),
       status: (ref) => provide(status(cfg, ref)),
       cancel: (ref) => provide(Queue.cancel(cfg, asQueueRef(ref))),
+      // fal's CDN links are public: a plain GET, no key.
+      read: (video) =>
+        VideoDownload.read(video, { provider: PROVIDER }).pipe(
+          Stream.provideService(HttpClient.HttpClient, client),
+        ),
     }
   })
 
 /**
  * Layer registering the provider-typed tag and the generic
- * `VideoGenerator`. A `CommonVideoGenerateRequest` is structurally a
- * `FalVideoGenerateRequest` with no vendor knobs set, so the generic
- * registration forwards directly.
+ * `VideoGenerator`, both backed by one service. A
+ * `CommonVideoGenerateRequest` is a `FalVideoGenerateRequest` with no
+ * `wire` set, so the same service serves both tags.
  */
 export const layer = (
   cfg: Config,
 ): Layer.Layer<FalVideoGenerator | VideoGenerator, never, HttpClient.HttpClient> =>
-  Layer.merge(
-    Layer.effect(FalVideoGenerator, make(cfg)),
-    Layer.effect(
-      VideoGenerator,
-      Effect.map(make(cfg), (s): VideoGeneratorService => ({
-        submit: (request: CommonVideoGenerateRequest) =>
-          s.submit(request as FalVideoGenerateRequest),
-        status: s.status,
-        cancel: s.cancel,
-      })),
+  Layer.effectContext(
+    Effect.map(make(cfg), (service) =>
+      Context.make(FalVideoGenerator, service).pipe(Context.add(VideoGenerator, service)),
     ),
   )

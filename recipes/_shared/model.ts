@@ -24,11 +24,13 @@ import { layer as elevenLabsTranscribeLayer } from "@effect-uai/elevenlabs/Eleve
 import { layer as exaContentsLayer } from "@effect-uai/exa/ExaContents"
 import { layer as exaSearchLayer } from "@effect-uai/exa/ExaSearch"
 import { layer as falImageLayer } from "@effect-uai/fal/FalImageGenerator"
+import { layer as falVideoLayer } from "@effect-uai/fal/FalVideoGenerator"
 import { layer as firecrawlReadLayer } from "@effect-uai/firecrawl/FirecrawlRead"
 import { layer as geminiLayer } from "@effect-uai/google/Gemini"
 import { layer as geminiEmbeddingLayer } from "@effect-uai/google/GeminiEmbedding"
 import { layer as geminiImageLayer } from "@effect-uai/google/GeminiImageGenerator"
 import { layer as geminiLiveSessionLayer } from "@effect-uai/google/GeminiLiveSession"
+import { layer as geminiOmniLayer } from "@effect-uai/google/GeminiOmniVideoGenerator"
 import { layer as geminiSynthLayer } from "@effect-uai/google/GeminiSynthesizer"
 import { layer as googleResearchLayer } from "@effect-uai/google/GoogleDeepResearch"
 import { layer as lyriaLayer } from "@effect-uai/google/LyriaGenerator"
@@ -71,6 +73,7 @@ import type {
 } from "@effect-uai/core/SpeechSynthesizer"
 import type { RealtimeSession } from "@effect-uai/core/RealtimeSession"
 import type { SttStreaming, Transcriber } from "@effect-uai/core/Transcriber"
+import type { VideoGenerator } from "@effect-uai/core/VideoGenerator"
 import type { WebRead } from "@effect-uai/core/WebRead"
 import type { WebSearch } from "@effect-uai/core/WebSearch"
 
@@ -465,6 +468,30 @@ export const musicGeneratorLayer = (
   baseUrl?: string,
 ): Layer.Layer<MusicGenerator, Config.ConfigError | UnknownProvider, HttpClient.HttpClient> =>
   Layer.unwrap(registry(spec, baseUrl, musicEntries))
+
+// ---------------------------------------------------------------------------
+// Video
+// ---------------------------------------------------------------------------
+
+type VideoLayer = Layer.Layer<VideoGenerator, never, HttpClient.HttpClient>
+
+const videoEntries: Record<string, Entry<VideoLayer>> = {
+  google: {
+    layer: (apiKey, baseUrl) => geminiOmniLayer({ apiKey, ...at(baseUrl) }),
+    apiKey: key("GOOGLE_API_KEY"),
+  },
+  // The model is an endpoint path: `--model fal:minimax/h3-max-turbo/text-to-video`.
+  fal: {
+    layer: (apiKey, baseUrl) => falVideoLayer({ apiKey, ...at(baseUrl) }),
+    apiKey: key("FAL_API_KEY"),
+  },
+}
+
+export const videoGeneratorLayer = (
+  spec: ModelSpec,
+  baseUrl?: string,
+): Layer.Layer<VideoGenerator, Config.ConfigError | UnknownProvider, HttpClient.HttpClient> =>
+  Layer.unwrap(registry(spec, baseUrl, videoEntries))
 
 // ---------------------------------------------------------------------------
 // Embeddings and reranking

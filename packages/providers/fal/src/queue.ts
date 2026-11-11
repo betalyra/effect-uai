@@ -1,5 +1,5 @@
 import { Effect, Match, Option, Redacted, Schema, pipe } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Job from "@effect-uai/core/Job"
 import { PROVIDER, httpError, transportFailure } from "./codec.js"

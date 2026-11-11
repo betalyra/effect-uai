@@ -131,6 +131,8 @@ across every capability.
   enough; two providers behind one tag.
 - [`radio-station/`](./radio-station/) - a DJ writes the next track while the
   current one plays; the set replays from cache after the first pass.
+- [`basic-video-generation/`](./basic-video-generation/) - submit a clip, keep
+  the job's ref, watch it settle, stream it to disk; resume with `--ref`.
 
 ## Browsers
 

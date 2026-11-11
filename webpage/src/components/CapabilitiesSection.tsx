@@ -8,6 +8,7 @@ import {
   PiChatCircleDots,
   PiChatsCircle,
   PiCube,
+  PiFilmSlate,
   PiGraph,
   PiImage,
   PiMagnifyingGlass,
@@ -136,6 +137,13 @@ const capabilities: ReadonlyArray<Capability> = [
     description: "Generate music from prompts, one-shot or **streaming**.",
     href: "/music-generation/",
     Icon: PiMusicNotes,
+  },
+  {
+    title: "Video generation",
+    description:
+      "Generate clips as **background jobs** you can persist and resume, then stream them to disk.",
+    href: "/video-generation/",
+    Icon: PiFilmSlate,
   },
 ]
 

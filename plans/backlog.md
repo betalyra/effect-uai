@@ -160,6 +160,10 @@ everything else stays provider-typed.
 
 ## Providers
 
+- [ ] **Gemini updates**: the Decisions API (`gemini-decision-1`) as a
+      `DecisionModel` adapter, and Gemini 4 Argon / Carbon support
+      (`thinkingLevel`, long decode, tolerant part decoding). Own small PR off
+      dev, after video PR 1. Plan: `plans/gemini-updates.md`.
 - [ ] **Slack: thread follow-ups without a mention, reactions in threads**
       (needs a `conversations.replies(limit: 1)` lookup). Source:
       `plans/messenger.md:852`, `:864`.
@@ -248,6 +252,10 @@ update of `plans/mcp.md`). `@effect-uai/mcp` is client-only today.
 
 ## Recipes and docs
 
+- [ ] **Version-matched agent docs in `@effect-uai/core`** (`plans/agent-docs.md`):
+      ship docs, recipes and the skill in the tarball under `agent-docs/` and
+      `skills/`, so agents on older versions read matching docs from
+      `node_modules`. Today the skill and the site only describe `main`.
 - [ ] **`Loop.untilNoToolCalls` as a recipe**. Source: roadmap:47.
 - [ ] **`Stream.runFold` `LazyArg` callout** in docs/skill. Source: roadmap:50
       (§ at :1225).

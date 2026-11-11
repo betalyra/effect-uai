@@ -51,7 +51,7 @@ const FAMILIES: ReadonlyArray<readonly [string, VideoWire]> = [
     {
       ...IMAGE_FRAMES,
       duration: seconds,
-      // 768P has no portable tier; ask for it through `input`.
+      // 768P has no portable tier; ask for it through `wire`.
       resolutions: { "480p": "480P", "1080p": "1080P" },
     },
   ],
@@ -93,7 +93,7 @@ const FAMILIES: ReadonlyArray<readonly [string, VideoWire]> = [
   ["fal-ai/ltx-2", { ...NO_FRAMES, duration: Option.none(), resolutions: {} }],
 ]
 
-/** Everything portable goes through `input`, loudly rather than guessed. */
+/** Everything portable goes through `wire`, loudly rather than guessed. */
 const UNKNOWN: VideoWire = { ...NO_FRAMES, duration: Option.none(), resolutions: {} }
 
 export const wireOf = (endpoint: string): VideoWire =>
@@ -112,7 +112,7 @@ const dropped = (field: string, endpoint: string): Effect.Effect<Record<string, 
       provider: PROVIDER,
       capability: field,
       field,
-      reason: `No \`${field}\` field is known for \`${endpoint}\`. Set it through \`input\` under the name the endpoint documents.`,
+      reason: `No \`${field}\` field is known for \`${endpoint}\`. Set it through \`wire\` under the name the endpoint documents.`,
     }),
     {},
   )
@@ -147,7 +147,7 @@ const unsupportedTier = (
   new AiError.Unsupported({
     provider: PROVIDER,
     capability: "resolution",
-    reason: `\`${endpoint}\` renders ${Object.keys(wire.resolutions).join(", ")}, not ${resolution}. Set \`input.resolution\` for a tier this family spells differently.`,
+    reason: `\`${endpoint}\` renders ${Object.keys(wire.resolutions).join(", ")}, not ${resolution}. Set \`wire.resolution\` for a tier this family spells differently.`,
   })
 
 /**

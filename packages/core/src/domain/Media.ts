@@ -130,6 +130,20 @@ export type MediaBytes<M extends string = string> = {
 
 export type MediaSource<M extends string = string> = MediaUrl<M> | MediaBase64<M> | MediaBytes<M>
 
+/**
+ * A file the provider holds and only the provider can read: `id` is the
+ * provider's own handle (Gemini's `files/abc`, a MiniMax `file_id`), never a
+ * URL, since fetching it needs the provider's credentials. Read it through
+ * the capability that produced it. Video only for now; images, files and
+ * audio adopt it with the planned file references.
+ */
+export type MediaRef<M extends string = string> = {
+  readonly _tag: "ref"
+  readonly provider: string
+  readonly id: string
+  readonly mimeType?: M
+}
+
 export const isMediaUrl = <M extends string>(s: MediaSource<M>): s is MediaUrl<M> =>
   s._tag === "url"
 

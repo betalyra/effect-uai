@@ -6,8 +6,6 @@ import sitemap from "@astrojs/sitemap"
 import starlightLlmsTxt from "starlight-llms-txt"
 import tailwindcss from "@tailwindcss/vite"
 
-const stubPagePattern = /\/video-generation\/$/
-
 const isVercelProduction = process.env.VERCEL_ENV === "production"
 
 const plausibleHead = isVercelProduction
@@ -52,9 +50,7 @@ export default defineConfig({
   },
   integrations: [
     react(),
-    sitemap({
-      filter: (page) => !stubPagePattern.test(new URL(page).pathname),
-    }),
+    sitemap(),
     starlight({
       title: "effect-uai",
       description: "Low-level primitives for AI agents in Effect.",
@@ -68,7 +64,6 @@ export default defineConfig({
           description:
             "Low-level Effect-TS primitives for building AI agents: streaming agent loops, tool calling, structured output, multi-provider (OpenAI, Anthropic, Google Gemini), embeddings, and speech.",
           rawContent: true,
-          exclude: ["video-generation"],
         }),
       ],
       customCss: ["./src/styles/tailwind.css", "./src/styles/custom.css"],
@@ -541,6 +536,24 @@ export default defineConfig({
           ],
         },
         {
+          label: "Video generation",
+          items: [
+            { label: "Overview", slug: "video-generation" },
+            {
+              label: "Providers",
+              items: [
+                { label: "Google", slug: "video-generation/providers/google" },
+                { label: "Fal", slug: "video-generation/providers/fal" },
+              ],
+            },
+            {
+              label: "Recipes",
+              collapsed: true,
+              items: [{ label: "Basic video generation", slug: "recipes/basic-video-generation" }],
+            },
+          ],
+        },
+        {
           label: "Migrations",
           collapsed: true,
           items: [
@@ -562,17 +575,6 @@ export default defineConfig({
             { label: "Migrating to 0.5", slug: "migrations/v0-5" },
             { label: "Migrating to 0.4", slug: "migrations/v0-4" },
             { label: "Migrating to 0.3", slug: "migrations/v0-3" },
-          ],
-        },
-        {
-          label: "Coming soon",
-          collapsed: true,
-          items: [
-            {
-              label: "Video generation",
-              slug: "video-generation",
-              badge: { text: "Soon", variant: "note" },
-            },
           ],
         },
       ],

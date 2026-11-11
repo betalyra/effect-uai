@@ -1,4 +1,4 @@
-import { Data, Duration, Effect, Schedule, Schema } from "effect"
+import { Data, Duration, Effect, Match, Option, Schedule, Schema, Stream } from "effect"
 import * as AiError from "../domain/AiError.js"
 
 // ---------------------------------------------------------------------------
@@ -57,15 +57,18 @@ export interface JobRef<out A = unknown> {
   readonly [ResultType]?: A
 }
 
-/**
- * Decodes a ref persisted to a queue or a database. The phantom result type
- * does not survive the round trip: decode, then narrow at the call site that
- * knows which capability the ref belongs to.
- */
+/** Decodes a ref persisted to a queue or a database, as `JobRef<unknown>`. */
 export const JobRef = Schema.TaggedStruct("JobRef", {
   provider: Schema.String,
   id: Schema.String,
 })
+
+/**
+ * {@link JobRef} typed to the result it collects to. The phantom type is not
+ * on the wire, so this is the capability's own claim: export one per
+ * capability (`VideoGenerator.VideoJobRef`) rather than calling it ad hoc.
+ */
+export const refSchema = <A>(): Schema.Codec<JobRef<A>, typeof JobRef.Encoded> => JobRef
 
 export const jobRef = <A = unknown>(provider: string, id: string): JobRef<A> => ({
   _tag: "JobRef",
@@ -100,37 +103,61 @@ export type JobConfig = {
 const DEFAULT_POLL_INTERVAL: Duration.Input = "10 seconds"
 const DEFAULT_TIMEOUT: Duration.Input = "45 minutes"
 
+type Poll<Result> = (ref: JobRef<Result>) => Effect.Effect<JobState<Result>, AiError.AiError>
+
 /**
- * Poll `poll(ref)` on a jittered fixed cadence until the job settles, then
- * return the result or fail `GenerationFailed`. Bounded by `timeout`, which
- * fails `Timeout` if the job never settles. Takes the poll op alone (not the
- * full `JobOps`) so a detached `collect(ref)` needs no submit-bound request.
+ * Every polled state, on a jittered fixed cadence, ending with the first
+ * settled one. The first poll runs immediately. Bounded as a whole by
+ * `timeout`, which fails `Timeout`. Takes the poll op alone (not the full
+ * `JobOps`) so a detached ref needs no submit-bound request.
+ */
+export const watch = <Result>(
+  poll: Poll<Result>,
+  ref: JobRef<Result>,
+  config?: JobConfig,
+): Stream.Stream<JobState<Result>, AiError.AiError> =>
+  Stream.fromEffectSchedule(
+    poll(ref),
+    Schedule.jittered(Schedule.spaced(config?.pollInterval ?? DEFAULT_POLL_INTERVAL)),
+  ).pipe(
+    Stream.takeUntil(isSettled),
+    Stream.interruptWhen(
+      Effect.sleep(config?.timeout ?? DEFAULT_TIMEOUT).pipe(
+        Effect.andThen(Effect.fail(new AiError.Timeout({ provider: ref.provider, raw: ref }))),
+      ),
+    ),
+  )
+
+const failed = (ref: JobRef<unknown>, reason?: string, raw?: unknown) =>
+  Effect.fail(
+    new AiError.GenerationFailed({
+      provider: ref.provider,
+      message: reason ?? "job failed",
+      raw: raw ?? ref,
+    }),
+  )
+
+/**
+ * The result of a job's {@link watch}: its value on `Succeeded`,
+ * `GenerationFailed` on `Failed`, `Timeout` if it never settles.
  */
 export const collect = <Result>(
-  poll: (ref: JobRef<Result>) => Effect.Effect<JobState<Result>, AiError.AiError>,
+  poll: Poll<Result>,
   ref: JobRef<Result>,
   config?: JobConfig,
 ): Effect.Effect<Result, AiError.AiError> =>
-  poll(ref).pipe(
-    Effect.repeat({
-      schedule: Schedule.jittered(Schedule.spaced(config?.pollInterval ?? DEFAULT_POLL_INTERVAL)),
-      until: isSettled,
-    }),
-    Effect.flatMap((state) =>
-      state._tag === "Succeeded"
-        ? Effect.succeed(state.result)
-        : Effect.fail(
-            new AiError.GenerationFailed({
-              provider: ref.provider,
-              message: state._tag === "Failed" ? (state.reason ?? "job failed") : "job failed",
-              raw: state._tag === "Failed" ? (state.raw ?? ref) : ref,
-            }),
+  Stream.runLast(watch(poll, ref, config)).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => failed(ref),
+        onSome: (state): Effect.Effect<Result, AiError.AiError> =>
+          Match.value(state).pipe(
+            Match.tag("Succeeded", (s) => Effect.succeed(s.result)),
+            Match.tag("Failed", (s) => failed(ref, s.reason, s.raw)),
+            Match.orElse(() => failed(ref)),
           ),
+      }),
     ),
-    Effect.timeoutOrElse({
-      duration: config?.timeout ?? DEFAULT_TIMEOUT,
-      orElse: () => Effect.fail(new AiError.Timeout({ provider: ref.provider, raw: ref })),
-    }),
   )
 
 /**

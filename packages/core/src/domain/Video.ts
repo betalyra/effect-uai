@@ -4,6 +4,7 @@ import type { ImageSource } from "./Image.js"
 import type {
   MediaBase64,
   MediaBytes,
+  MediaRef,
   MediaSource,
   MediaUrl,
   ProviderData,
@@ -23,23 +24,31 @@ export type VideoMimeType =
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
 
-const VideoMimeTypeSchema = Schema.String as unknown as Schema.Schema<VideoMimeType>
+const VideoMimeTypeSchema: Schema.Codec<VideoMimeType> = Schema.String
 
 export type VideoUrlSource = MediaUrl<VideoMimeType>
 export type VideoBase64Source = MediaBase64<VideoMimeType>
 export type VideoBytesSource = MediaBytes<VideoMimeType>
+export type VideoRefSource = MediaRef<VideoMimeType>
 
 /**
- * Where a video lives. Generation providers overwhelmingly return a URL
- * rather than bytes, and those URLs expire (an hour on some providers,
- * thirty days on others), so a caller that needs to keep the video must
- * download it before then.
+ * Where a video lives. `url`: anyone holding it can fetch it until it
+ * expires (an hour to thirty days), so treat it like a short-lived secret.
+ * `ref`: a file the provider holds, readable only through that provider.
+ * `base64`: inline delivery. `bytes`: what `VideoGenerator.toBytes` reads
+ * any of them into.
  */
-export type VideoSource = MediaSource<VideoMimeType>
+export type VideoSource = MediaSource<VideoMimeType> | VideoRefSource
 
 export const VideoUrlSource = Schema.TaggedStruct("url", {
   url: Schema.String,
-  mimeType: Schema.optional(VideoMimeTypeSchema),
+  mimeType: Schema.optionalKey(VideoMimeTypeSchema),
+})
+
+export const VideoRefSource = Schema.TaggedStruct("ref", {
+  provider: Schema.String,
+  id: Schema.String,
+  mimeType: Schema.optionalKey(VideoMimeTypeSchema),
 })
 
 export const VideoBase64Source = Schema.TaggedStruct("base64", {
@@ -52,14 +61,29 @@ export const VideoBytesSource = Schema.TaggedStruct("bytes", {
   mimeType: VideoMimeTypeSchema,
 })
 
-export const VideoSource: Schema.Schema<VideoSource> = Schema.Union([
+export const VideoSource: Schema.Codec<VideoSource> = Schema.Union([
   VideoUrlSource,
   VideoBase64Source,
   VideoBytesSource,
-]) as unknown as Schema.Schema<VideoSource>
+  VideoRefSource,
+])
+
+/** `VideoSource` as JSON: bytes encode as base64 (persisted manifests, a UI wire). */
+export const VideoSourceJson = Schema.Union([
+  VideoUrlSource,
+  VideoBase64Source,
+  Schema.TaggedStruct("bytes", {
+    bytes: Schema.Uint8ArrayFromBase64,
+    mimeType: VideoMimeTypeSchema,
+  }),
+  VideoRefSource,
+])
 
 export const videoUrl = (url: string, mimeType?: VideoMimeType): VideoUrlSource =>
   mimeType !== undefined ? { _tag: "url", url, mimeType } : { _tag: "url", url }
+
+export const videoRef = (provider: string, id: string, mimeType?: VideoMimeType): VideoRefSource =>
+  mimeType !== undefined ? { _tag: "ref", provider, id, mimeType } : { _tag: "ref", provider, id }
 
 export const videoBase64 = (base64: string, mimeType: VideoMimeType): VideoBase64Source => ({
   _tag: "base64",
@@ -89,14 +113,16 @@ export type VideoResolution = "360p" | "480p" | "720p" | "1080p" | "4k"
  * different request as a first frame, a last frame or a style reference.
  *
  * Ordered. Dreamina prompts address media positionally (`@Image1`).
- * Providers that cannot honor a variant fail `Unsupported`. Reference
- * video, reference audio and an edit/extend base video are additive
- * variants.
+ * Providers that cannot honor a variant fail `Unsupported`. A reference
+ * video is a motion or subject reference (a few seconds), and may be a
+ * `ref` a provider issued, fed back without a download. Reference audio and
+ * an edit/extend base video are additive variants.
  */
 export type VideoInput = Data.TaggedEnum<{
   FirstFrame: { readonly image: ImageSource }
   LastFrame: { readonly image: ImageSource }
   ReferenceImage: { readonly image: ImageSource }
+  ReferenceVideo: { readonly video: VideoSource }
 }>
 
 /** Constructors, guards and matchers for {@link VideoInput}. */
@@ -119,3 +145,4 @@ export type GeneratedVideo = {
 export const isVideoUrl = Schema.is(VideoUrlSource)
 export const isVideoBase64 = Schema.is(VideoBase64Source)
 export const isVideoBytes = Schema.is(VideoBytesSource)
+export const isVideoRef = Schema.is(VideoRefSource)

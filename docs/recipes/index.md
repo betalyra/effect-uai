@@ -116,6 +116,12 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 | [Basic music generation](/recipes/basic-music-generation/) | Generate a 30-second clip with Lyria 3; simple prompt or weighted prompts with lyrics and BPM hints.                                                   |
 | [Radio station](/recipes/radio-station/)                   | Run your own AI radio station. An AI DJ writes the next track while you listen to the current one; the same set replays for free after the first pass. |
 
+## Video
+
+| Recipe                                                     | One-line                                                                                             |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [Basic video generation](/recipes/basic-video-generation/) | Submit a clip, keep the job's ref, watch it settle, stream it to disk; resume an interrupted render. |
+
 ## Images
 
 | Recipe                                                           | One-line                                                                                                                        |

@@ -8,8 +8,8 @@ raw reports, including the wire schemas in
 [google-veo.md](./research/video-generation/google-veo.md) and
 [aggregators.md](./research/video-generation/aggregators.md)).
 
-Nothing here is implemented. Part 1 is the design. Part 2 is the
-sequenced build.
+Part 1 is the design. Part 2 is the sequenced build, split into three
+PRs (see "PR split"). Phases 1 and 2 are built on `add-video-models`.
 
 ---
 
@@ -442,10 +442,27 @@ than a `ContentFiltered` we can justify.
 
 # Part 2: Implementation plan
 
-Ordered so that something demoable exists as early as possible, and so
-that each phase is independently shippable. The TV station is phase 3
-on purpose: it is the proof that the whole design works, and it is the
-most fun thing to have running.
+Ordered so that each phase is independently shippable.
+
+## PR split (2026-11-11)
+
+| PR  | Scope                                                                              | Plan                         |
+| --- | ---------------------------------------------------------------------------------- | ---------------------------- |
+| 1   | Phases 1, 2, 2b, 4 and 7: the core capability, fal, Gemini Omni, docs              | this file                    |
+| 2   | Phase 5 (direct provider packages) and Phase 6 (the CLI recipes)                   | this file                    |
+| 3   | The tv-station and the `@effect-uai/ui` work for streaming media and live sessions | [ui-media.md](./ui-media.md) |
+
+Providers come before the ui work so the core shapes (`VideoInput`, the
+result, the job surface) are checked against every wire format before a
+protocol and a UI depend on them. The ui work is not video-specific: it
+also ports the voice, transcription, synthesis and radio recipes.
+
+The name stays `VideoGenerator`. Like `ImageGenerator`, `MusicGenerator`
+and `Transcriber`, the base capability is named for what it produces.
+Delivery modes get their own tags beside it: progressive delivery of a
+clip would be an additive method or tag (as `DeepResearch` has
+`streamFrom`), and interactive realtime video a session capability next
+to `RealtimeSession`, as the Scope section already says.
 
 ## Phase 0: lock the open decisions
 
@@ -597,84 +614,136 @@ difference between the two is a footgun.
 Deliverable: MiniMax H3 and H3 Max Turbo, Dreamina Seedance, Veo, Kling
 and LTX all reachable. One manual run against the real API.
 
-## Phase 3: the TV station recipe
+## Phase 2b: review pass after the rebase (2026-11-11)
 
-The analog of `recipes/radio-station`, and the reason the fast tier
-matters.
+Phases 1 and 2 were built in September and the branch is now rebased
+onto dev (Effect 4.1, the tools refactor, ui 0.20). Done:
 
-**Why it works.** fal measured `minimax/h3-max-turbo/text-to-video` at
-1.61 seconds for a 5 second clip, and `minimax/h3-max/text-to-video` at
-2.82. Generation is roughly three times faster than playback, so a
-prefetch fiber can stay ahead of the viewer indefinitely. That headroom
-is the whole premise, exactly as the radio station depends on music
-generating faster than it plays.
+- **Effect 4.1 paths.** `effect/unstable/http` is `effect/http`;
+  `Encoding` from `"effect"` is `Base64` from `effect/encoding`.
+- **`Video.ts` on the current `Image.ts` pattern**: `Schema.Codec`,
+  `optionalKey`, a `VideoSourceJson` variant; no `as unknown as` casts.
+- **`Job.watch(poll, ref, config): Stream<JobState>`**: every polled
+  state, ending with the settled one, bounded as a whole by `timeout`.
+  `collect` is the last element of it. `VideoGenerator.watch` over the
+  tag.
+- **`VideoGenerator.generate(request, config)`**, a free function over
+  the tag, not a service method: `submit`, then `collect`, cancelling the
+  server job if interrupted (`Job.run`).
+- **Typed ref decoding**: `Job.refSchema<A>()` and
+  `VideoGenerator.VideoJobRef`, so a ref read back from storage needs no
+  cast. `Job.JobStateSchema` moved to PR 3, where the ui contract is its
+  first consumer.
+- **Reading a video belongs to the provider that produced it.** The
+  service gains `read(video): Stream<Uint8Array, AiError>`, one wire call
+  (or none, for inline data), next to `submit` / `status` / `cancel`;
+  `VideoGenerator.toStream` / `toBytes` are the accessors over the tag.
+  Only the provider knows whether its reference is a public URL, needs its
+  key, or needs a lookup first, and only it holds the key. Applications
+  never handle a provider's credentials, and errors are `AiError`s that
+  name the provider. `VideoDownload.read(source, { provider, headers? })`
+  is the shared building block adapters delegate to for public URLs and
+  inline data (non-2xx fails; `download` did not check).
+- **A `ref` source variant**: `{ _tag: "ref", provider, id }`, a file only
+  its provider can read (Gemini's `files/abc`, later MiniMax V1's
+  `file_id`). The type says who can fetch it: `url` means anyone holding
+  the link (a bearer link, treated as a short-lived secret), `ref` means
+  the issuing provider only. A provider's `read` attaches its key only to
+  its own refs, never to a URL, so the key cannot leak to a foreign host.
+  `MediaRef` lives in `Media.ts` but joins only `VideoSource` for now;
+  images, files and audio adopt it with the backlog's file references.
+  Observed returns (2026-11-11): public URLs from fal, MiniMax V2,
+  Seedance, Runway, Kling, Luma; a key-gated Files API URL from Omni
+  `uri` delivery; an id plus lookup from MiniMax V1; inline base64 from
+  Omni inline and fal `sync_mode`.
+- **`ReferenceVideo { video: VideoSource }`** joins `VideoInput`: Omni
+  motion references, later Seedance and MiniMax. A `ref` goes straight
+  back to its provider without a download. `ReferenceAudio` waits for
+  PR 2, where a direct provider maps it. Content blocks were considered
+  and rejected: they carry no role, and roles (first frame, last frame,
+  reference) are what every video wire is built on.
+- **fal**: one service backs both tags (`Layer.effectContext`); the
+  `request as FalVideoGenerateRequest` cast was redundant and is gone;
+  encoder messages name `wire`, not `input`; references (no shared field
+  across endpoint families) go through `wire` or fail `Unsupported`.
 
-**Shape**, mirroring `runStation`:
+## Phase 3: moved to `plans/ui-media.md`
 
-```
-                            [brief]
-                               │
-                               ▼  plan scene 0
-                        { title, prompt }
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│  prefetch fiber : plan scene N+1 → submit → collect → disk   │
-│  main loop      : emit events + clip URLs as ServerEvent     │
-└─────────────────────────────────────────────────────────────┘
-                               │
-                               ▼  Stream<ServerEvent>
-```
-
-- An LLM writes the next scene as structured output (`{ title, prompt }`,
-  plus continuity notes) while the current clip plays.
-- `VideoGenerator.submit` then `collect` inside the prefetch fiber. The
-  explicit two-step is the point: the recipe shows the job surface being
-  driven deliberately, and the poll interval is tuned to the model
-  (sub-second for the turbo tier, not the 10 second default).
-- Clips cached to disk with the `.partial` rename dance from the radio
-  station, so a second pass through the loop is free.
-- Driven by the `loop` primitive, with state threading `cycle`, `idx`,
-  the prefetch fiber and the plans seen so far.
-
-**The one real difference from radio.** `MusicGenerator.streamGeneration`
-yields audio chunks, so the radio station tees bytes downstream as they
-arrive. Video has no streaming, so a clip is a whole file. The main loop
-therefore emits a `clip-ready` event carrying a URL the client fetches,
-rather than a `data` variant carrying bytes. The browser client keeps
-two `<video>` elements and swaps them, preloading clip N+1 while N
-plays, which is the standard gapless pattern and is simpler than the
-audio case.
-
-Files: `recipes/tv-station/{README.md,recipe.ts,app.ts,run.ts,client/}`,
-matching the radio station layout exactly.
-
-Deliverable: open a tab, click Start, watch an endless AI TV channel.
+The TV station recipe and the `@effect-uai/ui` work for streaming media
+are PR 3, after the providers. See `plans/ui-media.md`. The station was
+built on this branch and is parked there; this section's original design
+stays in git history.
 
 ## Phase 4: Google Gemini Omni
 
-**First task, before any adapter code:** one `curl` against
-`POST /v1beta/interactions` with `background: true`, `store: true` and
-`model: "gemini-omni-1.1-flash"`, to confirm the server accepts it for
-this model. This is the one unverified assumption in the design. If it
-is rejected, the adapter documents `submit` as blocking on Omni and
-everything else in this phase stands unchanged.
+**Target `gemini-omni-1.2-flash`** (GA 2026-11-05; calls to 1.1 route to
+1.2 from 2026-12-03). New in 1.2: clips up to 15 s (3 to 15 in 1 s
+steps), up to 6 reference images, short motion clips (up to 3 s) and
+audio cues as references, extension in 3 to 10 s steps up to 30 s. The
+Veo 3.1 previews and `gemini-omni-flash-preview` are shut down in the
+Gemini API since 2026-10-22.
 
-- `providers/google/src/GeminiOmniVideoGenerator.ts`: the Interactions
-  API in `snake_case`; `background: true` plus `store: true` on submit;
-  poll `GET /v1beta/interactions/{id}` with the full eight-value status
-  mapping, not Google's own two-state sample loop; cancel via
-  `POST /v1beta/interactions/{id}/cancel`; the `steps[]` walk for the
-  `model_output` step, because `interaction.output_video` is SDK-only;
-  and the file URI captured from the create response, because re-reading
-  the interaction returns inline base64 instead.
-- `providers/google/src/models.ts`: `GeminiOmniVideoModel`.
-- Default `delivery: "inline"`, with `uri` documented as the escape
-  hatch above the roughly 4 MB cap. Note that `uri` does not make the
-  call return earlier; it only avoids the payload limit.
+What 1.2 means for the common request: `ReferenceVideo` is added (see
+Phase 2b); reference audio is not supported by Omni and waits for PR 2.
+Extension and conversational editing (`previous_interaction_id`) stay on
+the Google-typed request, later.
+
+**Background mode: verified live 2026-11-11**
+(`experiments/omni-background`). `background: true` + `store: true` on
+`gemini-omni-1.2-flash`: the create answered HTTP 200 with
+`{ id, status: "in_progress" }` in 1.7 s; polling
+`GET /v1beta/interactions/{id}` stayed `in_progress` and turned
+`completed` at 26 s (360p, default length). No `queued` state was seen.
+The settled interaction, verbatim shape:
+
+- `steps`: `user_input` (the prompt), then `thought` (`signature`, about
+  17 KB), then `model_output` whose `content` is
+  `[{ type: "video", data: <base64>, mime_type: "video/mp4" }]`.
+  The video came back inline even under `background`: about 2 MB of MP4
+  for a 360p clip.
+- `usage`: `total_input_tokens`, `total_output_tokens` (all `video`),
+  `total_thought_tokens`, `total_tokens`, maps onto `VideoUsage`.
+- No duration, width, height or fps on the video part; `response_format`
+  is echoed back.
+
+**`delivery: "uri"` under background: verified the same day**
+(720p). The settled poll carries the URI, contrary to the docs' note that
+a re-read returns inline base64: the video part is
+`{ type: "video", uri, mime_type }` with
+`uri = .../v1beta/files/{id}:download?alt=media`, a direct download that
+needs the API key and worked right after settling (no Files API `ACTIVE`
+wait). 57,920 output tokens, so the default length is 10 s; the clip was
+3.6 MB, just under the inline cap, so 1080p and 4K need `uri`.
+
+Consequence: an Omni `uri` is a URL a plain GET cannot read (no key).
+Resolved by the `ref` variant and `read` on the service (Phase 2b).
+
+**Built** (`providers/google/src/GeminiOmniVideoGenerator.ts`):
+
+- Interactions API, `background: true` + `store: true` on submit; poll
+  `GET /interactions/{id}`; cancel `POST /interactions/{id}/cancel`.
+- All eight statuses mapped; an unknown one ends as `Failed` rather than
+  polling on as `Running`.
+- **Default `delivery: "uri"`**, so every size works: the download URI is
+  parsed (`Schema.URLFromString`, path segments, Google's `{name}:method`
+  convention) into `ref { provider: "gemini", id: "files/abc" }`. The id
+  is Google's own resource name, so the URL is rebuilt from the
+  configured host on `read`, never stored. `inline` stays opt-in on the
+  typed request.
+- **Roles become the task.** Omni has no per-image role field: images are
+  positional (first frame, then last frame) and `video_config.task`
+  carries the intent. `FirstFrame` (+ optional `LastFrame`) is sent as
+  `image_to_video`, references as `reference_to_video`; a mix, or a last
+  frame alone, fails `Unsupported`. A provider-typed `task` overrides.
+- `duration` as `"Ns"` (3 to 15); aspect ratio `16:9` / `9:16` and
+  resolution `360p` to `4k` checked, others `Unsupported`; `seed`
+  warn-dropped (Omni has none); URL-form images and videos rejected
+  (inline or own refs only).
+- `models.ts`: `GeminiOmniVideoModel`; `index.ts` and the package export.
 
 Deliverable: the direct Google path, with the same job semantics as
-every other provider.
+every other provider. Live end-to-end check through
+`recipes/basic-video-generation` pending.
 
 ## Phase 5: direct provider packages
 
@@ -700,7 +769,9 @@ version. Each is independently shippable and none blocks the others.
 
 ## Phase 6: the remaining recipes
 
-In the order you ranked them.
+PR 2, in the order you ranked them. `basic-video-generation` (submit,
+persist the ref, watch, read; `--ref` resumes) shipped early with PR 1 as
+the runnable example and the live end-to-end check.
 
 - `product-clip`: a hero still (generated or supplied) animated by an
   image-to-video model, downloaded and persisted. The smallest complete
@@ -718,8 +789,12 @@ In the order you ranked them.
   current stub survives and is correct; the provider list and the
   "rendering 38%" progress promise do not.
 - `docs/video-generation/providers/{fal,google,minimax,bytedance,runway}.md`,
-  each leading with that provider's result URL lifetime.
-- `docs/migrations/v0-18.md`, additive.
+  each leading with that provider's result URL lifetime (fal and google
+  in PR 1, the rest with their packages).
+- What a `url` is: a bearer link that works for anyone until it expires;
+  copy anything private or long-lived into your own storage. What a `ref`
+  is and why `read` goes through the provider.
+- The release's migration note, additive.
 - Webpage: capability count and card, recipe grid entries, icon map.
 
 ## Open items to resolve during implementation
@@ -729,9 +804,10 @@ In the order you ranked them.
    the SDK source.
 2. Measure the real default lifetime of a fal result URL. The docs
    describe the override header but never state the default.
-3. Confirm `background: true` is accepted for `gemini-omni-1.1-flash`.
-   This is the one load-bearing unverified assumption in the design and
-   is the first task of Phase 4. Everything else survives either answer.
+3. ~~Confirm `background: true` is accepted for `gemini-omni-1.2-flash`.~~
+   Verified 2026-11-11, see Phase 4, as is what a settled poll carries
+   with `delivery: "uri"` (the authenticated URI). Open: how the adapter
+   exposes that URI.
 4. Pin BFL FLUX 3 Video's wire shape before phase 5 item 3.
 5. Confirm whether fal's `sync_mode` (base64 instead of a CDN URL) is
    worth exposing. It exists on the MiniMax H3 family and LTX-2-19b but

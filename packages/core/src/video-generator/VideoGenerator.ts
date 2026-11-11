@@ -1,8 +1,15 @@
-import { Context, Effect } from "effect"
+import { Bytes, Context, Effect, Stream } from "effect"
 import type { Duration } from "effect"
 import * as AiError from "../domain/AiError.js"
 import type { AspectRatio, ProviderData } from "../domain/Media.js"
-import type { GeneratedVideo, VideoInput, VideoResolution } from "../domain/Video.js"
+import type {
+  GeneratedVideo,
+  VideoBytesSource,
+  VideoInput,
+  VideoResolution,
+  VideoSource,
+} from "../domain/Video.js"
+import { videoBytes } from "../domain/Video.js"
 import * as Job from "../job/Job.js"
 
 export type {
@@ -68,6 +75,9 @@ export type VideoResponse = {
 /** Handle to a running generation. Plain data; persist it and collect later. */
 export type VideoJobRef = Job.JobRef<VideoResponse>
 
+/** Decodes a persisted {@link VideoJobRef}. */
+export const VideoJobRef = Job.refSchema<VideoResponse>()
+
 /** Current state of a generation. See {@link Job.JobState}. */
 export type VideoState = Job.JobState<VideoResponse>
 
@@ -78,8 +88,9 @@ export type VideoState = Job.JobState<VideoResponse>
 /**
  * Video generation as an explicit background job. Generation runs for
  * seconds to minutes and costs per call, so the poll loop belongs to the
- * caller: `submit` hands back a ref, `status` is one fetch, and the
- * module-level {@link collect} is the opt-in loop.
+ * caller: `submit` hands back a ref and `status` is one fetch. The loops
+ * are module-level and opt-in: {@link watch}, {@link collect},
+ * {@link generate}.
  *
  * Every method here is exactly one wire call. Nothing retries or schedules.
  */
@@ -90,6 +101,12 @@ export type VideoGeneratorServiceShape<Req> = {
   readonly status: (ref: VideoJobRef) => Effect.Effect<VideoState, AiError.AiError>
   /** `Unsupported` where the provider has no cancel. */
   readonly cancel: (ref: VideoJobRef) => Effect.Effect<void, AiError.AiError>
+  /**
+   * Stream a video this provider produced. One GET for a `url` (with the
+   * provider's auth where its file URLs need it), none for inline data.
+   * URLs expire, so read before then.
+   */
+  readonly read: (video: VideoSource) => Stream.Stream<Uint8Array, AiError.AiError>
 }
 
 export type VideoGeneratorService = VideoGeneratorServiceShape<CommonVideoGenerateRequest>
@@ -120,12 +137,46 @@ export const cancel = (ref: VideoJobRef): Effect.Effect<void, AiError.AiError, V
   Effect.flatMap(VideoGenerator, (s) => s.cancel(ref))
 
 /**
- * Poll `status` until the generation settles, then return the videos.
- * The only call here that loops, so cadence and the overall cap are
- * arguments rather than hidden defaults (see {@link Job.JobConfig}).
+ * A produced video as a byte stream, read by the provider in context, so
+ * the provider that produced it. Nothing is fetched until this is run.
  */
+export const toStream = (
+  video: VideoSource,
+): Stream.Stream<Uint8Array, AiError.AiError, VideoGenerator> =>
+  Stream.unwrap(Effect.map(VideoGenerator, (s) => s.read(video)))
+
+/** {@link toStream}, collected into memory. */
+export const toBytes = (
+  video: VideoSource,
+): Effect.Effect<VideoBytesSource, AiError.AiError, VideoGenerator> =>
+  Effect.map(Stream.runCollect(toStream(video)), (chunks) =>
+    videoBytes(Bytes.concat(chunks), video.mimeType ?? "video/mp4"),
+  )
+
+// The loops. Cadence and the overall cap are arguments, see `Job.JobConfig`.
+
+/** Every polled state, ending with the settled one (queue position, for a UI). */
+export const watch = (
+  ref: VideoJobRef,
+  config?: Job.JobConfig,
+): Stream.Stream<VideoState, AiError.AiError, VideoGenerator> =>
+  Stream.unwrap(Effect.map(VideoGenerator, (s) => Job.watch(s.status, ref, config)))
+
+/** Poll until the generation settles, then return the videos. Leaves the job running if interrupted. */
 export const collect = (
   ref: VideoJobRef,
   config?: Job.JobConfig,
 ): Effect.Effect<VideoResponse, AiError.AiError, VideoGenerator> =>
   Effect.flatMap(VideoGenerator, (s) => Job.collect(s.status, ref, config))
+
+/**
+ * Submit, then {@link collect}, cancelling the provider's job if interrupted.
+ * The ref never leaves this call, so use `submit` + `collect` to persist it.
+ */
+export const generate = (
+  request: CommonVideoGenerateRequest,
+  config?: Job.JobConfig,
+): Effect.Effect<VideoResponse, AiError.AiError, VideoGenerator> =>
+  Effect.flatMap(VideoGenerator, (s) =>
+    Job.run({ submit: s.submit(request), poll: s.status, cancel: s.cancel }, config),
+  )

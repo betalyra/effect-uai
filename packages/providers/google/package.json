@@ -50,6 +50,10 @@
       "types": "./dist/GeminiLiveSession.d.mts",
       "import": "./dist/GeminiLiveSession.mjs"
     },
+    "./GeminiOmniVideoGenerator": {
+      "types": "./dist/GeminiOmniVideoGenerator.d.mts",
+      "import": "./dist/GeminiOmniVideoGenerator.mjs"
+    },
     "./GeminiSynthesizer": {
       "types": "./dist/GeminiSynthesizer.d.mts",
       "import": "./dist/GeminiSynthesizer.mjs"

@@ -1,15 +1,4 @@
-import {
-  Context,
-  Effect,
-  Layer,
-  Option,
-  Redacted,
-  Ref,
-  Result,
-  Schema,
-  Stream,
-  pipe,
-} from "effect"
+import { Context, Effect, Layer, Option, Redacted, Ref, Result, Schema, Stream, pipe } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/http"
 import * as AiError from "@effect-uai/core/AiError"
 import * as Capabilities from "@effect-uai/core/Capabilities"

@@ -571,6 +571,9 @@ assistant-ui `ExternalStoreRuntime` adapter.
 
 ## Phase 2: live sessions (voice, camera, media)
 
+> Superseded by `plans/ui-media.md`, which re-checks this section against
+> the code and lists where it is out of date.
+
 The voice recipes are the strongest real case for multi-run streams, so they
 come before generative UI.
 

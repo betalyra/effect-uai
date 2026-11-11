@@ -42,6 +42,17 @@ export type GeminiImageModel =
   | (string & {})
 
 /**
+ * Gemini Omni video models (Interactions API). `gemini-omni-1.1-flash`
+ * routes to 1.2 from 2026-12-03.
+ *
+ * Reference: https://ai.google.dev/gemini-api/docs/omni
+ */
+export type GeminiOmniVideoModel =
+  | "gemini-omni-1.2-flash"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
  * Deep-research agent identifiers for the Interactions API (`POST
  * /v1beta/interactions`). `-preview` is the fast tier, `-max-` the
  * comprehensive one. Preview surface: verify against live docs before relying on

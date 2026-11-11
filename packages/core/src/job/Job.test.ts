@@ -1,8 +1,8 @@
 import { describe, it } from "@effect/vitest"
-import { Effect, Fiber, Ref, Schema } from "effect"
+import { Effect, Fiber, Ref, Schema, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import { expect } from "vitest"
-import { JobRef, JobState, collect, jobRef, run } from "./Job.js"
+import { expect, expectTypeOf } from "vitest"
+import { type JobRef, JobState, collect, jobRef, refSchema, run, watch } from "./Job.js"
 
 const ref = jobRef<string>("test", "job-1")
 
@@ -11,11 +11,34 @@ const scripted = (states: ReadonlyArray<JobState<string>>) =>
   Effect.map(Ref.make(0), (calls) => ({
     calls,
     poll: () =>
-      Effect.flatMap(
+      Effect.map(
         Ref.getAndUpdate(calls, (n) => n + 1),
-        (n) => Effect.succeed(states[Math.min(n, states.length - 1)]!),
+        (n) => states[Math.min(n, states.length - 1)]!,
       ),
   }))
+
+describe("watch", () => {
+  it.effect("emits every polled state and ends with the settled one", () =>
+    Effect.gen(function* () {
+      const { poll } = yield* scripted([
+        JobState.Pending({ queuePosition: 2 }),
+        JobState.Running(),
+        JobState.Succeeded({ result: "video.mp4" }),
+      ])
+
+      const fiber = yield* Effect.forkChild(
+        Stream.runCollect(watch(poll, ref, { pollInterval: "1 second" })),
+      )
+      yield* Effect.repeat(TestClock.adjust("1 second"), { times: 4 })
+
+      expect(yield* Fiber.join(fiber)).toEqual([
+        JobState.Pending({ queuePosition: 2 }),
+        JobState.Running(),
+        JobState.Succeeded({ result: "video.mp4" }),
+      ])
+    }),
+  )
+})
 
 describe("collect", () => {
   it.effect("polls through the live states and stops at the first settled one", () =>
@@ -29,7 +52,8 @@ describe("collect", () => {
       ])
 
       const fiber = yield* Effect.forkChild(collect(poll, ref, { pollInterval: "1 second" }))
-      yield* TestClock.adjust("10 seconds")
+      // Step the clock: each poll's sleep is scheduled only after the previous poll ran.
+      yield* Effect.repeat(TestClock.adjust("1 second"), { times: 9 })
 
       expect(yield* Fiber.join(fiber)).toBe("video.mp4")
       // Four polls, not five: the loop stops rather than running the schedule out.
@@ -111,13 +135,11 @@ describe("run", () => {
 describe("JobRef", () => {
   // The constructor and the schema are written independently, so a field
   // added to one and not the other only shows up here.
-  it.effect("decodes a ref built by its own constructor", () =>
+  it.effect("decodes a ref built by its own constructor, typed by refSchema", () =>
     Effect.gen(function* () {
-      expect(yield* Schema.decodeUnknownEffect(JobRef)(jobRef("fal", "req-9"))).toEqual({
-        _tag: "JobRef",
-        provider: "fal",
-        id: "req-9",
-      })
+      const decoded = yield* Schema.decodeEffect(refSchema<string>())(jobRef("fal", "req-9"))
+      expectTypeOf(decoded).toEqualTypeOf<JobRef<string>>()
+      expect(decoded).toEqual({ _tag: "JobRef", provider: "fal", id: "req-9" })
     }),
   )
 })

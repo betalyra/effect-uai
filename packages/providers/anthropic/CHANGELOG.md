@@ -1,5 +1,11 @@
 # @effect-uai/anthropic
 
+## 0.19.1
+
+### Patch Changes
+
+- 7831603: Export the schema values behind `UserLocation`, `WebSearchFilters`, `WireUsage`, `WebReadToolArgs`, `WebSearchToolArgs`, the `RunView` blocks and the ai-sdk message parts. The published `.d.mts` already declared them, but the `.mjs` did not export them, so imports type-checked and then failed at runtime (#232).
+
 ## 0.19.0
 
 ### Minor Changes

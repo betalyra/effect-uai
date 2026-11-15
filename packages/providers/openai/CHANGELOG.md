@@ -1,5 +1,12 @@
 # @effect-uai/openai
 
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies [7831603]
+  - @effect-uai/responses@0.19.1
+
 ## 0.19.0
 
 ### Minor Changes

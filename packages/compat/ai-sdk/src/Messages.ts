@@ -19,20 +19,20 @@ const asJson = Schema.decodeUnknownOption(Schema.Json)
 // structurally by `toolCallId` - their wire `type` is a dynamic `tool-<name>`
 // (or `dynamic-tool`) rather than a fixed literal - so their schema keeps
 // `type` open and reads the name off it.
-const TextPart = Schema.Struct({
+export const TextPart = Schema.Struct({
   type: Schema.Literal("text"),
   text: Schema.String,
 })
 export type TextPart = typeof TextPart.Type
 
-const FilePart = Schema.Struct({
+export const FilePart = Schema.Struct({
   type: Schema.Literal("file"),
   mediaType: Schema.String,
   url: Schema.String,
 })
 export type FilePart = typeof FilePart.Type
 
-const ToolPart = Schema.Struct({
+export const ToolPart = Schema.Struct({
   type: Schema.String,
   toolCallId: Schema.String,
   toolName: Schema.optional(Schema.String),

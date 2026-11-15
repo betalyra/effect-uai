@@ -9,7 +9,7 @@ import { read, type ReadFormat, type ReadResponse, WebRead } from "./WebRead.js"
  * cost ceiling are app policy, pinned on the constructor instead, so they
  * are guaranteed rather than left to the model to remember each call.
  */
-const WebReadToolArgs = Schema.Struct({
+export const WebReadToolArgs = Schema.Struct({
   url: Schema.String.annotate({
     description: "Absolute URL of the page to read.",
   }),

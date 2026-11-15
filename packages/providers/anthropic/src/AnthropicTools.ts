@@ -13,7 +13,7 @@ import * as Tool from "@effect-uai/core/Tool"
 const WEB_SEARCH_TYPE = "web_search_20250305"
 const CODE_EXECUTION_TYPE = "code_execution_20250522"
 
-const UserLocation = Schema.Struct({
+export const UserLocation = Schema.Struct({
   city: Schema.optional(Schema.String),
   region: Schema.optional(Schema.String),
   country: Schema.optional(Schema.String),

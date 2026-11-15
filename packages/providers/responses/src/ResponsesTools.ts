@@ -10,7 +10,7 @@ import * as Tool from "@effect-uai/core/Tool"
 // Reference: https://developers.openai.com/api/docs/guides/tools
 // ---------------------------------------------------------------------------
 
-const UserLocation = Schema.Struct({
+export const UserLocation = Schema.Struct({
   city: Schema.optional(Schema.String),
   region: Schema.optional(Schema.String),
   country: Schema.optional(Schema.String),
@@ -18,7 +18,7 @@ const UserLocation = Schema.Struct({
 })
 export type UserLocation = typeof UserLocation.Type
 
-const WebSearchFilters = Schema.Struct({
+export const WebSearchFilters = Schema.Struct({
   allowedDomains: Schema.optional(Schema.Array(Schema.String)),
   blockedDomains: Schema.optional(Schema.Array(Schema.String)),
 })

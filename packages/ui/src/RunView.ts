@@ -48,16 +48,16 @@ export type ObjectStatus = typeof ObjectStatus.Type
 // citations, images and refusals read like the turn's own content blocks.
 
 /** Core's `output_text`; citations attach to the text they cite. */
-const TextBlock = Schema.Struct({ ...Items.OutputText.fields, id: Schema.String })
+export const TextBlock = Schema.Struct({ ...Items.OutputText.fields, id: Schema.String })
 /** Core's `refusal`: the model declined to answer. */
-const RefusalBlock = Schema.Struct({ ...Items.Refusal.fields, id: Schema.String })
+export const RefusalBlock = Schema.Struct({ ...Items.Refusal.fields, id: Schema.String })
 /** Core's `output_image`; `partialIndex` marks a preview the final image replaces. */
-const ImageBlock = Schema.Struct({
+export const ImageBlock = Schema.Struct({
   ...Items.OutputImage.fields,
   id: Schema.String,
   partialIndex: Schema.optionalKey(Schema.Number),
 })
-const ReasoningBlock = Schema.Struct({
+export const ReasoningBlock = Schema.Struct({
   type: Schema.Literal("reasoning"),
   id: Schema.String,
   text: Schema.String,

@@ -9,9 +9,10 @@
  * With a `UiContract`, every envelope is decoded once on arrival, so the
  * state holds decoded payloads and is typed by the contract.
  */
-import { Effect, Exit, Option, type Schema, Stream } from "effect"
+import { type Cause, Effect, Exit, Option, Queue, type Schema, Stream } from "effect"
 import type { SecureRandom } from "effect/crypto"
 import { Atom } from "effect/reactivity"
+import * as Frame from "./Frame.js"
 import * as Input from "./Input.js"
 import type { Envelope, Payloads, StreamId, Untyped } from "./RunEvent.js"
 import * as Thread from "./Thread.js"
@@ -361,4 +362,103 @@ export function sessionThread<I extends Input.Input, E, R, ER>(
     submitted: (t, input: Input.Sent<I>) => fold.submitted(t, input),
     ended: fold.ended,
   })
+}
+
+// ---------------------------------------------------------------------------
+// Live: one socket per session, media both ways
+// ---------------------------------------------------------------------------
+
+type BaseLiveOptions<U, S, E, R, ER, D> = {
+  /** The transport's services, e.g. `Atom.runtime(Socket.layerWebSocketConstructorGlobal)`. */
+  readonly runtime: Atom.AtomRuntime<R, ER>
+  readonly transport: Transport.Live<U, E, R>
+  readonly initial: S
+  readonly step: (state: S, envelope: D) => S
+  /** Where downstream media goes (a player); it never passes through atoms. */
+  readonly media: (frame: Frame.Media) => Effect.Effect<void>
+  /** Applied when the session ends without `disconnect`: the server closed it, or it failed. */
+  readonly ended?: (state: S, reason: "closed" | "failed") => S
+}
+
+export type LiveOptions<U, S, E, R, ER, D = Envelope> = BaseLiveOptions<U, S, E, R, ER, D> &
+  WithDecode<D>
+
+const buildLive = <U, S, E, R, ER, D>(
+  options: BaseLiveOptions<U, S, E, R, ER, D> & { readonly decode: Decode<D> },
+) => {
+  const state = Atom.make(options.initial).pipe(Atom.keepAlive)
+  const outbox = Atom.make(Option.none<Queue.Queue<Frame.Frame<U>, Cause.Done>>()).pipe(
+    Atom.keepAlive,
+  )
+
+  const settle = (exit: Exit.Exit<unknown, unknown>) => {
+    const ended = options.ended
+    if (ended === undefined || Exit.hasInterrupts(exit)) return Effect.void
+    return Atom.update(state, (s) => ended(s, Exit.isSuccess(exit) ? "closed" : "failed"))
+  }
+
+  const onFrame = (frame: Frame.Frame<Envelope>) =>
+    Frame.Frame.$match(frame, {
+      Media: options.media,
+      Message: ({ message }) =>
+        options
+          .decode(message)
+          .pipe(Effect.flatMap((decoded) => Atom.update(state, (s) => options.step(s, decoded)))),
+    })
+
+  // Non-concurrent: connecting again (or `disconnect`) ends the previous session.
+  const connect = options.runtime
+    .fn<void>()(() =>
+      Effect.gen(function* () {
+        const queue = yield* Queue.unbounded<Frame.Frame<U>, Cause.Done>()
+        yield* Atom.set(state, options.initial)
+        yield* Atom.set(outbox, Option.some(queue))
+        yield* options.transport.connect(Stream.fromQueue(queue)).pipe(Stream.runForEach(onFrame))
+      }).pipe(Effect.ensuring(Atom.set(outbox, Option.none())), Effect.onExit(settle)),
+    )
+    .pipe(Atom.keepAlive)
+
+  // Dropped while no session is open.
+  const send = options.runtime
+    .fn<Frame.Frame<U>>()(
+      (frame) =>
+        Effect.flatMap(Atom.get(outbox), (open) =>
+          Option.match(open, {
+            onNone: () => Effect.void,
+            onSome: (queue) => Effect.asVoid(Queue.offer(queue, frame)),
+          }),
+        ),
+      { concurrent: true },
+    )
+    .pipe(Atom.keepAlive)
+
+  const disconnect = options.runtime
+    .fn<void>()(() => Atom.set(connect, Atom.Interrupt))
+    .pipe(Atom.keepAlive)
+
+  return {
+    state,
+    /** Whether a session is open. */
+    connected: Atom.map(outbox, Option.isSome),
+    connect,
+    /** A message (`Frame.message`) or client media (`Frame.media`) for the open session. */
+    send,
+    disconnect,
+  }
+}
+
+type BuiltLive<U, S, E, R, ER> = ReturnType<typeof buildLive<U, S, E, R, ER, unknown>>
+
+/**
+ * State over a live transport. `connect` opens a session (from `initial`),
+ * `send` writes to it, `disconnect` closes it. Pair with `StreamView`: it
+ * holds the session's runs, entries and open channels.
+ */
+export function live<U, S, E, R, ER, D = Envelope>(
+  options: LiveOptions<U, S, E, R, ER, D>,
+): BuiltLive<U, S, E, R, ER>
+export function live<U, S, E, R, ER>(
+  options: LiveOptions<U, S, E, R, ER, Envelope>,
+): BuiltLive<U, S, E, R, ER> {
+  return buildLive({ ...options, decode: options.decode ?? identity })
 }

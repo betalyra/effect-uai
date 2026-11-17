@@ -7,15 +7,13 @@
  * rather than three separate `--model` flags. `--debug` turns on the
  * per-frame pipeline log.
  *
- * Also here: the HTTP routes (`/`, `/client.js`, `/config`, the two
- * AudioWorklets, `/ws`), the bidirectional WebSocket handler, and the
- * bootstrap `main`, which bundles the browser client and launches the router.
- * `run.ts` supplies the platform `HttpServer`, `FileSystem`, `Path`,
- * `HttpClient` and the WebSocket constructor.
+ * Also here: the HTTP routes (`/`, `/client.js`, `/ws`), the live session on
+ * `/ws`, and the bootstrap `main`, which bundles the browser client and
+ * launches the router. `run.ts` supplies the platform `HttpServer`,
+ * `FileSystem`, `Path`, `HttpClient` and the WebSocket constructor.
  */
 import {
-  Cause,
-  Channel,
+  type Cause,
   Effect,
   FileSystem,
   Layer,
@@ -27,9 +25,11 @@ import {
   Stream,
 } from "effect"
 import * as HttpRouter from "effect/http/HttpRouter"
-import * as HttpServerRequest from "effect/http/HttpServerRequest"
 import * as HttpServerResponse from "effect/http/HttpServerResponse"
-import type { AudioFormat } from "@effect-uai/core/Audio"
+import * as Frame from "@effect-uai/ui/Frame"
+import * as LiveSocket from "@effect-uai/ui/LiveSocket"
+import type * as Run from "@effect-uai/ui/Run"
+import { StreamId } from "@effect-uai/ui/RunEvent"
 import { flagValue, providerChoice } from "@effect-uai/recipe-kit/argv"
 import {
   incrementalSynthesizerLayer,
@@ -37,7 +37,8 @@ import {
   streamingTranscriberLayer,
 } from "../_shared/model.js"
 import { bundleClient } from "@effect-uai/recipe-kit/bundle"
-import { type PipelineConfig, runPipeline, type StatusEvent } from "./recipe.js"
+import { MIC, Up } from "./contract.js"
+import { type PipelineConfig, runPipeline } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
 // Config presets: one PipelineConfig per provider stack. These pick concrete
@@ -84,7 +85,7 @@ const elevenlabsConfig: PipelineConfig = {
 }
 
 // Voxtral realtime ingests pcm_s16le @ 16000 (same mic format). Voxtral TTS
-// `pcm` is float32 LE @ 24000; `toPlaybackS16le` converts it for the worklet.
+// `pcm` is float32 LE @ 24000; the recipe converts it to 16-bit for the browser.
 const mistralConfig: PipelineConfig = {
   stt: {
     model: "voxtral-mini-transcribe-realtime-2602",
@@ -103,26 +104,6 @@ const mistralConfig: PipelineConfig = {
 
 const configFor = (provider: Provider): PipelineConfig =>
   provider === "mistral" ? mistralConfig : elevenlabsConfig
-
-// ---------------------------------------------------------------------------
-// Audio glue. The browser playback worklet plays raw s16le PCM; Voxtral TTS
-// emits float32 LE, so the server converts f32le chunks before sending them;
-// s16le chunks pass through. Sample count (and thus duration) is unchanged.
-// ---------------------------------------------------------------------------
-
-const f32leToS16le = (bytes: Uint8Array): Uint8Array => {
-  const sampleCount = Math.floor(bytes.byteLength / 4)
-  const floats = new Float32Array(bytes.buffer, bytes.byteOffset, sampleCount)
-  const out = new Int16Array(sampleCount)
-  for (let i = 0; i < sampleCount; i++) {
-    const clamped = Math.max(-1, Math.min(1, floats[i] ?? 0))
-    out[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
-  }
-  return new Uint8Array(out.buffer)
-}
-
-const toPlaybackS16le = (format: AudioFormat, bytes: Uint8Array): Uint8Array =>
-  format.encoding === "pcm_f32le" ? f32leToS16le(bytes) : bytes
 
 // ---------------------------------------------------------------------------
 // Provider selection. `--provider elevenlabs|mistral` (default elevenlabs).
@@ -160,53 +141,35 @@ const layersFor = (provider: Provider, cfg: PipelineConfig) =>
       )
 
 // ---------------------------------------------------------------------------
-// WebSocket handler.
-//
-// Bridges the callback-shaped `runPipeline` onto the upgrade Channel: outbound
-// status (text frames) and TTS audio (binary frames) drain from `outQueue`;
-// inbound mic bytes feed `micQueue`. The pipeline runs fork-scoped to the
-// connection.
+// The live session. `runPipeline` emits frames through a callback; the
+// handler turns that into the session's stream, and the mic channel's
+// frames into the pipeline's audio. A pipeline failure ends the session with
+// a `problem`.
 // ---------------------------------------------------------------------------
 
-const wsHandler = (cfg: PipelineConfig, minLevel: "Info" | "Debug") =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("[ws] browser connected")
-
-    const micQueue = yield* Queue.unbounded<Uint8Array, Cause.Done<void>>()
-    const outQueue = yield* Queue.unbounded<string | Uint8Array, Cause.Done<void>>()
-
-    const sendStatus = (event: StatusEvent): Effect.Effect<void> =>
-      Effect.asVoid(Queue.offer(outQueue, JSON.stringify(event)))
-    const sendAudio = (bytes: Uint8Array): Effect.Effect<void> =>
-      Effect.asVoid(Queue.offer(outQueue, toPlaybackS16le(cfg.tts.outputFormat, bytes)))
-
-    yield* runPipeline(cfg, Stream.fromQueue(micQueue), sendStatus, sendAudio).pipe(
-      Effect.scoped,
-      Effect.provideService(References.MinimumLogLevel, minLevel),
-      Effect.tapCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.logInfo("[pipeline] connection teardown")
-          : Effect.logError("[pipeline] failed", { cause: Cause.pretty(cause) }),
-      ),
-      Effect.ensuring(Queue.end(outQueue)),
-      Effect.forkScoped,
-    )
-
-    yield* Stream.toChannel(Stream.fromQueue(outQueue)).pipe(
-      Channel.pipeTo(HttpServerRequest.upgradeChannel<never>()),
-      Stream.fromChannel,
-      Stream.runForEach((buf) => Queue.offer(micQueue, buf)),
-      Effect.catchTag("SocketError", () => Effect.logInfo("[ws] browser disconnected")),
-      Effect.tapCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.logInfo("[ws] browser disconnected")
-          : Effect.logError("[ws] failed", { cause: Cause.pretty(cause) }),
-      ),
-      Effect.ensuring(Queue.end(micQueue)),
-      Effect.ignore,
-    )
-
-    return HttpServerResponse.empty()
+const session = (cfg: PipelineConfig, minLevel: "Info" | "Debug") =>
+  LiveSocket.handle({
+    up: Up,
+    handler: (up) => {
+      const mic = up.pipe(
+        Stream.filter(
+          (frame): frame is Frame.Media => frame._tag === "Media" && frame.channel === MIC,
+        ),
+        Stream.map((frame) => frame.bytes),
+      )
+      return Stream.callback((queue: Queue.Queue<Frame.Frame<Run.Owned>, Cause.Done>) =>
+        runPipeline(cfg, mic, (frame) => Effect.asVoid(Queue.offer(queue, frame))).pipe(
+          Effect.catch((error) =>
+            Queue.offer(
+              queue,
+              Frame.message({ event: { type: "live", name: "problem", value: error._tag } }),
+            ),
+          ),
+          Effect.provideService(References.MinimumLogLevel, minLevel),
+          Effect.ensuring(Queue.end(queue)),
+        ),
+      ).pipe(Frame.sequence(StreamId.make("voice")))
+    },
   })
 
 // ---------------------------------------------------------------------------
@@ -220,8 +183,6 @@ type Assets = {
   readonly cfg: PipelineConfig
   readonly indexHtml: string
   readonly clientJs: string
-  readonly micWorkletJs: string
-  readonly playbackWorkletJs: string
   readonly minLevel: "Info" | "Debug"
 }
 
@@ -229,20 +190,7 @@ const routesLayer = (assets: Assets) =>
   Layer.mergeAll(
     HttpRouter.add("GET", "/", HttpServerResponse.html(assets.indexHtml)),
     HttpRouter.add("GET", "/client.js", js(assets.clientJs)),
-    HttpRouter.add("GET", "/mic-worklet.js", js(assets.micWorkletJs)),
-    HttpRouter.add("GET", "/playback-worklet.js", js(assets.playbackWorkletJs)),
-    HttpRouter.add(
-      "GET",
-      "/config",
-      HttpServerResponse.text(
-        JSON.stringify({
-          micSampleRate: assets.cfg.stt.inputFormat.sampleRate,
-          playbackSampleRate: assets.cfg.tts.outputFormat.sampleRate,
-        }),
-        { contentType: "application/json; charset=utf-8" },
-      ),
-    ),
-    HttpRouter.add("GET", "/ws", wsHandler(assets.cfg, assets.minLevel)),
+    HttpRouter.add("GET", "/ws", session(assets.cfg, assets.minLevel)),
   )
 
 // ---------------------------------------------------------------------------
@@ -257,12 +205,8 @@ export const main = Effect.gen(function* () {
   const minLevel = flags.debug ? "Debug" : "Info"
 
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
-  // All client code is TypeScript, bundled on demand (no prebuilt JS on disk).
-  // The two AudioWorklets are bundled as their own entry points since they load
-  // into a separate `AudioWorkletGlobalScope` via `audioWorklet.addModule`.
+  // The client is TypeScript, bundled on demand (no prebuilt JS on disk).
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
-  const micWorkletJs = yield* bundleClient(path.join(recipeDir, "client/mic-worklet.ts"))
-  const playbackWorkletJs = yield* bundleClient(path.join(recipeDir, "client/playback-worklet.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "client/index.html"))
 
   yield* Effect.logInfo(
@@ -273,11 +217,9 @@ export const main = Effect.gen(function* () {
   // requirements onto main's R and break `run.ts`, so keep returning the
   // launch effect here.
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(
-    HttpRouter.serve(
-      routesLayer({ cfg, indexHtml, clientJs, micWorkletJs, playbackWorkletJs, minLevel }),
-    ),
-  ).pipe(Effect.provide(layersFor(flags.provider, cfg)))
+  return Layer.launch(HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs, minLevel }))).pipe(
+    Effect.provide(layersFor(flags.provider, cfg)),
+  )
 }).pipe(
   Effect.flatten,
   Effect.tapCause((cause) => Effect.logError("[main] fatal", { cause })),

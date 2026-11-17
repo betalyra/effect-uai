@@ -88,26 +88,27 @@ google`), plus a key for the search provider
 (`EXA_API_KEY` by default, or `TAVILY_API_KEY` / `PERPLEXITY_API_KEY`
 with `--search`). `PORT` optional (defaults to 3000).
 
-> Run with **`bun`**, not `pnpm tsx`, if you want the bundled client:
-> the runner uses `Bun.serve` and `Bun.build`.
-
 ## How The Demo Flows
 
 ```
-[Browser]  getUserMedia → mic worklet → WebSocket (binary PCM)
+[Browser]  Media.mic → mic frames on channel 0, typed lines, playback positions
+   ↕  one live session (LiveSocket)
+[server]  RealtimeSession.open → send(Audio | Text | PlaybackPosition) / events
+          events → Projection.fromRealtime → runs, entries, audio on channel 1
+          ToolCall → forked fiber → send(ToolResult) + tool-result on the page
    ↕
-[Bun server]  RealtimeSession.open → send(Audio) / events
-              ToolCall → forked fiber → send(ToolResult)
-              Interrupted → "interrupted" → send(PlaybackPosition)
-   ↕
-[Browser]  playback worklet (audio) + transcript (status JSON)
+[Browser]  Media.pcmPlayer (audio) + StreamView (the conversation)
 ```
 
 The server owns the session; the browser is a microphone, a speaker
-and a transcript. Audio is mono PCM at whatever rates the provider
-fixes (OpenAI 24 kHz both ways, Gemini 16 kHz up and 24 kHz down),
-which the `/config` route tells the client so the worklets resample to
-match.
+and a transcript, over one [live session](/agentic-ui/live-sessions/).
+`Projection.fromRealtime` maps the model's events onto the protocol:
+each answer is a run with its own audio channel, a barge-in ends it
+`run-stopped { reason: "barge-in" }`, and what the model heard you say
+is a `transcript` entry. Audio is mono PCM at whatever rates the
+provider fixes (OpenAI 24 kHz both ways, Gemini 16 kHz up and 24 kHz
+down), declared on the session's channels, so the page records and
+plays at them without a config route.
 
 ## Four Things Worth Knowing
 
@@ -118,14 +119,14 @@ has dropped its answer, and that is what stops the voice.
 
 **Only the browser knows what was heard.** The model finishes
 generating long before the speakers catch up, so when you interrupt it,
-it remembers a whole answer you heard half of. The playback worklet
-reports how far it got, and the recipe sends that as `PlaybackPosition`
-so the unheard part leaves the conversation.
+it remembers a whole answer you heard half of. On a barge-in the page
+reads how far `Media.pcmPlayer` got, sends it up as `Input.Playback`,
+and the recipe forwards it as `PlaybackPosition` so the unheard part
+leaves the conversation.
 
 **Echo cancellation is not optional.** The model listens while it
 speaks, so without it the assistant hears itself through your speakers
-and interrupts itself in a loop. The client asks for it in
-`getUserMedia`.
+and interrupts itself in a loop. `Media.mic` asks for it by default.
 
 **Tools run beside the conversation.** Each call runs in its own fiber,
 so the assistant keeps talking while a web search works. If you
@@ -135,7 +136,7 @@ the fiber.
 ## Provider Fit
 
 Both providers run the same `recipe.ts`. `app.ts` picks the model, the
-voice and the sample rates, and the client reads those from `/config`.
+voice and the sample rates, and the session declares those on its channels.
 
 What you will notice on Gemini:
 

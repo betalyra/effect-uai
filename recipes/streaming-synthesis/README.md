@@ -43,33 +43,50 @@ the whole utterance, so playback can begin before the final text exists.
 ## Run it
 
 ```sh
-ELEVENLABS_API_KEY=... bun recipes/streaming-synthesis/run.ts
+ELEVENLABS_API_KEY=... pnpm tsx recipes/streaming-synthesis/run.ts
+
+# Inworld
+INWORLD_API_KEY=... pnpm tsx recipes/streaming-synthesis/run.ts --provider inworld
 ```
 
-Open <http://localhost:3000>, paste text, click **Synthesize**. Audio
-should start within ~500 ms regardless of how long the text is.
+Open <http://localhost:3000>, type a line and hit **Enter**. Audio
+should start within ~500 ms regardless of how long the line is. Keep
+typing: each line joins the same synthesis session.
 
-> Run with **`bun`**, not `pnpm tsx`. Uses `Bun.serve` and
-> `Bun.build` globals.
+## The live session
 
-## How The Demo Flows
+The page and the server talk over one
+[live session](/agentic-ui/live-sessions/) from `@effect-uai/ui`,
+opened on the first Enter:
 
 ```
-[Browser]  text  →  WebSocket
-   ↕
-[Bun server]  split text into words → Stream<string>
-             → SpeechSynthesizer.streamSynthesisFrom
-             → AudioChunk bytes
-[Browser]  schedules each PCM chunk for playback
+[Browser]  { text } messages
+   ↕  one WebSocket
+[Server]  lines → Stream<string> → SpeechSynthesizer.streamSynthesisFrom
+          → data "line" entries, speech as media frames on channel 0
+[Browser]  plays channel 0 through Media.pcmPlayer
 ```
 
-The browser demo uses raw PCM so it can schedule chunks directly. An
+The session starts by declaring the speech channel: `channel-opened`
+with `direction: "down"`, `audio/pcm` and 48 kHz. The page creates its
+player at that rate. Each line the server accepts comes back as a
+`line` entry, and the speech follows as binary media frames, which never
+pass through the event log.
+
+```ts
+LiveSocket.handle({
+  up: Say, // Schema.Struct({ text: Schema.String })
+  handler: (up) => up.pipe(speechSession(provider), Frame.sequence(streamId)),
+})
+```
+
+The demo plays raw PCM so it can schedule chunks directly. An
 application could just as easily forward the chunks to another client,
 write them to a file, or pipe them through a telephony connection.
 
 This is the symmetric counterpart to
-[Streaming transcription](/recipes/streaming-transcription/). Same
-Bun + bundled-client pattern; only the data direction flips.
+[Streaming transcription](/recipes/streaming-transcription/): the same
+live session, with media flowing the other way.
 
 ## Provider Fit
 

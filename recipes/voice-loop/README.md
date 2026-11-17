@@ -106,37 +106,38 @@ Env vars:
 ## Architecture
 
 ```
-[Browser]  getUserMedia → AudioWorklet → WebSocket
-   ↕
-[server]  Effect pipeline (one per WS connection), via HttpRouter +
-   HttpServerRequest.upgradeChannel, same code on Bun / Node / Deno:
-   shared STT events (Stream.share)
+[Browser]  Media.mic → mic frames on channel 0
+   ↕  one live session (LiveSocket), same code on Bun / Node / Deno
+[server]  Effect pipeline, one per session:
+   shared STT events (Stream.share)            → transcript entries
      ├─► stop-word watcher    ─► Fiber.interrupt(activeTurn) on "stop" / …
      └─► utterance loop:
             settleBurst("350 millis")     ─► coalesce close-together finals
-            forkChild(runAssistantTurn)   ─► one fiber per turn, awaited
-              LanguageModel.streamTurn(...) → Turn.textDeltas
+            forkChild(runAssistantTurn)   ─► one run per reply, awaited
+              LanguageModel.streamTurn(...) → Turn.textDeltas → text-delta
               → SpeechSynthesizer.streamSynthesisFrom (provider WS)
-              → raw PCM chunks sent + paced
-[Browser]  ring-buffered AudioWorklet → speakers (cleared on cancel)
+              → PCM on channel 1, paced
+[Browser]  Media.pcmPlayer → speakers (cleared when a reply is stopped)
 ```
 
-One WebSocket carries the demo traffic:
+The page and the server talk over one
+[live session](/agentic-ui/live-sessions/):
 
-- **Browser → server**: binary frames only. Each is ~50 ms of PCM
-  s16le @ 16 kHz mono mic audio from `mic-worklet.js`.
-- **Server → browser**:
-  - **Binary frames**: PCM s16le mono TTS audio (sample rate per
-    `/config`: 48 kHz for the `elevenlabs` stack, 24 kHz for `mistral`).
-  - **Text frames (JSON)**: `StatusEvent`: `user-partial` /
-    `user-final` / `assistant-thinking` / `assistant-delta` /
-    `assistant-done` / `assistant-cancelled` / `error`. The browser
-    updates the chat UI from these; `assistant-cancelled` also tells
-    the playback worklet to flush its ring buffer for instant
-    silence.
+- **The mic**: the session opens with `channel-opened` (channel 0,
+  `up`) at the transcriber's rate, and the page records at it with
+  `Media.mic`.
+- **What the user says**: one `transcript` entry per utterance
+  (`Projection.transcriptStep`), dimmed while partial.
+- **Each reply**: a run named `assistant`. It carries the words that
+  started it (`data "prompt"`), opens its own audio channel at the
+  synthesizer's rate (48 kHz for `elevenlabs`, 24 kHz for `mistral`,
+  converted to 16-bit with `Pcm.f32leToS16le`), streams its text, and
+  ends `run-completed`, or `run-stopped { reason: "stop-word" }` when
+  cut short. On a stopped reply the page clears its player, so the
+  voice stops at once.
 
-The browser fetches `/config` at start to learn the mic + playback
-sample rates.
+No config route and no worklet files: the formats travel on the stream,
+and `@effect-uai/ui/Media` ships its worklets inline.
 
 ## What This Generalizes To
 

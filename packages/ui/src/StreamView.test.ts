@@ -73,3 +73,35 @@ describe("StreamView.step", () => {
     expect(other.data["clip"]).toEqual({ "9": { status: "planned" } })
   })
 })
+
+describe("StreamView channels", () => {
+  const reply = RunId.make("reply")
+  const opened = (channel: number, direction: "up" | "down"): RunEvent => ({
+    type: "channel-opened",
+    channel,
+    direction,
+    mimeType: "audio/pcm",
+    sampleRate: 16000,
+  })
+  const at = (n: number) =>
+    frames(station, [
+      [undefined, opened(0, "up")],
+      [reply, started(reply, "reply")],
+      [reply, opened(1, "down")],
+      [reply, { type: "run-stopped", reason: "barge-in" }],
+      [undefined, { type: "channel-closed", channel: 0 }],
+    ])
+      .slice(0, n)
+      .reduce(StreamView.step, StreamView.initial)
+
+  it("lands channels from either scope, noting the run that opened one", () => {
+    const view = at(3)
+    expect(StreamView.channelsOf(view, "up").map((c) => c.channel)).toEqual([0])
+    expect(view.channels["1"]?.runId).toBe(reply)
+  })
+
+  it("closes a run's channels when the run ends, and others on channel-closed", () => {
+    expect(Object.keys(at(4).channels)).toEqual(["0"])
+    expect(at(5).channels).toEqual({})
+  })
+})

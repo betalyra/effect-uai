@@ -214,6 +214,10 @@
       "types": "./dist/streaming/WebSocketSession.d.mts",
       "import": "./dist/streaming/WebSocketSession.mjs"
     },
+    "./Pcm": {
+      "types": "./dist/streaming/Pcm.d.mts",
+      "import": "./dist/streaming/Pcm.mjs"
+    },
     "./Settle": {
       "types": "./dist/streaming/Settle.d.mts",
       "import": "./dist/streaming/Settle.mjs"

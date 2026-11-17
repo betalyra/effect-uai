@@ -8,10 +8,14 @@
  * the matching request shape. Adding a provider is one `Match.when` here and
  * one name in `app.ts`.
  */
-import { Match, type Stream } from "effect"
+import { Effect, Match, Stream } from "effect"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import * as Transcriber from "@effect-uai/core/Transcriber"
 import * as Transcript from "@effect-uai/core/Transcript"
+import type * as Frame from "@effect-uai/ui/Frame"
+import * as Projection from "@effect-uai/ui/Projection"
+import type { RunEvent } from "@effect-uai/ui/RunEvent"
+import { MIC, TranscriptUi } from "./contract.js"
 
 export type Provider = "elevenlabs" | "openai" | "inworld"
 
@@ -71,4 +75,52 @@ export const transcribeMicStream =
       Transcriber.streamTranscriptionFrom({ ...request, wordTimestamps: true }),
     )
     return joinPartials ? events.pipe(Transcript.accumulatePartials()) : events
+  }
+
+/** Tells the browser what to send on the mic channel: the rate the provider takes. */
+const micChannel = (provider: Provider): RunEvent => ({
+  type: "channel-opened",
+  channel: MIC,
+  direction: "up",
+  mimeType: "audio/pcm",
+  sampleRate: providerConfig(provider).inputFormat.sampleRate,
+  channels: 1,
+})
+
+const utterances = Projection.transcriptStep("transcript")
+
+/**
+ * One `transcript` entry per utterance (`Projection.transcriptStep`: partials
+ * overwrite it, its final settles it); a provider error becomes a `problem`.
+ */
+const toEntries = <E, R>(events: Stream.Stream<Transcript.TranscriptEvent, E, R>) =>
+  events.pipe(
+    Stream.mapAccum(
+      () => 0,
+      (n, event): readonly [number, ReadonlyArray<RunEvent>] =>
+        event._tag === "error"
+          ? [n, [{ type: "live", name: "problem", value: event.message }]]
+          : utterances(n, event),
+    ),
+  )
+
+/**
+ * The live session: declare the mic format, then transcribe the mic frames
+ * into utterance entries. A transcriber failure ends the session with a
+ * `problem` the page can show.
+ */
+export const transcriptSession =
+  (provider: Provider) => (up: Stream.Stream<Frame.Frame<never>>) => {
+    const mic = up.pipe(
+      Stream.filter(
+        (frame): frame is Frame.Media => frame._tag === "Media" && frame.channel === MIC,
+      ),
+      Stream.map((frame) => frame.bytes),
+    )
+    return Stream.make(micChannel(provider)).pipe(
+      Stream.concat(mic.pipe(transcribeMicStream(provider), toEntries)),
+      Stream.catch((error) =>
+        Stream.fromEffect(Effect.orDie(TranscriptUi.live("problem", error._tag))),
+      ),
+    )
   }

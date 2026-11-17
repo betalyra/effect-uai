@@ -63,24 +63,24 @@ Env vars: `GOOGLE_API_KEY`, plus a key for the search provider
 (`EXA_API_KEY` by default, or `TAVILY_API_KEY` / `PERPLEXITY_API_KEY`
 with `--search`). `PORT` optional (defaults to 3000).
 
-> Run with **`bun`**, not `pnpm tsx`, if you want the bundled client:
-> the runner uses `Bun.serve` and `Bun.build`.
-
 ## How The Demo Flows
 
 ```
-[Browser]  mic worklet ──────────────┐
-           camera → canvas → JPEG ───┤ one WebSocket (tagged frames)
-   ↕                                 │
-[Bun server]  RealtimeSession.open → send(Audio) / sendVideoFrame(frame)
-              ToolCall → forked fiber → send(ToolResult)
+[Browser]  Media.mic ─────── channel 0 ─┐
+           Media.camera ──── channel 2 ─┤ one live session (LiveSocket)
+   ↕                                    │
+[server]  RealtimeSession.open → send(Audio) / sendVideoFrame(frame)
+          events → Projection.fromRealtime → runs, entries, audio on channel 1
+          ToolCall → forked fiber → send(ToolResult)
    ↕
-[Browser]  playback worklet (audio) + transcript (status JSON)
+[Browser]  Media.pcmPlayer (audio) + StreamView (the conversation)
 ```
 
-Audio is mono PCM, 16 kHz up and 24 kHz down, which the `/config` route
-tells the client so the worklets resample. Frames are JPEG, longest side
-768 px, at most one a second.
+The session declares its channels: the mic at 16 kHz, the voice at
+24 kHz, and the camera channel only when the page supplies the frames
+(not with `--frames`), together with which device to capture. Until it
+does, the camera switch stays off. Frames are JPEG, longest side 768 px,
+at most one a second.
 
 ## Three Things Worth Knowing
 

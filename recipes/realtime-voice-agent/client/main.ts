@@ -1,31 +1,119 @@
 /**
- * Browser side. Bundled at server startup and served as `/client.js`. Wires
- * mic to WebSocket, and WebSocket to the playback worklet and the DOM.
+ * Browser side. Bundled at server startup and served as `/client.js`.
  *
- * Imperative on purpose: `getUserMedia`, `AudioContext`, `AudioWorklet` and
- * `WebSocket` are callback-driven web APIs. Effect stays on the server.
+ * One live session over `@effect-uai/ui`. The server opens the mic channel at
+ * the rate the model listens at; the page records with `Media.mic`. Each
+ * answer is a run with its own audio channel, played through one
+ * `Media.pcmPlayer`.
  *
  * Unlike the voice-loop client there is no stop-word watcher. The model hears
  * the microphone continuously and decides for itself that it has been
- * interrupted, so barge-in is the server telling us to flush playback.
+ * interrupted: the answer's run ends `run-stopped { reason: "barge-in" }`,
+ * and the page stops the voice and reports how much of it was heard.
  */
+import * as Atoms from "@effect-uai/ui/Atoms"
+import * as Frame from "@effect-uai/ui/Frame"
+import * as Media from "@effect-uai/ui/Media"
+import type { RunId } from "@effect-uai/ui/RunEvent"
+import * as RunView from "@effect-uai/ui/RunView"
+import * as StreamView from "@effect-uai/ui/StreamView"
+import * as Transport from "@effect-uai/ui/Transport"
+import type * as UiContract from "@effect-uai/ui/UiContract"
+import { Effect, Exit, Fiber, Scope, Stream } from "effect"
+import { Atom, AtomRegistry } from "effect/reactivity"
+import * as Socket from "effect/socket/Socket"
+import { AgentUi, MIC, SPEAKER, Up } from "../contract.js"
 
-// A module, not a script: every recipe's client declares `$`, `setStatus` and
-// a `StatusEvent`, and as scripts they would all share one global scope.
+// A module, not a script: recipe clients would otherwise share one global scope.
 export {}
 
-type StatusEvent =
-  | { readonly type: "user-transcript"; readonly text: string; readonly final: boolean }
-  | { readonly type: "assistant-started" }
-  | { readonly type: "assistant-delta"; readonly text: string }
-  | { readonly type: "assistant-done"; readonly reason: string }
-  | { readonly type: "speech-started" }
-  | { readonly type: "interrupted" }
-  | { readonly type: "tool-call"; readonly name: string; readonly arguments: string }
-  | { readonly type: "tool-done"; readonly name: string }
-  | { readonly type: "tool-cancelled"; readonly count: number }
-  | { readonly type: "session-ending" }
-  | { readonly type: "error"; readonly message: string }
+type Payloads = UiContract.Payloads<typeof AgentUi>
+type View = StreamView.StreamView<Payloads>
+
+// ---------------------------------------------------------------------------
+// Playback: one player per session, at the rate the first answer declares
+// ---------------------------------------------------------------------------
+
+let player: { readonly scope: Scope.Closeable; readonly ready: Promise<Media.Player> } | null = null
+
+const openPlayer = (sampleRate: number): void => {
+  const scope = Effect.runSync(Scope.make())
+  const ready = Effect.runPromise(Media.pcmPlayer({ sampleRate }).pipe(Scope.provide(scope)))
+  ready.catch((error: Media.MediaError) =>
+    setStatus(`audio ${error.reason}: ${error.message}`, true),
+  )
+  player = { scope, ready }
+}
+
+const withPlayer = (f: (p: Media.Player) => Effect.Effect<void>) => {
+  const current = player
+  return current === null
+    ? Effect.void
+    : Effect.promise(() => current.ready).pipe(Effect.flatMap(f))
+}
+
+// ---------------------------------------------------------------------------
+// The session
+// ---------------------------------------------------------------------------
+
+const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
+
+const session = Atoms.live({
+  runtime: Atom.runtime(Socket.layerWebSocketConstructorGlobal),
+  transport: Transport.live({ connect: Transport.socket(wsUrl), up: Up }),
+  initial: StreamView.empty<Payloads>(),
+  step: StreamView.step,
+  decode: AgentUi.decode,
+  media: (frame) =>
+    frame.channel === SPEAKER ? withPlayer((p) => p.push(frame.bytes)) : Effect.void,
+})
+
+const registry = AtomRegistry.make()
+
+/**
+ * Stop the voice and report how much of it was heard, so the part that never
+ * reached the speakers leaves the model's memory of what it said.
+ */
+const cutPlayback = withPlayer((p) =>
+  Effect.gen(function* () {
+    const playedMs = Math.round(yield* p.played)
+    registry.set(session.send, Frame.message({ kind: "playback", channel: SPEAKER, playedMs }))
+    yield* p.clear
+  }),
+)
+
+// ---------------------------------------------------------------------------
+// Mic: a fiber that sends `Media.mic` frames on the channel the session opened
+// ---------------------------------------------------------------------------
+
+let mic: Fiber.Fiber<void> | null = null
+
+// The model listens while it speaks, so without echo cancellation it hears
+// its own voice through the speakers and interrupts itself (on by default).
+const startMic = (sampleRate: number) =>
+  Media.mic({ sampleRate }).pipe(
+    Stream.runForEach((bytes) =>
+      Effect.sync(() => registry.set(session.send, Frame.media(MIC, bytes))),
+    ),
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        setStatus(`mic ${error.reason}: ${error.message}`, true)
+        registry.set(session.disconnect, undefined)
+      }),
+    ),
+    Effect.runFork,
+  )
+
+const stopDevices = (): void => {
+  if (mic !== null) Effect.runFork(Fiber.interrupt(mic))
+  mic = null
+  if (player !== null) Effect.runFork(Scope.close(player.scope, Exit.void))
+  player = null
+}
+
+// ---------------------------------------------------------------------------
+// DOM
+// ---------------------------------------------------------------------------
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -46,352 +134,151 @@ const setStatus = (text: string, error = false): void => {
 
 /**
  * Follow new output, unless the reader has scrolled up to look at something.
- * The page scrolls, not the transcript: it has no height of its own.
+ * Decided by the reader's own scrolling, not measured when a delta lands:
+ * deltas arrive faster than a scroll settles.
  */
 const NEAR_BOTTOM_PX = 120
-
-const distanceFromBottom = (): number =>
-  document.documentElement.scrollHeight - window.scrollY - window.innerHeight
-
-/**
- * Whether to keep following, decided by the reader's own scrolling rather than
- * measured when a delta lands. Deltas arrive faster than a scroll settles, so
- * measuring at append time reads a position still in motion, concludes the
- * reader has scrolled away, and stops following mid-answer.
- */
 let following = true
 
 window.addEventListener(
   "scroll",
   () => {
-    following = distanceFromBottom() <= NEAR_BOTTOM_PX
+    following =
+      document.documentElement.scrollHeight - window.scrollY - window.innerHeight <= NEAR_BOTTOM_PX
   },
   { passive: true },
 )
 
-// Jumps rather than animates: a smooth scroll is still travelling when the
-// next delta arrives, so it never catches up with a live transcript.
-const followBottom = (): void => {
-  if (following) window.scrollTo({ top: document.documentElement.scrollHeight })
-}
-
-// ---------------------------------------------------------------------------
-// Conversation rendering
-// ---------------------------------------------------------------------------
-
-/** `raw` is the text as received, so trimming for display never loses it. */
-type Block = { readonly text: HTMLSpanElement; raw: string }
-
-let currentUser: Block | undefined
-let currentAssistant: Block | undefined
-
-const makeBlock = (role: "user" | "assistant" | "tool"): Block => {
+const block = (role: "user" | "assistant" | "tool", text: string, partial = false) => {
   const el = document.createElement("div")
   el.className = `transcript ${role}`
-  const roleLabel = document.createElement("div")
-  roleLabel.className = "role"
-  roleLabel.textContent = role
-  const text = document.createElement("span")
-  el.appendChild(roleLabel)
-  el.appendChild(text)
-  conversationEl.appendChild(el)
-  followBottom()
-  return { text, raw: "" }
-}
-
-const note = (role: "tool", message: string): void => {
-  const block = makeBlock(role)
-  block.text.textContent = message
-  followBottom()
-}
-
-/**
- * Partials are token-sized deltas, so they accumulate and you watch the
- * sentence build. The final transcript is the server's own text for the whole
- * utterance, so it replaces what was accumulated rather than extending it.
- */
-const showUser = (text: string, final: boolean): void => {
-  if (!currentUser) currentUser = makeBlock("user")
-  currentUser.raw = final ? text : currentUser.raw + text
-  currentUser.text.textContent = currentUser.raw.trim()
-  currentUser.text.classList.toggle("partial", !final)
-  followBottom()
-  if (final) currentUser = undefined
-}
-
-const appendAssistant = (text: string): void => {
-  if (!currentAssistant) {
-    currentAssistant = makeBlock("assistant")
-    currentAssistant.text.classList.add("partial")
-  }
-  currentAssistant.raw += text
-  currentAssistant.text.textContent = currentAssistant.raw.trim()
-  followBottom()
-}
-
-const finishAssistant = (): void => {
-  if (currentAssistant) currentAssistant.text.classList.remove("partial")
-  currentAssistant = undefined
-}
-
-const handleStatus = (event: StatusEvent): void => {
-  switch (event.type) {
-    case "user-transcript":
-      showUser(event.text, event.final)
-      break
-    case "assistant-started":
-      // Each answer is counted on its own, since the position is reported
-      // against one assistant item.
-      playedMs = 0
-      active?.playbackNode.port.postMessage({ type: "reset" })
-      break
-    case "assistant-delta":
-      setStatus("speaking…")
-      appendAssistant(event.text)
-      break
-    case "assistant-done":
-      setStatus(event.reason === "complete" ? "listening" : `listening (${event.reason})`)
-      finishAssistant()
-      break
-    case "speech-started":
-      setStatus("hearing you…")
-      break
-    case "interrupted":
-      // The model has abandoned this answer. Stop the voice and report how far
-      // the audio actually got, so the unheard part leaves its context.
-      cutPlayback()
-      finishAssistant()
-      break
-    case "tool-call":
-      note("tool", `${event.name}(${event.arguments})`)
-      break
-    case "tool-done":
-      setStatus("speaking…")
-      break
-    case "tool-cancelled":
-      if (event.count > 0) note("tool", `${event.count} call(s) abandoned`)
-      break
-    case "session-ending":
-      setStatus("session ending soon", true)
-      break
-    case "error":
-      setStatus(event.message, true)
-      break
-  }
+  const label = document.createElement("div")
+  label.className = "role"
+  label.textContent = role
+  const body = document.createElement("span")
+  body.textContent = text
+  body.classList.toggle("partial", partial)
+  el.append(label, body)
+  return el
 }
 
 // ---------------------------------------------------------------------------
-// Session lifecycle
+// Rendering, in the order things first appeared. What the user said can
+// arrive after the answer it prompted, so neither list orders the other.
 // ---------------------------------------------------------------------------
 
-type Session = {
-  readonly stream: MediaStream
-  readonly ctx: AudioContext
-  readonly ws: WebSocket
-  readonly anchor: HTMLAudioElement
-  readonly playbackNode: AudioWorkletNode
+type Entry =
+  | { readonly kind: "heard"; readonly id: string }
+  | { readonly kind: "typed"; readonly text: string }
+  | { readonly kind: "answer"; readonly id: RunId }
+
+let entries: ReadonlyArray<Entry> = []
+
+const note = (view: View): void => {
+  const known = new Set(entries.flatMap((e) => (e.kind === "typed" ? [] : [`${e.kind}:${e.id}`])))
+  const heard = Object.keys(view.data.transcript ?? {}).map((id): Entry => ({ kind: "heard", id }))
+  const answers = view.order.map((id): Entry => ({ kind: "answer", id }))
+  entries = [
+    ...entries,
+    ...[...heard, ...answers].filter((e) => e.kind !== "typed" && !known.has(`${e.kind}:${e.id}`)),
+  ]
 }
 
-let active: Session | undefined
-
-const teardown = (s: Session): void => {
-  try {
-    s.stream.getTracks().forEach((t) => t.stop())
-  } catch {
-    /* ignore */
-  }
-  try {
-    s.anchor.pause()
-    s.anchor.srcObject = null
-  } catch {
-    /* ignore */
-  }
-  try {
-    if (s.ws.readyState === WebSocket.OPEN || s.ws.readyState === WebSocket.CONNECTING) s.ws.close()
-  } catch {
-    /* ignore */
-  }
-  try {
-    void s.ctx.close()
-  } catch {
-    /* ignore */
-  }
+const toolLine = (tool: Extract<RunView.Block<Payloads>, { type: "tool" }>): string => {
+  const call = `${tool.name}(${JSON.stringify(tool.input ?? {})})`
+  if (tool.outcome === undefined) return `${call} …`
+  return tool.outcome._tag === "Success" ? call : `${call}: ${String(tool.outcome.error)}`
 }
 
-const stop = (): void => {
-  if (active !== undefined) {
-    teardown(active)
-    active = undefined
-  }
-  toggleBtn.textContent = "Start"
-}
-
-// Every frame we send carries a one-byte tag. The server cannot tell text
-// from audio otherwise: microphone PCM contains every byte value, so there is
-// nothing in the payload to sniff.
-const AUDIO_FRAME = 0x00
-const TEXT_FRAME = 0x01
-const POSITION_FRAME = 0x02
-
-const tagged = (tag: number, payload: Uint8Array): Uint8Array => {
-  const out = new Uint8Array(payload.byteLength + 1)
-  out[0] = tag
-  out.set(payload, 1)
-  return out
-}
-
-const encoder = new TextEncoder()
-
-/** How far into the answer now playing the worklet has actually got. */
-let playedMs = 0
-
-/**
- * Stop the voice and report how much of it was heard, so the part that never
- * reached the speakers leaves the model's memory of what it said.
- */
-const cutPlayback = (): void => {
-  if (active === undefined) return
-  if (active.ws.readyState === WebSocket.OPEN) {
-    active.ws.send(tagged(POSITION_FRAME, encoder.encode(String(Math.round(playedMs)))))
-  }
-  active.playbackNode.port.postMessage({ type: "clear" })
-  playedMs = 0
-}
-
-const pcmS16ToFloat32 = (bytes: Uint8Array): Float32Array => {
-  const view = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2)
-  const out = new Float32Array(view.length)
-  for (let i = 0; i < view.length; i++) {
-    const v = view[i]!
-    out[i] = v < 0 ? v / 0x8000 : v / 0x7fff
-  }
-  return out
-}
-
-type WireConfig = { readonly micSampleRate: number; readonly playbackSampleRate: number }
-
-const fetchConfig = async (): Promise<WireConfig> =>
-  (await (await fetch("/config")).json()) as WireConfig
-
-const start = async (): Promise<void> => {
-  toggleBtn.textContent = "Stop"
-  setStatus("requesting microphone…")
-
-  let cfg: WireConfig
-  try {
-    cfg = await fetchConfig()
-  } catch (err) {
-    setStatus(`config fetch failed: ${(err as Error).message}`, true)
-    stop()
-    return
-  }
-
-  let stream: MediaStream
-  try {
-    // The model listens while it speaks, so without echo cancellation it
-    // hears its own voice through the speakers and interrupts itself.
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    })
-  } catch (err) {
-    setStatus(`mic denied: ${(err as Error).message}`, true)
-    stop()
-    return
-  }
-
-  // Chrome and Safari produce silence from a `MediaStreamAudioSourceNode`
-  // unless the stream is also consumed by an `<audio>` element.
-  const anchor = new Audio()
-  anchor.srcObject = stream
-  anchor.muted = true
-  try {
-    await anchor.play()
-  } catch {
-    /* autoplay policy may reject; the source node usually still works */
-  }
-
-  const ctx = new AudioContext({ sampleRate: cfg.playbackSampleRate })
-  if (ctx.state === "suspended") await ctx.resume()
-
-  try {
-    await ctx.audioWorklet.addModule("/mic-worklet.js")
-    await ctx.audioWorklet.addModule("/playback-worklet.js")
-  } catch (err) {
-    setStatus(`audio worklet failed: ${(err as Error).message}`, true)
-    stream.getTracks().forEach((t) => t.stop())
-    void ctx.close()
-    stop()
-    return
-  }
-
-  const source = ctx.createMediaStreamSource(stream)
-  const micWorklet = new AudioWorkletNode(ctx, "mic-worklet", {
-    processorOptions: { sourceRate: ctx.sampleRate, targetRate: cfg.micSampleRate },
-  })
-  source.connect(micWorklet)
-  const sink = ctx.createGain()
-  sink.gain.value = 0
-  micWorklet.connect(sink)
-  sink.connect(ctx.destination)
-
-  const playbackNode = new AudioWorkletNode(ctx, "playback-worklet")
-  playbackNode.connect(ctx.destination)
-  playbackNode.port.onmessage = (e: MessageEvent) => {
-    if (e.data?.type === "played") playedMs = e.data.ms as number
-  }
-
-  const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
-  const ws = new WebSocket(wsUrl)
-  ws.binaryType = "arraybuffer"
-
-  active = { stream, ctx, ws, anchor, playbackNode }
-
-  ws.addEventListener("open", () => {
-    setStatus("listening")
-    micWorklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(tagged(AUDIO_FRAME, new Uint8Array(e.data)))
-    }
-  })
-
-  ws.addEventListener("message", (e) => {
-    if (typeof e.data === "string") {
-      try {
-        handleStatus(JSON.parse(e.data) as StatusEvent)
-      } catch {
-        /* ignore non-JSON text */
+const render = (view: View): void => {
+  conversationEl.replaceChildren(
+    ...entries.flatMap((entry): ReadonlyArray<HTMLElement> => {
+      if (entry.kind === "typed") return [block("user", entry.text)]
+      if (entry.kind === "heard") {
+        const u = view.data.transcript?.[entry.id]
+        return u === undefined ? [] : [block("user", u.text, !u.final)]
       }
-      return
-    }
-    const bytes = e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : (e.data as Uint8Array)
-    playbackNode.port.postMessage(pcmS16ToFloat32(bytes))
-  })
+      const answer = view.runs[entry.id]
+      if (answer === undefined) return []
+      const tools = answer.blocks.flatMap((b) =>
+        b.type === "tool" ? [block("tool", toolLine(b))] : [],
+      )
+      const text = RunView.text(answer).trim()
+      return [
+        ...tools,
+        ...(text === "" ? [] : [block("assistant", text, answer.status === "streaming")]),
+      ]
+    }),
+  )
+  if (following) window.scrollTo({ top: document.documentElement.scrollHeight })
 
-  ws.addEventListener("close", () => {
-    if (active !== undefined) {
-      setStatus("closed")
-      stop()
-    }
-  })
-  ws.addEventListener("error", () => {
-    setStatus("ws error", true)
-    stop()
-  })
+  const live = view.live
+  const last = StreamView.runsOf(view).at(-1)
+  if (live.problem !== undefined) setStatus(live.problem, true)
+  else if (live.error !== undefined) setStatus(live.error.message, true)
+  else if (live["session-ending"] !== undefined) setStatus("session ending soon", true)
+  else if (live.vad === true) setStatus("hearing you…")
+  else setStatus(last?.status === "streaming" ? "speaking…" : "listening")
 }
+
+// Answers whose start or barge-in the player has already handled.
+const started = new Set<string>()
+const cut = new Set<string>()
+
+registry.subscribe(
+  session.state,
+  (view) => {
+    note(view)
+    render(view)
+    const up = view.channels[MIC]
+    if (mic === null && up !== undefined) mic = startMic(up.sampleRate ?? 16000)
+    const down = view.channels[SPEAKER]
+    if (player === null && down !== undefined) openPlayer(down.sampleRate ?? 24000)
+    for (const answer of StreamView.runsOf(view, "assistant")) {
+      const id = answer.runId
+      if (id === undefined) continue
+      // Each answer's position is counted on its own: it is reported against one answer.
+      if (!started.has(id)) {
+        started.add(id)
+        Effect.runFork(withPlayer((p) => p.reset))
+      }
+      if (answer.status === "stopped" && !cut.has(id)) {
+        cut.add(id)
+        Effect.runFork(cutPlayback)
+      }
+    }
+  },
+  { immediate: true },
+)
+
+registry.subscribe(
+  session.connected,
+  (connected) => {
+    toggleBtn.textContent = connected ? "Stop" : "Start"
+    if (!connected) stopDevices()
+  },
+  { immediate: true },
+)
 
 toggleBtn.addEventListener("click", () => {
-  if (active === undefined) {
-    void start()
-  } else {
+  if (registry.get(session.connected)) {
     setStatus("stopped")
-    stop()
+    registry.set(session.disconnect, undefined)
+  } else {
+    setStatus("connecting…")
+    entries = []
+    started.clear()
+    cut.clear()
+    registry.set(session.connect, undefined)
   }
 })
 
 composerEl.addEventListener("submit", (e) => {
   e.preventDefault()
   const text = inputEl.value.trim()
-  if (text.length === 0 || active === undefined) return
-  active.ws.send(tagged(TEXT_FRAME, encoder.encode(text)))
-  showUser(text, true)
+  if (text.length === 0 || !registry.get(session.connected)) return
+  registry.set(session.send, Frame.message({ kind: "say", text }))
+  entries = [...entries, { kind: "typed", text }]
+  render(registry.get(session.state))
   inputEl.value = ""
 })

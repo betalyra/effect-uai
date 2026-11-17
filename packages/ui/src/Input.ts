@@ -16,7 +16,7 @@ import * as ToolDecision from "@effect-uai/core/ToolDecision"
 import * as Items from "@effect-uai/core/Items"
 import { Effect, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
-import { InputId } from "./RunEvent.js"
+import { Channel, InputId } from "./RunEvent.js"
 
 /** A user message: core's `message` item with role `user` and input blocks only. */
 export const UserMessage = Schema.Struct({
@@ -163,3 +163,15 @@ export const text = (input: Pick<Submit, "messages">): string =>
   input.messages
     .flatMap((m) => m.content.flatMap((block) => (block.type === "input_text" ? [block.text] : [])))
     .join("\n\n")
+
+/**
+ * Live sessions: how much of a channel's audio the listener actually heard,
+ * e.g. sent when playback is cut, so the server can drop the unheard rest.
+ * Part of the app's upstream schema: `Schema.Union([Say, Input.Playback])`.
+ */
+export const Playback = Schema.Struct({
+  kind: Schema.Literal("playback"),
+  channel: Channel,
+  playedMs: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+})
+export type Playback = typeof Playback.Type

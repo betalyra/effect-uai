@@ -1,12 +1,18 @@
+import { describe, expect, it } from "@effect/vitest"
 import { Effect, Layer, Ref, Stream } from "effect"
-import { describe, expect, it } from "vitest"
 import type { AudioChunk } from "@effect-uai/core/Audio"
 import * as MockProvider from "@effect-uai/core/testing/MockProvider"
 import * as MockSynthesizer from "@effect-uai/core/testing/MockSpeechSynthesizer"
 import * as MockTranscriber from "@effect-uai/core/testing/MockTranscriber"
 import type { TranscriptEvent } from "@effect-uai/core/Transcript"
 import type { Turn } from "@effect-uai/core/Turn"
-import { type PipelineConfig, runPipeline, type StatusEvent } from "./recipe.js"
+import * as Frame from "@effect-uai/ui/Frame"
+import type * as Run from "@effect-uai/ui/Run"
+import { StreamId } from "@effect-uai/ui/RunEvent"
+import * as RunView from "@effect-uai/ui/RunView"
+import * as StreamView from "@effect-uai/ui/StreamView"
+import { SPEAKER } from "./contract.js"
+import { type PipelineConfig, runPipeline } from "./recipe.js"
 
 // Mock providers ignore model/voice names, so a minimal config suffices. The
 // short settle window keeps the test fast.
@@ -25,41 +31,35 @@ const testConfig: PipelineConfig = {
 }
 
 // ---------------------------------------------------------------------------
-// Test harness — runs the recipe against mock providers and collects every
-// status event + audio chunk for assertion.
+// Harness: runs the recipe against mock providers and folds what it emits
+// the way the browser does, through `Frame.sequence` and `StreamView`.
 // ---------------------------------------------------------------------------
 
 const runRecipe = (script: {
-  readonly audioInBytes: ReadonlyArray<Uint8Array>
   readonly sttEvents: ReadonlyArray<ReadonlyArray<TranscriptEvent>>
   readonly llmTurns: ReadonlyArray<Turn>
   readonly ttsChunks: ReadonlyArray<ReadonlyArray<AudioChunk>>
 }) =>
   Effect.gen(function* () {
-    const statusEvents = yield* Ref.make<ReadonlyArray<StatusEvent>>([])
-    const audioOut = yield* Ref.make<ReadonlyArray<Uint8Array>>([])
-
-    const audioIn = Stream.fromIterable(script.audioInBytes)
+    const emitted = yield* Ref.make<ReadonlyArray<Frame.Frame<Run.Owned>>>([])
     const stt = MockTranscriber.layer({ streams: script.sttEvents })
     const lm = MockProvider.layer(script.llmTurns)
     const tts = MockSynthesizer.layer({ streamSynthesisFromChunks: script.ttsChunks })
 
-    const program = runPipeline(
-      testConfig,
-      audioIn,
-      (event) => Ref.update(statusEvents, (xs) => [...xs, event]),
-      (bytes) => Ref.update(audioOut, (xs) => [...xs, bytes]),
+    yield* runPipeline(testConfig, Stream.make(new Uint8Array([0])), (frame) =>
+      Ref.update(emitted, (xs) => [...xs, frame]),
+    ).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(stt.layer, lm, tts.layer)))
+
+    const frames = yield* Ref.get(emitted)
+    const view = yield* Stream.fromIterable(frames).pipe(
+      Frame.sequence(StreamId.make("voice")),
+      Stream.runFold(
+        () => StreamView.initial,
+        (v, frame) => (frame._tag === "Message" ? StreamView.step(v, frame.message) : v),
+      ),
     )
-
-    // `runPipeline` requires `Scope` (Stream.share). The runner wraps with
-    // `Effect.scoped`; the test harness does the same here.
-    yield* program.pipe(Effect.scoped, Effect.provide(Layer.mergeAll(stt.layer, lm, tts.layer)))
-
-    return {
-      statusEvents: yield* Ref.get(statusEvents),
-      audioOut: yield* Ref.get(audioOut),
-      sttRecorder: yield* stt.recorder,
-    }
+    const audio = frames.flatMap((f) => (f._tag === "Media" ? [f] : []))
+    return { view, audio, replies: StreamView.runsOf(view, "assistant") }
   })
 
 const audioChunk = (...bytes: ReadonlyArray<number>): AudioChunk => ({
@@ -69,24 +69,21 @@ const audioChunk = (...bytes: ReadonlyArray<number>): AudioChunk => ({
 const assistantTurn = (text: string): Turn => ({
   stop_reason: "stop",
   usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
-  items: [
-    {
-      type: "message",
-      role: "assistant",
-      content: [{ type: "output_text", text }],
-    },
-  ],
+  items: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }],
 })
+
+const promptOf = (reply: RunView.RunView) =>
+  reply.blocks.flatMap((b) => (b.type === "data" && b.name === "prompt" ? [b.value] : []))
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("voice-loop", () => {
-  it("one utterance: stt final → llm → tts → audio + status events", async () => {
-    const result = await Effect.runPromise(
-      runRecipe({
-        audioInBytes: [new Uint8Array([1, 2, 3])],
+  // Live clock: the settle window and the audio pacing are real sleeps.
+  it.live("one utterance: a transcript entry, then one reply run with its audio", () =>
+    Effect.gen(function* () {
+      const { view, audio, replies } = yield* runRecipe({
         sttEvents: [
           [
             { _tag: "partial", text: "hello" },
@@ -95,85 +92,43 @@ describe("voice-loop", () => {
         ],
         llmTurns: [assistantTurn("Hi there.")],
         ttsChunks: [[audioChunk(10, 20), audioChunk(30, 40)]],
-      }),
-    )
+      })
 
-    // Audio: each scripted chunk arrives at the sendAudio callback.
-    expect(result.audioOut).toHaveLength(2)
-    expect(Array.from(result.audioOut[0]!)).toEqual([10, 20])
-    expect(Array.from(result.audioOut[1]!)).toEqual([30, 40])
+      expect(view.data["transcript"]).toEqual({ "0": { text: "hello world", final: true } })
+      expect(view.channels["0"]?.direction).toBe("up")
 
-    // Status events: partial → final → thinking → delta → done.
-    const types = result.statusEvents.map((e) => e.type)
-    expect(types).toEqual([
-      "user-partial",
-      "user-final",
-      "assistant-thinking",
-      "assistant-delta",
-      "assistant-done",
-    ])
+      expect(replies).toHaveLength(1)
+      const reply = replies[0]!
+      expect(reply.status).toBe("completed")
+      expect(promptOf(reply)).toEqual(["hello world"])
+      expect(RunView.text(reply)).toBe("Hi there.")
+      expect(audio).toEqual([
+        Frame.media(SPEAKER, new Uint8Array([10, 20])),
+        Frame.media(SPEAKER, new Uint8Array([30, 40])),
+      ])
+      // The reply's channel closed with its run.
+      expect(view.channels[String(SPEAKER)]).toBeUndefined()
+    }),
+  )
 
-    // user-final contains the trimmed STT final text.
-    const finalEv = result.statusEvents.find((e) => e.type === "user-final")
-    expect(finalEv).toMatchObject({ type: "user-final", text: "hello world" })
-
-    // assistant-done contains the full LLM response.
-    const doneEv = result.statusEvents.find((e) => e.type === "assistant-done")
-    expect(doneEv).toMatchObject({ type: "assistant-done", text: "Hi there." })
-  })
-
-  it("burst coalescing: two finals within settle window → one LLM call", async () => {
-    const result = await Effect.runPromise(
-      runRecipe({
-        audioInBytes: [new Uint8Array([0])],
+  it.live("burst coalescing: two finals within the settle window make one reply", () =>
+    Effect.gen(function* () {
+      const { view, replies } = yield* runRecipe({
         sttEvents: [
           [
             { _tag: "final", text: "hello" },
             { _tag: "final", text: "what's the weather" },
           ],
         ],
-        // Scripted with ONE turn → the recipe must coalesce both finals
-        // into one LLM call. Two would exhaust the mock and fail.
+        // ONE scripted turn: a second LLM call would exhaust the mock and fail.
         llmTurns: [assistantTurn("Sunny.")],
         ttsChunks: [[audioChunk(99)]],
-      }),
-    )
+      })
 
-    // One audio chunk delivered (one TTS call, one chunk).
-    expect(result.audioOut).toHaveLength(1)
-
-    // The recipe records user-final per stt final → the UI sees both.
-    const userFinals = result.statusEvents.filter((e) => e.type === "user-final")
-    expect(userFinals.length).toBeGreaterThanOrEqual(1)
-
-    // But only one assistant turn ran — one assistant-thinking, one done.
-    expect(result.statusEvents.filter((e) => e.type === "assistant-thinking")).toHaveLength(1)
-    expect(result.statusEvents.filter((e) => e.type === "assistant-done")).toHaveLength(1)
-  })
-
-  it("two utterances separated by silence → two LLM calls with growing history", async () => {
-    // Two STT scripted streams: the second only fires after the first one's
-    // audio drains, simulating "user speaks, assistant talks, user speaks again".
-    // In the mock, all scripted events arrive within one stream — but the
-    // recipe's settle-burst gating + sequential per-turn fiber model processes them in turn.
-    const result = await Effect.runPromise(
-      runRecipe({
-        audioInBytes: [new Uint8Array([0])],
-        sttEvents: [
-          [
-            { _tag: "final", text: "first message" },
-            // No more events — the mock stream ends after this; we'd need
-            // a delay to simulate inter-utterance silence. For unit-test
-            // purposes, one final is the simpler shape we verify.
-          ],
-        ],
-        llmTurns: [assistantTurn("First answer.")],
-        ttsChunks: [[audioChunk(1)]],
-      }),
-    )
-
-    expect(result.audioOut).toHaveLength(1)
-    const doneEvents = result.statusEvents.filter((e) => e.type === "assistant-done")
-    expect(doneEvents).toHaveLength(1)
-  })
+      // The page sees both utterances, but only one reply ran, for both.
+      expect(Object.keys(view.data["transcript"] ?? {})).toEqual(["0", "1"])
+      expect(replies).toHaveLength(1)
+      expect(promptOf(replies[0]!)).toEqual(["hello what's the weather"])
+    }),
+  )
 })

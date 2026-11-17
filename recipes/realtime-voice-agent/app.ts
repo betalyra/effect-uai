@@ -1,6 +1,6 @@
 /**
  * Composition for the realtime-voice-agent recipe: the demo tools, the
- * provider preset, the HTTP routes and the WebSocket bridge.
+ * provider preset, the HTTP routes and the live session.
  *
  * `--provider openai` or `--provider google`. A realtime provider is one
  * socket rather than three services, so the preset fixes the model, the voice
@@ -9,8 +9,6 @@
  * `Path`.
  */
 import {
-  Cause,
-  Channel,
   DateTime,
   Effect,
   FileSystem,
@@ -18,22 +16,25 @@ import {
   Option,
   Match,
   Path,
-  Queue,
   Schema,
   Stdio,
   Stream,
 } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/http"
 import * as HttpRouter from "effect/http/HttpRouter"
-import * as HttpServerRequest from "effect/http/HttpServerRequest"
 import * as HttpServerResponse from "effect/http/HttpServerResponse"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import { webSearchTool } from "@effect-uai/core/WebSearchTool"
+import * as Frame from "@effect-uai/ui/Frame"
+import * as LiveSocket from "@effect-uai/ui/LiveSocket"
+import type * as Run from "@effect-uai/ui/Run"
+import { StreamId } from "@effect-uai/ui/RunEvent"
 import { flagValue, providerChoice } from "@effect-uai/recipe-kit/argv"
 import { bundleClient } from "@effect-uai/recipe-kit/bundle"
 import { realtimeSessionLayer, webSearchLayer } from "../_shared/model.js"
-import { type AgentConfig, runAgent, type StatusEvent } from "./recipe.js"
+import { Up } from "./contract.js"
+import { type AgentConfig, runAgent } from "./recipe.js"
 
 // ---------------------------------------------------------------------------
 // Tools. One answers from the clock at once; the other two go out to the
@@ -213,8 +214,8 @@ const pcm = (sampleRate: AgentConfig["inputFormat"]["sampleRate"]) =>
 
 /**
  * Each provider fixes its own rates: Gemini listens at 16 kHz and speaks at
- * 24 kHz, OpenAI does both at 24. The client reads them from `/config`, so
- * the worklets resample to whatever this says.
+ * 24 kHz, OpenAI does both at 24. The session declares them on its channels,
+ * so the page records and plays at whatever this says.
  */
 const configFor = (provider: Provider): AgentConfig =>
   Match.value(provider).pipe(
@@ -236,85 +237,25 @@ const configFor = (provider: Provider): AgentConfig =>
   )
 
 // ---------------------------------------------------------------------------
-// WebSocket bridge. Outbound, a binary frame is the model's audio and a text
-// frame is status. Inbound, every frame arrives as bytes whatever the browser
-// sent, so the client tags each one: the upgrade channel does not preserve the
-// protocol's own text and binary distinction, and microphone PCM contains
-// every byte value, so its content cannot be sniffed.
+// The live session. Upstream messages decode through `Up` (a typed line or a
+// playback position), so a garbled position never reaches a truncate. A
+// session failure ends it with a `problem`.
 // ---------------------------------------------------------------------------
 
-const AUDIO_FRAME = 0x00
-const TEXT_FRAME = 0x01
-/** Milliseconds of the current answer the browser actually played. */
-const POSITION_FRAME = 0x02
-
-const decoder = new TextDecoder()
-
-const wsHandler = (cfg: AgentConfig) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("[ws] browser connected")
-
-    const micQueue = yield* Queue.unbounded<Uint8Array, Cause.Done<void>>()
-    const typedQueue = yield* Queue.unbounded<string, Cause.Done<void>>()
-    const playedQueue = yield* Queue.unbounded<number, Cause.Done<void>>()
-    const outQueue = yield* Queue.unbounded<string | Uint8Array, Cause.Done<void>>()
-
-    yield* runAgent(cfg, toolkit, {
-      mic: Stream.fromQueue(micQueue),
-      typed: Stream.fromQueue(typedQueue),
-      played: Stream.fromQueue(playedQueue),
-      sendStatus: (event: StatusEvent) =>
-        Effect.asVoid(Queue.offer(outQueue, JSON.stringify(event))),
-      sendAudio: (bytes) => Effect.asVoid(Queue.offer(outQueue, bytes)),
-    }).pipe(
-      Effect.scoped,
-      Effect.tapCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.logInfo("[agent] connection teardown")
-          : Effect.logError("[agent] failed", { cause: Cause.pretty(cause) }),
-      ),
-      Effect.ensuring(Queue.end(outQueue)),
-      Effect.forkScoped,
-    )
-
-    const onFrame = (buf: Uint8Array): Effect.Effect<void> =>
-      Match.value(buf[0]).pipe(
-        Match.when(AUDIO_FRAME, () => Effect.asVoid(Queue.offer(micQueue, buf.subarray(1)))),
-        Match.when(TEXT_FRAME, () =>
-          Effect.asVoid(Queue.offer(typedQueue, decoder.decode(buf.subarray(1)))),
+const session = (cfg: AgentConfig) =>
+  LiveSocket.handle({
+    up: Up,
+    handler: (up) =>
+      runAgent(cfg, toolkit, up).pipe(
+        Stream.catch((error) =>
+          Stream.make(
+            Frame.message<Run.Owned>({
+              event: { type: "live", name: "problem", value: error._tag },
+            }),
+          ),
         ),
-        Match.when(POSITION_FRAME, () => {
-          // A truncate is sent from this, so a garbled frame is dropped rather
-          // than cutting the answer at `NaN` milliseconds.
-          const playedMs = Number(decoder.decode(buf.subarray(1)))
-          return Number.isFinite(playedMs) && playedMs >= 0
-            ? Effect.asVoid(Queue.offer(playedQueue, playedMs))
-            : Effect.void
-        }),
-        // An empty or unknown frame is not worth killing the connection over.
-        Match.orElse(() => Effect.void),
-      )
-
-    yield* Stream.toChannel(Stream.fromQueue(outQueue)).pipe(
-      Channel.pipeTo(HttpServerRequest.upgradeChannel<never>()),
-      Stream.fromChannel,
-      Stream.runForEach(onFrame),
-      Effect.catchTag("SocketError", () => Effect.logInfo("[ws] browser disconnected")),
-      Effect.tapCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.logInfo("[ws] browser disconnected")
-          : Effect.logError("[ws] failed", { cause: Cause.pretty(cause) }),
+        Frame.sequence(StreamId.make("agent")),
       ),
-      Effect.ensuring(
-        Effect.andThen(
-          Queue.end(micQueue),
-          Effect.andThen(Queue.end(typedQueue), Queue.end(playedQueue)),
-        ),
-      ),
-      Effect.ignore,
-    )
-
-    return HttpServerResponse.empty()
   })
 
 // ---------------------------------------------------------------------------
@@ -330,28 +271,13 @@ type Assets = {
   readonly cfg: AgentConfig
   readonly indexHtml: string
   readonly clientJs: string
-  readonly micWorkletJs: string
-  readonly playbackWorkletJs: string
 }
 
 const routesLayer = (assets: Assets) =>
   Layer.mergeAll(
     HttpRouter.add("GET", "/", HttpServerResponse.html(assets.indexHtml)),
     HttpRouter.add("GET", "/client.js", js(assets.clientJs)),
-    HttpRouter.add("GET", "/mic-worklet.js", js(assets.micWorkletJs)),
-    HttpRouter.add("GET", "/playback-worklet.js", js(assets.playbackWorkletJs)),
-    HttpRouter.add(
-      "GET",
-      "/config",
-      HttpServerResponse.text(
-        JSON.stringify({
-          micSampleRate: assets.cfg.inputFormat.sampleRate,
-          playbackSampleRate: assets.cfg.outputFormat.sampleRate,
-        }),
-        { contentType: "application/json; charset=utf-8" },
-      ),
-    ),
-    HttpRouter.add("GET", "/ws", wsHandler(assets.cfg)),
+    HttpRouter.add("GET", "/ws", session(assets.cfg)),
   )
 
 // ---------------------------------------------------------------------------
@@ -366,8 +292,6 @@ export const main = Effect.gen(function* () {
 
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
-  const micWorkletJs = yield* bundleClient(path.join(recipeDir, "client/mic-worklet.ts"))
-  const playbackWorkletJs = yield* bundleClient(path.join(recipeDir, "client/playback-worklet.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "client/index.html"))
 
   yield* Effect.logInfo(
@@ -375,17 +299,7 @@ export const main = Effect.gen(function* () {
   )
 
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(
-    HttpRouter.serve(
-      routesLayer({
-        cfg,
-        indexHtml,
-        clientJs,
-        micWorkletJs,
-        playbackWorkletJs,
-      }),
-    ),
-  ).pipe(
+  return Layer.launch(HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs }))).pipe(
     Effect.provide(
       Layer.mergeAll(
         realtimeSessionLayer({ provider: flags.provider, model: cfg.model }),

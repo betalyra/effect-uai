@@ -83,6 +83,57 @@ registry.get(session.state).channels[0] // what to play, or what to record
 `disconnect` closes it. `connected` says whether one is open. There is no
 resume: a dropped live session is a new one.
 
+## In the browser: `@effect-uai/ui/Media`
+
+The devices, as Effect streams. Each owns its device and audio graph
+through its scope, so interrupting the fiber releases the microphone or
+camera, and the AudioWorklets ship inline (no worklet files to serve):
+
+```ts
+import * as Media from "@effect-uai/ui/Media"
+
+// Record at the rate the server declared on its `up` channel.
+Media.mic({ sampleRate: channel.sampleRate }).pipe(
+  Stream.runForEach((bytes) => send(Frame.media(MIC, bytes))),
+)
+
+Media.camera({ source: "camera", fps: 1, maxSide: 768, preview: videoEl }) // JPEG stills
+Media.level(micFrames) // RMS per frame, for meters and gates
+
+const player = yield * Media.pcmPlayer({ sampleRate: 24000 }) // scoped
+yield * player.push(bytes) // queue 16-bit PCM
+yield * player.clear // a stopped reply: drop what is queued
+yield * player.played // ms heard since the last clear or reset
+```
+
+`Media` is browser only and not in the package index; import the
+subpath. It is the only part of the package that touches the DOM.
+
+## Speech on the server: projections
+
+Two folds map core's speech events onto the protocol, so a server rarely
+writes events by hand:
+
+- `Projection.fromTranscript()`: a live transcript as one `data
+"transcript"` entry per utterance (`Projection.Utterance`), partials
+  overwriting it until its final. Type the entry in your contract with
+  `Projection.Utterance`.
+- `Projection.fromRealtime({ channel, format })`: a realtime session as
+  frames. Each response is a run that opens its own audio channel and
+  streams `text-delta`s; its audio goes out as media; tool calls become
+  `tool-call-ready`, and calls the model abandons close as a cancelled
+  `tool-result`. An interruption ends the run with
+  `run-stopped { reason: "barge-in" }`, which closes its channel, so the
+  page knows to drop the audio it still holds.
+
+Running tools stays yours: answer a `tool-call-ready` with a
+`tool-result` in the call's run.
+
+When an answer is cut off, only the page knows how much of it was
+heard. `Input.Playback { channel, playedMs }` is the message for that:
+read `player.played`, send it, and the server can trim what the
+listener missed (`RealtimeInput.PlaybackPosition`).
+
 ## Recipes
 
 - [Streaming transcription](/recipes/streaming-transcription/): the mic
@@ -90,3 +141,10 @@ resume: a dropped live session is a new one.
   entries.
 - [Streaming synthesis](/recipes/streaming-synthesis/): lines go up as
   messages; speech comes down on one channel.
+- [Voice loop](/recipes/voice-loop/): STT, LLM and TTS as one session;
+  each reply a run with its own channel, a stop word ends it.
+- [Realtime voice agent](/recipes/realtime-voice-agent/):
+  `fromRealtime`, tools beside the conversation, and `Playback` after a
+  barge-in.
+- [Camera assistant](/recipes/camera-assistant/): the same, plus camera
+  stills on a channel of their own, gated by `Media.level`.

@@ -338,6 +338,26 @@ server (voice-loop's f32le conversion) and `Media` (U3).
 3. **U3, browser media and projections**: `Media`, `Audio.Pcm`,
    `fromTranscript`, `fromRealtime`. Port voice-loop, realtime-voice-agent,
    camera-assistant.
+
+   **Built (2026-11-17), pending a browser check.** What changed from the plan:
+   - The PCM helpers are `@effect-uai/core/Pcm`, not `Audio.Pcm`: `Audio`
+     holds types only.
+   - `Media.pcmPlayer` is a scoped Effect (`push`, `clear`, `reset`,
+     `played`), not a `Stream` of positions: the page reads `played` when
+     it needs it (after a barge-in).
+   - `fromRealtime` accumulates the user's partial transcripts (they
+     arrive as deltas) and takes the final as the whole utterance.
+   - `PlaybackEnded` was not needed.
+   - voice-loop keeps its server pacing; each reply carries its prompt as
+     `data "prompt"`, so the page pairs question and answer without
+     relying on arrival order. The realtime pages order the conversation
+     by first sighting, since a transcript can arrive after its answer.
+   - The camera switch is enabled once the session declares the camera
+     channel (no config route), so the camera needs an open session.
+   - Found on the way: tool fibers forked with `forkScoped` inside a
+     stream leaked `Scope` into the stream's requirements; they fork into
+     the session's own scope (`Effect.forkIn`).
+
 4. **Later**: storyboard and image-edit clients, TTS alignment and
    `heardText`, live resume.
 

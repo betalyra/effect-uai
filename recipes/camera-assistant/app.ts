@@ -1,6 +1,6 @@
 /**
  * Composition for the camera-assistant recipe: the provider preset, the HTTP
- * routes and the WebSocket bridge.
+ * routes and the live session.
  *
  * Gemini Live only. Video is a capability marker rather than a common
  * promise, so this is the one realtime provider `recipe.ts` type-checks
@@ -8,24 +8,13 @@
  *
  * `run.ts` supplies the platform `HttpServer`, `FileSystem` and `Path`.
  */
-import {
-  Cause,
-  Channel,
-  Config,
-  Effect,
-  FileSystem,
-  Layer,
-  Option,
-  Match,
-  Path,
-  Queue,
-  Schedule,
-  Stdio,
-  Stream,
-} from "effect"
+import { Config, Effect, FileSystem, Layer, Option, Path, Schedule, Stdio, Stream } from "effect"
 import * as HttpRouter from "effect/http/HttpRouter"
-import * as HttpServerRequest from "effect/http/HttpServerRequest"
 import * as HttpServerResponse from "effect/http/HttpServerResponse"
+import * as Frame from "@effect-uai/ui/Frame"
+import * as LiveSocket from "@effect-uai/ui/LiveSocket"
+import type * as Run from "@effect-uai/ui/Run"
+import { StreamId } from "@effect-uai/ui/RunEvent"
 import type { ImageSource } from "@effect-uai/core/Image"
 import type { CommonSessionRequest } from "@effect-uai/core/Realtime"
 import {
@@ -39,7 +28,8 @@ import { GeminiLiveSession, layer as geminiLiveLayer } from "@effect-uai/google/
 import { flagValue } from "@effect-uai/recipe-kit/argv"
 import { bundleClient } from "@effect-uai/recipe-kit/bundle"
 import { webSearchLayer } from "../_shared/model.js"
-import { type AssistantConfig, runAssistant, type StatusEvent } from "./recipe.js"
+import { Up } from "./contract.js"
+import { type AssistantConfig, type Frames, runAssistant } from "./recipe.js"
 
 // Few results: each one is read aloud eventually, and a spoken answer has no
 // room for ten.
@@ -136,16 +126,10 @@ const paced = (frames: ReadonlyArray<ImageSource>): Stream.Stream<ImageSource> =
   Stream.fromIterable(frames).pipe(Stream.forever, Stream.schedule(Schedule.spaced(FRAME_INTERVAL)))
 
 // ---------------------------------------------------------------------------
-// WebSocket bridge. Every inbound frame arrives as bytes whatever the browser
-// sent, so the client tags each one: PCM contains every byte value, and a
-// JPEG is bytes too, so neither can be sniffed.
+// The live session. Frames come from the page's camera, or from a folder
+// that replaces it (and then the page offers no camera). A session failure
+// ends it with a `problem`.
 // ---------------------------------------------------------------------------
-
-const AUDIO_FRAME = 0x00
-const TEXT_FRAME = 0x01
-const VIDEO_FRAME = 0x02
-
-const decoder = new TextDecoder()
 
 type Flags = {
   readonly source: "camera" | "screen"
@@ -153,78 +137,20 @@ type Flags = {
   readonly search: string
 }
 
-/** Frames come from the browser, or from a folder that replaces it. */
-const wsHandler = (fromDisk: Option.Option<ReadonlyArray<ImageSource>>) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("[ws] browser connected")
-
-    const micQueue = yield* Queue.unbounded<Uint8Array, Cause.Done<void>>()
-    const typedQueue = yield* Queue.unbounded<string, Cause.Done<void>>()
-    const frameQueue = yield* Queue.unbounded<ImageSource, Cause.Done<void>>()
-    const outQueue = yield* Queue.unbounded<string | Uint8Array, Cause.Done<void>>()
-
-    const frames = Option.match(fromDisk, {
-      onNone: () => Stream.fromQueue(frameQueue),
-      onSome: paced,
-    })
-
-    yield* runAssistant(cfg, toolkit, {
-      mic: Stream.fromQueue(micQueue),
-      typed: Stream.fromQueue(typedQueue),
-      frames,
-      sendStatus: (event: StatusEvent) =>
-        Effect.asVoid(Queue.offer(outQueue, JSON.stringify(event))),
-      sendAudio: (bytes) => Effect.asVoid(Queue.offer(outQueue, bytes)),
-    }).pipe(
-      Effect.scoped,
-      Effect.tapCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.logInfo("[assistant] connection teardown")
-          : Effect.logError("[assistant] failed", { cause: Cause.pretty(cause) }),
-      ),
-      Effect.ensuring(Queue.end(outQueue)),
-      Effect.forkScoped,
-    )
-
-    const onFrame = (buf: Uint8Array): Effect.Effect<void> =>
-      Match.value(buf[0]).pipe(
-        Match.when(AUDIO_FRAME, () => Effect.asVoid(Queue.offer(micQueue, buf.subarray(1)))),
-        Match.when(TEXT_FRAME, () =>
-          Effect.asVoid(Queue.offer(typedQueue, decoder.decode(buf.subarray(1)))),
-        ),
-        Match.when(VIDEO_FRAME, () =>
-          Effect.asVoid(
-            Queue.offer(frameQueue, {
-              _tag: "bytes",
-              bytes: buf.subarray(1),
-              mimeType: "image/jpeg",
+const session = (frames: Frames) =>
+  LiveSocket.handle({
+    up: Up,
+    handler: (up) =>
+      runAssistant(cfg, toolkit, frames, up).pipe(
+        Stream.catch((error) =>
+          Stream.make(
+            Frame.message<Run.Owned>({
+              event: { type: "live", name: "problem", value: error._tag },
             }),
           ),
         ),
-        // An empty or unknown frame is not worth killing the connection over.
-        Match.orElse(() => Effect.void),
-      )
-
-    yield* Stream.toChannel(Stream.fromQueue(outQueue)).pipe(
-      Channel.pipeTo(HttpServerRequest.upgradeChannel<never>()),
-      Stream.fromChannel,
-      Stream.runForEach(onFrame),
-      Effect.catchTag("SocketError", () => Effect.logInfo("[ws] browser disconnected")),
-      Effect.tapCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.logInfo("[ws] browser disconnected")
-          : Effect.logError("[ws] failed", { cause: Cause.pretty(cause) }),
+        Frame.sequence(StreamId.make("camera")),
       ),
-      Effect.ensuring(
-        Effect.andThen(
-          Queue.end(micQueue),
-          Effect.andThen(Queue.end(typedQueue), Queue.end(frameQueue)),
-        ),
-      ),
-      Effect.ignore,
-    )
-
-    return HttpServerResponse.empty()
   })
 
 // ---------------------------------------------------------------------------
@@ -235,35 +161,16 @@ const js = (body: string) =>
   HttpServerResponse.text(body, { contentType: "application/javascript; charset=utf-8" })
 
 type Assets = {
-  readonly flags: Flags
-  readonly fromDisk: Option.Option<ReadonlyArray<ImageSource>>
+  readonly frames: Frames
   readonly indexHtml: string
   readonly clientJs: string
-  readonly micWorkletJs: string
-  readonly playbackWorkletJs: string
 }
 
 const routesLayer = (assets: Assets) =>
   Layer.mergeAll(
     HttpRouter.add("GET", "/", HttpServerResponse.html(assets.indexHtml)),
     HttpRouter.add("GET", "/client.js", js(assets.clientJs)),
-    HttpRouter.add("GET", "/mic-worklet.js", js(assets.micWorkletJs)),
-    HttpRouter.add("GET", "/playback-worklet.js", js(assets.playbackWorkletJs)),
-    HttpRouter.add(
-      "GET",
-      "/config",
-      HttpServerResponse.text(
-        JSON.stringify({
-          micSampleRate: cfg.inputFormat.sampleRate,
-          playbackSampleRate: cfg.outputFormat.sampleRate,
-          source: assets.flags.source,
-          // The camera stays off when the frames come from disk.
-          capture: Option.isNone(assets.flags.frames),
-        }),
-        { contentType: "application/json; charset=utf-8" },
-      ),
-    ),
-    HttpRouter.add("GET", "/ws", wsHandler(assets.fromDisk)),
+    HttpRouter.add("GET", "/ws", session(assets.frames)),
   )
 
 // ---------------------------------------------------------------------------
@@ -290,10 +197,12 @@ export const main = Effect.gen(function* () {
 
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
-  const micWorkletJs = yield* bundleClient(path.join(recipeDir, "client/mic-worklet.ts"))
-  const playbackWorkletJs = yield* bundleClient(path.join(recipeDir, "client/playback-worklet.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "client/index.html"))
   const fromDisk = yield* Effect.transposeOption(Option.map(flags.frames, readFrames))
+  const frames = Option.match(fromDisk, {
+    onNone: (): Frames => ({ _tag: "page", source: flags.source }),
+    onSome: (stills): Frames => ({ _tag: "own", frames: paced(stills) }),
+  })
 
   yield* Effect.logInfo(
     `camera-assistant (google: ${cfg.model}, voice ${cfg.voiceId}, ${Option.match(flags.frames, {
@@ -303,11 +212,9 @@ export const main = Effect.gen(function* () {
   )
 
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(
-    HttpRouter.serve(
-      routesLayer({ flags, fromDisk, indexHtml, clientJs, micWorkletJs, playbackWorkletJs }),
-    ),
-  ).pipe(Effect.provide(Layer.mergeAll(sessionLayer, webSearchLayer(flags.search))))
+  return Layer.launch(HttpRouter.serve(routesLayer({ frames, indexHtml, clientJs }))).pipe(
+    Effect.provide(Layer.mergeAll(sessionLayer, webSearchLayer(flags.search))),
+  )
 }).pipe(
   Effect.flatten,
   Effect.tapCause((cause) => Effect.logError("[main] fatal", { cause })),

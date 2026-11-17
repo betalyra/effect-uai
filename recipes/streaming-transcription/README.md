@@ -62,19 +62,19 @@ The page and the server talk over one
 [live session](/agentic-ui/live-sessions/) from `@effect-uai/ui`:
 
 ```
-[Browser]  getUserMedia → AudioWorklet → media frames on channel 0
+[Browser]  Media.mic (at the declared rate) → media frames on channel 0
    ↕  one WebSocket
 [Server]  channel 0 → Stream<Uint8Array> → Transcriber.streamTranscriptionFrom
-          → data "utterance" entries
+          → data "transcript" entries
 [Browser]  StreamView folds them; partials dim, finals bold
 ```
 
 The session opens by declaring the mic channel: `channel-opened` with
 `direction: "up"` and the provider's sample rate (OpenAI wants 24 kHz,
-ElevenLabs 16 kHz). The page starts recording at that rate, so it needs
-no config route. Each utterance is one `data` entry: its partials
-overwrite it, its final settles it, and the next utterance gets the
-next id.
+ElevenLabs 16 kHz). The page records at that rate with `Media.mic`, so
+it needs no config route. `Projection.transcriptStep` makes each
+utterance one `transcript` entry: its partials overwrite it, its final
+settles it, and the next utterance gets the next id.
 
 ```ts
 LiveSocket.handle({

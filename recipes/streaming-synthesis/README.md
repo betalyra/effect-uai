@@ -64,7 +64,7 @@ opened on the first Enter:
    ↕  one WebSocket
 [Server]  lines → Stream<string> → SpeechSynthesizer.streamSynthesisFrom
           → data "line" entries, speech as media frames on channel 0
-[Browser]  plays channel 0 through a ring-buffered AudioWorklet
+[Browser]  plays channel 0 through Media.pcmPlayer
 ```
 
 The session starts by declaring the speech channel: `channel-opened`

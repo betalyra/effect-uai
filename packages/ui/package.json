@@ -60,6 +60,10 @@
       "types": "./dist/Frame.d.mts",
       "import": "./dist/Frame.mjs"
     },
+    "./Media": {
+      "types": "./dist/Media.d.mts",
+      "import": "./dist/Media.mjs"
+    },
     "./LiveSocket": {
       "types": "./dist/LiveSocket.d.mts",
       "import": "./dist/LiveSocket.mjs"

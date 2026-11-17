@@ -50,6 +50,10 @@
       "types": "./dist/GeminiLiveSession.d.mts",
       "import": "./dist/GeminiLiveSession.mjs"
     },
+    "./GeminiDecisionModel": {
+      "types": "./dist/GeminiDecisionModel.d.mts",
+      "import": "./dist/GeminiDecisionModel.mjs"
+    },
     "./GeminiOmniVideoGenerator": {
       "types": "./dist/GeminiOmniVideoGenerator.d.mts",
       "import": "./dist/GeminiOmniVideoGenerator.mjs"

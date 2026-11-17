@@ -31,6 +31,7 @@ import { layer as geminiEmbeddingLayer } from "@effect-uai/google/GeminiEmbeddin
 import { layer as geminiImageLayer } from "@effect-uai/google/GeminiImageGenerator"
 import { layer as geminiLiveSessionLayer } from "@effect-uai/google/GeminiLiveSession"
 import { layer as geminiOmniLayer } from "@effect-uai/google/GeminiOmniVideoGenerator"
+import { layer as geminiDecisionLayer } from "@effect-uai/google/GeminiDecisionModel"
 import { layer as geminiSynthLayer } from "@effect-uai/google/GeminiSynthesizer"
 import { layer as googleResearchLayer } from "@effect-uai/google/GoogleDeepResearch"
 import { layer as lyriaLayer } from "@effect-uai/google/LyriaGenerator"
@@ -57,7 +58,7 @@ import { layer as openaiResearchLayer } from "@effect-uai/responses/OpenAIDeepRe
 import { layer as responsesLayer } from "@effect-uai/responses/Responses"
 import { layer as tavilyReadLayer } from "@effect-uai/tavily/TavilyRead"
 import { layer as tavilySearchLayer } from "@effect-uai/tavily/TavilySearch"
-import { type Jev, layer as jevLayer } from "@effect-uai/typesafe-ai/Jev"
+import { layer as jevLayer } from "@effect-uai/typesafe-ai/Jev"
 import type { Browser } from "@effect-uai/core/Browser"
 import type { DecisionModel } from "@effect-uai/core/DecisionModel"
 import type { DeepResearch } from "@effect-uai/core/DeepResearch"
@@ -558,19 +559,23 @@ export const rerankerLayer = (
 // Decisions
 // ---------------------------------------------------------------------------
 
-type DecisionLayer = Layer.Layer<DecisionModel | Jev, never, HttpClient.HttpClient>
+type DecisionLayer = Layer.Layer<DecisionModel, never, HttpClient.HttpClient>
 
 const decisionEntries: Record<string, Entry<DecisionLayer>> = {
   typesafe: {
     layer: (apiKey, baseUrl) => jevLayer({ apiKey, ...at(baseUrl) }),
     apiKey: key("TYPESAFE_AI_API_KEY"),
   },
+  google: {
+    layer: (apiKey, baseUrl) => geminiDecisionLayer({ apiKey, ...at(baseUrl) }),
+    apiKey: key("GOOGLE_API_KEY"),
+  },
 }
 
 export const decisionModelLayer = (
   spec: ModelSpec,
   baseUrl?: string,
-): Layer.Layer<DecisionModel | Jev, Config.ConfigError | UnknownProvider, HttpClient.HttpClient> =>
+): Layer.Layer<DecisionModel, Config.ConfigError | UnknownProvider, HttpClient.HttpClient> =>
   Layer.unwrap(registry(spec, baseUrl, decisionEntries))
 
 // ---------------------------------------------------------------------------

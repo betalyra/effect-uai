@@ -64,7 +64,15 @@ const InlineDataPart = Schema.Struct({
   thought: Schema.optional(Schema.Boolean),
 })
 
-const Part = Schema.Union([TextPart, FunctionCallPart, InlineDataPart])
+/**
+ * Any other part: `executableCode` / `codeExecutionResult` from the code
+ * execution tool, Gemini 4's `toolCall` / `toolResponse`, whatever comes
+ * next. Read and skipped, so a part kind we don't render never ends the
+ * stream. Last in the union, so it only takes what the others refuse.
+ */
+const OtherPart = Schema.Record(Schema.String, Schema.Unknown)
+
+const Part = Schema.Union([TextPart, FunctionCallPart, InlineDataPart, OtherPart])
 type WireFunctionCallPart = typeof FunctionCallPart.Type
 type WireInlineDataPart = typeof InlineDataPart.Type
 
@@ -123,6 +131,8 @@ const Candidate = Schema.Struct({
   content: Schema.optional(Content),
   groundingMetadata: Schema.optional(GroundingMetadata),
   finishReason: Schema.optional(Schema.String),
+  /** Long decode: set with `finishReason: "CONTINUATION"`, and at checkpoints mid-stream. */
+  continuationToken: Schema.optional(Schema.String),
   index: Schema.optional(Schema.Number),
 })
 
@@ -198,7 +208,9 @@ type RequestToolConfig = {
 }
 
 export type ThinkingConfig = {
-  readonly thinkingBudget: number
+  readonly thinkingBudget?: number
+  /** `MINIMAL` / `LOW` / `MEDIUM` / `HIGH` on the wire. */
+  readonly thinkingLevel?: string
 }
 
 export type ImageConfig = {
@@ -226,6 +238,8 @@ export type RequestBody = {
   readonly generationConfig?: GenerationConfig
   readonly tools?: ReadonlyArray<RequestTool>
   readonly toolConfig?: RequestToolConfig
+  /** Resumes a long decode; the rest of the request repeats the first one. */
+  readonly continuationToken?: string
 }
 
 const blockText = Match.type<ContentBlock>().pipe(
@@ -730,10 +744,16 @@ export const buildRequestBody = (
 // Drive it via `Stream.mapAccum` in the consumer.
 // ---------------------------------------------------------------------------
 
+/**
+ * `CONTINUATION` is a long decode cut at Gemini's per-response cap: the
+ * answer is incomplete, so it reads as `max_tokens`. The token on the turn's
+ * `providerData` tells it apart from a spent `maxOutputTokens`.
+ */
 const finishReasonToStop = (reason: Option.Option<string>): Turn["stop_reason"] =>
   Option.match(reason, {
     onNone: () => "stop" as const,
-    onSome: (r) => (r === "MAX_TOKENS" ? ("max_tokens" as const) : ("stop" as const)),
+    onSome: (r) =>
+      r === "MAX_TOKENS" || r === "CONTINUATION" ? ("max_tokens" as const) : ("stop" as const),
   })
 
 export type AccumulatedFunctionCall = {
@@ -757,6 +777,8 @@ export type Accumulator = {
   /** Grounding citations, accumulated (de-duped by url) across chunks. */
   readonly annotations: ReadonlyArray<Annotation>
   readonly finishReason: Option.Option<string>
+  /** The latest long-decode token seen. */
+  readonly continuationToken: Option.Option<string>
   readonly usage: {
     readonly input_tokens?: number
     readonly output_tokens?: number
@@ -773,6 +795,7 @@ export const emptyAccumulator: Accumulator = {
   functionCalls: [],
   annotations: [],
   finishReason: Option.none(),
+  continuationToken: Option.none(),
   usage: {},
 }
 
@@ -830,7 +853,7 @@ const partToChunkParts: (p: typeof Part.Type) => ReadonlyArray<ChunkPart> = Matc
   Match.when({ text: Match.string }, textToChunkParts),
   Match.when({ inlineData: Match.defined }, inlineDataToChunkParts),
   Match.when({ functionCall: Match.defined }, functionCallToChunkParts),
-  Match.exhaustive,
+  Match.orElse((): ReadonlyArray<ChunkPart> => []),
 )
 
 const chunkParts = (chunk: WireChunk): ReadonlyArray<ChunkPart> =>
@@ -937,6 +960,10 @@ export const ingestChunk = (acc: Accumulator, chunk: WireChunk): ChunkResult => 
         groundingToAnnotations(chunk.candidates?.[0]?.groundingMetadata),
       ),
       finishReason: Option.orElse(finishReason, () => acc.finishReason),
+      continuationToken: Option.orElse(
+        Option.fromNullishOr(chunk.candidates?.[0]?.continuationToken),
+        () => acc.continuationToken,
+      ),
       usage: mergeUsage(acc.usage, chunk.usageMetadata),
     },
   }
@@ -988,4 +1015,22 @@ export const accumulatorToTurn = (acc: Accumulator): Turn => ({
     acc.functionCalls.length > 0 ? ("tool_calls" as const) : finishReasonToStop(acc.finishReason),
   usage: { ...acc.usage },
   items: [...reasoningItems(acc), ...assistantMessageItems(acc), ...functionCallItems(acc)],
+  // Only a turn that stopped at `CONTINUATION` can be resumed; a mid-stream checkpoint alone cannot.
+  ...(Option.contains(acc.finishReason, "CONTINUATION") &&
+    Option.isSome(acc.continuationToken) && {
+      providerData: { gemini: { continuationToken: acc.continuationToken.value } },
+    }),
 })
+
+const decodeTurnData = Schema.decodeUnknownOption(
+  Schema.Struct({ gemini: Schema.Struct({ continuationToken: Schema.String }) }),
+)
+
+/**
+ * The long-decode token of a turn Gemini cut at its per-response cap. Send
+ * the same request again with it as `continuationToken`; don't append the
+ * turn to the history first. `None` for a finished turn, or one from
+ * another provider.
+ */
+export const continuationOf = (turn: Turn): Option.Option<string> =>
+  Option.map(decodeTurnData(turn.providerData), (d) => d.gemini.continuationToken)

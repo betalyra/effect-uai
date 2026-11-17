@@ -25,6 +25,9 @@ TYPESAFE_AI_API_KEY=... pnpm tsx recipes/ticket-triage/run.ts
 
 # pin a version
 ... run.ts --model typesafe:jev-1.13.0
+
+# Google's Decisions API instead
+GOOGLE_API_KEY=... pnpm tsx recipes/ticket-triage/run.ts --model google:gemini-decision-1
 ```
 
 ## Ask all five at once

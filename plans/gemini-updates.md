@@ -1,6 +1,13 @@
 # Plan: Gemini updates (Decisions API, Gemini 4 Argon / Carbon)
 
-Status: **planned** (2026-11-11). Own small PR off dev, after video PR 1
+Status: B.3, B.1 and Part A **done** (2026-11-17), Part A from the
+documented wire shapes (the docs now pin what the spike was for; the live
+check is the ticket-triage recipe on `google:gemini-decision-1`). B.2
+done the same day: `CONTINUATION` maps to `"max_tokens"`, the token goes on
+a new optional `Turn.providerData` (output-only response extras, the slot
+PR #219's `provider-options.md` should leave as is), and the app loops by
+resending the same request plus `continuationToken`. Nothing continues on
+its own. Planned 2026-11-11. Own small PR off dev, after video PR 1
 and before the video provider packages (PR 2). Two parts: a new
 `DecisionModel` adapter (Part A) and what the Gemini 4 models need from the
 existing language-model layer (Part B).

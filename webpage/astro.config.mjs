@@ -493,6 +493,7 @@ export default defineConfig({
                   label: "TypeSafe AI",
                   slug: "decisions/providers/typesafe-ai",
                 },
+                { label: "Google", slug: "decisions/providers/google" },
               ],
             },
             {

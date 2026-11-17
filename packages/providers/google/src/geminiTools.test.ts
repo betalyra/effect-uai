@@ -104,4 +104,28 @@ describe("Gemini provider tools", () => {
       { type: "url_citation", url: "https://effect.website", title: "https://effect.website" },
     ])
   })
+
+  // Shape from Google's code-execution guide: the code and its result arrive
+  // as parts of their own between the text parts.
+  it("reads a code-execution answer, skipping the code and result parts", () => {
+    const chunk = Schema.decodeUnknownSync(WireChunk)({
+      candidates: [
+        {
+          content: {
+            role: "model",
+            parts: [
+              { text: "Let me compute that. " },
+              { executableCode: { language: "PYTHON", code: "print(sum(range(10)))" } },
+              { codeExecutionResult: { outcome: "OUTCOME_OK", output: "45\n" } },
+              { text: "The sum is 45." },
+            ],
+          },
+          finishReason: "STOP",
+        },
+      ],
+    })
+
+    const turn = accumulatorToTurn(ingestChunk(emptyAccumulator, chunk).accumulator)
+    expect(Turn.assistantText(turn)).toBe("Let me compute that. The sum is 45.")
+  })
 })

@@ -7,9 +7,9 @@ source: recipes/streaming-transcription
 Live captions arrive as the user speaks, not after they finish.
 
 This recipe connects a browser microphone to a realtime transcription
-provider. The browser sends small PCM frames to a Bun server; the
-server turns those frames into a `Stream<Uint8Array>` and gets
-transcript events back.
+provider. The browser sends small PCM frames over one live session; the
+server turns those frames into a `Stream<Uint8Array>` and sends the
+transcript back as entries.
 
 **Scenario.** You're building a captioning UI, a voice-search box, or
 the front half of a voice assistant. You want partial guesses to
@@ -44,35 +44,50 @@ events as committed transcript lines. `recipe.ts` is provider-agnostic;
 
 ```sh
 # Default: OpenAI Realtime (24 kHz pcm16)
-OPENAI_API_KEY=sk-... bun recipes/streaming-transcription/run.ts
+OPENAI_API_KEY=sk-... pnpm tsx recipes/streaming-transcription/run.ts
 
 # ElevenLabs Scribe v2 Realtime (16 kHz pcm16)
-ELEVENLABS_API_KEY=... bun recipes/streaming-transcription/run.ts --provider elevenlabs
+ELEVENLABS_API_KEY=... pnpm tsx recipes/streaming-transcription/run.ts --provider elevenlabs
 ```
 
 Open <http://localhost:3000>, click **Start**, allow mic access, and
 talk. Partial transcripts appear dimmed; finals commit and stay bold.
 
-> Run with **`bun`**, not `pnpm tsx`. The runner uses `Bun.serve` and
-> `Bun.build` globals.
+Env vars: `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `INWORLD_API_KEY`
+depending on provider; `PORT` optional (defaults to 3000).
 
-Env vars: `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` depending on
-provider; `PORT` optional (defaults to 3000).
+## The live session
 
-## How The Demo Flows
+The page and the server talk over one
+[live session](/agentic-ui/live-sessions/) from `@effect-uai/ui`:
 
 ```
-[Browser]  getUserMedia → AudioWorklet → WebSocket
-   ↕
-[Bun server]  Stream<Uint8Array> → Transcriber.streamTranscriptionFrom
-             → TranscriptEvent JSON
-[Browser]  renders partial / final transcripts live
+[Browser]  getUserMedia → AudioWorklet → media frames on channel 0
+   ↕  one WebSocket
+[Server]  channel 0 → Stream<Uint8Array> → Transcriber.streamTranscriptionFrom
+          → data "utterance" entries
+[Browser]  StreamView folds them; partials dim, finals bold
 ```
 
-The server owns the Effect Layer and the provider connection; the
-browser is just a mic-to-WS adapter. Sample rates differ per provider
-(OpenAI wants 24 kHz, ElevenLabs wants 16 kHz), so the client fetches
-`/config` before it starts recording.
+The session opens by declaring the mic channel: `channel-opened` with
+`direction: "up"` and the provider's sample rate (OpenAI wants 24 kHz,
+ElevenLabs 16 kHz). The page starts recording at that rate, so it needs
+no config route. Each utterance is one `data` entry: its partials
+overwrite it, its final settles it, and the next utterance gets the
+next id.
+
+```ts
+LiveSocket.handle({
+  up: Schema.Never, // nothing goes up but mic audio
+  handler: (up) =>
+    up.pipe(
+      transcriptSession(provider), // RunEvents: the mic channel, then entries
+      Run.streamScoped,
+      Stream.map(Frame.message),
+      Frame.sequence(streamId),
+    ),
+})
+```
 
 ## Provider Fit
 

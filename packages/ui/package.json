@@ -56,6 +56,14 @@
       "types": "./dist/RunView.d.mts",
       "import": "./dist/RunView.mjs"
     },
+    "./Frame": {
+      "types": "./dist/Frame.d.mts",
+      "import": "./dist/Frame.mjs"
+    },
+    "./LiveSocket": {
+      "types": "./dist/LiveSocket.d.mts",
+      "import": "./dist/LiveSocket.mjs"
+    },
     "./StreamView": {
       "types": "./dist/StreamView.d.mts",
       "import": "./dist/StreamView.mjs"

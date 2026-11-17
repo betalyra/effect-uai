@@ -1,21 +1,45 @@
 /**
- * Browser-side entry point. Bundled by `Bun.build` at server startup
- * and served as `/client.js`. Wires mic → WebSocket → DOM.
+ * Browser entry point, bundled at server startup and served as `/client.js`.
  *
- * Imperative on purpose — `getUserMedia`, `AudioContext`,
- * `AudioWorklet`, and `WebSocket` are all callback / event-driven web
- * APIs. Effect lives entirely on the server in this recipe.
+ * One live session over `@effect-uai/ui`: the server opens the mic channel
+ * with the rate its provider takes, the page starts the mic at that rate and
+ * sends each `Media.mic` frame on the channel, and the transcript arrives as
+ * utterance entries folded by `StreamView`.
  */
+import * as Atoms from "@effect-uai/ui/Atoms"
+import * as Frame from "@effect-uai/ui/Frame"
+import * as Media from "@effect-uai/ui/Media"
+import type * as Projection from "@effect-uai/ui/Projection"
+import * as StreamView from "@effect-uai/ui/StreamView"
+import * as Transport from "@effect-uai/ui/Transport"
+import type * as UiContract from "@effect-uai/ui/UiContract"
+import { Effect, Fiber, Stream } from "effect"
+import { Atom, AtomRegistry } from "effect/reactivity"
+import * as Socket from "effect/socket/Socket"
+import { MIC, TranscriptUi, Up } from "../contract.js"
 
-// A module, not a script: every recipe's client declares `$` and `setStatus`,
-// and as scripts they would all share one global scope.
+// A module, not a script: recipe clients would otherwise share one global scope.
 export {}
 
-type TranscriptEvent =
-  | { readonly _tag: "partial"; readonly text: string }
-  | { readonly _tag: "final"; readonly text: string }
-  | { readonly _tag: "error"; readonly code?: string; readonly message: string }
-  | { readonly _tag: string }
+type View = StreamView.StreamView<UiContract.Payloads<typeof TranscriptUi>>
+
+// ---------------------------------------------------------------------------
+// The session
+// ---------------------------------------------------------------------------
+
+const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
+
+const session = Atoms.live({
+  runtime: Atom.runtime(Socket.layerWebSocketConstructorGlobal),
+  transport: Transport.live({ connect: Transport.socket(wsUrl), up: Up }),
+  initial: StreamView.empty<UiContract.Payloads<typeof TranscriptUi>>(),
+  step: StreamView.step,
+  decode: TranscriptUi.decode,
+  // Nothing comes down but entries.
+  media: () => Effect.void,
+})
+
+const registry = AtomRegistry.make()
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -36,190 +60,81 @@ const setStatus = (text: string, error = false): void => {
   statusEl.classList.toggle("err", error)
 }
 
-const state = { final: "", partial: "" }
+const utterances = (view: View): ReadonlyArray<Projection.Utterance> =>
+  Object.entries(view.data.transcript ?? {})
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([, u]) => u)
 
-const render = (): void => {
-  transcriptEl.textContent = ""
-  if (state.final !== "") {
-    const f = document.createElement("span")
-    f.className = "final"
-    f.textContent = state.final
-    transcriptEl.appendChild(f)
-  }
-  if (state.partial !== "") {
-    const p = document.createElement("span")
-    p.className = "partial"
-    p.textContent = (state.final !== "" ? " " : "") + state.partial
-    transcriptEl.appendChild(p)
-  }
-}
-
-const handleEvent = (e: TranscriptEvent): void => {
-  if (e._tag === "partial") {
-    state.partial = (e as { text: string }).text
-    render()
-  } else if (e._tag === "final") {
-    const finalEv = e as { text: string }
-    state.final = (state.final !== "" ? state.final + " " : "") + finalEv.text
-    state.partial = ""
-    render()
-  } else if (e._tag === "error") {
-    const err = e as { code?: string; message: string }
-    setStatus(`error: ${err.code ?? "unknown"} — ${err.message}`, true)
-  }
+const render = (view: View): void => {
+  transcriptEl.replaceChildren(
+    ...utterances(view).map((u) => {
+      const span = document.createElement("span")
+      span.className = u.final ? "final" : "partial"
+      span.textContent = `${u.text} `
+      return span
+    }),
+  )
+  const problem = view.live.problem
+  if (problem !== undefined) setStatus(`error: ${problem}`, true)
 }
 
 // ---------------------------------------------------------------------------
-// Session lifecycle
+// Mic: a fiber that sends `Media.mic` frames on the channel the session opened
 // ---------------------------------------------------------------------------
 
-type Session = {
-  readonly stream: MediaStream
-  readonly ctx: AudioContext
-  readonly ws: WebSocket
-  readonly anchor: HTMLAudioElement
+let mic: Fiber.Fiber<void> | null = null
+
+const stopMic = (): void => {
+  if (mic !== null) Effect.runFork(Fiber.interrupt(mic))
+  mic = null
 }
 
-let active: Session | undefined
+const startMic = (sampleRate: number) =>
+  Media.mic({ sampleRate }).pipe(
+    Stream.zipWithIndex,
+    Stream.runForEach(([bytes, n]) =>
+      Effect.sync(() => {
+        // The first frame shows the mic is live.
+        if (n === 0) setStatus(`transcribing · ${sampleRate} Hz`)
+        registry.set(session.send, Frame.media(MIC, bytes))
+      }),
+    ),
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        setStatus(`mic ${error.reason}: ${error.message}`, true)
+        registry.set(session.disconnect, undefined)
+      }),
+    ),
+    Effect.runFork,
+  )
 
-const teardown = (s: Session): void => {
-  try {
-    s.stream.getTracks().forEach((t) => t.stop())
-  } catch {
-    /* ignore */
-  }
-  try {
-    s.anchor.pause()
-    s.anchor.srcObject = null
-  } catch {
-    /* ignore */
-  }
-  try {
-    if (s.ws.readyState === WebSocket.OPEN || s.ws.readyState === WebSocket.CONNECTING) s.ws.close()
-  } catch {
-    /* ignore */
-  }
-  try {
-    void s.ctx.close()
-  } catch {
-    /* ignore */
-  }
-}
+// The session says which rate to record at; start once it has.
+registry.subscribe(
+  session.state,
+  (view) => {
+    render(view)
+    const channel = view.channels[MIC]
+    if (mic !== null || channel === undefined || channel.direction !== "up") return
+    mic = startMic(channel.sampleRate ?? 16000)
+  },
+  { immediate: true },
+)
 
-const stop = (): void => {
-  if (active !== undefined) {
-    teardown(active)
-    active = undefined
-  }
-  toggleBtn.textContent = "Start"
-}
-
-const fetchConfig = async (): Promise<{ provider: string; sampleRate: number }> => {
-  const res = await fetch("/config")
-  return (await res.json()) as { provider: string; sampleRate: number }
-}
-
-const start = async (): Promise<void> => {
-  toggleBtn.textContent = "Stop"
-  setStatus("requesting microphone…")
-  state.final = ""
-  state.partial = ""
-  render()
-
-  let cfg: { provider: string; sampleRate: number }
-  try {
-    cfg = await fetchConfig()
-  } catch (err) {
-    setStatus(`config fetch failed: ${(err as Error).message}`, true)
-    stop()
-    return
-  }
-
-  let stream: MediaStream
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-  } catch (err) {
-    setStatus(`mic denied: ${(err as Error).message}`, true)
-    stop()
-    return
-  }
-
-  // Chrome / Safari quirk: `MediaStreamAudioSourceNode` produces silence
-  // unless the underlying `MediaStream` is also being "consumed" by an
-  // `<audio>` element. Muted playback is enough.
-  const anchor = new Audio()
-  anchor.srcObject = stream
-  anchor.muted = true
-  try {
-    await anchor.play()
-  } catch {
-    /* autoplay policy may reject — the source node usually still works */
-  }
-
-  // Let the browser pick its native sample rate; the worklet resamples
-  // to 16 kHz before frames go on the wire. Forcing the rate here can
-  // cause some browsers to fill with zeros instead of resampling.
-  const ctx = new AudioContext()
-  if (ctx.state === "suspended") await ctx.resume()
-
-  try {
-    await ctx.audioWorklet.addModule("/audio-worklet.js")
-  } catch (err) {
-    setStatus(`audio worklet failed: ${(err as Error).message}`, true)
-    stream.getTracks().forEach((t) => t.stop())
-    void ctx.close()
-    stop()
-    return
-  }
-
-  const source = ctx.createMediaStreamSource(stream)
-  const worklet = new AudioWorkletNode(ctx, "mic-worklet", {
-    processorOptions: { sourceRate: ctx.sampleRate, targetRate: cfg.sampleRate },
-  })
-  setStatus(`connected · ${cfg.provider} · ${cfg.sampleRate} Hz`)
-  source.connect(worklet)
-  // Silent sink to keep the graph pulling on the worklet.
-  const sink = ctx.createGain()
-  sink.gain.value = 0
-  worklet.connect(sink)
-  sink.connect(ctx.destination)
-
-  const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
-  const ws = new WebSocket(wsUrl)
-  ws.binaryType = "arraybuffer"
-
-  active = { stream, ctx, ws, anchor }
-
-  ws.addEventListener("open", () => {
-    setStatus("connected · transcribing")
-    worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(e.data)
-    }
-  })
-  ws.addEventListener("message", (e) => {
-    try {
-      handleEvent(JSON.parse(e.data as string) as TranscriptEvent)
-    } catch {
-      /* ignore non-JSON */
-    }
-  })
-  ws.addEventListener("close", () => {
-    if (active !== undefined) {
-      setStatus("closed")
-      stop()
-    }
-  })
-  ws.addEventListener("error", () => {
-    setStatus("ws error", true)
-    stop()
-  })
-}
+registry.subscribe(
+  session.connected,
+  (connected) => {
+    toggleBtn.textContent = connected ? "Stop" : "Start"
+    if (!connected) stopMic()
+  },
+  { immediate: true },
+)
 
 toggleBtn.addEventListener("click", () => {
-  if (active === undefined) {
-    void start()
-  } else {
+  if (registry.get(session.connected)) {
     setStatus("stopped")
-    stop()
+    registry.set(session.disconnect, undefined)
+  } else {
+    setStatus("connecting…")
+    registry.set(session.connect, undefined)
   }
 })

@@ -315,6 +315,26 @@ server (voice-loop's f32le conversion) and `Media` (U3).
    upstream presets, `LiveSocket.handle`, `Transport.live` / `socket`,
    `Atoms.live`. Port streaming-transcription and streaming-synthesis, the
    two smallest live recipes.
+
+   **Done (2026-11-17), verified live in a browser.** What changed from the plan:
+   - No tag byte: Effect's sockets (Node `ws`, Bun, browser) keep text and
+     binary apart, so a text frame is JSON and a binary frame is media
+     (`u16 channel` + payload).
+   - `channel-opened` has `direction: "down" | "up"`, so the server also
+     declares what it expects from the client (the mic rate). Channels live
+     in `StreamView.channels` only, not in the persisted `RunView`; a run's
+     channels close with it.
+   - `LiveSocket.run(socket, options)` beside `handle`, so the session is
+     testable over an in-memory socket pair.
+   - `Atoms.live.send` takes a `Frame`; the mic goes up as
+     `send(Frame.media(...))` until `Media.mic` (U3) gives it a stream.
+   - `Playback` / `PlaybackEnded` presets moved to U3: no U2 recipe reports
+     playback position.
+   - streaming-synthesis has one stream-scoped channel, not a run per
+     utterance: one open TTS session reports no utterance boundaries.
+   - Transcript to `data "utterance"` entries is recipe code for now;
+     `Projection.fromTranscript` (U3) lifts it.
+
 3. **U3, browser media and projections**: `Media`, `Audio.Pcm`,
    `fromTranscript`, `fromRealtime`. Port voice-loop, realtime-voice-agent,
    camera-assistant.

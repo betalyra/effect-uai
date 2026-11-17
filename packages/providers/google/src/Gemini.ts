@@ -14,9 +14,11 @@ import { type Turn, TurnEvent } from "@effect-uai/core/Turn"
 import { renderProviderTools } from "./GeminiTools.js"
 
 export { codeExecutionTool, googleSearchTool, urlContextTool } from "./GeminiTools.js"
+export { continuationOf } from "./codec.js"
 import {
   type ChunkPart,
   type GenerationConfig,
+  type ThinkingConfig,
   type ImageConfig,
   WireChunk,
   accumulatorToTurn,
@@ -54,6 +56,17 @@ export type GeminiRequest = Omit<CommonRequest, "model"> & {
    * `generationConfig.thinkingConfig.thinkingBudget`.
    */
   readonly thinkingBudget?: number
+  /**
+   * How long Gemini 3 and later think, in place of a token budget. Gemini 4
+   * takes `low` / `medium` / `high` (default `medium`); `minimal` is for
+   * some Gemini 3 Flash models. Set this or `thinkingBudget`, not both.
+   */
+  readonly thinkingLevel?: "minimal" | "low" | "medium" | "high"
+  /**
+   * Resume a long decode with the token from {@link continuationOf}. Send the
+   * same request as before (history, tools, `maxOutputTokens`) plus this.
+   */
+  readonly continuationToken?: string
   /**
    * What the model may answer with. Image models default to
    * `["TEXT", "IMAGE"]`; set this to ask a non-image model for images, or
@@ -124,16 +137,23 @@ export type Config = {
 
 const TEXT_AND_IMAGE: ReadonlyArray<"TEXT" | "IMAGE"> = ["TEXT", "IMAGE"]
 
+/** Both are passed through as given; Gemini rejects the pair itself. */
+const thinkingConfig = (request: GeminiRequest): ThinkingConfig => ({
+  ...(request.thinkingBudget !== undefined && { thinkingBudget: request.thinkingBudget }),
+  ...(request.thinkingLevel !== undefined && {
+    thinkingLevel: request.thinkingLevel.toUpperCase(),
+  }),
+})
+
 const buildGenerationConfig = (request: GeminiRequest): Option.Option<GenerationConfig> => {
   const modalities =
     request.responseModalities ?? (drawsImages(request.model) ? TEXT_AND_IMAGE : undefined)
+  const thinking = thinkingConfig(request)
   const cfg: GenerationConfig = {
     ...(request.temperature !== undefined && { temperature: request.temperature }),
     ...(request.maxOutputTokens !== undefined && { maxOutputTokens: request.maxOutputTokens }),
     ...(request.topP !== undefined && { topP: request.topP }),
-    ...(request.thinkingBudget !== undefined && {
-      thinkingConfig: { thinkingBudget: request.thinkingBudget },
-    }),
+    ...(Object.keys(thinking).length > 0 && { thinkingConfig: thinking }),
     ...(modalities !== undefined && { responseModalities: modalities }),
     ...(request.imageConfig !== undefined && { imageConfig: request.imageConfig }),
     ...(request.structured !== undefined && {
@@ -212,13 +232,18 @@ const buildNativeStream = (cfg: Config) => {
             onSuccess: (entries) => Effect.succeed(entries),
           },
         )
-        const body = buildRequestBody(
-          request.history,
-          generationConfig,
-          descriptorsOf(request.tools),
-          providerToolEntries,
-          request.toolChoice,
-        )
+        const body = {
+          ...buildRequestBody(
+            request.history,
+            generationConfig,
+            descriptorsOf(request.tools),
+            providerToolEntries,
+            request.toolChoice,
+          ),
+          ...(request.continuationToken !== undefined && {
+            continuationToken: request.continuationToken,
+          }),
+        }
         const httpRequest = HttpClientRequest.post(url).pipe(
           HttpClientRequest.setHeader("x-goog-api-key", Redacted.value(cfg.apiKey)),
           HttpClientRequest.bodyJsonUnsafe(body),

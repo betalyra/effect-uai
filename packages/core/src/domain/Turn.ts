@@ -26,6 +26,11 @@ export const Turn = Schema.Struct({
   items: Schema.Array(HistoryItem),
   usage: Usage,
   stop_reason: StopReason,
+  /**
+   * Response-level extras, keyed by provider name. Output only: unlike an
+   * item's `providerData` it is never sent back with the history.
+   */
+  providerData: Schema.optionalKey(Schema.Unknown),
 })
 export type Turn = typeof Turn.Type
 

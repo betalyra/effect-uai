@@ -60,9 +60,14 @@ A `Turn` is the assembled result of one round-trip:
 type Turn = {
   readonly items: ReadonlyArray<HistoryItem> // assistant's outputs (Messages, ToolCalls, Reasoning)
   readonly usage: Usage // token counts, cache stats
-  readonly stop_reason: StopReason // "stop" | "tool_use" | "max_tokens" | "refusal" | "other"
+  readonly stop_reason: StopReason // "stop" | "tool_calls" | "max_tokens" | "refusal" | "content_filter" | "max_tool_calls"
+  readonly providerData?: unknown // response-level extras, keyed by provider
 }
 ```
+
+`providerData` on a turn is output only: it describes this response and is
+never sent back with the history. Each provider reads its own key with a
+typed helper (Gemini's `continuationOf`, for example).
 
 Helpers project specific item kinds:
 

@@ -1,11 +1,14 @@
 /**
- * Known Gemini model identifiers (as of April 2026). The `(string & {})`
+ * Known Gemini model identifiers (as of November 2026). The `(string & {})`
  * tail keeps autocomplete on the literals while still accepting any string,
  * so newly-released models work without an SDK update.
  *
  * Reference: https://ai.google.dev/gemini-api/docs/models
  */
 export type GoogleModel =
+  | "gemini-4-carbon"
+  | "gemini-4-argon"
+  | "gemini-3.8-flash"
   | "gemini-3.1-pro-preview"
   | "gemini-3-flash-preview"
   | "gemini-3.1-flash-lite-preview"
@@ -19,6 +22,17 @@ export type GoogleModel =
   | "gemini-3.1-flash-image"
   | "gemini-3.1-flash-lite-image"
   | "gemini-3-pro-image"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {})
+
+/**
+ * Decisions API models: typed questions answered with probabilities, one
+ * forward pass, input tokens billed only. 262,144-token context.
+ *
+ * Reference: https://aistudio.google.com/docs/decisions-api
+ */
+export type GoogleDecisionModel =
+  | "gemini-decision-1"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
 

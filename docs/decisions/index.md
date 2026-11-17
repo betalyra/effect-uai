@@ -183,5 +183,7 @@ projecting deliberately is worth doing.
   ticket, then a routing rule that knows when to ask a human.
 - [TypeSafe AI](/decisions/providers/typesafe-ai/): the provider, its models,
   and what its own confidence field adds.
+- [Google](/decisions/providers/google/): the Decisions API,
+  `gemini-decision-1`, a 262k context and a confidence on every answer.
 - [Reranking](/reranking/): when you have candidates and a query, not a
   predicate.

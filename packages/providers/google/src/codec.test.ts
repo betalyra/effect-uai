@@ -1,8 +1,16 @@
 import { fileUrl } from "@effect-uai/core/File"
 import { imageBytes } from "@effect-uai/core/Image"
 import * as Items from "@effect-uai/core/Items"
+import { Option, Schema } from "effect"
 import { describe, expect, it } from "vitest"
-import { functionResponseBody } from "./codec.js"
+import {
+  WireChunk,
+  accumulatorToTurn,
+  continuationOf,
+  emptyAccumulator,
+  functionResponseBody,
+  ingestChunk,
+} from "./codec.js"
 
 const body = (output: Items.ToolCallOutput["output"], isError?: boolean) =>
   functionResponseBody({
@@ -50,5 +58,33 @@ describe("functionResponseBody", () => {
 
   it("sends an empty response for media-only output", () => {
     expect(body([Items.image(imageBytes(new Uint8Array([1]), "image/png"))]).response).toEqual({})
+  })
+})
+
+describe("long decode", () => {
+  const turnOf = (chunks: ReadonlyArray<unknown>) =>
+    accumulatorToTurn(
+      chunks
+        .map((chunk) => Schema.decodeUnknownSync(WireChunk)(chunk))
+        .reduce((acc, chunk) => ingestChunk(acc, chunk).accumulator, emptyAccumulator),
+    )
+  const text = (t: string) => ({ content: { role: "model", parts: [{ text: t }] } })
+
+  it("reads a cut at Gemini's cap as max_tokens, keeping the final token", () => {
+    const turn = turnOf([
+      { candidates: [{ ...text("Chapter one…"), continuationToken: "checkpoint" }] },
+      { candidates: [{ ...text("…"), finishReason: "CONTINUATION", continuationToken: "hop-2" }] },
+    ])
+    expect(turn.stop_reason).toBe("max_tokens")
+    expect(continuationOf(turn)).toEqual(Option.some("hop-2"))
+  })
+
+  it("offers no continuation once the answer finished, despite a checkpoint token", () => {
+    const turn = turnOf([
+      { candidates: [{ ...text("Done."), continuationToken: "checkpoint" }] },
+      { candidates: [{ ...text(""), finishReason: "STOP" }] },
+    ])
+    expect(turn.stop_reason).toBe("stop")
+    expect(continuationOf(turn)).toEqual(Option.none())
   })
 })

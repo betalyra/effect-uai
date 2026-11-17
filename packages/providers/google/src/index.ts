@@ -1,4 +1,5 @@
 export * as Gemini from "./Gemini.js"
+export * as GeminiDecisionModel from "./GeminiDecisionModel.js"
 export * as GeminiTools from "./GeminiTools.js"
 export * as GeminiEmbedding from "./GeminiEmbedding.js"
 export * as GeminiImageGenerator from "./GeminiImageGenerator.js"

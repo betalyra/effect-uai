@@ -58,7 +58,7 @@ const r1 = RunId.make("r1")
 const wire = (events: ReadonlyArray<RunEvent>): ReadonlyArray<Envelope> =>
   events.map((event, i) => ({ streamId: s, seq: i + 1, runId: r1, event }))
 
-const started: RunEvent = { type: "run-started", runId: r1, inputs: [], protocol: 2 }
+const started: RunEvent = { type: "run-started", runId: r1, inputs: [], protocol: 3 }
 const resultOf = (callId: string, result: Outcome): RunEvent => ({
   type: "tool-result",
   callId,

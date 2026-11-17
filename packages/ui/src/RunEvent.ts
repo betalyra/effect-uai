@@ -7,11 +7,12 @@
  * (`run-completed`, `run-interrupted`, `run-failed`, `run-stopped`). Field
  * names are camelCase; the event discriminator is `type`.
  */
+import * as File from "@effect-uai/core/File"
 import * as Img from "@effect-uai/core/Image"
 import * as Items from "@effect-uai/core/Items"
 import { Schema } from "effect"
 
-export const PROTOCOL_VERSION = 2
+export const PROTOCOL_VERSION = 3
 
 // ---------------------------------------------------------------------------
 // Ids: branded so a stream, run and input id can't be swapped. Wire decoding
@@ -83,6 +84,17 @@ export const Image = event("image", {
   image: Img.ImageSource,
   /** Set only on a preview frame; absent means final. */
   partialIndex: Schema.optional(Schema.Number),
+})
+/**
+ * Audio, video or any other file the run (or the stream) produced; the MIME
+ * type says which. A repeated `id` replaces the earlier one in place. For
+ * anything large, send a URL the app serves: bytes are for small files, and
+ * a provider's file `ref` cannot cross (reading it needs the provider's key).
+ */
+export const Media = event("media", {
+  source: File.FileSource,
+  id: Schema.optional(Schema.String),
+  name: Schema.optional(Schema.String),
 })
 
 // ---------------------------------------------------------------------------
@@ -229,6 +241,7 @@ export const plainEvents = [
   ReasoningDelta,
   Citation,
   Image,
+  Media,
   ObjectStarted,
   ObjectDelta,
   ObjectFailed,

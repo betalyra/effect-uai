@@ -1,0 +1,13 @@
+# Own workspace root so this folder installs standalone: pnpm stops here
+# instead of joining the monorepo's workspace. Install from inside this folder.
+packages: []
+
+# Build scripts we allow to run (pnpm 11 no longer reads `pnpm` fields in
+# package.json). `node-av` fetches prebuilt FFmpeg bindings, which is what
+# lets the standby card be encoded into the stream.
+allowBuilds:
+  esbuild: true
+  node-av: true
+
+minimumReleaseAgeExclude:
+  - mediabunny@1.58.1

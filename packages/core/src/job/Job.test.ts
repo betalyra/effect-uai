@@ -3,7 +3,16 @@ import { Effect, Fiber, Ref, Schema, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { expect, expectTypeOf } from "vitest"
 import * as AiError from "../domain/AiError.js"
-import { type JobRef, JobState, collect, jobRef, refSchema, run, watch } from "./Job.js"
+import {
+  type JobRef,
+  JobState,
+  JobStateSchema,
+  collect,
+  jobRef,
+  refSchema,
+  run,
+  watch,
+} from "./Job.js"
 
 const ref = jobRef<string>("test", "job-1")
 
@@ -138,6 +147,28 @@ describe("run", () => {
 
       expect((yield* Fiber.join(fiber))._tag).toBe("Timeout")
       expect(yield* Ref.get(cancelled)).toBe(true)
+    }),
+  )
+})
+
+describe("JobStateSchema", () => {
+  // Like the ref test below: the constructors and the schema are written
+  // independently, so a field added to one only shows up here.
+  const Wire = Schema.fromJsonString(
+    JobStateSchema(Schema.String, Schema.Struct({ message: Schema.String })),
+  )
+
+  it.effect.each([
+    JobState.Pending({ queuePosition: 2 }),
+    JobState.Pending({}),
+    JobState.Running(),
+    JobState.Succeeded({ result: "video.mp4" }),
+    JobState.Failed({ error: { message: "refused" } }),
+  ])("round-trips %s through JSON as the same state", (state) =>
+    Effect.gen(function* () {
+      const decoded = yield* Schema.decodeEffect(Wire)(yield* Schema.encodeEffect(Wire)(state))
+      expectTypeOf(decoded).toExtend<JobState<string, { readonly message: string }>>()
+      expect(decoded).toEqual({ ...state })
     }),
   )
 })

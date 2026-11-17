@@ -1,5 +1,6 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
-import { Data, Effect, Match, Result, Schema, Stream, pipe } from "effect"
+import { Data, Effect, Match, Result, type Schema, Stream, pipe } from "effect"
+import { toStandard } from "../internal/jsonSchema.js"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,7 +77,7 @@ export const fromEffectSchema = <S extends Schema.Codec<any, any, never, any>>(
   },
 ): StructuredFormat<S["Type"]> => ({
   name: options?.name ?? "output",
-  schema: Schema.toStandardJSONSchemaV1(Schema.toStandardSchemaV1(schema)),
+  schema: toStandard(schema),
   ...(options?.description !== undefined && {
     description: options.description,
   }),

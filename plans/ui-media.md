@@ -1,8 +1,9 @@
 # Plan: `@effect-uai/ui` for streaming media, and the media recipes on it
 
-Status: **planned**, follow-up PR 3 of the video work (see "PR split" in
-`plans/video-generation.md`). Starts after the video capability (PR 1)
-and the direct video providers (PR 2) have merged.
+Status: **next** (reprioritized 2026-11-17). Follow-up of the video work
+(see "PR split" in `plans/video-generation.md`); starts now that the video
+capability (PR 1) has merged. The direct video providers no longer come
+first: they are built on demand.
 
 Scope: the ui package grows from chat to streaming media (program
 streams, live duplex sessions, browser media), and the seven media

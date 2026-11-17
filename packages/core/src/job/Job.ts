@@ -32,6 +32,19 @@ interface JobStateDef extends Data.TaggedEnum.WithGenerics<2> {
 /** Constructors, guards and matchers. The type stays a structural union. */
 export const JobState = Data.taggedEnum<JobStateDef>()
 
+/**
+ * A {@link JobState} on the wire, for sending a job's progress to a client
+ * or persisting it. The caller supplies both payload schemas: `AiError` has
+ * none, so how a failure crosses the wire is the app's choice.
+ */
+export const JobStateSchema = <A extends Schema.Top, E extends Schema.Top>(result: A, error: E) =>
+  Schema.Union([
+    Schema.TaggedStruct("Pending", { queuePosition: Schema.optionalKey(Schema.Finite) }),
+    Schema.TaggedStruct("Running", {}),
+    Schema.TaggedStruct("Succeeded", { result }),
+    Schema.TaggedStruct("Failed", { error }),
+  ])
+
 /** The two states that end a poll loop. */
 export const isSettled = <A, E>(
   state: JobState<A, E>,

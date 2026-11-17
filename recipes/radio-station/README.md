@@ -1,6 +1,6 @@
 ---
 title: Radio station
-description: Run your own AI radio station. An AI DJ writes the next track while the current one streams; the same set replays for free after the first pass.
+description: Run your own AI radio station. An AI DJ writes each track one ahead of what you are listening to; the station runs on the server, so a reload picks up where you were.
 source: recipes/radio-station
 icon: PiRadio
 ---
@@ -8,127 +8,84 @@ icon: PiRadio
 An AI radio station is a DJ that writes each track just before it plays.
 
 You give it a one-line brief (say `"late-night lo-fi study session"`)
-and the DJ writes the first track. While that track streams to
-your speakers, the DJ is already writing and generating the next
-one. By the time the current track ends, the next is ready to play.
-After 10 tracks the station loops; from then on the same set replays
-straight from disk, free.
+and the DJ writes the first track. While you listen to it, the DJ is
+already writing and generating the next one. After 10 tracks the set
+loops; from then on it replays straight from disk, free.
 
-**Scenario.** Open a tab, click **Start**, listen. First track plays
-after a few seconds. Tracks keep coming back-to-back: no gap, no
-manual queueing, no upfront wait for the full playlist. Cycle through
-twice and the second pass costs nothing.
+**Scenario.** Open the page, click **Start**, listen. The first track
+plays once it has been generated; after that, the next one is ready
+before the current one ends. Reload the page and press **Listen**: you
+are back at the track you were on, and nothing is generated twice.
 
 ## The shape
 
-`runStation` is a single `Stream<ServerEvent>` that interleaves
-control events (`track-start`, `track-end`, `track-planned`) with raw
-audio chunks (a `{ type: "data", bytes }` variant). One prefetch fiber
-always runs for the next track, so by the time the current one ends
-the next is on disk.
+The station runs on the server, started once by the first **Start**.
+What a listener needs to know is a session stream of `@effect-uai/ui`
+entries, typed by a contract both sides import (`contract.ts`):
+
+| Entry                         | What it holds                                     |
+| ----------------------------- | ------------------------------------------------- |
+| `data "station"`              | the brief and the length of the set               |
+| `data "track"` (one per slot) | its title, `generating` then `ready`, in place    |
+| `media "track-N"`             | a finished track, as a URL this server serves     |
+| `live "listening"`            | the track a listener reached, so a reload resumes |
+| `live "problem"`              | why the station stopped, if it did                |
+
+The browser folds that stream with `StreamView` and plays the finished
+tracks in order with one `<audio>`. It reports each track it starts
+(`POST /listening`), and that report is what paces generation.
 
 ```
-                            [brief]
-                               │
-                               ▼  plan track 0
-                         { title, prompt }
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│  prefetch fiber : plan track N+1 → gen track N+1 → disk      │
-│  main loop      : emit events + audio as ServerEvent         │
-└─────────────────────────────────────────────────────────────┘
-                               │
-                               ▼  Stream<ServerEvent>
+  brief ─▶ plan track N ─▶ generate to disk ─▶ data "track" ready + media
+              ▲                                             │
+              └── waits until the listener reached N-1 ◀────┘ POST /listening
 ```
 
-## End-to-end streaming
+## One track ahead
 
-`trackStream(plan, i)` returns a `Stream<Uint8Array>`. It never drains
-itself. Cache policy lives inside: hit the file if it's already on
-disk, otherwise generate and tee chunks into a `.partial` file that
-gets renamed on success or removed on failure.
+`runStation` is a stream that makes track `N` only once the listener is
+on track `N-1`. The listener's position is a `SubscriptionRef`, so
+waiting for it is a stream filter:
 
 ```ts
-const trackStream = (plan, i) =>
+const reached = (listening, index) =>
+  SubscriptionRef.changes(listening).pipe(
+    Stream.filter((at) => at >= index),
+    Stream.runHead,
+  )
+
+const tracks = (cfg, index, plans) =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      const file = `tracks/track-${i}.mp3`
-
-      if (yield* fs.exists(file).pipe(Effect.orDie)) {
-        return fs.stream(file).pipe(Stream.orDie)
-      }
-
-      const partial = `${file}.partial`
-      const handle = yield* fs.open(partial, { flag: "w" }).pipe(Effect.orDie)
-      yield* Effect.addFinalizer((exit) =>
-        Exit.isSuccess(exit)
-          ? fs.rename(partial, file).pipe(Effect.orDie)
-          : fs.remove(partial, { force: true }).pipe(Effect.ignore),
-      )
-
-      return MusicGenerator.streamGeneration({ ... }).pipe(
-        Stream.map((c) => c.bytes),
-        Stream.tap((bytes) => handle.writeAll(bytes).pipe(Effect.orDie)),
+      yield* reached(cfg.listening, index - 1)
+      const plan = yield* planTrack(cfg.brief, index, cfg.trackCount, plans, cfg.plannerModel)
+      return entry(index, plan, "generating").pipe(
+        Stream.concat(Stream.drain(Stream.fromEffect(generateTrack(plan, index, ...)))),
+        Stream.concat(entry(index, plan, "ready")),
+        Stream.concat(Stream.succeed(trackMedia(index, plan))),
+        Stream.concat(tracks(cfg, index + 1, [...plans, plan])),
       )
     }),
   )
 ```
 
-The same producer feeds both the main loop (which forwards bytes
-downstream as `{ type: "data", bytes }`) and the prefetcher (which
-just drains it: the cache file is the side-effect that matters).
+Closing the tab stops nothing, but a station nobody listens to stops
+paying after the next track.
 
-## The loop
+## The cache
 
-The radio runs through the `loop` primitive. State (`cycle`, `idx`,
-the current prefetch fiber, the plans seen so far) threads through
-`next(...)`; the body emits a stream of events for one track and ends
-with the new state.
+`generateTrack` writes the generation into a `.partial` file as chunks
+arrive, renamed on success and removed on failure or interrupt, so a
+half-written track is never taken for a cached one. A track already on
+disk is not generated again.
 
-```ts
-const body = (state: LoopState) =>
-  Stream.unwrap(
-    Effect.gen(function* () {
-      // 1. Wait for THIS track's prefetch (gen + maybe a fresh plan).
-      const { newPlan } = yield* Option.match(state.prefetch, {
-        onNone: () => Effect.succeed({ newPlan: Option.none<TrackPlan>() }),
-        onSome: Fiber.join,
-      })
-      const plans = Option.match(newPlan, {
-        onNone: () => state.plans,
-        onSome: (p) => [...state.plans, p],
-      })
+## The host
 
-      // 2. Kick prefetch for the NEXT track. Plan in cycle 0; cached
-      //    plan in cycle 1+.
-      const nextIdx = (state.idx + 1) % cfg.trackCount
-      const fiber = yield* Effect.forkChild(prefetch(cfg, nextIdx, plans))
-
-      // 3. Emit: optional track-planned (when the just-joined fiber
-      //    returned a fresh plan), track-start, audio chunks,
-      //    track-end, await ack, then advance state.
-      const currentPlan = plans[state.idx]!
-      return Stream.fromIterable(upfrontEvents).pipe(
-        Stream.map(v),
-        Stream.concat(
-          trackStream(currentPlan, state.idx, ...).pipe(
-            Stream.map((bytes) => v({ type: "data", bytes })),
-          ),
-        ),
-        Stream.concat(Stream.succeed(v({ type: "track-end", index: state.idx }))),
-        Stream.concat(Stream.fromEffect(cfg.waitTrackEnded).pipe(Stream.drain)),
-        Stream.concat(next<LoopState>({ ...nextState })),
-      )
-    }),
-  )
-```
-
-`waitTrackEnded` is the recipe's only external input: an `Effect<void>`
-that resolves when the consumer signals the track finished playing.
-That's the backpressure: generation runs at most one track ahead of
-actual listening.
+`app.ts` runs the station in a fiber scoped to the server and publishes
+its events into a `PubSub` that replays from the start (the shape of the
+[durable chat](/recipes/durable-chat/) recipe). Every page follows the
+same stream from `GET /events`, so a reload gets the whole set and then
+the live updates.
 
 ## Run it
 
@@ -137,40 +94,24 @@ OPENAI_API_KEY=...     # planner (Responses)
 ELEVENLABS_API_KEY=... # music (ElevenLabs Music), default
 GOOGLE_API_KEY=...     # music (Google Lyria), alternative
 
-bun recipes/radio-station/run.ts
+pnpm tsx recipes/radio-station/run.ts
 
-# Pick a music provider; switch via argv:
-bun recipes/radio-station/run.ts --music-model=google:lyria-3-clip-preview
+# Pick a music provider:
+pnpm tsx recipes/radio-station/run.ts --music-model=google:lyria-3-clip-preview
 
 # Custom brief, custom track count:
-bun recipes/radio-station/run.ts \
+pnpm tsx recipes/radio-station/run.ts \
   --brief "synthwave roadtrip, neon and fast" --tracks 8
 ```
 
-Open `http://localhost:3000`, click **Start**. Tracks land in
-`recipes/radio-station/tracks/{provider}/`. Delete the folder to
-force fresh generation with a new plan; tracks are reused across runs.
-
-There are equivalent `run.ts` and `run.ts` runners next to
-`run.ts`, same recipe body, swapped platform layers.
+Open `http://localhost:3000` and click **Start**. Tracks land in
+`output/radio-station/cache/{provider}/`. Delete the folder to force
+fresh generation; tracks are reused across runs.
 
 ## Cost shape
 
-- **Cycle 0**: N+1 small planner calls (one upfront + one per
-  prefetched track) + N music generations.
-- **Cycle 1+**: zero. The plan list and the audio files are both
-  cached.
-- **Pipeline depth**: max 2 generations in flight at any time (one
-  playing, one prefetching). Bounded by `Fiber.join` at the top of
-  each loop iteration.
-
-## What this generalises to
-
-The Stream-as-output / cache-tee / next-fiber pattern is the shape
-any time you want to stream a generated resource to a live consumer
-while caching the bytes for replay, with the planner running
-concurrently with the previous resource's playback. Substitute music
-for video, image variants, or LLM tool output: only the call inside
-`Stream.unwrap` changes.
+- **First pass**: one small planner call and one music generation per
+  track, at most one track ahead of the listener.
+- **Later passes**: zero. The audio files are on disk.
 
 Source: [`recipe.ts`](https://github.com/betalyra/effect-uai/blob/main/recipes/radio-station/recipe.ts).

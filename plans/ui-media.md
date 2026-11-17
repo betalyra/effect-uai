@@ -290,6 +290,27 @@ server (voice-loop's f32le conversion) and `Media` (U3).
 1. **U1, program streams** (the tv-station needs it): `media` event and
    block, `Run.within` + `sequenceOwned`, `StreamView`. Port tv-station,
    then radio-station.
+
+   **Done (2026-11-17), verified live in a browser.** What it became:
+   - `Run.streamScoped` joined `within` / `sequenceOwned` for entries
+     outside any run; `media` reuses core's `FileSource` (no `ref`), and
+     `RunView` got a `media` block.
+   - tv-station: the station host waits for Play and only then plans the
+     channel, so the page is up at once and booting spends nothing. A
+     `live "problem"` entry tells the viewer when the station stops.
+     Clips are polled with `watch` + `Job.result`, so each slot shows its
+     render job's state.
+   - radio-station: **not** a server-paced shared stream. Pacing needs
+     each track's bitrate, and two tabs on one live stream has little value
+     for a single listener. Instead the station lives on the server, the
+     browser plays finished tracks in order, and `POST /listening` paces
+     generation one track ahead. Trade-off: the first track plays only once
+     fully generated.
+   - Found on the way: Effect 4.1's JSON Schema leaves objects open, which
+     OpenAI rejects; fixed in core (`StructuredFormat` / `Tool` inputs).
+   - Deferred: the tv-station planner as a visible run (needs `planner.ts`
+     to stream its structured calls as `object` events).
+
 2. **U2, live duplex**: `Frame`, channel events, `run-stopped.reason`,
    upstream presets, `LiveSocket.handle`, `Transport.live` / `socket`,
    `Atoms.live`. Port streaming-transcription and streaming-synthesis, the

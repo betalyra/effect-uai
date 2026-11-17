@@ -197,6 +197,7 @@ export default defineConfig({
           label: "Agentic UI",
           items: [
             { label: "Overview", slug: "agentic-ui" },
+            { label: "Program streams", slug: "agentic-ui/program-streams" },
             {
               label: "Frameworks",
               items: [
@@ -211,6 +212,7 @@ export default defineConfig({
               items: [
                 { label: "Direct chat", slug: "recipes/direct-chat" },
                 { label: "Durable chat", slug: "recipes/durable-chat" },
+                { label: "Radio station", slug: "recipes/radio-station" },
               ],
             },
           ],

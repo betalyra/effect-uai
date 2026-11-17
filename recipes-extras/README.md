@@ -19,6 +19,10 @@ workspace. Nothing in this tree is installed unless you opt in.
   context per chunk at indexing time, so chunks full of pronouns become
   findable. Builds a plain and a contextual index side by side to measure it.
   Needs a native libsql binding.
+- [`tv-station/`](./tv-station/) - an LLM invents a channel and plans its
+  running order; each slot becomes a generated video clip, aired as one live
+  broadcast with render progress in the browser. Needs FFmpeg bindings
+  (`node-av`).
 
 ## Running a recipe
 

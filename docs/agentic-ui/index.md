@@ -202,6 +202,13 @@ registry.set(chat.open, { streamId: chatId, after: hydrated.lastSeq })
 
 `initial` only sets the state; `open` is what follows the chat.
 
+## Beyond chat
+
+A station, a generation queue or a dashboard is not a thread of runs but a
+set of entries that change in place, maybe several runs at once, and media
+to play. [Program streams](/agentic-ui/program-streams/) covers the `media`
+event, concurrent runs and `StreamView`, the fold for a whole stream.
+
 ## Your framework
 
 - [Next.js](/agentic-ui/nextjs/): keep `useChat`, or move to this package.

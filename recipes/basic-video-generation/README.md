@@ -2,6 +2,7 @@
 title: Basic video generation
 description: "Submit a clip, keep the job's ref, watch it settle, stream the video to disk. Gemini Omni or fal behind one `VideoGenerator` service."
 source: recipes/basic-video-generation
+icon: PiFilmSlate
 ---
 
 Video generation takes seconds to minutes and costs money per clip, so

@@ -118,9 +118,10 @@ For the foundational shapes, start with [One turn is a stream](/start/getting-st
 
 ## Video
 
-| Recipe                                                     | One-line                                                                                             |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| [Basic video generation](/recipes/basic-video-generation/) | Submit a clip, keep the job's ref, watch it settle, stream it to disk; resume an interrupted render. |
+| Recipe                                                     | One-line                                                                                                                 |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| [Basic video generation](/recipes/basic-video-generation/) | Submit a clip, keep the job's ref, watch it settle, stream it to disk; resume an interrupted render.                     |
+| [TV station](/recipes/tv-station/)                         | An AI invents a TV channel and plans its running order; each slot becomes a generated clip, aired as one live broadcast. |
 
 ## Images
 

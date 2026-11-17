@@ -37,6 +37,8 @@ import {
   PiImage,
   PiImagesSquare,
   PiRadio,
+  PiTelevision,
+  PiFilmSlate,
   PiRanking,
   PiScales,
   PiShieldCheck,
@@ -67,6 +69,7 @@ type Category =
   | "speech"
   | "realtime"
   | "music"
+  | "video"
   | "images"
   | "sandboxes"
   | "browser"
@@ -94,6 +97,7 @@ const CATEGORY_ORDER: ReadonlyArray<Category> = [
   "speech",
   "realtime",
   "music",
+  "video",
   "images",
   "sandboxes",
   "browser",
@@ -113,6 +117,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   speech: "Speech",
   realtime: "Realtime",
   music: "Music",
+  video: "Video",
   images: "Images",
   sandboxes: "Sandboxes",
   browser: "Browser",
@@ -132,6 +137,7 @@ const CATEGORY_ICON: Record<Category, IconType> = {
   speech: PiWaveform,
   realtime: PiPhoneTransfer,
   music: PiMusicNotes,
+  video: PiFilmSlate,
   images: PiImage,
   sandboxes: PiCube,
   browser: PiBrowser,
@@ -290,6 +296,22 @@ const recipes: ReadonlyArray<Recipe> = [
     href: "/recipes/radio-station/",
     Icon: PiRadio,
     category: "music",
+  },
+  {
+    title: "Basic video generation",
+    description:
+      "**A clip as a job you can resume.** Submit, keep the job's ref, watch it render, stream it to disk; a restart collects the render instead of paying twice.",
+    href: "/recipes/basic-video-generation/",
+    Icon: PiFilmSlate,
+    category: "video",
+  },
+  {
+    title: "TV station",
+    description:
+      "**Run your own AI TV channel.** An AI invents a channel and plans its running order; each slot becomes a generated clip, aired as one live broadcast.",
+    href: "/recipes/tv-station/",
+    Icon: PiTelevision,
+    category: "video",
   },
   {
     title: "Conversational image edit",

@@ -452,13 +452,15 @@ Ordered so that each phase is independently shippable.
 | PR  | Scope                                                                              | Plan                         |
 | --- | ---------------------------------------------------------------------------------- | ---------------------------- |
 | 1   | Phases 1, 2, 2b, 4 and 7: the core capability, fal, Gemini Omni, docs              | this file                    |
-| 2   | Phase 5 (direct provider packages) and Phase 6 (the CLI recipes)                   | this file                    |
-| 3   | The tv-station and the `@effect-uai/ui` work for streaming media and live sessions | [ui-media.md](./ui-media.md) |
+| 2   | The tv-station and the `@effect-uai/ui` work for streaming media and live sessions | [ui-media.md](./ui-media.md) |
+| 3   | Phase 6 (the CLI recipes)                                                          | this file                    |
+| -   | Phase 5 (direct provider packages): on demand only                                 | this file                    |
 
-Providers come before the ui work so the core shapes (`VideoInput`, the
-result, the job surface) are checked against every wire format before a
-protocol and a UI depend on them. The ui work is not video-specific: it
-also ports the voice, transcription, synthesis and radio recipes.
+Reprioritized 2026-11-17: the ui work comes next, the direct packages
+wait for someone to ask. fal already reaches MiniMax, Seedance, Kling,
+Veo, LTX and Wan, and fal plus Omni are two different enough wires to
+have checked the core shapes. The ui work is not video-specific: it also
+ports the voice, transcription, synthesis and radio recipes.
 
 The name stays `VideoGenerator`. Like `ImageGenerator`, `MusicGenerator`
 and `Transcriber`, the base capability is named for what it produces.
@@ -748,10 +750,18 @@ Deliverable: the direct Google path, with the same job semantics as
 every other provider. Live end-to-end check through
 `recipes/basic-video-generation` pending.
 
-## Phase 5: direct provider packages
+## Phase 5: direct provider packages (on demand)
 
-In priority order, each a new package at the current fixed-group
-version. Each is independently shippable and none blocks the others.
+Not scheduled (2026-11-17). Build one when someone asks, or needs what
+only the vendor has (MiniMax 2K regeneration, Seedance audio references,
+Runway, which fal does not host). Access notes from 2026-11-17: MiniMax
+self-serve with signup trial credits (video reportedly pay-as-you-go);
+BytePlus self-serve in about 40 markets, not the US, with free tokens on
+older Seedance models only; BFL and Runway paid only ($10 minimum on
+Runway); Replicate, a second aggregator, would be the route to Runway.
+
+The original order, each a new package at the current fixed-group
+version, each independently shippable:
 
 1. `@effect-uai/minimax`: V2 `POST /v2/video_generation`, poll
    `GET /v2/query/video_generation/{task_id}`, `DELETE` to cancel.

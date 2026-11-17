@@ -16,10 +16,26 @@ const started: RunEvent = {
   type: "run-started",
   runId: r1,
   inputs: [],
-  protocol: 2,
+  protocol: 3,
 }
 
 describe("RunView.step", () => {
+  it("replaces media in place by id, so a clip keeps its slot as it updates", () => {
+    const clip = (url: string): RunEvent => ({
+      type: "media",
+      id: "clip-3",
+      source: { _tag: "url", url, mimeType: "video/mp4" },
+    })
+    const view = fold([
+      started,
+      clip("/clips/3/draft"),
+      { type: "text-delta", text: "Rendering." },
+      clip("/clips/3"),
+    ])
+    expect(view.blocks.map((b) => b.type)).toEqual(["media", "output_text"])
+    expect(view.blocks[0]).toMatchObject({ id: "clip-3", source: { url: "/clips/3" } })
+  })
+
   it("step-reset drops the failed attempt's partial output but keeps earlier steps", () => {
     const view = fold([
       started,

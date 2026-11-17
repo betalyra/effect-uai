@@ -77,7 +77,7 @@ describe("Run.sequence", () => {
   it.effect("numbers frames per stream and tags run-scoped ones with the open run", () =>
     Stream.fromIterable<RunEvent>([
       { type: "data", name: "before", value: 1 },
-      { type: "run-started", runId: r1, inputs: [], protocol: 2 },
+      { type: "run-started", runId: r1, inputs: [], protocol: 3 },
       text("hi"),
       { type: "run-completed" },
       { type: "live", name: "after", value: 2 },
@@ -90,6 +90,30 @@ describe("Run.sequence", () => {
       }),
     ),
   )
+})
+
+describe("Run.sequenceOwned", () => {
+  it.effect("keeps each event with its own run when two runs interleave", () => {
+    const run = (id: string) =>
+      Stream.make(text(`${id}-a`), text(`${id}-b`)).pipe(
+        Run.start({ runId: RunId.make(id), name: id }),
+        Run.complete,
+        Run.within(RunId.make(id)),
+      )
+    return run("planner").pipe(
+      Stream.interleave(run("program")),
+      Stream.concat(Run.streamScoped(Stream.make({ type: "live", name: "clock", value: 1 }))),
+      Run.sequenceOwned(StreamId.make("st_1")),
+      Stream.runCollect,
+      Effect.map((frames) => {
+        expect(frames.map((f) => f.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+        const owner = (label: string) =>
+          frames.find((f) => f.event.type === "text-delta" && f.event.text === label)?.runId
+        expect([owner("planner-b"), owner("program-a")]).toEqual(["planner", "program"])
+        expect(frames.at(-1)?.runId).toBeUndefined()
+      }),
+    )
+  })
 })
 
 describe("Run.coalesce", () => {

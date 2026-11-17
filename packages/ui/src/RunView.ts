@@ -9,6 +9,7 @@
  * narrows by `name` to its decoded input and output. Without one (`Untyped`),
  * payloads are the JSON the server sent.
  */
+import * as File from "@effect-uai/core/File"
 import * as Items from "@effect-uai/core/Items"
 import { Array as Arr, JsonPatch, Match, Option, Schema } from "effect"
 import {
@@ -62,11 +63,19 @@ export const ReasoningBlock = Schema.Struct({
   id: Schema.String,
   text: Schema.String,
 })
+/** Audio, video or a file from a `media` event; a repeated id replaces it in place. */
+export const MediaBlock = Schema.Struct({
+  type: Schema.Literal("media"),
+  id: Schema.String,
+  source: File.FileSource,
+  name: Schema.optionalKey(Schema.String),
+})
 
 export type TextBlock = typeof TextBlock.Type
 export type RefusalBlock = typeof RefusalBlock.Type
 export type ImageBlock = typeof ImageBlock.Type
 export type ReasoningBlock = typeof ReasoningBlock.Type
+export type MediaBlock = typeof MediaBlock.Type
 
 /**
  * A tool call; `id` is the call id. `partial` is the latest intermediate value
@@ -131,6 +140,7 @@ export type Block<P extends Payloads = Untyped> =
   | RefusalBlock
   | ImageBlock
   | ReasoningBlock
+  | MediaBlock
   | ToolBlock<P>
   | ObjectBlock<P>
   | DataBlock<P>
@@ -216,7 +226,13 @@ export const dataBlock = <N extends Schema.Top, V extends Schema.Top>(name: N, v
   Schema.Struct({ type: Schema.Literal("data"), id: Schema.String, name, value })
 
 /** Blocks without payloads: the same in every view. */
-export const contentBlocks = [TextBlock, RefusalBlock, ImageBlock, ReasoningBlock] as const
+export const contentBlocks = [
+  TextBlock,
+  RefusalBlock,
+  ImageBlock,
+  ReasoningBlock,
+  MediaBlock,
+] as const
 
 /** A view's schema from its payload-dependent parts; `block` is the whole block union. */
 export const schema = <
@@ -460,6 +476,19 @@ const apply = (v: View, event: RunEvent<Payloads>): View =>
         return last !== undefined && last.type === "output_image" && last.partialIndex !== undefined
           ? { ...v, blocks: replaceAt(v.blocks, index, block(last.id)) }
           : push(v, block)
+      },
+      media: (e): View => {
+        const block = (id: string): AnyBlock => ({
+          type: "media",
+          id,
+          source: e.source,
+          ...(e.name !== undefined ? { name: e.name } : {}),
+        })
+        const index =
+          e.id === undefined ? -1 : v.blocks.findIndex((b) => b.type === "media" && b.id === e.id)
+        return index === -1
+          ? push(v, (id) => block(e.id ?? id))
+          : { ...v, blocks: replaceAt(v.blocks, index, block(e.id ?? "")) }
       },
       "object-started": (e): View =>
         updateObject(v, e.id, (b) => (e.name === undefined ? b : { ...b, name: e.name })),

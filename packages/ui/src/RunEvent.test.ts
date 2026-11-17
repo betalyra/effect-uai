@@ -24,7 +24,7 @@ describe("RunEvent wire codec", () => {
         type: "run-started",
         runId: r1,
         inputs: [RunEvent.InputId.make("in_1")],
-        protocol: 2,
+        protocol: 3,
       }),
     },
     {

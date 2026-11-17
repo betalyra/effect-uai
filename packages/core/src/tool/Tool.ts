@@ -1,6 +1,7 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
 import { Effect, Function, Match, Schema, Stream } from "effect"
 import type { ToolCall } from "../domain/Items.js"
+import { toStandard } from "../internal/jsonSchema.js"
 
 export class ToolError extends Schema.TaggedError<ToolError>("@betalyra/effect-uai/ToolError")(
   "ToolError",
@@ -61,8 +62,7 @@ export type InputSchema<Input> = Schema.Codec<Input, any, never, any> | ToolInpu
 /** Adds the Standard Schema and Standard JSON Schema interfaces to an Effect Schema. */
 export const fromEffectSchema = <S extends Schema.Codec<any, any, never, any>>(
   schema: S,
-): S & ToolInputSchema<S["Type"]> =>
-  Schema.toStandardJSONSchemaV1(Schema.toStandardSchemaV1(schema))
+): S & ToolInputSchema<S["Type"]> => toStandard(schema)
 
 /**
  * Types a schema that implements both Standard Schema and Standard JSON Schema

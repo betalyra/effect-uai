@@ -124,6 +124,51 @@ export const sequence =
     )
 
 // ---------------------------------------------------------------------------
+// Several runs on one stream
+//
+// `sequence` reads the run id off the last `run-started`, so runs merged before
+// it would be mislabelled. Tag each run's events with its id instead, merge,
+// then number them once:
+//
+//   Stream.merge(
+//     planner.pipe(Run.start({ runId: p, name: "planner" }), Run.complete, Run.within(p)),
+//     program.pipe(Run.start({ runId: q, name: "program" }), Run.complete, Run.within(q)),
+//   ).pipe(Run.sequenceOwned(streamId))
+// ---------------------------------------------------------------------------
+
+/** An event and the run it belongs to; no `runId` means stream-scoped. */
+export type Owned = { readonly runId?: RunId; readonly event: RunEvent }
+
+/** Tag every event as belonging to `runId`. */
+export const within =
+  (runId: RunId) =>
+  <E, R>(self: Stream.Stream<RunEvent, E, R>): Stream.Stream<Owned, E, R> =>
+    Stream.map(self, (event): Owned => ({ runId, event }))
+
+/** Tag events as belonging to no run (stream-scoped `data`, `media`, `live`). */
+export const streamScoped = <E, R>(
+  self: Stream.Stream<RunEvent, E, R>,
+): Stream.Stream<Owned, E, R> => Stream.map(self, (event): Owned => ({ event }))
+
+/** Wrap tagged events in envelopes with a per-stream `seq` (starting after `from`). */
+export const sequenceOwned =
+  (streamId: StreamId, options?: { readonly from?: number }) =>
+  <E, R>(self: Stream.Stream<Owned, E, R>): Stream.Stream<Envelope, E, R> =>
+    self.pipe(
+      Stream.mapAccum(
+        () => options?.from ?? 0,
+        (seq, { runId, event }): readonly [number, ReadonlyArray<Envelope>] => [
+          seq + 1,
+          [
+            runId === undefined
+              ? { streamId, seq: seq + 1, event }
+              : { streamId, seq: seq + 1, runId, event },
+          ],
+        ],
+      ),
+    )
+
+// ---------------------------------------------------------------------------
 // coalesce
 // ---------------------------------------------------------------------------
 

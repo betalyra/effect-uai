@@ -17,6 +17,23 @@ const linesOf = (...xs: ReadonlyArray<string>): Stream.Stream<string> => Stream.
 const collect = <A, E>(s: Stream.Stream<A, E>) =>
   Effect.runPromise(Stream.runCollect(s).pipe(Effect.map((c) => Array.from(c))))
 
+describe("fromEffectSchema", () => {
+  // OpenAI rejects an open object (`invalid_json_schema`); Effect's default leaves them open.
+  it("closes every object in the JSON Schema, nested ones included", () => {
+    const Plan = Schema.Struct({
+      title: Schema.String,
+      steps: Schema.Array(Schema.Struct({ id: Schema.Number, note: Schema.String })),
+    })
+    const schema = fromEffectSchema(Plan).schema["~standard"].jsonSchema.input({
+      target: "draft-2020-12",
+    })
+    expect(schema).toMatchObject({
+      additionalProperties: false,
+      properties: { steps: { items: { additionalProperties: false } } },
+    })
+  })
+})
+
 describe("decodeJsonLinesRecoverable", () => {
   it("yields a Success for each well-formed line", async () => {
     const out = await collect(

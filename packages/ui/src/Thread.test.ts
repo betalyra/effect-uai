@@ -130,7 +130,7 @@ describe("Thread across streams", () => {
           type: "run-started",
           runId: RunId.make(stream),
           inputs: [],
-          protocol: 2,
+          protocol: 3,
         },
         { type: "text-delta", text },
         { type: "run-completed" },
@@ -156,7 +156,7 @@ describe("Thread across streams", () => {
       type: "run-started",
       runId: RunId.make(runId),
       inputs: [input],
-      protocol: 2,
+      protocol: 3,
     })
 
     const streaming = [
@@ -201,7 +201,7 @@ describe("Thread across streams", () => {
           type: "run-started",
           runId: r,
           inputs: [InputId.make("in_1")],
-          protocol: 2,
+          protocol: 3,
         },
       },
       { streamId: s, seq: 3, runId: r, event: { type: "text-delta", text: "Hello" } },
@@ -240,7 +240,7 @@ describe("Thread approvals", () => {
 
   // The first run asks for approval and ends interrupted.
   const interrupted = [
-    frame(1, "r1", { type: "run-started", runId: RunId.make("r1"), inputs: [ask.id], protocol: 2 }),
+    frame(1, "r1", { type: "run-started", runId: RunId.make("r1"), inputs: [ask.id], protocol: 3 }),
     frame(2, "r1", { type: "tool-call-ready", ...call }),
     frame(3, "r1", { type: "run-interrupted", interrupts: [{ ...call, reason: "approval" }] }),
   ].reduce(Thread.step, Thread.submitted(Thread.initial, ask))
@@ -257,7 +257,7 @@ describe("Thread approvals", () => {
         type: "run-started",
         runId: RunId.make("r2"),
         inputs: [resolve.id],
-        protocol: 2,
+        protocol: 3,
       }),
       frame(5, "r2", result),
       frame(6, "r2", { type: "text-delta", text: approved ? "Booked." : "Not booked." }),

@@ -41,7 +41,7 @@ export const WireContentBlock = Schema.Union([
 ])
 export type WireContentBlock = typeof WireContentBlock.Type
 
-const WireUsage = Schema.Struct({
+export const WireUsage = Schema.Struct({
   input_tokens: Schema.optional(Schema.Number),
   output_tokens: Schema.optional(Schema.Number),
   cache_creation_input_tokens: Schema.optional(Schema.NullOr(Schema.Number)),

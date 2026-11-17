@@ -11,7 +11,7 @@ import { search, SearchRecency, type SearchResult, WebSearch } from "./WebSearch
  * are pinned on the constructor instead, so they are guaranteed rather than
  * left to the model to remember each call.
  */
-const WebSearchToolArgs = Schema.Struct({
+export const WebSearchToolArgs = Schema.Struct({
   query: Schema.String,
   recency: Schema.optional(SearchRecency),
 })

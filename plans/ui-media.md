@@ -339,7 +339,7 @@ server (voice-loop's f32le conversion) and `Media` (U3).
    `fromTranscript`, `fromRealtime`. Port voice-loop, realtime-voice-agent,
    camera-assistant.
 
-   **Built (2026-11-17), pending a browser check.** What changed from the plan:
+   **Done (2026-11-17), verified live in a browser.** What changed from the plan:
    - The PCM helpers are `@effect-uai/core/Pcm`, not `Audio.Pcm`: `Audio`
      holds types only.
    - `Media.pcmPlayer` is a scoped Effect (`push`, `clear`, `reset`,

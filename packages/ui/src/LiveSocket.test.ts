@@ -18,24 +18,34 @@ type Say = typeof Say.Type
 
 const closed = new Socket.SocketError({ reason: new Socket.SocketCloseError({ code: 1000 }) })
 
-// Two in-memory sockets wired to each other. Writing a close ends both
-// directions, as a WebSocket close handshake does.
+// Two in-memory sockets wired to each other. Writing a close, or releasing
+// the reader's scope, ends both directions, as a WebSocket close does.
 const pair = Effect.gen(function* () {
   const aToB = yield* Queue.unbounded<Frame.Wire, Cause.Done>()
   const bToA = yield* Queue.unbounded<Frame.Wire, Cause.Done>()
+  const shut = yield* Ref.make(false)
   const side = (inbox: typeof aToB, outbox: typeof aToB) => {
-    const write = (chunk: Frame.Wire | Socket.CloseEvent) =>
-      Socket.isCloseEvent(chunk)
-        ? Effect.andThen(Queue.end(outbox), Queue.end(inbox))
-        : Effect.asVoid(Queue.offer(outbox, chunk))
+    const close = Ref.set(shut, true).pipe(
+      Effect.andThen(Queue.end(outbox)),
+      Effect.andThen(Queue.end(inbox)),
+    )
+    // Like Effect's WebSocket: once closed, a write waits for a reconnect that never comes.
+    const write = (chunk: Frame.Wire | Socket.CloseEvent): Effect.Effect<void> =>
+      Effect.flatMap(Ref.get(shut), (ended) => {
+        if (ended) return Effect.never
+        return Socket.isCloseEvent(chunk) ? close : Effect.asVoid(Queue.offer(outbox, chunk))
+      })
     return Socket.make({
-      reader: Effect.succeed({
-        pull: Queue.take(inbox).pipe(
-          Effect.map((wire) => [wire] as const),
-          Effect.mapError(() => closed),
-        ),
-        upgrade: () => Effect.void,
-      }),
+      reader: Effect.acquireRelease(
+        Effect.succeed({
+          pull: Queue.take(inbox).pipe(
+            Effect.map((wire) => [wire] as const),
+            Effect.mapError(() => closed),
+          ),
+          upgrade: () => Effect.void,
+        }),
+        () => close,
+      ),
       writer: Effect.succeed({
         write,
         writeAll: (chunks) => Effect.forEach(chunks, write, { discard: true }),

@@ -306,6 +306,92 @@ describe("UiContract", () => {
   )
 })
 
+describe("stored views", () => {
+  const weather = { temperatureC: 19.4, observedAt: at.toISOString() }
+  // A settled run as an app stored it, with one tool block.
+  const storedWith = (tool: object, interrupts: ReadonlyArray<object> = []) => ({
+    messages: [
+      {
+        role: "assistant",
+        id: "r1",
+        value: {
+          inputs: [],
+          status: "completed",
+          blocks: [
+            { type: "output_text", id: "b0", text: "Checking." },
+            { type: "tool", id: "c1", name: "get_weather", status: "done", ...tool },
+          ],
+          interrupts,
+          live: {},
+          lastSeq: 3,
+          stepStart: 0,
+          nextBlock: 2,
+        },
+      },
+    ],
+    active: null,
+    pending: [],
+    streamId: null,
+    lastSeq: 3,
+  })
+  const decode = Schema.decodeUnknownEffect(ChatUi.Thread)
+  const encode = Schema.encodeEffect(ChatUi.Thread)
+  const blocksOf = (thread: Thread.Thread<ChatPayloads>) =>
+    thread.messages.flatMap((m) => (m.role === "assistant" ? m.value.blocks : []))
+
+  it.effect.each([
+    [
+      "outcome",
+      { input: { city: "Lisbon" }, outcome: { _tag: "Success", value: {} } },
+      "temperatureC",
+    ],
+    ["input", { input: {}, outcome: { _tag: "Success", value: weather } }, "city"],
+    ["partial", { input: { city: "Lisbon" }, partial: { temperatureC: "warm" } }, "temperatureC"],
+  ] as const)(
+    "a block whose %s no longer decodes becomes Stale and stores back unchanged",
+    ([, tool, field]) =>
+      Effect.gen(function* () {
+        const stored = storedWith(tool)
+        const thread = yield* decode(stored)
+        const [text, block] = blocksOf(thread)
+        expect(text).toEqual({ type: "output_text", id: "b0", text: "Checking." })
+        expect(block).toMatchObject({
+          type: "stale",
+          value: stored.messages[0]!.value.blocks[1],
+          issue: expect.stringContaining(field),
+        })
+        expect(Thread.stale(thread)).toEqual([block])
+        expect(yield* encode(thread)).toEqual(stored)
+      }),
+  )
+
+  it.effect("a stale interrupt becomes Stale too", () =>
+    Effect.gen(function* () {
+      const interrupt = { callId: "c1", reason: "approval", name: "get_weather", input: {} }
+      const thread = yield* decode(storedWith({ input: { city: "Lisbon" } }, [interrupt]))
+      expect(Thread.stale(thread)).toEqual([
+        expect.objectContaining({ type: "stale", value: interrupt }),
+      ])
+    }),
+  )
+
+  it.effect("a block that still decodes keeps its typed values", () =>
+    Effect.gen(function* () {
+      const stored = storedWith({
+        input: { city: "Lisbon" },
+        outcome: { _tag: "Success", value: weather },
+      })
+      const thread = yield* decode(stored)
+      expect(blocksOf(thread)[1]).toMatchObject({
+        type: "tool",
+        outcome: { _tag: "Success", value: { temperatureC: 19.4, observedAt: at } },
+      })
+      expect(Thread.stale(thread)).toEqual([])
+      expect(yield* encode(thread)).toEqual(stored)
+    }),
+  )
+})
+
 describe("Atoms with a contract", () => {
   it.effect("thread state is typed by the contract and holds decoded values", () =>
     Effect.gen(function* () {

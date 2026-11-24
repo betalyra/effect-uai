@@ -1,12 +1,11 @@
 import { describe, it } from "@effect/vitest"
-import { Effect, Ref, Schema, Stream } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import { expect } from "vitest"
 import { RealtimeEvent, type RealtimeInput } from "@effect-uai/core/Realtime"
 import * as MockRealtimeSession from "@effect-uai/core/testing/MockRealtimeSession"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Frame from "@effect-uai/ui/Frame"
-import type * as Run from "@effect-uai/ui/Run"
 import { RunId, StreamId } from "@effect-uai/ui/RunEvent"
 import * as StreamView from "@effect-uai/ui/StreamView"
 import { MIC, SPEAKER, type Up } from "./contract.js"
@@ -56,7 +55,6 @@ const run = (
 ) =>
   Effect.gen(function* () {
     const mock = MockRealtimeSession.layer({ initial })
-    const frames = yield* Ref.make<ReadonlyArray<Frame.Frame<Run.Owned>>>([])
     // A real browser reports positions once it has heard some audio, so let
     // the scripted events land first.
     const up: Stream.Stream<Frame.Frame<Up>> = Stream.make(
@@ -76,14 +74,13 @@ const run = (
 
     // The session stays open until its scope closes, so bound the run instead
     // of waiting for an end that never comes.
-    yield* runAgent(cfg, toolkit, up).pipe(
-      Stream.runForEach((frame) => Ref.update(frames, (xs) => [...xs, frame])),
+    const frames = yield* runAgent(cfg, toolkit, up).pipe(
+      Stream.interruptWhen(Effect.sleep("250 millis")),
+      Stream.runCollect,
       Effect.provide(mock.layer),
-      Effect.timeout("250 millis"),
-      Effect.ignore,
     )
 
-    const view = yield* Stream.fromIterable(yield* Ref.get(frames)).pipe(
+    const view = yield* Stream.fromIterable(frames).pipe(
       Frame.sequence(StreamId.make("agent")),
       Stream.runFold(
         () => StreamView.initial,

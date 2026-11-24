@@ -9,7 +9,7 @@
  * `up` ends and the handler is interrupted; when the handler's stream ends,
  * the socket closes.
  */
-import { Cause, Effect, Option, Queue, type Schema, Stream } from "effect"
+import { Cause, Effect, Queue, type Schema, Stream } from "effect"
 import * as HttpServerRequest from "effect/http/HttpServerRequest"
 import * as HttpServerResponse from "effect/http/HttpServerResponse"
 import type * as Socket from "effect/socket/Socket"
@@ -43,20 +43,17 @@ export const run = <U, I, E, R>(
   options: Options<U, I, E, R>,
 ): Effect.Effect<void, never, R> => {
   const decodeUp = Frame.decode(options.up)
+  // A frame that doesn't decode is dropped (a `Result` failure), not fatal.
   const decoded = (wire: Frame.Wire) =>
     decodeUp(wire).pipe(
-      Effect.map(Option.some),
-      Effect.catch((error) =>
-        Effect.as(Effect.logWarning("[live] dropped frame", { error }), Option.none()),
-      ),
+      Effect.tapError((error) => Effect.logWarning("[live] dropped frame", { error })),
+      Effect.result,
     )
   return Effect.gen(function* () {
     const up = yield* Queue.unbounded<Frame.Frame<U>, Cause.Done>()
     const down = options.handler(Stream.fromQueue(up)).pipe(Stream.mapEffect(encodeDown))
     yield* duplex(socket)(down).pipe(
-      Stream.mapEffect(decoded),
-      Stream.filter(Option.isSome),
-      Stream.map((frame) => frame.value),
+      Stream.filterMapEffect(decoded),
       Stream.runForEach((frame) => Queue.offer(up, frame)),
       Effect.ensuring(Queue.end(up)),
     )

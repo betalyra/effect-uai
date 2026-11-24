@@ -9,5 +9,5 @@ Browser media and speech projections for live sessions.
 - **`Projection.fromTranscript` / `transcriptStep`**: a live transcript as one `data` entry per utterance (`Projection.Utterance`).
 - **`Projection.fromRealtime` / `realtimeStep`**: a realtime session as frames; each response a run with its own audio channel, a barge-in `run-stopped { reason: "barge-in" }`, abandoned tool calls closed as cancelled.
 - **`Input.Playback`**: the upstream message for how much of a channel's audio was heard.
-- **`@effect-uai/core/Pcm`**: `s16leToF32`, `f32ToS16le`, `f32leToS16le` (any byte offset) and `wholeSamples`, a stream operator that cuts on sample boundaries.
+- **`@effect-uai/core/Pcm`**: `s16leToF32`, `f32ToS16le`, `f32leToS16le` (any byte offset) and `wholeSamples`, a stream operator that cuts on sample boundaries (its step, `splitSamples`, is exported for callers outside a stream).
 - **Recipes**: voice-loop, realtime-voice-agent and camera-assistant run on live sessions; their config routes, tag bytes and worklet copies are gone.

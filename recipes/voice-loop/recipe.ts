@@ -1,10 +1,10 @@
 /**
  * Voice-assistant pipeline. Two concurrent units share an STT stream:
  *
- *   (1) Stop-word watcher: raw finals → `Fiber.interrupt(activeTurn)` on any
+ *   (1) Stop-word watcher: raw finals → `FiberHandle.clear(activeTurn)` on any
  *       final containing a stop word ("stop", "wait", …).
- *   (2) Utterance loop: finals → settleBurst → fork one `runAssistantTurn`
- *       fiber per coalesced utterance, awaited sequentially.
+ *   (2) Utterance loop: finals → settleBurst → run one `runAssistantTurn`
+ *       fiber per coalesced utterance in `activeTurn`, awaited sequentially.
  *
  * Each user utterance runs in its own fiber: LLM → TTS → paced send. The
  * pacing `Effect.sleep` keeps the fiber alive for the duration the user is
@@ -21,7 +21,7 @@
  * its own audio channel, the audio itself as media. Provider selection,
  * config presets and the server live in `app.ts`.
  */
-import { Cause, Effect, Fiber, Ref, Result, Stream } from "effect"
+import { Cause, Duration, Effect, Fiber, FiberHandle, Ref, Result, Stream } from "effect"
 import type * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import * as Items from "@effect-uai/core/Items"
@@ -35,7 +35,6 @@ import * as Frame from "@effect-uai/ui/Frame"
 import * as Projection from "@effect-uai/ui/Projection"
 import type * as Run from "@effect-uai/ui/Run"
 import { PROTOCOL_VERSION, RunId, type RunEvent } from "@effect-uai/ui/RunEvent"
-import type * as Duration from "effect/Duration"
 import { settleBurst } from "@effect-uai/core/Settle"
 import { MIC, SPEAKER } from "./contract.js"
 
@@ -239,7 +238,9 @@ const runAssistantTurn = (
       emit(Frame.media(SPEAKER, playback(chunk.bytes))).pipe(
         Effect.andThen(
           Effect.sleep(
-            `${Math.max(1, Math.floor(chunkDurationMs(chunk.bytes.length, cfg.tts.outputFormat)))} millis`,
+            Duration.millis(
+              Math.max(1, Math.floor(chunkDurationMs(chunk.bytes.length, cfg.tts.outputFormat))),
+            ),
           ),
         ),
       ),
@@ -278,9 +279,9 @@ export const runPipeline = <E, R>(
     const historyRef = yield* Ref.make<ReadonlyArray<Items.HistoryItem>>([
       Items.systemText(cfg.llm.systemPrompt),
     ])
-    const activeTurn = yield* Ref.make<Fiber.Fiber<void, AiError.AiError> | null>(null)
+    // The turn being spoken; it leaves the handle when it ends.
+    const activeTurn = yield* FiberHandle.make<void, AiError.AiError>()
     const utterance = yield* Ref.make(0)
-    const turns = yield* Ref.make(0)
 
     // Share the STT stream so the stop-word watcher and the utterance loop
     // can both pull finals independently. Subscribers only see events
@@ -294,8 +295,7 @@ export const runPipeline = <E, R>(
       Stream.filter(containsStopWord),
       Stream.runForEach((text) =>
         Effect.logInfo("[pipeline] stop word", { text }).pipe(
-          Effect.andThen(Ref.get(activeTurn)),
-          Effect.flatMap((fiber) => (fiber !== null ? Fiber.interrupt(fiber) : Effect.void)),
+          Effect.andThen(FiberHandle.clear(activeTurn)),
         ),
       ),
       Effect.forkScoped,
@@ -317,16 +317,12 @@ export const runPipeline = <E, R>(
           : Effect.void,
       ),
       Stream.map((batch) => batch.join(" ")),
-      Stream.runForEach((userText) =>
-        Effect.gen(function* () {
-          const n = yield* Ref.getAndUpdate(turns, (t) => t + 1)
-          const fiber = yield* Effect.forkChild(
-            runAssistantTurn(cfg, emit, historyRef, RunId.make(`turn-${n}`), userText),
-          )
-          yield* Ref.set(activeTurn, fiber)
-          yield* Fiber.await(fiber)
-          yield* Ref.set(activeTurn, null)
-        }),
+      Stream.zipWithIndex,
+      Stream.runForEach(([userText, n]) =>
+        FiberHandle.run(
+          activeTurn,
+          runAssistantTurn(cfg, emit, historyRef, RunId.make(`turn-${n}`), userText),
+        ).pipe(Effect.flatMap(Fiber.await)),
       ),
       Effect.tapCause((cause) =>
         Cause.hasInterruptsOnly(cause)

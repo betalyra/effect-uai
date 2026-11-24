@@ -33,4 +33,11 @@ describe("Pcm", () => {
       ])
     }),
   )
+
+  it("passes a whole chunk through without copying when nothing is carried", () => {
+    const chunk = new Uint8Array([1, 2, 3, 4])
+    const [rest, whole] = Pcm.splitSamples(2)(new Uint8Array(0), chunk)
+    expect(rest.byteLength).toBe(0)
+    expect(whole.buffer).toBe(chunk.buffer)
+  })
 })

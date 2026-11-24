@@ -8,7 +8,18 @@
  *
  * `run.ts` supplies the platform `HttpServer`, `FileSystem` and `Path`.
  */
-import { Config, Effect, FileSystem, Layer, Option, Path, Schedule, Stdio, Stream } from "effect"
+import {
+  Config,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  Schedule,
+  Schema,
+  Stdio,
+  Stream,
+} from "effect"
 import * as HttpRouter from "effect/http/HttpRouter"
 import * as HttpServerResponse from "effect/http/HttpServerResponse"
 import * as Frame from "@effect-uai/ui/Frame"
@@ -29,7 +40,7 @@ import { flagValue } from "@effect-uai/recipe-kit/argv"
 import { bundleClient } from "@effect-uai/recipe-kit/bundle"
 import { webSearchLayer } from "../_shared/model.js"
 import { Up } from "./contract.js"
-import { type AssistantConfig, type Frames, runAssistant } from "./recipe.js"
+import { type AssistantConfig, type Frames, jpeg, runAssistant } from "./recipe.js"
 
 // Few results: each one is read aloud eventually, and a spoken answer has no
 // room for ten.
@@ -111,12 +122,7 @@ const readFrames = (dir: string) =>
     const names = (yield* fs.readDirectory(dir)).filter((name) => /\.jpe?g$/i.test(name)).sort()
     return yield* Effect.forEach(
       names,
-      (name) =>
-        Effect.map(fs.readFile(path.join(dir, name)), (bytes): ImageSource => ({
-          _tag: "bytes",
-          bytes,
-          mimeType: "image/jpeg",
-        })),
+      (name) => Effect.map(fs.readFile(path.join(dir, name)), jpeg),
       { concurrency: 4 },
     )
   })
@@ -130,12 +136,6 @@ const paced = (frames: ReadonlyArray<ImageSource>): Stream.Stream<ImageSource> =
 // that replaces it (and then the page offers no camera). A session failure
 // ends it with a `problem`.
 // ---------------------------------------------------------------------------
-
-type Flags = {
-  readonly source: "camera" | "screen"
-  readonly frames: Option.Option<string>
-  readonly search: string
-}
 
 const session = (frames: Frames) =>
   LiveSocket.handle({
@@ -195,14 +195,14 @@ const readWorklets = (names: ReadonlyArray<string>) =>
 // Bootstrap.
 // ---------------------------------------------------------------------------
 
+// A typo in `--source` fails at startup instead of quietly meaning "camera".
+const decodeSource = Schema.decodeUnknownEffect(Schema.Literals(["camera", "screen"]))
+
 const readFlags = Effect.gen(function* () {
   const stdio = yield* Stdio.Stdio
   const argv = yield* stdio.args
   return {
-    source:
-      Option.getOrElse(flagValue("source", argv), () => "camera") === "screen"
-        ? ("screen" as const)
-        : ("camera" as const),
+    source: yield* decodeSource(Option.getOrElse(flagValue("source", argv), () => "camera")),
     frames: flagValue("frames", argv),
     search: Option.getOrElse(flagValue("search", argv), () => "exa"),
   }

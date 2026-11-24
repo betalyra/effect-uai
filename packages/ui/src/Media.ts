@@ -250,6 +250,8 @@ export type Player = {
   readonly played: Effect.Effect<number>
 }
 
+const splitS16 = Pcm.splitSamples(2)
+
 /** A `Player` driving a player worklet node, for the lifetime of the scope. */
 export const playerFrom = (node: AudioWorkletNode): Effect.Effect<Player, never, Scope.Scope> =>
   Effect.gen(function* () {
@@ -267,12 +269,9 @@ export const playerFrom = (node: AudioWorkletNode): Effect.Effect<Player, never,
 
     const push = (bytes: Uint8Array) =>
       Effect.flatMap(
-        Ref.modify(carry, (rest): readonly [Uint8Array, Uint8Array] => {
-          const joined = new Uint8Array(rest.byteLength + bytes.byteLength)
-          joined.set(rest)
-          joined.set(bytes, rest.byteLength)
-          const cut = joined.byteLength - (joined.byteLength % 2)
-          return [joined.subarray(0, cut), joined.slice(cut)]
+        Ref.modify(carry, (rest) => {
+          const [next, whole] = splitS16(rest, bytes)
+          return [whole, next] as const
         }),
         (whole) =>
           Effect.sync(() => {

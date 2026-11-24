@@ -12,7 +12,7 @@
  * forwards what arrives. `Projection.fromRealtime` turns the session into
  * what the page sees.
  */
-import { Cause, Effect, Fiber, Match, Queue, Ref, Stream } from "effect"
+import { Cause, Effect, FiberMap, Match, Queue, Ref, Stream } from "effect"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import type { ImageSource } from "@effect-uai/core/Image"
 import type * as Items from "@effect-uai/core/Items"
@@ -66,7 +66,11 @@ const toolResult = (call: Items.ToolCall, output: Items.ToolCallOutput): RunEven
 
 const event = (e: RunEvent): Frame.Frame<Run.Owned> => Frame.message({ event: e })
 
-const jpeg = (bytes: Uint8Array): ImageSource => ({ _tag: "bytes", bytes, mimeType: "image/jpeg" })
+export const jpeg = (bytes: Uint8Array): ImageSource => ({
+  _tag: "bytes",
+  bytes,
+  mimeType: "image/jpeg",
+})
 
 /**
  * Open a session and run it for as long as the returned stream is read:
@@ -90,17 +94,14 @@ export const runAssistant = <T extends Toolkit.Toolkit>(
         tools: Toolkit.descriptors(toolkit),
       })
 
-      // Tool fibers by `call_id`. An entry lives until its result is sent or the
-      // call is cancelled, never to the end of the response: the turn that
-      // carries a call routinely finishes while the tool is still working.
-      const pending = yield* Ref.make<ReadonlyArray<readonly [string, Fiber.Fiber<void, never>]>>(
-        [],
-      )
+      // Tool fibers by `call_id`, in the session's scope. An entry lives until
+      // its tool is done or the call is cancelled, never to the end of the
+      // response: the turn that carries a call routinely finishes while the
+      // tool is still working.
+      const pending = yield* FiberMap.make<string>()
       // What the page sees beside the session's own events: tool results, frame counts.
       const side = yield* Queue.unbounded<Frame.Frame<Run.Owned>, Cause.Done>()
       const seen = yield* Ref.make(0)
-      // The session's own scope: tool fibers forked from the event stream live in it.
-      const scope = yield* Effect.scope
 
       const show = (frame: ImageSource) =>
         Effect.andThen(
@@ -135,15 +136,17 @@ export const runAssistant = <T extends Toolkit.Toolkit>(
         Toolkit.run(toolkit, [call]).pipe(
           Stream.filter(Toolkit.isOutcome),
           Stream.mapEffect(Toolkit.output(toolkit)),
+          // Once the model has the result, the page gets it too, even if a cancel lands now.
           Stream.runForEach((output) =>
-            Effect.gen(function* () {
-              yield* session.send(RealtimeInput.ToolResult({ output }))
-              yield* Ref.update(pending, (xs) => xs.filter(([id]) => id !== call.call_id))
-              yield* Queue.offer(
-                side,
-                Frame.message({ runId: RunId.make(responseId), event: toolResult(call, output) }),
-              )
-            }),
+            Effect.uninterruptible(
+              Effect.andThen(
+                session.send(RealtimeInput.ToolResult({ output })),
+                Queue.offer(
+                  side,
+                  Frame.message({ runId: RunId.make(responseId), event: toolResult(call, output) }),
+                ),
+              ),
+            ),
           ),
           // A rejected result is invisible otherwise: the model simply never
           // answers, and the page shows a call that never lands.
@@ -160,20 +163,14 @@ export const runAssistant = <T extends Toolkit.Toolkit>(
       const act = (e: RealtimeEvent) =>
         Match.value(e).pipe(
           Match.tag("ToolCall", (call) =>
-            Effect.gen(function* () {
-              const fiber = yield* Effect.forkIn(runTool(call.responseId, call.call), scope)
-              yield* Ref.update(pending, (xs) => [...xs, [call.call.call_id, fiber] as const])
-            }),
+            Effect.asVoid(
+              FiberMap.run(pending, call.call.call_id, runTool(call.responseId, call.call)),
+            ),
           ),
           Match.tag("ToolCallCancelled", (cancelled) =>
-            Ref.modify(pending, (xs) => [
-              xs.filter(([id]) => cancelled.callIds.includes(id)),
-              xs.filter(([id]) => !cancelled.callIds.includes(id)),
-            ]).pipe(
-              Effect.flatMap((doomed) =>
-                Effect.forEach(doomed, ([, fiber]) => Fiber.interrupt(fiber), { discard: true }),
-              ),
-            ),
+            Effect.forEach(cancelled.callIds, (id) => FiberMap.remove(pending, id), {
+              discard: true,
+            }),
           ),
           Match.orElse(() => Effect.void),
         )

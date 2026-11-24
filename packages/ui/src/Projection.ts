@@ -12,7 +12,7 @@ import type * as Realtime from "@effect-uai/core/Realtime"
 import type * as ToolEvent from "@effect-uai/core/ToolEvent"
 import type * as Transcript from "@effect-uai/core/Transcript"
 import * as Turn from "@effect-uai/core/Turn"
-import { Duration, Effect, Match, Option, Schema, Stream } from "effect"
+import { Array as A, Duration, Effect, Match, Option, Record, Schema, Stream } from "effect"
 import * as Frame from "./Frame.js"
 import type { Owned } from "./Run.js"
 import { type Json, PROTOCOL_VERSION, RunId, type RunEvent } from "./RunEvent.js"
@@ -316,28 +316,22 @@ export const realtimeStep =
           ],
         ],
         ToolCallCancelled: ({ callIds }): Live => [
-          {
-            ...s,
-            calls: Object.fromEntries(
-              Object.entries(s.calls).filter(([id]) => !callIds.includes(id)),
+          { ...s, calls: Record.filter(s.calls, (_, id) => !callIds.includes(id)) },
+          A.getSomes(
+            callIds.map((callId) =>
+              Option.map(Record.get(s.calls, callId), (call) =>
+                owned(
+                  {
+                    type: "tool-result",
+                    callId,
+                    name: call.name,
+                    result: { _tag: "Failure", error: "cancelled" },
+                  },
+                  call.runId,
+                ),
+              ),
             ),
-          },
-          callIds.flatMap((callId) => {
-            const call = s.calls[callId]
-            return call === undefined
-              ? []
-              : [
-                  owned(
-                    {
-                      type: "tool-result",
-                      callId,
-                      name: call.name,
-                      result: { _tag: "Failure", error: "cancelled" },
-                    },
-                    call.runId,
-                  ),
-                ]
-          }),
+          ),
         ],
         Interrupted: ({ responseId }): Live =>
           isOpen(responseId)

@@ -101,7 +101,7 @@ Env vars:
 - `GOOGLE_API_KEY`: `elevenlabs` stack: Gemini 2.5 Flash.
 - `MISTRAL_API_KEY`: `mistral` stack: Voxtral STT/TTS + Mistral LLM.
 - `PORT`: optional, defaults to `3000`.
-- `--debug`: optional, logs every partial transcript.
+- `LOG_LEVEL=Debug`: optional, shows the library's debug logs.
 
 ## Architecture
 

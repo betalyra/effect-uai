@@ -4,33 +4,22 @@
  * `--provider elevenlabs|mistral` picks a whole stack, not one model: each
  * preset below fixes the STT, LLM and TTS models together with the voice and
  * the audio formats they agree on, which is why this recipe takes a provider
- * rather than three separate `--model` flags. `--debug` turns on the
- * per-frame pipeline log.
+ * rather than three separate `--model` flags. `LOG_LEVEL=Debug` shows the
+ * library's debug logs.
  *
  * Also here: the HTTP routes (`/`, `/client.js`, `/worklets/*.mjs`, `/ws`), the
  * live session on `/ws`, and the bootstrap `main`, which bundles the browser client and
  * launches the router. `run.ts` supplies the platform `HttpServer`,
  * `FileSystem`, `Path`, `HttpClient` and the WebSocket constructor.
  */
-import {
-  type Cause,
-  Effect,
-  FileSystem,
-  Layer,
-  Option,
-  Path,
-  Queue,
-  References,
-  Stdio,
-  Stream,
-} from "effect"
+import { type Cause, Effect, FileSystem, Layer, Match, Path, Queue, Stream } from "effect"
 import * as HttpRouter from "effect/http/HttpRouter"
 import * as HttpServerResponse from "effect/http/HttpServerResponse"
 import * as Frame from "@effect-uai/ui/Frame"
 import * as LiveSocket from "@effect-uai/ui/LiveSocket"
 import type * as Run from "@effect-uai/ui/Run"
 import { StreamId } from "@effect-uai/ui/RunEvent"
-import { flagValue, providerChoice } from "@effect-uai/recipe-kit/argv"
+import { providerChoice } from "@effect-uai/recipe-kit/argv"
 import {
   incrementalSynthesizerLayer,
   languageModelLayer,
@@ -102,9 +91,6 @@ const mistralConfig: PipelineConfig = {
   utteranceSettle: "350 millis",
 }
 
-const configFor = (provider: Provider): PipelineConfig =>
-  provider === "mistral" ? mistralConfig : elevenlabsConfig
-
 // ---------------------------------------------------------------------------
 // Provider selection. `--provider elevenlabs|mistral` (default elevenlabs).
 // Both stacks register the generic `Transcriber` / `LanguageModel` /
@@ -112,33 +98,31 @@ const configFor = (provider: Provider): PipelineConfig =>
 // pipeline body in recipe.ts doesn't change.
 // ---------------------------------------------------------------------------
 
-type Provider = "elevenlabs" | "mistral"
-
-const readFlags = Effect.gen(function* () {
-  const stdio = yield* Stdio.Stdio
-  const argv = yield* stdio.args
-  return {
-    provider: yield* providerChoice("elevenlabs", "mistral"),
-    debug: Option.isSome(flagValue("debug", argv)),
-  }
-})
-
 /**
- * The three capabilities the pipeline needs, resolved from the preset's own
- * model ids. ElevenLabs has no language model, so that stack borrows Gemini.
+ * A provider's whole stack: its preset, and the three capabilities the
+ * pipeline needs, resolved from the preset's own model ids. ElevenLabs has no
+ * language model, so that stack borrows Gemini.
  */
-const layersFor = (provider: Provider, cfg: PipelineConfig) =>
-  provider === "mistral"
-    ? Layer.mergeAll(
-        streamingTranscriberLayer({ provider: "mistral", model: cfg.stt.model }),
-        incrementalSynthesizerLayer({ provider: "mistral", model: cfg.tts.model }),
-        languageModelLayer({ provider: "mistral", model: cfg.llm.model }),
-      )
-    : Layer.mergeAll(
-        streamingTranscriberLayer({ provider: "elevenlabs", model: cfg.stt.model }),
-        incrementalSynthesizerLayer({ provider: "elevenlabs", model: cfg.tts.model }),
-        languageModelLayer({ provider: "google", model: cfg.llm.model }),
-      )
+const stackFor = (provider: "elevenlabs" | "mistral") =>
+  Match.value(provider).pipe(
+    Match.when("mistral", () => ({
+      cfg: mistralConfig,
+      layers: Layer.mergeAll(
+        streamingTranscriberLayer({ provider: "mistral", model: mistralConfig.stt.model }),
+        incrementalSynthesizerLayer({ provider: "mistral", model: mistralConfig.tts.model }),
+        languageModelLayer({ provider: "mistral", model: mistralConfig.llm.model }),
+      ),
+    })),
+    Match.when("elevenlabs", () => ({
+      cfg: elevenlabsConfig,
+      layers: Layer.mergeAll(
+        streamingTranscriberLayer({ provider: "elevenlabs", model: elevenlabsConfig.stt.model }),
+        incrementalSynthesizerLayer({ provider: "elevenlabs", model: elevenlabsConfig.tts.model }),
+        languageModelLayer({ provider: "google", model: elevenlabsConfig.llm.model }),
+      ),
+    })),
+    Match.exhaustive,
+  )
 
 // ---------------------------------------------------------------------------
 // The live session. `runPipeline` emits frames through a callback; the
@@ -147,7 +131,7 @@ const layersFor = (provider: Provider, cfg: PipelineConfig) =>
 // a `problem`.
 // ---------------------------------------------------------------------------
 
-const session = (cfg: PipelineConfig, minLevel: "Info" | "Debug") =>
+const session = (cfg: PipelineConfig) =>
   LiveSocket.handle({
     up: Up,
     handler: (up) => {
@@ -165,7 +149,6 @@ const session = (cfg: PipelineConfig, minLevel: "Info" | "Debug") =>
               Frame.message({ event: { type: "live", name: "problem", value: error._tag } }),
             ),
           ),
-          Effect.provideService(References.MinimumLogLevel, minLevel),
           Effect.ensuring(Queue.end(queue)),
         ),
       ).pipe(Frame.sequence(StreamId.make("voice")))
@@ -184,7 +167,6 @@ type Assets = {
   readonly indexHtml: string
   readonly clientJs: string
   readonly worklets: ReadonlyArray<readonly [name: string, code: string]>
-  readonly minLevel: "Info" | "Debug"
 }
 
 const routesLayer = (assets: Assets) =>
@@ -194,7 +176,7 @@ const routesLayer = (assets: Assets) =>
     ...assets.worklets.map(([name, code]) =>
       HttpRouter.add("GET", `/worklets/${name}.mjs`, js(code)),
     ),
-    HttpRouter.add("GET", "/ws", session(assets.cfg, assets.minLevel)),
+    HttpRouter.add("GET", "/ws", session(assets.cfg)),
   )
 
 // The audio worklets: `Media.micWorklet` / `playerWorklet` resolve next to the
@@ -218,9 +200,8 @@ const readWorklets = (names: ReadonlyArray<string>) =>
 export const main = Effect.gen(function* () {
   const path = yield* Path.Path
   const fs = yield* FileSystem.FileSystem
-  const flags = yield* readFlags
-  const cfg = configFor(flags.provider)
-  const minLevel = flags.debug ? "Debug" : "Info"
+  const provider = yield* providerChoice("elevenlabs", "mistral")
+  const { cfg, layers } = stackFor(provider)
 
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   // The client is TypeScript, bundled on demand (no prebuilt JS on disk).
@@ -229,16 +210,16 @@ export const main = Effect.gen(function* () {
   const worklets = yield* readWorklets(["mic", "player"])
 
   yield* Effect.logInfo(
-    `voice-loop (${flags.provider}: stt=${cfg.stt.model} llm=${cfg.llm.model} tts=${cfg.tts.model})`,
+    `voice-loop (${provider}: stt=${cfg.stt.model} llm=${cfg.llm.model} tts=${cfg.tts.model})`,
   )
 
   // The rule's `return yield*` suggestion would surface the served layer's
   // requirements onto main's R and break `run.ts`, so keep returning the
   // launch effect here.
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(
-    HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs, worklets, minLevel })),
-  ).pipe(Effect.provide(layersFor(flags.provider, cfg)))
+  return Layer.launch(HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs, worklets }))).pipe(
+    Effect.provide(layers),
+  )
 }).pipe(
   Effect.flatten,
   Effect.tapCause((cause) => Effect.logError("[main] fatal", { cause })),

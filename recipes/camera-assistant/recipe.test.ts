@@ -1,5 +1,5 @@
 import { describe, it } from "@effect/vitest"
-import { Effect, Ref, Schema, Stream } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import { expect, expectTypeOf } from "vitest"
 import type { ImageSource } from "@effect-uai/core/Image"
 import { RealtimeEvent, type RealtimeInput } from "@effect-uai/core/Realtime"
@@ -8,7 +8,6 @@ import * as MockRealtimeSession from "@effect-uai/core/testing/MockRealtimeSessi
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import * as Frame from "@effect-uai/ui/Frame"
-import type * as Run from "@effect-uai/ui/Run"
 import { RunId, StreamId } from "@effect-uai/ui/RunEvent"
 import * as StreamView from "@effect-uai/ui/StreamView"
 import { CAMERA, MIC, type Up } from "./contract.js"
@@ -64,7 +63,6 @@ const run = (
 ) =>
   Effect.gen(function* () {
     const mock = MockRealtimeSession.layer({ initial })
-    const emitted = yield* Ref.make<ReadonlyArray<Frame.Frame<Run.Owned>>>([])
     const up: Stream.Stream<Frame.Frame<Up>> = Stream.make(
       Frame.media(MIC, new Uint8Array([1, 2])),
       ...cameraFrames.map((byte) => Frame.media(CAMERA, new Uint8Array([byte]))),
@@ -72,14 +70,13 @@ const run = (
 
     // The session stays open until its scope closes, so bound the run instead
     // of waiting for an end that never comes.
-    yield* runAssistant(cfg, toolkit, frames, up).pipe(
-      Stream.runForEach((frame) => Ref.update(emitted, (xs) => [...xs, frame])),
+    const emitted = yield* runAssistant(cfg, toolkit, frames, up).pipe(
+      Stream.interruptWhen(Effect.sleep("250 millis")),
+      Stream.runCollect,
       Effect.provide(mock.layer),
-      Effect.timeout("250 millis"),
-      Effect.ignore,
     )
 
-    const view = yield* Stream.fromIterable(yield* Ref.get(emitted)).pipe(
+    const view = yield* Stream.fromIterable(emitted).pipe(
       Frame.sequence(StreamId.make("camera")),
       Stream.runFold(
         () => StreamView.initial,

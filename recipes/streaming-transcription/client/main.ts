@@ -13,7 +13,7 @@ import type * as Projection from "@effect-uai/ui/Projection"
 import * as StreamView from "@effect-uai/ui/StreamView"
 import * as Transport from "@effect-uai/ui/Transport"
 import type * as UiContract from "@effect-uai/ui/UiContract"
-import { Effect, Fiber, Stream } from "effect"
+import { Effect, Option, Predicate, Stream } from "effect"
 import { Atom, AtomRegistry } from "effect/reactivity"
 import * as Socket from "effect/socket/Socket"
 import { MIC, TranscriptUi, Up } from "../contract.js"
@@ -82,18 +82,23 @@ const render = (view: View): void => {
 }
 
 // ---------------------------------------------------------------------------
-// Mic: a fiber that sends `Media.mic` frames on the channel the session opened
+// Mic: one per connection, released when it ends
 // ---------------------------------------------------------------------------
 
-let mic: Fiber.Fiber<void> | null = null
+/** The mic channel, once the session has said which rate to record at. */
+const declared = AtomRegistry.toStream(registry, session.state).pipe(
+  Stream.map((view) => view.channels[MIC]),
+  Stream.filter(
+    (channel): channel is StreamView.ChannelInfo =>
+      Predicate.isNotUndefined(channel) && channel.direction === "up",
+  ),
+  Stream.runHead,
+  Effect.flatMap(Option.match({ onNone: () => Effect.never, onSome: Effect.succeed })),
+)
 
-const stopMic = (): void => {
-  if (mic !== null) Effect.runFork(Fiber.interrupt(mic))
-  mic = null
-}
-
-const startMic = (sampleRate: number) =>
-  Media.mic({ sampleRate, worklet: MIC_WORKLET }).pipe(
+const recording = Effect.gen(function* () {
+  const sampleRate = (yield* declared).sampleRate ?? 16000
+  yield* Media.mic({ sampleRate, worklet: MIC_WORKLET }).pipe(
     Stream.zipWithIndex,
     Stream.runForEach(([bytes, n]) =>
       Effect.sync(() => {
@@ -102,32 +107,29 @@ const startMic = (sampleRate: number) =>
         registry.set(session.send, Frame.media(MIC, bytes))
       }),
     ),
-    Effect.catch((error) =>
-      Effect.sync(() => {
-        setStatus(`mic ${error.reason}: ${error.message}`, true)
-        registry.set(session.disconnect, undefined)
-      }),
-    ),
-    Effect.runFork,
   )
-
-// The session says which rate to record at; start once it has.
-registry.subscribe(
-  session.state,
-  (view) => {
-    render(view)
-    const channel = view.channels[MIC]
-    if (mic !== null || channel === undefined || channel.direction !== "up") return
-    mic = startMic(channel.sampleRate ?? 16000)
-  },
-  { immediate: true },
+}).pipe(
+  Effect.catch((error) =>
+    Effect.sync(() => {
+      setStatus(`mic ${error.reason}: ${error.message}`, true)
+      registry.set(session.disconnect, undefined)
+    }),
+  ),
 )
+
+AtomRegistry.toStream(registry, session.connected).pipe(
+  Stream.changes,
+  Stream.switchMap((connected) => (connected ? Stream.fromEffect(recording) : Stream.empty)),
+  Stream.runDrain,
+  Effect.runFork,
+)
+
+registry.subscribe(session.state, render, { immediate: true })
 
 registry.subscribe(
   session.connected,
   (connected) => {
     toggleBtn.textContent = connected ? "Stop" : "Start"
-    if (!connected) stopMic()
   },
   { immediate: true },
 )

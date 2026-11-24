@@ -10,6 +10,10 @@
  * the microphone continuously and decides for itself that it has been
  * interrupted: the answer's run ends `run-stopped { reason: "barge-in" }`,
  * and the page stops the voice and reports how much of it was heard.
+ *
+ * The devices are one Effect per connection: each opens once the server
+ * declares its channel, and all of them are released when the connection
+ * ends. Rendering is plain DOM.
  */
 import * as Atoms from "@effect-uai/ui/Atoms"
 import * as Frame from "@effect-uai/ui/Frame"
@@ -19,7 +23,7 @@ import * as RunView from "@effect-uai/ui/RunView"
 import * as StreamView from "@effect-uai/ui/StreamView"
 import * as Transport from "@effect-uai/ui/Transport"
 import type * as UiContract from "@effect-uai/ui/UiContract"
-import { Effect, Exit, Fiber, Scope, Stream } from "effect"
+import { Effect, Option, Predicate, Queue, Stream } from "effect"
 import { Atom, AtomRegistry } from "effect/reactivity"
 import * as Socket from "effect/socket/Socket"
 import { AgentUi, MIC, SPEAKER, Up } from "../contract.js"
@@ -35,32 +39,11 @@ type Payloads = UiContract.Payloads<typeof AgentUi>
 type View = StreamView.StreamView<Payloads>
 
 // ---------------------------------------------------------------------------
-// Playback: one player per session, at the rate the first answer declares
-// ---------------------------------------------------------------------------
-
-let player: { readonly scope: Scope.Closeable; readonly ready: Promise<Media.Player> } | null = null
-
-const openPlayer = (sampleRate: number): void => {
-  const scope = Effect.runSync(Scope.make())
-  const ready = Effect.runPromise(
-    Media.pcmPlayer({ sampleRate, worklet: PLAYER_WORKLET }).pipe(Scope.provide(scope)),
-  )
-  ready.catch((error: Media.MediaError) =>
-    setStatus(`audio ${error.reason}: ${error.message}`, true),
-  )
-  player = { scope, ready }
-}
-
-const withPlayer = (f: (p: Media.Player) => Effect.Effect<void>) => {
-  const current = player
-  return current === null
-    ? Effect.void
-    : Effect.promise(() => current.ready).pipe(Effect.flatMap(f))
-}
-
-// ---------------------------------------------------------------------------
 // The session
 // ---------------------------------------------------------------------------
+
+// Answer audio, held until the player is open.
+const speaker = Effect.runSync(Queue.unbounded<Uint8Array>())
 
 const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
 
@@ -71,35 +54,53 @@ const session = Atoms.live({
   step: StreamView.step,
   decode: AgentUi.decode,
   media: (frame) =>
-    frame.channel === SPEAKER ? withPlayer((p) => p.push(frame.bytes)) : Effect.void,
+    frame.channel === SPEAKER ? Effect.asVoid(Queue.offer(speaker, frame.bytes)) : Effect.void,
 })
 
 const registry = AtomRegistry.make()
-
-/**
- * Stop the voice and report how much of it was heard, so the part that never
- * reached the speakers leaves the model's memory of what it said.
- */
-const cutPlayback = withPlayer((p) =>
-  Effect.gen(function* () {
-    const playedMs = Math.round(yield* p.played)
-    registry.set(session.send, Frame.message({ kind: "playback", channel: SPEAKER, playedMs }))
-    yield* p.clear
-  }),
-)
+const views = AtomRegistry.toStream(registry, session.state)
 
 // ---------------------------------------------------------------------------
-// Mic: a fiber that sends `Media.mic` frames on the channel the session opened
+// Devices: the mic and the player, for as long as a connection lasts
 // ---------------------------------------------------------------------------
 
-let mic: Fiber.Fiber<void> | null = null
+/** A channel, once the server has opened it. */
+const opened = (channel: number) =>
+  views.pipe(
+    Stream.map((view) => view.channels[channel]),
+    Stream.filter(Predicate.isNotUndefined),
+    Stream.runHead,
+    Effect.flatMap(Option.match({ onNone: () => Effect.never, onSome: Effect.succeed })),
+  )
+
+/** Each answer once, the first time `idsOf` lists it. */
+const once = (
+  idsOf: (answers: ReadonlyArray<RunView.RunView<Payloads>>) => ReadonlyArray<string>,
+) =>
+  views.pipe(
+    Stream.mapAccum(
+      () => new Set<string>(),
+      (seen, view): readonly [Set<string>, ReadonlyArray<string>] => {
+        const ids = idsOf(StreamView.runsOf(view, "assistant")).filter((id) => !seen.has(id))
+        return [new Set([...seen, ...ids]), ids]
+      },
+    ),
+  )
+
+const idOf = (answer: RunView.RunView<Payloads>): ReadonlyArray<string> =>
+  answer.runId === undefined ? [] : [answer.runId]
 
 // The model listens while it speaks, so without echo cancellation it hears
 // its own voice through the speakers and interrupts itself (on by default).
-const startMic = (sampleRate: number) =>
-  Media.mic({ sampleRate, worklet: MIC_WORKLET }).pipe(
-    Stream.runForEach((bytes) =>
-      Effect.sync(() => registry.set(session.send, Frame.media(MIC, bytes))),
+const devices = Effect.gen(function* () {
+  yield* Queue.clear(speaker)
+  yield* opened(MIC).pipe(
+    Effect.flatMap((up) =>
+      Media.mic({ sampleRate: up.sampleRate ?? 16000, worklet: MIC_WORKLET }).pipe(
+        Stream.runForEach((bytes) =>
+          Effect.sync(() => registry.set(session.send, Frame.media(MIC, bytes))),
+        ),
+      ),
     ),
     Effect.catch((error) =>
       Effect.sync(() => {
@@ -107,15 +108,46 @@ const startMic = (sampleRate: number) =>
         registry.set(session.disconnect, undefined)
       }),
     ),
-    Effect.runFork,
+    Effect.forkScoped,
   )
+  // One player for the connection, at the rate the first answer declares.
+  const down = yield* opened(SPEAKER)
+  const player = yield* Media.pcmPlayer({
+    sampleRate: down.sampleRate ?? 24000,
+    worklet: PLAYER_WORKLET,
+  })
+  // Each answer's position is counted on its own: it is reported against one answer.
+  yield* once((answers) => answers.flatMap(idOf)).pipe(
+    Stream.runForEach(() => player.reset),
+    Effect.forkScoped,
+  )
+  // Stop the voice and report how much of it was heard, so the part that
+  // never reached the speakers leaves the model's memory of what it said.
+  yield* once((answers) => answers.filter((a) => a.status === "stopped").flatMap(idOf)).pipe(
+    Stream.runForEach(() =>
+      Effect.gen(function* () {
+        yield* Queue.clear(speaker)
+        const playedMs = Math.round(yield* player.played)
+        registry.set(session.send, Frame.message({ kind: "playback", channel: SPEAKER, playedMs }))
+        yield* player.clear
+      }),
+    ),
+    Effect.forkScoped,
+  )
+  yield* Stream.fromQueue(speaker).pipe(Stream.runForEach(player.push))
+}).pipe(
+  Effect.catch((error) =>
+    Effect.sync(() => setStatus(`audio ${error.reason}: ${error.message}`, true)),
+  ),
+  Effect.scoped,
+)
 
-const stopDevices = (): void => {
-  if (mic !== null) Effect.runFork(Fiber.interrupt(mic))
-  mic = null
-  if (player !== null) Effect.runFork(Scope.close(player.scope, Exit.void))
-  player = null
-}
+AtomRegistry.toStream(registry, session.connected).pipe(
+  Stream.changes,
+  Stream.switchMap((connected) => (connected ? Stream.fromEffect(devices) : Stream.empty)),
+  Stream.runDrain,
+  Effect.runFork,
+)
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -227,32 +259,11 @@ const render = (view: View): void => {
   else setStatus(last?.status === "streaming" ? "speaking…" : "listening")
 }
 
-// Answers whose start or barge-in the player has already handled.
-const started = new Set<string>()
-const cut = new Set<string>()
-
 registry.subscribe(
   session.state,
   (view) => {
     note(view)
     render(view)
-    const up = view.channels[MIC]
-    if (mic === null && up !== undefined) mic = startMic(up.sampleRate ?? 16000)
-    const down = view.channels[SPEAKER]
-    if (player === null && down !== undefined) openPlayer(down.sampleRate ?? 24000)
-    for (const answer of StreamView.runsOf(view, "assistant")) {
-      const id = answer.runId
-      if (id === undefined) continue
-      // Each answer's position is counted on its own: it is reported against one answer.
-      if (!started.has(id)) {
-        started.add(id)
-        Effect.runFork(withPlayer((p) => p.reset))
-      }
-      if (answer.status === "stopped" && !cut.has(id)) {
-        cut.add(id)
-        Effect.runFork(cutPlayback)
-      }
-    }
   },
   { immediate: true },
 )
@@ -261,7 +272,6 @@ registry.subscribe(
   session.connected,
   (connected) => {
     toggleBtn.textContent = connected ? "Stop" : "Start"
-    if (!connected) stopDevices()
   },
   { immediate: true },
 )
@@ -273,8 +283,6 @@ toggleBtn.addEventListener("click", () => {
   } else {
     setStatus("connecting…")
     entries = []
-    started.clear()
-    cut.clear()
     registry.set(session.connect, undefined)
   }
 })

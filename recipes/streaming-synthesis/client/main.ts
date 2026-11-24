@@ -3,7 +3,8 @@
  * the first Enter and held across lines. Each line goes up as a message;
  * the server declares the speech format with `channel-opened`, and the
  * speech arrives as media frames on that channel, played gap-free by a
- * `Media.pcmPlayer` at that format's rate.
+ * `Media.pcmPlayer` at that format's rate. The player is one Effect per
+ * connection, released when it ends; rendering is plain DOM.
  */
 import * as Atoms from "@effect-uai/ui/Atoms"
 import * as Frame from "@effect-uai/ui/Frame"
@@ -11,7 +12,7 @@ import * as Media from "@effect-uai/ui/Media"
 import * as StreamView from "@effect-uai/ui/StreamView"
 import * as Transport from "@effect-uai/ui/Transport"
 import type * as UiContract from "@effect-uai/ui/UiContract"
-import { Effect, Exit, Scope } from "effect"
+import { Effect, Option, Predicate, Queue, Stream } from "effect"
 import { Atom, AtomRegistry } from "effect/reactivity"
 import * as Socket from "effect/socket/Socket"
 import { Say, SPEAKER, SynthesisUi } from "../contract.js"
@@ -25,38 +26,11 @@ const PLAYER_WORKLET = "/worklets/player.mjs"
 type View = StreamView.StreamView<UiContract.Payloads<typeof SynthesisUi>>
 
 // ---------------------------------------------------------------------------
-// Playback: created when the session declares the speech format
-// ---------------------------------------------------------------------------
-
-// One player per session, in its own scope; frames that arrive while it starts wait for it.
-let player: { readonly scope: Scope.Closeable; readonly ready: Promise<Media.Player> } | null = null
-
-const openPlayer = (sampleRate: number): void => {
-  const scope = Effect.runSync(Scope.make())
-  const ready = Effect.runPromise(
-    Media.pcmPlayer({ sampleRate, worklet: PLAYER_WORKLET }).pipe(Scope.provide(scope)),
-  )
-  ready.catch((error: Media.MediaError) =>
-    setStatus(`audio ${error.reason}: ${error.message}`, true),
-  )
-  player = { scope, ready }
-}
-
-const closePlayer = (): void => {
-  if (player !== null) Effect.runFork(Scope.close(player.scope, Exit.void))
-  player = null
-}
-
-const play = (bytes: Uint8Array) => {
-  const current = player
-  return current === null
-    ? Effect.void
-    : Effect.promise(() => current.ready).pipe(Effect.flatMap((p) => p.push(bytes)))
-}
-
-// ---------------------------------------------------------------------------
 // The session
 // ---------------------------------------------------------------------------
+
+// Speech, held until the player is open.
+const speaker = Effect.runSync(Queue.unbounded<Uint8Array>())
 
 const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
 
@@ -66,10 +40,45 @@ const session = Atoms.live({
   initial: StreamView.empty<UiContract.Payloads<typeof SynthesisUi>>(),
   step: StreamView.step,
   decode: SynthesisUi.decode,
-  media: (frame) => (frame.channel === SPEAKER ? play(frame.bytes) : Effect.void),
+  media: (frame) =>
+    frame.channel === SPEAKER ? Effect.asVoid(Queue.offer(speaker, frame.bytes)) : Effect.void,
 })
 
 const registry = AtomRegistry.make()
+
+// ---------------------------------------------------------------------------
+// Playback: one player per connection, released when it ends
+// ---------------------------------------------------------------------------
+
+/** The speech channel, once the server has declared its format. */
+const declared = AtomRegistry.toStream(registry, session.state).pipe(
+  Stream.map((view) => view.channels[SPEAKER]),
+  Stream.filter(Predicate.isNotUndefined),
+  Stream.runHead,
+  Effect.flatMap(Option.match({ onNone: () => Effect.never, onSome: Effect.succeed })),
+)
+
+const playback = Effect.gen(function* () {
+  yield* Queue.clear(speaker)
+  const down = yield* declared
+  const player = yield* Media.pcmPlayer({
+    sampleRate: down.sampleRate ?? 48000,
+    worklet: PLAYER_WORKLET,
+  })
+  yield* Stream.fromQueue(speaker).pipe(Stream.runForEach(player.push))
+}).pipe(
+  Effect.catch((error) =>
+    Effect.sync(() => setStatus(`audio ${error.reason}: ${error.message}`, true)),
+  ),
+  Effect.scoped,
+)
+
+AtomRegistry.toStream(registry, session.connected).pipe(
+  Stream.changes,
+  Stream.switchMap((connected) => (connected ? Stream.fromEffect(playback) : Stream.empty)),
+  Stream.runDrain,
+  Effect.runFork,
+)
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -105,22 +114,13 @@ const render = (view: View): void => {
   if (problem !== undefined) setStatus(`failed: ${problem}`, true)
 }
 
-registry.subscribe(
-  session.state,
-  (view) => {
-    render(view)
-    const speaker = view.channels[SPEAKER]
-    if (player === null && speaker !== undefined) openPlayer(speaker.sampleRate ?? 48000)
-  },
-  { immediate: true },
-)
+registry.subscribe(session.state, render, { immediate: true })
 
 // Lines typed before the session is open go out once it is.
 const pending: Array<string> = []
 
 registry.subscribe(session.connected, (connected) => {
   if (!connected) {
-    closePlayer()
     // A problem already says why it closed.
     if (registry.get(session.state).live.problem === undefined) setStatus("session closed")
     return

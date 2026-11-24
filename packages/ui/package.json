@@ -95,7 +95,9 @@
     "./Atoms": {
       "types": "./dist/Atoms.d.mts",
       "import": "./dist/Atoms.mjs"
-    }
+    },
+    "./worklets/mic": "./dist/worklets/mic.mjs",
+    "./worklets/player": "./dist/worklets/player.mjs"
   },
   "publishConfig": {
     "access": "public"

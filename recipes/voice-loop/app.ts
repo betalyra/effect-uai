@@ -7,8 +7,8 @@
  * rather than three separate `--model` flags. `--debug` turns on the
  * per-frame pipeline log.
  *
- * Also here: the HTTP routes (`/`, `/client.js`, `/ws`), the live session on
- * `/ws`, and the bootstrap `main`, which bundles the browser client and
+ * Also here: the HTTP routes (`/`, `/client.js`, `/worklets/*.mjs`, `/ws`), the
+ * live session on `/ws`, and the bootstrap `main`, which bundles the browser client and
  * launches the router. `run.ts` supplies the platform `HttpServer`,
  * `FileSystem`, `Path`, `HttpClient` and the WebSocket constructor.
  */
@@ -183,6 +183,7 @@ type Assets = {
   readonly cfg: PipelineConfig
   readonly indexHtml: string
   readonly clientJs: string
+  readonly worklets: ReadonlyArray<readonly [name: string, code: string]>
   readonly minLevel: "Info" | "Debug"
 }
 
@@ -190,8 +191,25 @@ const routesLayer = (assets: Assets) =>
   Layer.mergeAll(
     HttpRouter.add("GET", "/", HttpServerResponse.html(assets.indexHtml)),
     HttpRouter.add("GET", "/client.js", js(assets.clientJs)),
+    ...assets.worklets.map(([name, code]) =>
+      HttpRouter.add("GET", `/worklets/${name}.mjs`, js(code)),
+    ),
     HttpRouter.add("GET", "/ws", session(assets.cfg, assets.minLevel)),
   )
+
+// The audio worklets: `Media.micWorklet` / `playerWorklet` resolve next to the
+// bundled `/client.js`, so they are served from `/worklets/`.
+const readWorklets = (names: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    return yield* Effect.forEach(names, (name) =>
+      path.fromFileUrl(new URL(import.meta.resolve(`@effect-uai/ui/worklets/${name}`))).pipe(
+        Effect.flatMap(fs.readFileString),
+        Effect.map((code) => [name, code] as const),
+      ),
+    )
+  })
 
 // ---------------------------------------------------------------------------
 // Bootstrap effect.
@@ -208,6 +226,7 @@ export const main = Effect.gen(function* () {
   // The client is TypeScript, bundled on demand (no prebuilt JS on disk).
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "client/index.html"))
+  const worklets = yield* readWorklets(["mic", "player"])
 
   yield* Effect.logInfo(
     `voice-loop (${flags.provider}: stt=${cfg.stt.model} llm=${cfg.llm.model} tts=${cfg.tts.model})`,
@@ -217,9 +236,9 @@ export const main = Effect.gen(function* () {
   // requirements onto main's R and break `run.ts`, so keep returning the
   // launch effect here.
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs, minLevel }))).pipe(
-    Effect.provide(layersFor(flags.provider, cfg)),
-  )
+  return Layer.launch(
+    HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs, worklets, minLevel })),
+  ).pipe(Effect.provide(layersFor(flags.provider, cfg)))
 }).pipe(
   Effect.flatten,
   Effect.tapCause((cause) => Effect.logError("[main] fatal", { cause })),

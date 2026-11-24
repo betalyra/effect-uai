@@ -90,7 +90,7 @@ const stopMic = (): void => {
 }
 
 const startMic = (sampleRate: number) =>
-  Media.mic({ sampleRate }).pipe(
+  Media.mic({ sampleRate, worklet: Media.micWorklet }).pipe(
     Stream.zipWithIndex,
     Stream.runForEach(([bytes, n]) =>
       Effect.sync(() => {

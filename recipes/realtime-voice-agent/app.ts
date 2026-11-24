@@ -271,14 +271,32 @@ type Assets = {
   readonly cfg: AgentConfig
   readonly indexHtml: string
   readonly clientJs: string
+  readonly worklets: ReadonlyArray<readonly [name: string, code: string]>
 }
 
 const routesLayer = (assets: Assets) =>
   Layer.mergeAll(
     HttpRouter.add("GET", "/", HttpServerResponse.html(assets.indexHtml)),
     HttpRouter.add("GET", "/client.js", js(assets.clientJs)),
+    ...assets.worklets.map(([name, code]) =>
+      HttpRouter.add("GET", `/worklets/${name}.mjs`, js(code)),
+    ),
     HttpRouter.add("GET", "/ws", session(assets.cfg)),
   )
+
+// The audio worklets: `Media.micWorklet` / `playerWorklet` resolve next to the
+// bundled `/client.js`, so they are served from `/worklets/`.
+const readWorklets = (names: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    return yield* Effect.forEach(names, (name) =>
+      path.fromFileUrl(new URL(import.meta.resolve(`@effect-uai/ui/worklets/${name}`))).pipe(
+        Effect.flatMap(fs.readFileString),
+        Effect.map((code) => [name, code] as const),
+      ),
+    )
+  })
 
 // ---------------------------------------------------------------------------
 // Bootstrap.
@@ -293,13 +311,14 @@ export const main = Effect.gen(function* () {
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "client/index.html"))
+  const worklets = yield* readWorklets(["mic", "player"])
 
   yield* Effect.logInfo(
     `realtime-voice-agent (${flags.provider}: ${cfg.model}, voice ${cfg.voiceId}, search ${flags.search})`,
   )
 
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs }))).pipe(
+  return Layer.launch(HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs, worklets }))).pipe(
     Effect.provide(
       Layer.mergeAll(
         realtimeSessionLayer({ provider: flags.provider, model: cfg.model }),

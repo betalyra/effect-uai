@@ -40,14 +40,32 @@ type Assets = {
   readonly provider: Provider
   readonly indexHtml: string
   readonly clientJs: string
+  readonly worklets: ReadonlyArray<readonly [name: string, code: string]>
 }
 
 const routesLayer = (assets: Assets) =>
   Layer.mergeAll(
     HttpRouter.add("GET", "/", HttpServerResponse.html(assets.indexHtml)),
     HttpRouter.add("GET", "/client.js", js(assets.clientJs)),
+    ...assets.worklets.map(([name, code]) =>
+      HttpRouter.add("GET", `/worklets/${name}.mjs`, js(code)),
+    ),
     HttpRouter.add("GET", "/ws", session(assets.provider)),
   )
+
+// The audio worklet: `Media.micWorklet` resolves next to the bundled
+// `/client.js`, so it is served from `/worklets/`.
+const readWorklets = (names: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    return yield* Effect.forEach(names, (name) =>
+      path.fromFileUrl(new URL(import.meta.resolve(`@effect-uai/ui/worklets/${name}`))).pipe(
+        Effect.flatMap(fs.readFileString),
+        Effect.map((code) => [name, code] as const),
+      ),
+    )
+  })
 
 export const main = Effect.gen(function* () {
   const path = yield* Path.Path
@@ -58,6 +76,7 @@ export const main = Effect.gen(function* () {
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "public/index.html"))
+  const worklets = yield* readWorklets(["mic"])
 
   yield* Effect.logInfo(
     `streaming-transcription (${provider} ${model}, ${inputFormat.sampleRate} Hz)`,
@@ -67,9 +86,9 @@ export const main = Effect.gen(function* () {
   // requirements onto main's R and break `run.ts`, so keep returning the
   // launch effect here.
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(HttpRouter.serve(routesLayer({ provider, indexHtml, clientJs }))).pipe(
-    Effect.provide(streamingTranscriberLayer({ provider, model })),
-  )
+  return Layer.launch(
+    HttpRouter.serve(routesLayer({ provider, indexHtml, clientJs, worklets })),
+  ).pipe(Effect.provide(streamingTranscriberLayer({ provider, model })))
 }).pipe(
   Effect.flatten,
   Effect.tapCause((cause) => Effect.logError("[main] fatal", { cause })),

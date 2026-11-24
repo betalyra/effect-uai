@@ -4,11 +4,24 @@
  * package index. Each owns its devices and audio graph through the scope it
  * runs in, so interrupting a stream releases the microphone or camera.
  *
- * The AudioWorklets ship inline (as Blob URLs), so an app serves no worklet
- * files. Audio on the wire is 16-bit little-endian PCM, mono.
+ * The audio runs in AudioWorklets the package ships as files
+ * (`@effect-uai/ui/worklets/mic`, `…/player`); `micWorklet` / `playerWorklet`
+ * point at them, or the app serves them itself and passes its own URL.
+ * `mic` and `pcmPlayer` build the usual graph; for your own graph
+ * (a device of your choice, an analyser, your own worklet) use the parts:
+ * `loadWorklet`, `micNode` / `framesFrom`, `playerNode` / `playerFrom`.
+ * Audio on the wire is 16-bit little-endian PCM, mono.
  */
 import * as Pcm from "@effect-uai/core/Pcm"
 import { Data, Effect, Queue, Ref, type Scope, Stream } from "effect"
+import {
+  MIC_PROCESSOR,
+  type MicProcessorOptions,
+  PLAYER_PROCESSOR,
+  type PlayerCommand,
+  type PlayerProcessorOptions,
+  type PlayerReport,
+} from "./internal/audio.js"
 
 export class MediaError extends Data.TaggedError("MediaError")<{
   /** `denied`: the user or browser refused the device; `unavailable`: no device or no support. */
@@ -36,64 +49,65 @@ const audioContext = (options?: AudioContextOptions) =>
     (ctx) => Effect.promise(() => ctx.close().catch(() => undefined)),
   ).pipe(Effect.tap((ctx) => attempt(() => ctx.resume())))
 
-const worklet = (ctx: AudioContext, source: string) =>
-  Effect.acquireRelease(
-    Effect.sync(() => URL.createObjectURL(new Blob([source], { type: "text/javascript" }))),
-    (url) => Effect.sync(() => URL.revokeObjectURL(url)),
-  ).pipe(Effect.flatMap((url) => attempt(() => ctx.audioWorklet.addModule(url))))
+// ---------------------------------------------------------------------------
+// Worklets
+// ---------------------------------------------------------------------------
+
+// Bundlers (Vite, webpack, rspack, Parcel) copy a `new URL("./…", import.meta.url)`
+// target into the build; unbundled, it resolves next to this module.
+/** Where the shipped mic worklet is served; pass it to `mic` or `loadWorklet`. */
+export const micWorklet: URL = new URL("./worklets/mic.mjs", import.meta.url)
+/** Where the shipped player worklet is served; pass it to `pcmPlayer` or `loadWorklet`. */
+export const playerWorklet: URL = new URL("./worklets/player.mjs", import.meta.url)
+
+/** Load a worklet module (e.g. `micWorklet`) into a context. */
+export const loadWorklet = (
+  ctx: BaseAudioContext,
+  url: string | URL,
+): Effect.Effect<void, MediaError> => attempt(() => ctx.audioWorklet.addModule(url))
+
+/** A mic worklet node (its module loaded) that posts 16-bit PCM frames at `sampleRate`. */
+export const micNode = (
+  ctx: BaseAudioContext,
+  options: { readonly sampleRate: number; readonly frameMs?: number },
+): AudioWorkletNode => {
+  const processorOptions: MicProcessorOptions = {
+    targetRate: options.sampleRate,
+    frameMs: options.frameMs ?? 50,
+  }
+  return new AudioWorkletNode(ctx, MIC_PROCESSOR, { processorOptions })
+}
+
+/** The frames a mic worklet node posts; ending the stream detaches from the node. */
+export const framesFrom = (node: AudioWorkletNode): Stream.Stream<Uint8Array> =>
+  Stream.callback<Uint8Array>((queue) =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        node.port.onmessage = (e: MessageEvent<ArrayBuffer>) =>
+          Queue.offerUnsafe(queue, new Uint8Array(e.data))
+      }),
+      () => Effect.sync(() => (node.port.onmessage = null)),
+    ),
+  )
+
+/** A player worklet node (its module loaded); connect it to an output. */
+export const playerNode = (
+  ctx: BaseAudioContext,
+  options?: { readonly warmupMs?: number },
+): AudioWorkletNode => {
+  const processorOptions: PlayerProcessorOptions = { warmupMs: options?.warmupMs ?? 200 }
+  return new AudioWorkletNode(ctx, PLAYER_PROCESSOR, { processorOptions })
+}
 
 // ---------------------------------------------------------------------------
 // Microphone
 // ---------------------------------------------------------------------------
 
-/**
- * Resamples to `targetRate` by averaging each output sample's input window,
- * a box filter that keeps speech free of the aliasing a plain sample pick
- * produces, and posts 16-bit frames of `frameMs`.
- */
-const MIC_WORKLET = `
-class EffectUaiMic extends AudioWorkletProcessor {
-  constructor(options) {
-    super()
-    const { targetRate, frameMs } = options.processorOptions
-    this.ratio = sampleRate / targetRate
-    this.out = new Int16Array(Math.max(1, Math.round((targetRate * frameMs) / 1000)))
-    this.n = 0
-    this.sum = 0
-    this.count = 0
-    this.pos = 0
-  }
-  emit(v) {
-    const c = Math.max(-1, Math.min(1, v))
-    this.out[this.n++] = c < 0 ? c * 0x8000 : c * 0x7fff
-    if (this.n === this.out.length) {
-      this.port.postMessage(this.out.buffer.slice(0))
-      this.n = 0
-    }
-  }
-  process(inputs) {
-    const input = inputs[0] && inputs[0][0]
-    if (!input) return true
-    for (let i = 0; i < input.length; i++) {
-      this.sum += input[i]
-      this.count++
-      this.pos += 1
-      while (this.pos >= this.ratio) {
-        this.pos -= this.ratio
-        this.emit(this.count > 0 ? this.sum / this.count : input[i])
-        this.sum = 0
-        this.count = 0
-      }
-    }
-    return true
-  }
-}
-registerProcessor("effect-uai-mic", EffectUaiMic)
-`
-
 export type MicOptions = {
   /** The rate to send at, typically what the server declared on its `up` channel. */
   readonly sampleRate: number
+  /** Where the app serves `@effect-uai/ui/worklets/mic`. */
+  readonly worklet: string | URL
   /** Default 50. */
   readonly frameMs?: number
   /** Default true. */
@@ -109,7 +123,7 @@ export type MicOptions = {
  * when the stream starts; ending the stream releases it.
  */
 export const mic = (options: MicOptions): Stream.Stream<Uint8Array, MediaError> =>
-  Stream.callback<Uint8Array, MediaError>((queue) =>
+  Stream.unwrap(
     Effect.gen(function* () {
       const stream = yield* Effect.acquireRelease(
         attempt(() =>
@@ -133,19 +147,15 @@ export const mic = (options: MicOptions): Stream.Stream<Uint8Array, MediaError> 
 
       // The device's own rate; the worklet resamples.
       const ctx = yield* audioContext()
-      yield* worklet(ctx, MIC_WORKLET)
-      const node = new AudioWorkletNode(ctx, "effect-uai-mic", {
-        processorOptions: { targetRate: options.sampleRate, frameMs: options.frameMs ?? 50 },
-      })
-      node.port.onmessage = (e: MessageEvent<ArrayBuffer>) =>
-        Queue.offerUnsafe(queue, new Uint8Array(e.data))
+      yield* loadWorklet(ctx, options.worklet)
+      const node = micNode(ctx, options)
       ctx.createMediaStreamSource(stream).connect(node)
       // A silent sink keeps the graph pulling on the worklet.
       const sink = ctx.createGain()
       sink.gain.value = 0
       node.connect(sink)
       sink.connect(ctx.destination)
-      yield* Effect.addFinalizer(() => Effect.sync(() => (node.port.onmessage = null)))
+      return framesFrom(node)
     }),
   )
 
@@ -229,81 +239,6 @@ export const camera = (options: CameraOptions): Stream.Stream<Uint8Array, MediaE
 // Playback
 // ---------------------------------------------------------------------------
 
-/**
- * Plays queued chunks in order. Holds `warmup` samples before starting so
- * early jitter is absorbed, starts anyway once that long has passed (so a
- * reply shorter than the warmup still plays), and warms up again after
- * running dry. Reports how much it has played since the last `clear` or
- * `reset`.
- */
-const PLAYER_WORKLET = `
-class EffectUaiPlayer extends AudioWorkletProcessor {
-  constructor(options) {
-    super()
-    this.warmup = (options.processorOptions.warmupMs / 1000) * sampleRate
-    this.reportEvery = 0.1 * sampleRate
-    this.queue = []
-    this.head = 0
-    this.buffered = 0
-    this.waited = 0
-    this.started = false
-    this.played = 0
-    this.reported = 0
-    this.port.onmessage = (e) => {
-      if (e.data instanceof Float32Array) {
-        this.queue.push(e.data)
-        this.buffered += e.data.length
-        return
-      }
-      if (e.data.type === "clear") {
-        this.queue.length = 0
-        this.head = 0
-        this.buffered = 0
-        this.started = false
-        this.waited = 0
-      }
-      this.played = 0
-      this.reported = 0
-      this.port.postMessage({ played: 0 })
-    }
-  }
-  process(_inputs, outputs) {
-    const out = outputs[0] && outputs[0][0]
-    if (!out) return true
-    if (!this.started) {
-      if (this.buffered === 0) return true
-      this.waited += out.length
-      if (this.buffered < this.warmup && this.waited < this.warmup) return true
-      this.started = true
-    }
-    let written = 0
-    while (written < out.length && this.queue.length > 0) {
-      const head = this.queue[0]
-      const copy = Math.min(head.length - this.head, out.length - written)
-      out.set(head.subarray(this.head, this.head + copy), written)
-      written += copy
-      this.head += copy
-      if (this.head >= head.length) {
-        this.queue.shift()
-        this.head = 0
-      }
-    }
-    this.buffered -= written
-    this.played += written
-    if (this.buffered === 0) {
-      this.started = false
-      this.waited = 0
-    }
-    if (this.played - this.reported >= this.reportEvery || this.buffered === 0) {
-      this.reported = this.played
-      this.port.postMessage({ played: (this.played / sampleRate) * 1000 })
-    }
-    return true
-  }
-}
-registerProcessor("effect-uai-player", EffectUaiPlayer)
-`
-
 export type Player = {
   /** Queue 16-bit PCM; an odd trailing byte waits for the next chunk. */
   readonly push: (bytes: Uint8Array) => Effect.Effect<void>
@@ -315,30 +250,20 @@ export type Player = {
   readonly played: Effect.Effect<number>
 }
 
-export type PlayerOptions = {
-  /** The rate of the audio pushed, typically from its `channel-opened`. */
-  readonly sampleRate: number
-  /** Default 200. */
-  readonly warmupMs?: number
-}
-
-/**
- * A PCM player for the lifetime of the scope. Create it after a user gesture
- * (a click), or the browser keeps its audio suspended.
- */
-export const pcmPlayer = (options: PlayerOptions): Effect.Effect<Player, MediaError, Scope.Scope> =>
+/** A `Player` driving a player worklet node, for the lifetime of the scope. */
+export const playerFrom = (node: AudioWorkletNode): Effect.Effect<Player, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const ctx = yield* audioContext({ sampleRate: options.sampleRate })
-    yield* worklet(ctx, PLAYER_WORKLET)
-    const node = new AudioWorkletNode(ctx, "effect-uai-player", {
-      processorOptions: { warmupMs: options.warmupMs ?? 200 },
-    })
-    node.connect(ctx.destination)
     const played = yield* Ref.make(0)
     const carry = yield* Ref.make<Uint8Array>(new Uint8Array(0))
-    node.port.onmessage = (e: MessageEvent<{ readonly played: number }>) =>
-      Effect.runSync(Ref.set(played, e.data.played))
-    yield* Effect.addFinalizer(() => Effect.sync(() => (node.port.onmessage = null)))
+    const command = (message: PlayerCommand, transfer: Array<Transferable> = []) =>
+      node.port.postMessage(message, transfer)
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        node.port.onmessage = (e: MessageEvent<PlayerReport>) =>
+          Effect.runSync(Ref.set(played, e.data.played))
+      }),
+      () => Effect.sync(() => (node.port.onmessage = null)),
+    )
 
     const push = (bytes: Uint8Array) =>
       Effect.flatMap(
@@ -353,7 +278,7 @@ export const pcmPlayer = (options: PlayerOptions): Effect.Effect<Player, MediaEr
           Effect.sync(() => {
             if (whole.byteLength === 0) return
             const samples = Pcm.s16leToF32(whole)
-            node.port.postMessage(samples, [samples.buffer])
+            command(samples, [samples.buffer])
           }),
       )
 
@@ -362,9 +287,31 @@ export const pcmPlayer = (options: PlayerOptions): Effect.Effect<Player, MediaEr
         type === "clear" ? Ref.set(carry, new Uint8Array(0)) : Effect.void,
         Effect.andThen(
           Ref.set(played, 0),
-          Effect.sync(() => node.port.postMessage({ type })),
+          Effect.sync(() => command({ type })),
         ),
       )
 
     return { push, clear: send("clear"), reset: send("reset"), played: Ref.get(played) }
+  })
+
+export type PlayerOptions = {
+  /** The rate of the audio pushed, typically from its `channel-opened`. */
+  readonly sampleRate: number
+  /** Where the app serves `@effect-uai/ui/worklets/player`. */
+  readonly worklet: string | URL
+  /** Default 200. */
+  readonly warmupMs?: number
+}
+
+/**
+ * A PCM player for the lifetime of the scope. Create it after a user gesture
+ * (a click), or the browser keeps its audio suspended.
+ */
+export const pcmPlayer = (options: PlayerOptions): Effect.Effect<Player, MediaError, Scope.Scope> =>
+  Effect.gen(function* () {
+    const ctx = yield* audioContext({ sampleRate: options.sampleRate })
+    yield* loadWorklet(ctx, options.worklet)
+    const node = playerNode(ctx, options)
+    node.connect(ctx.destination)
+    return yield* playerFrom(node)
   })

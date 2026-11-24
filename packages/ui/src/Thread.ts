@@ -260,6 +260,13 @@ export const Thread = State(UserContent, RunView.RunView, RunView.RunView)
 export type Thread<P extends Payloads = Untyped> = State<UserContent, RunView.RunView<P>, P>
 export type Message<P extends Payloads = Untyped> = Entry<UserContent, RunView.RunView<P>>
 
+/** Blocks and interrupts in the thread's runs that no longer decode (see `RunView.Stale`). */
+export const stale = <P extends Payloads>(thread: Thread<P>): ReadonlyArray<RunView.Stale> =>
+  [
+    ...thread.messages.flatMap((m) => (m.role === "assistant" ? [m.value] : [])),
+    ...(thread.active === null ? [] : [thread.active]),
+  ].flatMap(RunView.stale)
+
 /** Inputs the preset understands: any with an id; those with messages get a user entry. */
 export type PresetInput = {
   readonly id: InputId

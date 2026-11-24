@@ -11,7 +11,17 @@
  */
 import * as File from "@effect-uai/core/File"
 import * as Items from "@effect-uai/core/Items"
-import { Array as Arr, JsonPatch, Match, Option, Schema } from "effect"
+import {
+  Array as Arr,
+  Effect,
+  JsonPatch,
+  Match,
+  Option,
+  Schema,
+  SchemaIssue,
+  SchemaParser,
+  SchemaTransformation,
+} from "effect"
 import {
   type Envelope,
   InputId,
@@ -135,6 +145,19 @@ export type DataBlock<P extends Payloads = Untyped> = P["data"] extends infer T
     : never
   : never
 
+/**
+ * A stored block or interrupt the current schemas no longer decode (e.g. a
+ * tool's output gained a required field since it was saved). `value` is the
+ * JSON as stored and encodes back unchanged; `issue` says why it didn't decode.
+ */
+export const Stale = Schema.Struct({
+  type: Schema.Literal("stale"),
+  value: Schema.Json,
+  issue: Schema.String,
+})
+export type Stale = typeof Stale.Type
+export const isStale: (u: unknown) => u is Stale = Schema.is(Stale)
+
 export type Block<P extends Payloads = Untyped> =
   | TextBlock
   | RefusalBlock
@@ -144,6 +167,7 @@ export type Block<P extends Payloads = Untyped> =
   | ToolBlock<P>
   | ObjectBlock<P>
   | DataBlock<P>
+  | Stale
 
 /** Transient payloads by name; the latest value wins. A contract's names are optional keys. */
 export type Live<P extends Payloads = Untyped> = string extends P["live"]["name"]
@@ -172,7 +196,7 @@ export type RunView<P extends Payloads = Untyped> = {
   readonly inputs: ReadonlyArray<InputId>
   readonly status: Status
   readonly blocks: ReadonlyArray<Block<P>>
-  readonly interrupts: ReadonlyArray<Interrupt<P>>
+  readonly interrupts: ReadonlyArray<Interrupt<P> | Stale>
   readonly live: Live<P>
   readonly usage?: Items.Usage
   readonly metadata?: P["metadata"]
@@ -234,10 +258,41 @@ export const contentBlocks = [
   MediaBlock,
 ] as const
 
-/** A view's schema from its payload-dependent parts; `block` is the whole block union. */
+const formatIssue = SchemaIssue.makeFormatterDefault()
+
+// A stored view outlives the schemas that wrote it: an element they no longer
+// decode becomes `Stale` instead of failing the whole view.
+const orStale = <S extends Schema.Codec<any, any, never, never>>(element: S) => {
+  const codec = Schema.toCodecJson(element)
+  const decode = SchemaParser.decodeUnknownEffect(codec)
+  const encode = SchemaParser.encodeUnknownEffect(codec)
+  return Schema.Json.pipe(
+    Schema.decodeTo(
+      Schema.Union([Schema.toType(element), Stale]),
+      SchemaTransformation.transformEffect({
+        decode: (json, options) =>
+          decode(json, options).pipe(
+            Effect.catch((issue) =>
+              Effect.succeed<S["Type"] | Stale>({
+                type: "stale",
+                value: json,
+                issue: formatIssue(issue),
+              }),
+            ),
+          ),
+        encode: (a, options) => (isStale(a) ? Effect.succeed(a.value) : encode(a, options)),
+      }),
+    ),
+  )
+}
+
+/**
+ * A view's schema from its payload-dependent parts; `block` is the whole block
+ * union. Blocks and interrupts that no longer decode become `Stale`.
+ */
 export const schema = <
-  B extends Schema.Top,
-  I extends Schema.Top,
+  B extends Schema.Codec<any, any, never, never>,
+  I extends Schema.Codec<any, any, never, never>,
   L extends Schema.Top,
   M extends Schema.Top,
 >(parts: {
@@ -251,8 +306,8 @@ export const schema = <
     name: Schema.optionalKey(Schema.String),
     inputs: Schema.Array(InputId),
     status: Status,
-    blocks: Schema.Array(parts.block),
-    interrupts: Schema.Array(parts.interrupt),
+    blocks: Schema.Array(orStale(parts.block)),
+    interrupts: Schema.Array(orStale(parts.interrupt)),
     live: parts.live,
     usage: Schema.optionalKey(Items.Usage),
     metadata: Schema.optionalKey(parts.metadata),
@@ -533,7 +588,7 @@ const apply = (v: View, event: RunEvent<Payloads>): View =>
         const index =
           e.id === undefined ? -1 : v.blocks.findIndex((b) => b.type === "data" && b.id === e.id)
         const existing = v.blocks[index]
-        return existing !== undefined
+        return existing !== undefined && existing.type === "data"
           ? {
               ...v,
               blocks: replaceAt(v.blocks, index, {
@@ -606,6 +661,10 @@ export function text<P extends Payloads>(view: RunView<P>): string
 export function text(view: View): string {
   return view.blocks.flatMap((b) => (b.type === "output_text" ? [b.text] : [])).join("")
 }
+
+/** Blocks and interrupts that no longer decode, e.g. to log or report them. */
+export const stale = <P extends Payloads>(view: RunView<P>): ReadonlyArray<Stale> =>
+  [...view.blocks, ...view.interrupts].filter(isStale)
 
 /** The refusal text, if the model declined; `undefined` otherwise. */
 export function refusal<P extends Payloads>(view: RunView<P>): string | undefined

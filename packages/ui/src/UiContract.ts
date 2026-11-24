@@ -17,7 +17,9 @@
  * name the contract doesn't list (a newer server rolling out a tool) still
  * arrives, as JSON, but the types don't mention it: a `switch (b.name)` skips
  * it. A listed name whose payload doesn't decode fails the envelope: that is
- * a contract violation, not data to show.
+ * a contract violation, not data to show. Stored views (`RunView`, `Thread`)
+ * outlive the schemas that wrote them, so there such a block or interrupt
+ * becomes `RunView.Stale` (`Thread.stale` lists them) instead of failing.
  *
  * A tool is a core `Tool` or a shared spec (`as const`, schemas only). Its
  * result is `Success { value } | Failure { error }`: the error is the tool's

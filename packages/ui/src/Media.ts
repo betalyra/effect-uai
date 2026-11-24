@@ -5,8 +5,10 @@
  * runs in, so interrupting a stream releases the microphone or camera.
  *
  * The audio runs in AudioWorklets the package ships as files
- * (`@effect-uai/ui/worklets/mic`, `…/player`); `micWorklet` / `playerWorklet`
- * point at them, or the app serves them itself and passes its own URL.
+ * (`@effect-uai/ui/worklets/mic`, `…/player`). How a file gets its URL is the
+ * app's build: `import mic from "@effect-uai/ui/worklets/mic?url"` (Vite),
+ * `new URL("@effect-uai/ui/worklets/mic", import.meta.url)` (webpack), or a
+ * route the server serves it on. Pass that URL as `worklet`.
  * `mic` and `pcmPlayer` build the usual graph; for your own graph
  * (a device of your choice, an analyser, your own worklet) use the parts:
  * `loadWorklet`, `micNode` / `framesFrom`, `playerNode` / `playerFrom`.
@@ -53,14 +55,7 @@ const audioContext = (options?: AudioContextOptions) =>
 // Worklets
 // ---------------------------------------------------------------------------
 
-// Bundlers (Vite, webpack, rspack, Parcel) copy a `new URL("./…", import.meta.url)`
-// target into the build; unbundled, it resolves next to this module.
-/** Where the shipped mic worklet is served; pass it to `mic` or `loadWorklet`. */
-export const micWorklet: URL = new URL("./worklets/mic.mjs", import.meta.url)
-/** Where the shipped player worklet is served; pass it to `pcmPlayer` or `loadWorklet`. */
-export const playerWorklet: URL = new URL("./worklets/player.mjs", import.meta.url)
-
-/** Load a worklet module (e.g. `micWorklet`) into a context. */
+/** Load a worklet module (e.g. the served `@effect-uai/ui/worklets/mic`) into a context. */
 export const loadWorklet = (
   ctx: BaseAudioContext,
   url: string | URL,

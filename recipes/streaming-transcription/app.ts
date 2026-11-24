@@ -53,8 +53,7 @@ const routesLayer = (assets: Assets) =>
     HttpRouter.add("GET", "/ws", session(assets.provider)),
   )
 
-// The audio worklet: `Media.micWorklet` resolves next to the bundled
-// `/client.js`, so it is served from `/worklets/`.
+// The `@effect-uai/ui` audio worklet, served at the path the client passes to `Media`.
 const readWorklets = (names: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem

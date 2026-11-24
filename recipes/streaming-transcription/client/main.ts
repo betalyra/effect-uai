@@ -21,6 +21,9 @@ import { MIC, TranscriptUi, Up } from "../contract.js"
 // A module, not a script: recipe clients would otherwise share one global scope.
 export {}
 
+// The `@effect-uai/ui` mic worklet, served by `app.ts`.
+const MIC_WORKLET = "/worklets/mic.mjs"
+
 type View = StreamView.StreamView<UiContract.Payloads<typeof TranscriptUi>>
 
 // ---------------------------------------------------------------------------
@@ -90,7 +93,7 @@ const stopMic = (): void => {
 }
 
 const startMic = (sampleRate: number) =>
-  Media.mic({ sampleRate, worklet: Media.micWorklet }).pipe(
+  Media.mic({ sampleRate, worklet: MIC_WORKLET }).pipe(
     Stream.zipWithIndex,
     Stream.runForEach(([bytes, n]) =>
       Effect.sync(() => {

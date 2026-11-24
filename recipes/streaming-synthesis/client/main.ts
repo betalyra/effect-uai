@@ -19,6 +19,9 @@ import { Say, SPEAKER, SynthesisUi } from "../contract.js"
 // A module, not a script: recipe clients would otherwise share one global scope.
 export {}
 
+// The `@effect-uai/ui` player worklet, served by `app.ts`.
+const PLAYER_WORKLET = "/worklets/player.mjs"
+
 type View = StreamView.StreamView<UiContract.Payloads<typeof SynthesisUi>>
 
 // ---------------------------------------------------------------------------
@@ -31,7 +34,7 @@ let player: { readonly scope: Scope.Closeable; readonly ready: Promise<Media.Pla
 const openPlayer = (sampleRate: number): void => {
   const scope = Effect.runSync(Scope.make())
   const ready = Effect.runPromise(
-    Media.pcmPlayer({ sampleRate, worklet: Media.playerWorklet }).pipe(Scope.provide(scope)),
+    Media.pcmPlayer({ sampleRate, worklet: PLAYER_WORKLET }).pipe(Scope.provide(scope)),
   )
   ready.catch((error: Media.MediaError) =>
     setStatus(`audio ${error.reason}: ${error.message}`, true),

@@ -27,6 +27,10 @@ import { AgentUi, MIC, SPEAKER, Up } from "../contract.js"
 // A module, not a script: recipe clients would otherwise share one global scope.
 export {}
 
+// The `@effect-uai/ui` worklets, served by `app.ts`.
+const MIC_WORKLET = "/worklets/mic.mjs"
+const PLAYER_WORKLET = "/worklets/player.mjs"
+
 type Payloads = UiContract.Payloads<typeof AgentUi>
 type View = StreamView.StreamView<Payloads>
 
@@ -39,7 +43,7 @@ let player: { readonly scope: Scope.Closeable; readonly ready: Promise<Media.Pla
 const openPlayer = (sampleRate: number): void => {
   const scope = Effect.runSync(Scope.make())
   const ready = Effect.runPromise(
-    Media.pcmPlayer({ sampleRate, worklet: Media.playerWorklet }).pipe(Scope.provide(scope)),
+    Media.pcmPlayer({ sampleRate, worklet: PLAYER_WORKLET }).pipe(Scope.provide(scope)),
   )
   ready.catch((error: Media.MediaError) =>
     setStatus(`audio ${error.reason}: ${error.message}`, true),
@@ -93,7 +97,7 @@ let mic: Fiber.Fiber<void> | null = null
 // The model listens while it speaks, so without echo cancellation it hears
 // its own voice through the speakers and interrupts itself (on by default).
 const startMic = (sampleRate: number) =>
-  Media.mic({ sampleRate, worklet: Media.micWorklet }).pipe(
+  Media.mic({ sampleRate, worklet: MIC_WORKLET }).pipe(
     Stream.runForEach((bytes) =>
       Effect.sync(() => registry.set(session.send, Frame.media(MIC, bytes))),
     ),

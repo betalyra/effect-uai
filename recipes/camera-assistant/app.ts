@@ -22,6 +22,7 @@ import {
 } from "effect"
 import * as HttpRouter from "effect/http/HttpRouter"
 import * as HttpServerResponse from "effect/http/HttpServerResponse"
+import { fileURLToPath } from "node:url"
 import * as Frame from "@effect-uai/ui/Frame"
 import * as LiveSocket from "@effect-uai/ui/LiveSocket"
 import type * as Run from "@effect-uai/ui/Run"
@@ -164,31 +165,30 @@ type Assets = {
   readonly frames: Frames
   readonly indexHtml: string
   readonly clientJs: string
-  readonly worklets: ReadonlyArray<readonly [name: string, code: string]>
 }
 
 const routesLayer = (assets: Assets) =>
   Layer.mergeAll(
     HttpRouter.add("GET", "/", HttpServerResponse.html(assets.indexHtml)),
     HttpRouter.add("GET", "/client.js", js(assets.clientJs)),
-    ...assets.worklets.map(([name, code]) =>
-      HttpRouter.add("GET", `/worklets/${name}.mjs`, js(code)),
+    // The `@effect-uai/ui` audio worklets, at the paths the client passes to `Media`.
+    HttpRouter.add(
+      "GET",
+      "/worklets/mic.mjs",
+      HttpServerResponse.file(fileURLToPath(import.meta.resolve("@effect-uai/ui/worklets/mic")), {
+        contentType: "text/javascript",
+      }),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/worklets/player.mjs",
+      HttpServerResponse.file(
+        fileURLToPath(import.meta.resolve("@effect-uai/ui/worklets/player")),
+        { contentType: "text/javascript" },
+      ),
     ),
     HttpRouter.add("GET", "/ws", session(assets.frames)),
   )
-
-// The `@effect-uai/ui` audio worklets, served at the paths the client passes to `Media`.
-const readWorklets = (names: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
-    return yield* Effect.forEach(names, (name) =>
-      path.fromFileUrl(new URL(import.meta.resolve(`@effect-uai/ui/worklets/${name}`))).pipe(
-        Effect.flatMap(fs.readFileString),
-        Effect.map((code) => [name, code] as const),
-      ),
-    )
-  })
 
 // ---------------------------------------------------------------------------
 // Bootstrap.
@@ -215,7 +215,6 @@ export const main = Effect.gen(function* () {
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "client/index.html"))
-  const worklets = yield* readWorklets(["mic", "player"])
   const fromDisk = yield* Effect.transposeOption(Option.map(flags.frames, readFrames))
   const frames = Option.match(fromDisk, {
     onNone: (): Frames => ({ _tag: "page", source: flags.source }),
@@ -230,9 +229,9 @@ export const main = Effect.gen(function* () {
   )
 
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(
-    HttpRouter.serve(routesLayer({ frames, indexHtml, clientJs, worklets })),
-  ).pipe(Effect.provide(Layer.mergeAll(sessionLayer, webSearchLayer(flags.search))))
+  return Layer.launch(HttpRouter.serve(routesLayer({ frames, indexHtml, clientJs }))).pipe(
+    Effect.provide(Layer.mergeAll(sessionLayer, webSearchLayer(flags.search))),
+  )
 }).pipe(
   Effect.flatten,
   Effect.tapCause((cause) => Effect.logError("[main] fatal", { cause })),

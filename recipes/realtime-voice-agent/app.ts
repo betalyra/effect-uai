@@ -23,6 +23,7 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/http"
 import * as HttpRouter from "effect/http/HttpRouter"
 import * as HttpServerResponse from "effect/http/HttpServerResponse"
+import { fileURLToPath } from "node:url"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
 import { webSearchTool } from "@effect-uai/core/WebSearchTool"
@@ -271,31 +272,30 @@ type Assets = {
   readonly cfg: AgentConfig
   readonly indexHtml: string
   readonly clientJs: string
-  readonly worklets: ReadonlyArray<readonly [name: string, code: string]>
 }
 
 const routesLayer = (assets: Assets) =>
   Layer.mergeAll(
     HttpRouter.add("GET", "/", HttpServerResponse.html(assets.indexHtml)),
     HttpRouter.add("GET", "/client.js", js(assets.clientJs)),
-    ...assets.worklets.map(([name, code]) =>
-      HttpRouter.add("GET", `/worklets/${name}.mjs`, js(code)),
+    // The `@effect-uai/ui` audio worklets, at the paths the client passes to `Media`.
+    HttpRouter.add(
+      "GET",
+      "/worklets/mic.mjs",
+      HttpServerResponse.file(fileURLToPath(import.meta.resolve("@effect-uai/ui/worklets/mic")), {
+        contentType: "text/javascript",
+      }),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/worklets/player.mjs",
+      HttpServerResponse.file(
+        fileURLToPath(import.meta.resolve("@effect-uai/ui/worklets/player")),
+        { contentType: "text/javascript" },
+      ),
     ),
     HttpRouter.add("GET", "/ws", session(assets.cfg)),
   )
-
-// The `@effect-uai/ui` audio worklets, served at the paths the client passes to `Media`.
-const readWorklets = (names: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
-    return yield* Effect.forEach(names, (name) =>
-      path.fromFileUrl(new URL(import.meta.resolve(`@effect-uai/ui/worklets/${name}`))).pipe(
-        Effect.flatMap(fs.readFileString),
-        Effect.map((code) => [name, code] as const),
-      ),
-    )
-  })
 
 // ---------------------------------------------------------------------------
 // Bootstrap.
@@ -310,14 +310,13 @@ export const main = Effect.gen(function* () {
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "client/index.html"))
-  const worklets = yield* readWorklets(["mic", "player"])
 
   yield* Effect.logInfo(
     `realtime-voice-agent (${flags.provider}: ${cfg.model}, voice ${cfg.voiceId}, search ${flags.search})`,
   )
 
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs, worklets }))).pipe(
+  return Layer.launch(HttpRouter.serve(routesLayer({ cfg, indexHtml, clientJs }))).pipe(
     Effect.provide(
       Layer.mergeAll(
         realtimeSessionLayer({ provider: flags.provider, model: cfg.model }),

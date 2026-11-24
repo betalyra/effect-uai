@@ -16,6 +16,7 @@
  */
 import { Config, Effect, Layer, Logger, References } from "effect"
 import type { HttpClient } from "effect/http"
+import type * as HttpPlatform from "effect/http/HttpPlatform"
 import * as HttpServerNs from "effect/http/HttpServer"
 import type * as HttpServerError from "effect/http/HttpServerError"
 import * as Socket from "effect/socket/Socket"
@@ -34,8 +35,11 @@ export type RecipeServices =
   | NodeServices.NodeServices
   | Socket.WebSocketConstructor
 
-/** The above plus a bound HTTP server, for recipes that serve a browser client. */
-export type ServerServices = RecipeServices | HttpServerNs.HttpServer
+/**
+ * The above plus a bound HTTP server, for recipes that serve a browser client,
+ * and its platform (`HttpServerResponse.file` serves files with it).
+ */
+export type ServerServices = RecipeServices | HttpServerNs.HttpServer | HttpPlatform.HttpPlatform
 
 type Runtime = "bun" | "deno" | "node"
 

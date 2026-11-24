@@ -11,6 +11,7 @@
 import { Effect, FileSystem, Layer, Path, Stream } from "effect"
 import * as HttpRouter from "effect/http/HttpRouter"
 import * as HttpServerResponse from "effect/http/HttpServerResponse"
+import { fileURLToPath } from "node:url"
 import * as Frame from "@effect-uai/ui/Frame"
 import * as LiveSocket from "@effect-uai/ui/LiveSocket"
 import * as Run from "@effect-uai/ui/Run"
@@ -40,31 +41,22 @@ type Assets = {
   readonly provider: Provider
   readonly indexHtml: string
   readonly clientJs: string
-  readonly worklets: ReadonlyArray<readonly [name: string, code: string]>
 }
 
 const routesLayer = (assets: Assets) =>
   Layer.mergeAll(
     HttpRouter.add("GET", "/", HttpServerResponse.html(assets.indexHtml)),
     HttpRouter.add("GET", "/client.js", js(assets.clientJs)),
-    ...assets.worklets.map(([name, code]) =>
-      HttpRouter.add("GET", `/worklets/${name}.mjs`, js(code)),
+    // The `@effect-uai/ui` mic worklet, at the path the client passes to `Media`.
+    HttpRouter.add(
+      "GET",
+      "/worklets/mic.mjs",
+      HttpServerResponse.file(fileURLToPath(import.meta.resolve("@effect-uai/ui/worklets/mic")), {
+        contentType: "text/javascript",
+      }),
     ),
     HttpRouter.add("GET", "/ws", session(assets.provider)),
   )
-
-// The `@effect-uai/ui` audio worklet, served at the path the client passes to `Media`.
-const readWorklets = (names: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
-    return yield* Effect.forEach(names, (name) =>
-      path.fromFileUrl(new URL(import.meta.resolve(`@effect-uai/ui/worklets/${name}`))).pipe(
-        Effect.flatMap(fs.readFileString),
-        Effect.map((code) => [name, code] as const),
-      ),
-    )
-  })
 
 export const main = Effect.gen(function* () {
   const path = yield* Path.Path
@@ -75,7 +67,6 @@ export const main = Effect.gen(function* () {
   const recipeDir = path.dirname(new URL(import.meta.url).pathname)
   const clientJs = yield* bundleClient(path.join(recipeDir, "client/main.ts"))
   const indexHtml = yield* fs.readFileString(path.join(recipeDir, "public/index.html"))
-  const worklets = yield* readWorklets(["mic"])
 
   yield* Effect.logInfo(
     `streaming-transcription (${provider} ${model}, ${inputFormat.sampleRate} Hz)`,
@@ -85,9 +76,9 @@ export const main = Effect.gen(function* () {
   // requirements onto main's R and break `run.ts`, so keep returning the
   // launch effect here.
   // @effect-diagnostics-next-linereturnEffectInGen:off
-  return Layer.launch(
-    HttpRouter.serve(routesLayer({ provider, indexHtml, clientJs, worklets })),
-  ).pipe(Effect.provide(streamingTranscriberLayer({ provider, model })))
+  return Layer.launch(HttpRouter.serve(routesLayer({ provider, indexHtml, clientJs }))).pipe(
+    Effect.provide(streamingTranscriberLayer({ provider, model })),
+  )
 }).pipe(
   Effect.flatten,
   Effect.tapCause((cause) => Effect.logError("[main] fatal", { cause })),

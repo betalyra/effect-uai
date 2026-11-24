@@ -315,9 +315,49 @@ server (voice-loop's f32le conversion) and `Media` (U3).
    upstream presets, `LiveSocket.handle`, `Transport.live` / `socket`,
    `Atoms.live`. Port streaming-transcription and streaming-synthesis, the
    two smallest live recipes.
+
+   **Done (2026-11-17), verified live in a browser.** What changed from the plan:
+   - No tag byte: Effect's sockets (Node `ws`, Bun, browser) keep text and
+     binary apart, so a text frame is JSON and a binary frame is media
+     (`u16 channel` + payload).
+   - `channel-opened` has `direction: "down" | "up"`, so the server also
+     declares what it expects from the client (the mic rate). Channels live
+     in `StreamView.channels` only, not in the persisted `RunView`; a run's
+     channels close with it.
+   - `LiveSocket.run(socket, options)` beside `handle`, so the session is
+     testable over an in-memory socket pair.
+   - `Atoms.live.send` takes a `Frame`; the mic goes up as
+     `send(Frame.media(...))` until `Media.mic` (U3) gives it a stream.
+   - `Playback` / `PlaybackEnded` presets moved to U3: no U2 recipe reports
+     playback position.
+   - streaming-synthesis has one stream-scoped channel, not a run per
+     utterance: one open TTS session reports no utterance boundaries.
+   - Transcript to `data "utterance"` entries is recipe code for now;
+     `Projection.fromTranscript` (U3) lifts it.
+
 3. **U3, browser media and projections**: `Media`, `Audio.Pcm`,
    `fromTranscript`, `fromRealtime`. Port voice-loop, realtime-voice-agent,
    camera-assistant.
+
+   **Done (2026-11-17), verified live in a browser.** What changed from the plan:
+   - The PCM helpers are `@effect-uai/core/Pcm`, not `Audio.Pcm`: `Audio`
+     holds types only.
+   - `Media.pcmPlayer` is a scoped Effect (`push`, `clear`, `reset`,
+     `played`), not a `Stream` of positions: the page reads `played` when
+     it needs it (after a barge-in).
+   - `fromRealtime` accumulates the user's partial transcripts (they
+     arrive as deltas) and takes the final as the whole utterance.
+   - `PlaybackEnded` was not needed.
+   - voice-loop keeps its server pacing; each reply carries its prompt as
+     `data "prompt"`, so the page pairs question and answer without
+     relying on arrival order. The realtime pages order the conversation
+     by first sighting, since a transcript can arrive after its answer.
+   - The camera switch is enabled once the session declares the camera
+     channel (no config route), so the camera needs an open session.
+   - Found on the way: tool fibers forked with `forkScoped` inside a
+     stream leaked `Scope` into the stream's requirements; they fork into
+     the session's own scope (`Effect.forkIn`).
+
 4. **Later**: storyboard and image-edit clients, TTS alignment and
    `heardText`, live resume.
 

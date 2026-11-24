@@ -1,10 +1,10 @@
 /**
  * Voice-assistant pipeline. Two concurrent units share an STT stream:
  *
- *   (1) Stop-word watcher — raw finals → `Fiber.interrupt(activeTurn)` on any
+ *   (1) Stop-word watcher: raw finals → `FiberHandle.clear(activeTurn)` on any
  *       final containing a stop word ("stop", "wait", …).
- *   (2) Utterance loop    — finals → settleBurst → fork one `runAssistantTurn`
- *       fiber per coalesced utterance, awaited sequentially.
+ *   (2) Utterance loop: finals → settleBurst → run one `runAssistantTurn`
+ *       fiber per coalesced utterance in `activeTurn`, awaited sequentially.
  *
  * Each user utterance runs in its own fiber: LLM → TTS → paced send. The
  * pacing `Effect.sleep` keeps the fiber alive for the duration the user is
@@ -12,42 +12,35 @@
  * (mid-LLM, mid-TTS, mid-sleep). The fiber's `Effect.onInterrupt` handler
  * commits whatever was spoken so far.
  *
- * Follow-up utterances spoken during an active turn don't interrupt — they
+ * Follow-up utterances spoken during an active turn don't interrupt: they
  * sit in settleBurst's buffer and run as the next turn once the current one
  * finishes naturally.
  *
- * History lives in a top-level `Ref` rather than being threaded through a
- * stream-state combinator — simpler, and the interrupt handler can append a
- * partial assistant message without reaching into stream internals.
- *
- * This module is pure recipe logic. Provider selection, config presets, the
- * HTTP/WebSocket server, and audio-format glue live in `app.ts`; the
- * platform layers live in `run-{bun,node,deno}.ts`.
+ * Everything the browser sees goes out through `emit` as `@effect-uai/ui`
+ * frames: the user's speech as transcript entries, each reply as a run with
+ * its own audio channel, the audio itself as media. Provider selection,
+ * config presets and the server live in `app.ts`.
  */
-import { Cause, Effect, Fiber, Match, Ref, Result, Stream } from "effect"
+import { Cause, Duration, Effect, Fiber, FiberHandle, Ref, Result, Stream } from "effect"
 import type * as AiError from "@effect-uai/core/AiError"
 import type { AudioChunk, AudioFormat } from "@effect-uai/core/Audio"
 import * as Items from "@effect-uai/core/Items"
 import * as LanguageModel from "@effect-uai/core/LanguageModel"
+import * as Pcm from "@effect-uai/core/Pcm"
 import * as SpeechSynthesizer from "@effect-uai/core/SpeechSynthesizer"
 import * as Transcriber from "@effect-uai/core/Transcriber"
 import type { TranscriptEvent } from "@effect-uai/core/Transcript"
 import * as Turn from "@effect-uai/core/Turn"
-import type * as Duration from "effect/Duration"
+import * as Frame from "@effect-uai/ui/Frame"
+import * as Projection from "@effect-uai/ui/Projection"
+import type * as Run from "@effect-uai/ui/Run"
+import { PROTOCOL_VERSION, RunId, type RunEvent } from "@effect-uai/ui/RunEvent"
 import { settleBurst } from "@effect-uai/core/Settle"
+import { MIC, SPEAKER } from "./contract.js"
 
 // ---------------------------------------------------------------------------
-// Wire shapes & config
+// Config
 // ---------------------------------------------------------------------------
-
-export type StatusEvent =
-  | { readonly type: "user-partial"; readonly text: string }
-  | { readonly type: "user-final"; readonly text: string }
-  | { readonly type: "assistant-thinking" }
-  | { readonly type: "assistant-delta"; readonly text: string }
-  | { readonly type: "assistant-done"; readonly text: string }
-  | { readonly type: "assistant-cancelled"; readonly text: string }
-  | { readonly type: "error"; readonly message: string }
 
 export type PipelineConfig = {
   readonly stt: { readonly model: string; readonly inputFormat: AudioFormat }
@@ -60,6 +53,14 @@ export type PipelineConfig = {
   /** Resetting-window debounce for coalescing rapid STT finals. */
   readonly utteranceSettle: Duration.Input
 }
+
+/** Where every frame for the browser goes. */
+export type Emit = (frame: Frame.Frame<Run.Owned>) => Effect.Effect<void>
+
+const event =
+  (emit: Emit, runId?: RunId) =>
+  (e: RunEvent): Effect.Effect<void> =>
+    emit(Frame.message(runId === undefined ? { event: e } : { runId, event: e }))
 
 // ---------------------------------------------------------------------------
 // Phonetic / markdown rewrites applied just before the TTS WS. UI sees the
@@ -84,15 +85,19 @@ const bytesPerSample = (encoding: AudioFormat["encoding"]): number =>
 const chunkDurationMs = (bytes: number, format: AudioFormat): number =>
   (bytes / (format.sampleRate * bytesPerSample(format.encoding) * (format.channels ?? 1))) * 1000
 
+/** The browser plays 16-bit PCM; Voxtral TTS speaks 32-bit float. */
+const toPlayback = (format: AudioFormat) => (bytes: Uint8Array) =>
+  format.encoding === "pcm_f32le" ? Pcm.f32leToS16le(bytes) : bytes
+
 // ---------------------------------------------------------------------------
-// STT: side-effects (partial / error → status) flow through `Stream.tap`;
-// downstream consumers split this into finals via `finalTextOf`.
+// STT: the user's speech becomes transcript entries; errors become a problem.
+// Downstream consumers split this into finals via `finalTextOf`.
 // ---------------------------------------------------------------------------
 
-type SendStatus = (event: StatusEvent) => Effect.Effect<void>
+const utterances = Projection.transcriptStep("transcript")
 
 const stt =
-  (cfg: PipelineConfig, sendStatus: SendStatus) =>
+  (cfg: PipelineConfig, emit: Emit, utterance: Ref.Ref<number>) =>
   <E, R>(audioIn: Stream.Stream<Uint8Array, E, R>) =>
     audioIn.pipe(
       Transcriber.streamTranscriptionFrom({
@@ -100,37 +105,32 @@ const stt =
         inputFormat: cfg.stt.inputFormat,
         wordTimestamps: false,
       }),
-      Stream.tap(
-        Match.type<TranscriptEvent>().pipe(
-          Match.tag("partial", ({ text }) =>
-            Effect.logDebug("[pipeline] stt partial", { text }).pipe(
-              Effect.andThen(sendStatus({ type: "user-partial", text })),
+      Stream.tap((e) =>
+        e._tag === "error"
+          ? Effect.logWarning("[pipeline] stt error", { message: e.message }).pipe(
+              Effect.andThen(event(emit)({ type: "live", name: "problem", value: e.message })),
+            )
+          : Ref.modify(utterance, (n) => {
+              const [next, events] = utterances(n, e)
+              return [events, next] as const
+            }).pipe(
+              Effect.flatMap((events) => Effect.forEach(events, event(emit), { discard: true })),
             ),
-          ),
-          Match.tag("error", ({ message }) =>
-            Effect.logWarning("[pipeline] stt error", { message }).pipe(
-              Effect.andThen(sendStatus({ type: "error", message })),
-            ),
-          ),
-          Match.orElse(() => Effect.void),
-        ),
       ),
     )
 
-const finalTextOf = (event: TranscriptEvent) =>
-  event._tag === "final" && event.text.trim().length > 0
-    ? Result.succeed(event.text.trim())
-    : Result.failVoid
+const finalTextOf = (e: TranscriptEvent) =>
+  e._tag === "final" && e.text.trim().length > 0 ? Result.succeed(e.text.trim()) : Result.failVoid
 
 // ---------------------------------------------------------------------------
 // Stop-word classifier.
 //
-// `containsStopWord` — true if the normalized final contains any stop word
-// as a substring. Fires the interrupt watcher. (Substring match is brittle
-// — "stopping" contains "stop" — but easy to read; we accept the false
+// `containsStopWord`: true if the normalized final contains any stop word
+// as a substring. Fires the interrupt watcher. (Substring match is brittle,
+// "stopping" contains "stop", but easy to read; we accept the false
 // positives for demo simplicity.)
 //
-// `isJustStopWord` — true if the normalized final IS exactly a stop word.
+// `isJustStopWord`: true if the normalized final IS exactly a stop word.
 // These are dropped from the utterance loop so "Stop." doesn't spawn a
 // turn. Finals like "Stop. Tell me about chemistry" still flow through
 // intact, so the follow-up question runs as the next turn after the cut.
@@ -161,33 +161,32 @@ const containsStopWord = (text: string): boolean => {
 const isJustStopWord = (text: string): boolean => STOP_WORDS.includes(normalizeFinal(text))
 
 // ---------------------------------------------------------------------------
-// runAssistantTurn — one user utterance → one assistant response.
+// runAssistantTurn: one user utterance → one assistant run.
 //
-// Linear top-to-bottom: status events → build audio stream → drain it with
-// per-chunk pacing → commit to history. `commit` handles both natural
-// completion (`Effect.tap` on success) and interruption (`Effect.onInterrupt`),
-// reading the same `acc` Ref so the assistant's partial text is preserved
-// either way.
+// The run opens with what the user said and the reply's audio channel, then
+// streams text and paced audio. It ends `run-completed` when the reply is
+// spoken, or `run-stopped { reason: "stop-word" }` when interrupted, which
+// closes the channel so the browser drops the audio it still has queued.
+// Either way the spoken text is committed to history.
 // ---------------------------------------------------------------------------
 
 const runAssistantTurn = (
   cfg: PipelineConfig,
-  sendStatus: SendStatus,
-  sendAudio: (bytes: Uint8Array) => Effect.Effect<void>,
+  emit: Emit,
   historyRef: Ref.Ref<ReadonlyArray<Items.HistoryItem>>,
+  runId: RunId,
   userText: string,
 ) =>
   Effect.gen(function* () {
+    const send = event(emit, runId)
     const acc = yield* Ref.make("")
+    const playback = toPlayback(cfg.tts.outputFormat)
 
-    // Append the user turn (plus the assistant's accumulated text, if any)
-    // to history and send the terminal status. Closed over `acc` so success
-    // and interrupt paths share one definition.
-    const commit = (type: "assistant-done" | "assistant-cancelled") =>
+    const commit = (terminal: RunEvent) =>
       Effect.gen(function* () {
         const text = yield* Ref.get(acc)
-        yield* Effect.logInfo(`[pipeline] ${type}`, { text })
-        yield* sendStatus({ type, text })
+        yield* Effect.logInfo(`[pipeline] ${terminal.type}`, { text })
+        yield* send(terminal)
         yield* Ref.update(historyRef, (h) => [
           ...h,
           Items.userText(userText),
@@ -195,8 +194,22 @@ const runAssistantTurn = (
         ])
       })
 
-    yield* sendStatus({ type: "user-final", text: userText })
-    yield* sendStatus({ type: "assistant-thinking" })
+    yield* send({
+      type: "run-started",
+      runId,
+      name: "assistant",
+      inputs: [],
+      protocol: PROTOCOL_VERSION,
+    })
+    yield* send({ type: "data", name: "prompt", value: userText })
+    yield* send({
+      type: "channel-opened",
+      channel: SPEAKER,
+      direction: "down",
+      mimeType: "audio/pcm",
+      sampleRate: cfg.tts.outputFormat.sampleRate,
+      channels: cfg.tts.outputFormat.channels ?? 1,
+    })
 
     const history = yield* Ref.get(historyRef)
     const audio = LanguageModel.streamTurn({
@@ -205,7 +218,7 @@ const runAssistantTurn = (
     }).pipe(
       Turn.textDeltas,
       Stream.tap((delta) =>
-        sendStatus({ type: "assistant-delta", text: delta }).pipe(
+        send({ type: "text-delta", text: delta }).pipe(
           Effect.andThen(Ref.update(acc, (s) => s + delta)),
         ),
       ),
@@ -222,28 +235,29 @@ const runAssistantTurn = (
     // so `Fiber.interrupt` from the stop-word watcher lands while we're
     // still here and cleanly tears the loop down.
     yield* Stream.runForEach(audio, (chunk: AudioChunk) =>
-      sendAudio(chunk.bytes).pipe(
+      emit(Frame.media(SPEAKER, playback(chunk.bytes))).pipe(
         Effect.andThen(
           Effect.sleep(
-            `${Math.max(1, Math.floor(chunkDurationMs(chunk.bytes.length, cfg.tts.outputFormat)))} millis`,
+            Duration.millis(
+              Math.max(1, Math.floor(chunkDurationMs(chunk.bytes.length, cfg.tts.outputFormat))),
+            ),
           ),
         ),
       ),
     ).pipe(
-      Effect.tap(() => commit("assistant-done")),
-      Effect.onInterrupt(() => commit("assistant-cancelled")),
+      Effect.tap(() => commit({ type: "run-completed" })),
+      Effect.onInterrupt(() => commit({ type: "run-stopped", reason: "stop-word" })),
     )
   })
 
 // ---------------------------------------------------------------------------
-// runPipeline — wires STT → stop-word watcher + utterance loop.
+// runPipeline: declares the mic, then wires STT → stop-word watcher + utterance loop.
 // ---------------------------------------------------------------------------
 
 export const runPipeline = <E, R>(
   cfg: PipelineConfig,
   audioIn: Stream.Stream<Uint8Array, E, R>,
-  sendStatus: SendStatus,
-  sendAudio: (bytes: Uint8Array) => Effect.Effect<void>,
+  emit: Emit,
 ) =>
   Effect.gen(function* () {
     yield* Effect.logInfo("[pipeline] starting", {
@@ -252,15 +266,27 @@ export const runPipeline = <E, R>(
       tts: `${cfg.tts.model} / ${cfg.tts.voiceId}`,
     })
 
+    // The mic format the transcriber takes, so the browser records at it.
+    yield* event(emit)({
+      type: "channel-opened",
+      channel: MIC,
+      direction: "up",
+      mimeType: "audio/pcm",
+      sampleRate: cfg.stt.inputFormat.sampleRate,
+      channels: 1,
+    })
+
     const historyRef = yield* Ref.make<ReadonlyArray<Items.HistoryItem>>([
       Items.systemText(cfg.llm.systemPrompt),
     ])
-    const activeTurn = yield* Ref.make<Fiber.Fiber<void, AiError.AiError> | null>(null)
+    // The turn being spoken; it leaves the handle when it ends.
+    const activeTurn = yield* FiberHandle.make<void, AiError.AiError>()
+    const utterance = yield* Ref.make(0)
 
     // Share the STT stream so the stop-word watcher and the utterance loop
     // can both pull finals independently. Subscribers only see events
-    // emitted after they subscribe — stale partials don't reach a new sub.
-    const sttEvents = yield* audioIn.pipe(stt(cfg, sendStatus), Stream.share({ capacity: 32 }))
+    // emitted after they subscribe, so stale partials don't reach a new sub.
+    const sttEvents = yield* audioIn.pipe(stt(cfg, emit, utterance), Stream.share({ capacity: 32 }))
     const finals = sttEvents.pipe(Stream.filterMap(finalTextOf))
 
     // (1) Stop-word watcher. Reads raw finals (no settleBurst) so "Stop."
@@ -269,8 +295,7 @@ export const runPipeline = <E, R>(
       Stream.filter(containsStopWord),
       Stream.runForEach((text) =>
         Effect.logInfo("[pipeline] stop word", { text }).pipe(
-          Effect.andThen(Ref.get(activeTurn)),
-          Effect.flatMap((fiber) => (fiber !== null ? Fiber.interrupt(fiber) : Effect.void)),
+          Effect.andThen(FiberHandle.clear(activeTurn)),
         ),
       ),
       Effect.forkScoped,
@@ -279,7 +304,7 @@ export const runPipeline = <E, R>(
     // (2) Utterance loop. Drops "Stop." alone (the watcher handled it), keeps
     // "Stop. <follow-up>" as a normal turn. Turns are awaited sequentially:
     // a follow-up spoken mid-turn sits in settleBurst's buffer and runs as
-    // soon as the current turn finishes — nothing is lost.
+    // soon as the current turn finishes, so nothing is lost.
     yield* finals.pipe(
       Stream.filter((text) => !isJustStopWord(text)),
       settleBurst(cfg.utteranceSettle),
@@ -292,15 +317,12 @@ export const runPipeline = <E, R>(
           : Effect.void,
       ),
       Stream.map((batch) => batch.join(" ")),
-      Stream.runForEach((userText) =>
-        Effect.gen(function* () {
-          const fiber = yield* Effect.forkChild(
-            runAssistantTurn(cfg, sendStatus, sendAudio, historyRef, userText),
-          )
-          yield* Ref.set(activeTurn, fiber)
-          yield* Fiber.await(fiber)
-          yield* Ref.set(activeTurn, null)
-        }),
+      Stream.zipWithIndex,
+      Stream.runForEach(([userText, n]) =>
+        FiberHandle.run(
+          activeTurn,
+          runAssistantTurn(cfg, emit, historyRef, RunId.make(`turn-${n}`), userText),
+        ).pipe(Effect.flatMap(Fiber.await)),
       ),
       Effect.tapCause((cause) =>
         Cause.hasInterruptsOnly(cause)

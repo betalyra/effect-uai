@@ -1,6 +1,8 @@
 export * as Atoms from "./Atoms.js"
 export * as Client from "./Client.js"
+export * as Frame from "./Frame.js"
 export * as Input from "./Input.js"
+export * as LiveSocket from "./LiveSocket.js"
 export * as Projection from "./Projection.js"
 export * as Run from "./Run.js"
 export * as RunEvent from "./RunEvent.js"

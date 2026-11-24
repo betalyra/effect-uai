@@ -9,9 +9,10 @@
  * decoded and `data` / `live` are typed by name.
  */
 import type * as File from "@effect-uai/core/File"
-import { Match } from "effect"
+import { Match, Record } from "effect"
 import {
   type Envelope,
+  isTerminal,
   type Payloads,
   type RunEvent,
   type RunId,
@@ -32,6 +33,12 @@ export type Entries<P extends Payloads = Untyped> = string extends P["data"]["na
 /** A stream-scoped `media` entry. */
 export type MediaEntry = { readonly source: File.FileSource; readonly name?: string }
 
+/** An open media channel, as declared by `channel-opened`. */
+export type ChannelInfo = Omit<Extract<RunEvent, { type: "channel-opened" }>, "type"> & {
+  /** The run that opened it; the channel closes when that run ends. */
+  readonly runId?: RunId
+}
+
 export type StreamView<P extends Payloads = Untyped> = {
   /** The stream `lastSeq` counts in; a frame from another stream starts over. */
   readonly streamId: StreamId | null
@@ -45,6 +52,8 @@ export type StreamView<P extends Payloads = Untyped> = {
   /** By `media.id`; one without an id gets its own `m<seq>` key. */
   readonly media: Readonly<Record<string, MediaEntry>>
   readonly live: RunView.Live<P>
+  /** Open channels by number (`view.channels[0]`). */
+  readonly channels: Readonly<Record<string, ChannelInfo>>
 }
 
 export const initial: StreamView = {
@@ -55,6 +64,7 @@ export const initial: StreamView = {
   data: {},
   media: {},
   live: {},
+  channels: {},
 }
 
 /** {@link initial}, typed for a contract's `P`. */
@@ -66,6 +76,7 @@ export const empty = <P extends Payloads = Untyped>(): StreamView<P> => ({
   data: {} as Entries<P>,
   media: {},
   live: {} as RunView.Live<P>,
+  channels: {},
 })
 
 // ---------------------------------------------------------------------------
@@ -73,6 +84,29 @@ export const empty = <P extends Payloads = Untyped>(): StreamView<P> => ({
 // ---------------------------------------------------------------------------
 
 type View = StreamView<Payloads>
+
+// Channels are the stream's whichever scope opened them; a run's close with it.
+const onChannel = (v: View, event: RunEvent<Payloads>, runId: RunId | undefined): View =>
+  Match.value(event).pipe(
+    Match.discriminators("type")({
+      "channel-opened": ({ type: _, ...info }): View => ({
+        ...v,
+        channels: {
+          ...v.channels,
+          [info.channel]: runId === undefined ? info : { ...info, runId },
+        },
+      }),
+      "channel-closed": (e): View => ({
+        ...v,
+        channels: Record.remove(v.channels, String(e.channel)),
+      }),
+    }),
+    Match.orElse(() =>
+      runId !== undefined && isTerminal(event)
+        ? { ...v, channels: Record.filter(v.channels, (c) => c.runId !== runId) }
+        : v,
+    ),
+  )
 
 const onRun = (v: View, runId: RunId, envelope: Envelope<Payloads>): View => {
   const current = v.runs[runId]
@@ -107,6 +141,7 @@ const onStream = (v: View, event: RunEvent<Payloads>, seq: number): View =>
 /**
  * Fold one envelope into the view. Run-scoped envelopes go to their run's
  * `RunView`; stream-scoped `data`, `media` and `live` land on the stream.
+ * Channels land on the stream from either scope.
  */
 export function step<P extends Payloads = Untyped>(
   view: StreamView<P>,
@@ -119,10 +154,11 @@ export function step(view: View, envelope: Envelope<Payloads>): View {
       ? view
       : { ...empty<Payloads>(), streamId: envelope.streamId }
   if (envelope.seq <= v.lastSeq) return view
-  const next =
+  const scoped =
     envelope.runId === undefined
       ? onStream(v, envelope.event, envelope.seq)
       : onRun(v, envelope.runId, envelope)
+  const next = onChannel(scoped, envelope.event, envelope.runId)
   return { ...next, lastSeq: envelope.seq }
 }
 
@@ -139,3 +175,10 @@ export const runsOf = <P extends Payloads>(
     const run = view.runs[id]
     return run === undefined || (name !== undefined && run.name !== name) ? [] : [run]
   })
+
+/** The open channels in one direction, e.g. `"up"` for what the server expects the client to send. */
+export const channelsOf = <P extends Payloads>(
+  view: StreamView<P>,
+  direction: ChannelInfo["direction"],
+): ReadonlyArray<ChannelInfo> =>
+  Object.values(view.channels).filter((c) => c.direction === direction)

@@ -8,10 +8,14 @@
  * (encrypted reasoning, item ids) that must not reach a browser.
  */
 import type * as Items from "@effect-uai/core/Items"
+import type * as Realtime from "@effect-uai/core/Realtime"
 import type * as ToolEvent from "@effect-uai/core/ToolEvent"
+import type * as Transcript from "@effect-uai/core/Transcript"
 import * as Turn from "@effect-uai/core/Turn"
-import { Effect, Match, Option, Schema, Stream } from "effect"
-import type { Json, RunEvent } from "./RunEvent.js"
+import { Array as A, Duration, Effect, Match, Option, Record, Schema, Stream } from "effect"
+import * as Frame from "./Frame.js"
+import type { Owned } from "./Run.js"
+import { type Json, PROTOCOL_VERSION, RunId, type RunEvent } from "./RunEvent.js"
 import * as UiContract from "./UiContract.js"
 
 /** What an effect-uai loop emits: turn events, tool events, and plain tool outputs. */
@@ -140,3 +144,260 @@ export const toRunEvents =
   (config: Config) =>
   <E, R>(self: Stream.Stream<Source, E, R>): Stream.Stream<RunEvent, E | Schema.SchemaError, R> =>
     self.pipe(Stream.mapAccumEffect(() => initial, step(config)))
+
+// ---------------------------------------------------------------------------
+// Speech: transcripts and realtime sessions
+// ---------------------------------------------------------------------------
+
+/** One utterance as `fromTranscript` sends it; type a contract's entry with it. */
+export const Utterance = Schema.Struct({
+  text: Schema.String,
+  final: Schema.Boolean,
+  words: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        text: Schema.String,
+        startSeconds: Schema.Number,
+        endSeconds: Schema.Number,
+      }),
+    ),
+  ),
+})
+export type Utterance = typeof Utterance.Type
+
+const utterance = (
+  name: string,
+  id: number,
+  text: string,
+  final: boolean,
+  words: ReadonlyArray<Transcript.WordTimestamp> | undefined,
+): RunEvent => ({
+  type: "data",
+  name,
+  id: String(id),
+  value: {
+    text,
+    final,
+    ...(words !== undefined && {
+      words: words.map((w) => ({
+        text: w.text,
+        startSeconds: w.startSeconds,
+        endSeconds: w.endSeconds,
+      })),
+    }),
+  },
+})
+
+/**
+ * Transcript fold: the next utterance id. Partials overwrite their utterance's
+ * entry, its final settles it, and the next partial starts a new id. Other
+ * events produce nothing; map them yourself and delegate the rest here.
+ */
+export const transcriptStep =
+  (name = "transcript") =>
+  (n: number, event: Transcript.TranscriptEvent): readonly [number, ReadonlyArray<RunEvent>] =>
+    Match.value(event).pipe(
+      Match.tag("partial", (e) => [n, [utterance(name, n, e.text, false, e.words)]] as const),
+      Match.tag("final", (e) => [n + 1, [utterance(name, n, e.text, true, e.words)]] as const),
+      Match.orElse(() => [n, []] as const),
+    )
+
+/**
+ * Stream operator: a live transcript as stream-scoped `data` entries named
+ * `name` (default `"transcript"`), one per utterance, valued as `Utterance`.
+ * Expects snapshots: pipe delta providers through `Transcript.accumulatePartials`.
+ */
+export const fromTranscript =
+  (options?: { readonly name?: string }) =>
+  <E, R>(self: Stream.Stream<Transcript.TranscriptEvent, E, R>): Stream.Stream<RunEvent, E, R> =>
+    self.pipe(Stream.mapAccum(() => 0, transcriptStep(options?.name)))
+
+export type RealtimeOptions = {
+  /** The channel each response's audio goes down on; it opens with the run and closes with it. */
+  readonly channel: number
+  readonly format: { readonly sampleRate: number; readonly channels?: number }
+  /** `run-started.name` of every response. Default `"assistant"`. */
+  readonly name?: string
+  /** `data` name of the user's transcript. Default `"transcript"`. */
+  readonly transcript?: string
+}
+
+export const RealtimeState = Schema.Struct({
+  /** Responses whose run is open. */
+  open: Schema.Array(Schema.String),
+  /** Calls not yet answered, with the run that made them. */
+  calls: Schema.Record(Schema.String, Schema.Struct({ name: Schema.String, runId: RunId })),
+  utterance: Schema.Number,
+  /** The current utterance so far: its partials are deltas. */
+  heard: Schema.String,
+})
+export type RealtimeState = typeof RealtimeState.Type
+
+export const realtimeInitial: RealtimeState = { open: [], calls: {}, utterance: 0, heard: "" }
+
+type Live = readonly [RealtimeState, ReadonlyArray<Frame.Frame<Owned>>]
+
+const owned = (event: RunEvent, runId?: string): Frame.Frame<Owned> =>
+  Frame.message(runId === undefined ? { event } : { runId: RunId.make(runId), event })
+
+const terminalOf = (reason: "complete" | "interrupted" | "cancelled" | "error"): RunEvent =>
+  Match.value(reason).pipe(
+    Match.when("complete", (): RunEvent => ({ type: "run-completed" })),
+    Match.when("error", (): RunEvent => ({ type: "run-failed", reason: "error" })),
+    Match.orElse((r): RunEvent => ({ type: "run-stopped", reason: r })),
+  )
+
+/**
+ * Realtime fold. Each response is a run (its id is the `responseId`) that
+ * opens its own audio channel; an interruption ends it with
+ * `run-stopped { reason: "barge-in" }`, which closes the channel, so the
+ * client drops what it still has queued. Audio of a response already ended
+ * is dropped. Running tools stays the app's: answer a `tool-call-ready` with
+ * a `tool-result` in the call's run (the `ToolCall`'s `responseId`).
+ */
+export const realtimeStep =
+  (options: RealtimeOptions) =>
+  (s: RealtimeState, event: Realtime.RealtimeEvent): Live => {
+    const isOpen = (id: string) => s.open.includes(id)
+    const close = (id: string): RealtimeState => ({ ...s, open: s.open.filter((o) => o !== id) })
+    return Match.value(event).pipe(
+      Match.tagsExhaustive({
+        ResponseStarted: ({ responseId }): Live =>
+          isOpen(responseId)
+            ? [s, []]
+            : [
+                { ...s, open: [...s.open, responseId] },
+                [
+                  owned(
+                    {
+                      type: "run-started",
+                      runId: RunId.make(responseId),
+                      name: options.name ?? "assistant",
+                      inputs: [],
+                      protocol: PROTOCOL_VERSION,
+                    },
+                    responseId,
+                  ),
+                  owned(
+                    {
+                      type: "channel-opened",
+                      channel: options.channel,
+                      direction: "down",
+                      mimeType: "audio/pcm",
+                      sampleRate: options.format.sampleRate,
+                      channels: options.format.channels ?? 1,
+                    },
+                    responseId,
+                  ),
+                ],
+              ],
+        AudioDelta: ({ responseId, bytes }): Live =>
+          isOpen(responseId) ? [s, [Frame.media(options.channel, bytes)]] : [s, []],
+        OutputTranscriptDelta: ({ responseId, text }): Live =>
+          isOpen(responseId) ? [s, [owned({ type: "text-delta", text }, responseId)]] : [s, []],
+        ToolCall: ({ responseId, call }): Live => [
+          {
+            ...s,
+            calls: {
+              ...s.calls,
+              [call.call_id]: { name: call.name, runId: RunId.make(responseId) },
+            },
+          },
+          [
+            owned(
+              {
+                type: "tool-call-ready",
+                callId: call.call_id,
+                name: call.name,
+                input: decodeJson(call.arguments),
+              },
+              responseId,
+            ),
+          ],
+        ],
+        ToolCallCancelled: ({ callIds }): Live => [
+          { ...s, calls: Record.filter(s.calls, (_, id) => !callIds.includes(id)) },
+          A.getSomes(
+            callIds.map((callId) =>
+              Option.map(Record.get(s.calls, callId), (call) =>
+                owned(
+                  {
+                    type: "tool-result",
+                    callId,
+                    name: call.name,
+                    result: { _tag: "Failure", error: "cancelled" },
+                  },
+                  call.runId,
+                ),
+              ),
+            ),
+          ),
+        ],
+        Interrupted: ({ responseId }): Live =>
+          isOpen(responseId)
+            ? [close(responseId), [owned({ type: "run-stopped", reason: "barge-in" }, responseId)]]
+            : [s, []],
+        ResponseDone: ({ responseId, reason, usage }): Live =>
+          isOpen(responseId)
+            ? [
+                close(responseId),
+                [
+                  ...(usage === undefined ? [] : [owned({ type: "usage", usage }, responseId)]),
+                  owned(terminalOf(reason), responseId),
+                ],
+              ]
+            : [s, []],
+        // Partials extend the utterance; its final is the whole text and replaces them.
+        InputTranscript: ({ text, final }): Live => [
+          final ? { ...s, utterance: s.utterance + 1, heard: "" } : { ...s, heard: s.heard + text },
+          [
+            owned(
+              utterance(
+                options.transcript ?? "transcript",
+                s.utterance,
+                final ? text : (s.heard + text).trim(),
+                final,
+                undefined,
+              ),
+            ),
+          ],
+        ],
+        SpeechStarted: (): Live => [s, [owned({ type: "live", name: "vad", value: true })]],
+        SpeechStopped: (): Live => [s, [owned({ type: "live", name: "vad", value: false })]],
+        SessionEnding: ({ timeLeft }): Live => [
+          s,
+          [
+            owned({
+              type: "live",
+              name: "session-ending",
+              value: timeLeft === undefined ? null : Duration.toMillis(timeLeft),
+            }),
+          ],
+        ],
+        Error: ({ code, message }): Live => [
+          s,
+          [
+            owned({
+              type: "live",
+              name: "error",
+              value: code === undefined ? { message } : { code, message },
+            }),
+          ],
+        ],
+        // A provider resumption handle is the server's to keep.
+        ResumptionHandle: (): Live => [s, []],
+      }),
+    )
+  }
+
+/**
+ * Stream operator: a realtime session's events as frames: runs, entries and
+ * `live` values to sequence (`Frame.sequence`), and each response's audio as
+ * media on `options.channel`.
+ */
+export const fromRealtime =
+  (options: RealtimeOptions) =>
+  <E, R>(
+    self: Stream.Stream<Realtime.RealtimeEvent, E, R>,
+  ): Stream.Stream<Frame.Frame<Owned>, E, R> =>
+    self.pipe(Stream.mapAccum(() => realtimeInitial, realtimeStep(options)))

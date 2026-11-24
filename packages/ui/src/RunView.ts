@@ -490,6 +490,9 @@ const apply = (v: View, event: RunEvent<Payloads>): View =>
           ? push(v, (id) => block(e.id ?? id))
           : { ...v, blocks: replaceAt(v.blocks, index, block(e.id ?? "")) }
       },
+      // Channels are the stream's (`StreamView.channels`).
+      "channel-opened": (): View => v,
+      "channel-closed": (): View => v,
       "object-started": (e): View =>
         updateObject(v, e.id, (b) => (e.name === undefined ? b : { ...b, name: e.name })),
       "object-delta": (e) => updateObject(v, e.id, (b) => objectDelta(b, e)),

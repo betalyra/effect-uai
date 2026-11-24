@@ -198,6 +198,7 @@ export default defineConfig({
           items: [
             { label: "Overview", slug: "agentic-ui" },
             { label: "Program streams", slug: "agentic-ui/program-streams" },
+            { label: "Live sessions", slug: "agentic-ui/live-sessions" },
             {
               label: "Frameworks",
               items: [

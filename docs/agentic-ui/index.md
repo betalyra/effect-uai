@@ -208,6 +208,9 @@ A station, a generation queue or a dashboard is not a thread of runs but a
 set of entries that change in place, maybe several runs at once, and media
 to play. [Program streams](/agentic-ui/program-streams/) covers the `media`
 event, concurrent runs and `StreamView`, the fold for a whole stream.
+When media flows both ways (a mic up, speech down),
+[Live sessions](/agentic-ui/live-sessions/) puts the same protocol on one
+WebSocket.
 
 ## Your framework
 

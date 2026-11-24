@@ -256,6 +256,12 @@ update of `plans/mcp.md`). `@effect-uai/mcp` is client-only today.
       ship docs, recipes and the skill in the tarball under `agent-docs/` and
       `skills/`, so agents on older versions read matching docs from
       `node_modules`. Today the skill and the site only describe `main`.
+- [ ] **Ship the skill for pnpm's agent-skills linking** (pnpm 12.11+): pnpm
+      links `skills/<name>/SKILL.md` from direct dependencies into
+      `.claude/skills` etc. after `pnpm approve` (no package.json field). Put
+      `skills/effect-uai/SKILL.md` into the `@effect-uai/core` tarball (copied
+      at `prepack` from the repo root, no symlink) and add `"skills"` to
+      `files`. Overlaps the item above. Refs: pnpm/rfcs#35, pnpm 12.18 notes.
 - [ ] **`Loop.untilNoToolCalls` as a recipe**. Source: roadmap:47.
 - [ ] **`Stream.runFold` `LazyArg` callout** in docs/skill. Source: roadmap:50
       (§ at :1225).

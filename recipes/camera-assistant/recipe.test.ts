@@ -1,5 +1,5 @@
 import { describe, it } from "@effect/vitest"
-import { Effect, Ref, Schema, Stream } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import { expect, expectTypeOf } from "vitest"
 import type { ImageSource } from "@effect-uai/core/Image"
 import { RealtimeEvent, type RealtimeInput } from "@effect-uai/core/Realtime"
@@ -7,7 +7,11 @@ import type { RealtimeVideoInput } from "@effect-uai/core/RealtimeSession"
 import * as MockRealtimeSession from "@effect-uai/core/testing/MockRealtimeSession"
 import * as Tool from "@effect-uai/core/Tool"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-import { type AssistantConfig, runAssistant, type StatusEvent } from "./recipe.js"
+import * as Frame from "@effect-uai/ui/Frame"
+import { RunId, StreamId } from "@effect-uai/ui/RunEvent"
+import * as StreamView from "@effect-uai/ui/StreamView"
+import { CAMERA, MIC, type Up } from "./contract.js"
+import { type AssistantConfig, type Frames, runAssistant } from "./recipe.js"
 
 const cfg: AssistantConfig = {
   model: "gemini-3.1-flash-live-preview",
@@ -17,7 +21,7 @@ const cfg: AssistantConfig = {
   outputFormat: { container: "raw", encoding: "pcm_s16le", sampleRate: 24000, channels: 1 },
 }
 
-type ContextOf<T> = T extends Effect.Effect<infer _A, infer _E, infer R> ? R : never
+type ContextOf<T> = T extends Stream.Stream<infer _A, infer _E, infer R> ? R : never
 
 /** Slow enough that a cancellation lands while it is still running. */
 const lookUp = Tool.make({
@@ -37,22 +41,50 @@ const jpeg = (byte: number): ImageSource => ({
   mimeType: "image/jpeg",
 })
 
-const run = (frames: ReadonlyArray<ImageSource>, initial: ReadonlyArray<RealtimeEvent> = []) =>
+const turn1 = RunId.make("turn_1")
+
+const call = {
+  type: "function_call",
+  call_id: "fc_1",
+  name: "web_search",
+  arguments: '{"query":"what is this"}',
+  providerData: undefined,
+} as const
+
+/**
+ * Run the assistant against a scripted session until it goes quiet, with the
+ * page sending the mic and `cameraFrames` on the camera channel, then fold
+ * what it sent the page into a `StreamView`.
+ */
+const run = (
+  cameraFrames: ReadonlyArray<number>,
+  initial: ReadonlyArray<RealtimeEvent> = [],
+  frames: Frames = { _tag: "page", source: "camera" },
+) =>
   Effect.gen(function* () {
     const mock = MockRealtimeSession.layer({ initial })
-    const status = yield* Ref.make<ReadonlyArray<StatusEvent>>([])
+    const up: Stream.Stream<Frame.Frame<Up>> = Stream.make(
+      Frame.media(MIC, new Uint8Array([1, 2])),
+      ...cameraFrames.map((byte) => Frame.media(CAMERA, new Uint8Array([byte]))),
+    )
 
     // The session stays open until its scope closes, so bound the run instead
     // of waiting for an end that never comes.
-    yield* runAssistant(cfg, toolkit, {
-      mic: Stream.make(new Uint8Array([1, 2])),
-      typed: Stream.empty,
-      frames: Stream.fromIterable(frames),
-      sendStatus: (event) => Ref.update(status, (xs) => [...xs, event]),
-      sendAudio: () => Effect.void,
-    }).pipe(Effect.scoped, Effect.provide(mock.layer), Effect.timeout("250 millis"), Effect.ignore)
+    const emitted = yield* runAssistant(cfg, toolkit, frames, up).pipe(
+      Stream.interruptWhen(Effect.sleep("250 millis")),
+      Stream.runCollect,
+      Effect.provide(mock.layer),
+    )
 
-    return { status: yield* Ref.get(status), sent: (yield* mock.recorder).sent }
+    const view = yield* Stream.fromIterable(emitted).pipe(
+      Frame.sequence(StreamId.make("camera")),
+      Stream.runFold(
+        () => StreamView.initial,
+        (v, frame) => (frame._tag === "Message" ? StreamView.step(v, frame.message) : v),
+      ),
+    )
+    const tool = view.runs[turn1]?.blocks.find((b) => b.type === "tool")
+    return { view, tool, sent: (yield* mock.recorder).sent }
   })
 
 const sentOf = <T extends RealtimeInput["_tag"]>(
@@ -64,20 +96,32 @@ const sentOf = <T extends RealtimeInput["_tag"]>(
 describe("camera assistant", () => {
   it.live("forwards every camera frame to the session and counts what it showed", () =>
     Effect.gen(function* () {
-      const { status, sent } = yield* run([jpeg(1), jpeg(2)])
+      const { view, sent } = yield* run([1, 2])
 
       expect(sentOf(sent, "VideoFrame").map((i) => i.frame)).toEqual([jpeg(1), jpeg(2)])
       // The count is what the page shows, so it has to follow the frames.
-      expect(status.filter((e) => e.type === "frames")).toEqual([
-        { type: "frames", count: 1 },
-        { type: "frames", count: 2 },
-      ])
+      expect(view.live["frames"]).toBe(2)
+      // The page captures, so it is told to, and with what.
+      expect(view.channels[String(CAMERA)]?.mimeType).toBe("image/jpeg")
+      expect(view.live["source"]).toBe("camera")
     }),
   )
 
-  it.live("reports an interruption without answering it, since this wire has no truncate", () =>
+  it.live("takes frames from its own source instead, and offers the page no camera", () =>
     Effect.gen(function* () {
-      const { status, sent } = yield* run(
+      const { view, sent } = yield* run([9], [], {
+        _tag: "own",
+        frames: Stream.make(jpeg(1)),
+      })
+
+      expect(sentOf(sent, "VideoFrame").map((i) => i.frame)).toEqual([jpeg(1)])
+      expect(view.channels[String(CAMERA)]).toBeUndefined()
+    }),
+  )
+
+  it.live("ends an interrupted answer without answering it, since this wire has no truncate", () =>
+    Effect.gen(function* () {
+      const { view, sent } = yield* run(
         [],
         [
           RealtimeEvent.ResponseStarted({ responseId: "turn_1" }),
@@ -86,57 +130,35 @@ describe("camera assistant", () => {
         ],
       )
 
-      expect(status.map((e) => e.type)).toEqual([
-        "assistant-started",
-        "interrupted",
-        "assistant-done",
-      ])
+      expect(view.runs[turn1]?.status).toBe("stopped")
       expect(sentOf(sent, "PlaybackPosition")).toHaveLength(0)
     }),
   )
 
   it.live("runs a tool beside the conversation and hands the result back", () =>
     Effect.gen(function* () {
-      const { status, sent } = yield* run(
+      const { tool, sent } = yield* run(
         [],
         [
           RealtimeEvent.ResponseStarted({ responseId: "turn_1" }),
-          RealtimeEvent.ToolCall({
-            responseId: "turn_1",
-            call: {
-              type: "function_call",
-              call_id: "fc_1",
-              name: "web_search",
-              arguments: '{"query":"what is this"}',
-              providerData: undefined,
-            },
-          }),
+          RealtimeEvent.ToolCall({ responseId: "turn_1", call }),
         ],
       )
 
       const [result] = sentOf(sent, "ToolResult")
       expect(result?.output.call_id).toBe("fc_1")
       expect(JSON.stringify(result?.output.output)).toContain("a result")
-      expect(status.map((e) => e.type)).toEqual(["assistant-started", "tool-call", "tool-done"])
+      expect(tool).toMatchObject({ status: "done", input: { query: "what is this" } })
     }),
   )
 
   it.live("still interrupts a call the model abandons after the turn ended", () =>
     Effect.gen(function* () {
-      const { status, sent } = yield* run(
+      const { tool, sent } = yield* run(
         [],
         [
           RealtimeEvent.ResponseStarted({ responseId: "turn_1" }),
-          RealtimeEvent.ToolCall({
-            responseId: "turn_1",
-            call: {
-              type: "function_call",
-              call_id: "fc_1",
-              name: "web_search",
-              arguments: '{"query":"what is this"}',
-              providerData: undefined,
-            },
-          }),
+          RealtimeEvent.ToolCall({ responseId: "turn_1", call }),
           // Gemini ends the turn before it cancels the call it just made.
           RealtimeEvent.ResponseDone({ responseId: "turn_1", reason: "interrupted" }),
           RealtimeEvent.ToolCallCancelled({ callIds: ["fc_1"] }),
@@ -144,27 +166,17 @@ describe("camera assistant", () => {
       )
 
       expect(sentOf(sent, "ToolResult")).toHaveLength(0)
-      expect(status.filter((e) => e.type === "tool-cancelled")).toEqual([
-        { type: "tool-cancelled", count: 1 },
-      ])
+      expect(tool).toMatchObject({ status: "failed", outcome: { error: "cancelled" } })
     }),
   )
 
   it("needs a provider with video, so an audio-only session leaves the marker unmet", () => {
-    const io = {
-      mic: Stream.empty,
-      typed: Stream.empty,
-      frames: Stream.empty,
-      sendStatus: () => Effect.void,
-      sendAudio: () => Effect.void,
-    }
-    const audioOnly = runAssistant(cfg, toolkit, io).pipe(
-      Effect.provide(MockRealtimeSession.layerAudioOnly({}).layer),
-      Effect.scoped,
+    const frames: Frames = { _tag: "page", source: "camera" }
+    const audioOnly = runAssistant(cfg, toolkit, frames, Stream.empty).pipe(
+      Stream.provide(MockRealtimeSession.layerAudioOnly({}).layer),
     )
-    const withVideo = runAssistant(cfg, toolkit, io).pipe(
-      Effect.provide(MockRealtimeSession.layer({}).layer),
-      Effect.scoped,
+    const withVideo = runAssistant(cfg, toolkit, frames, Stream.empty).pipe(
+      Stream.provide(MockRealtimeSession.layer({}).layer),
     )
 
     // An unmet marker is what makes running this against a provider without

@@ -5,8 +5,8 @@
  *   ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... bun recipes/voice-loop/run.ts
  *   ELEVENLABS_API_KEY=... GOOGLE_API_KEY=... deno run --allow-all recipes/voice-loop/run.ts
  *
- *   # All-Mistral stack (Voxtral STT/TTS + Mistral LLM), with frame logging:
- *   MISTRAL_API_KEY=... ... run.ts --provider mistral --debug
+ *   # All-Mistral stack (Voxtral STT/TTS + Mistral LLM), with debug logs:
+ *   LOG_LEVEL=Debug MISTRAL_API_KEY=... ... run.ts --provider mistral
  *
  * Then open http://localhost:3000 (`PORT` moves it) and allow the microphone.
  */

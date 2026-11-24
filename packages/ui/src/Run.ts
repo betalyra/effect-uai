@@ -73,12 +73,20 @@ export const complete = <E, R>(
 
 /** End the run with `run-stopped` when `signal` completes (e.g. a stop `Deferred`). */
 export const stopWhen =
-  (signal: Effect.Effect<void>) =>
+  (signal: Effect.Effect<void>, options?: { readonly reason?: string }) =>
   <E, R>(self: Stream.Stream<RunEvent, E, R>): Stream.Stream<RunEvent, E, R> =>
     self.pipe(
-      Stream.merge(Stream.fromEffect(Effect.as(signal, { type: "run-stopped" } as const)), {
-        haltStrategy: "left",
-      }),
+      Stream.merge(
+        Stream.fromEffect(
+          Effect.as(
+            signal,
+            options?.reason === undefined
+              ? ({ type: "run-stopped" } as const)
+              : ({ type: "run-stopped", reason: options.reason } as const),
+          ),
+        ),
+        { haltStrategy: "left" },
+      ),
       Stream.takeUntil((event) => event.type === "run-stopped"),
     )
 

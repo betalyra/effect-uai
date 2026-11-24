@@ -21,9 +21,12 @@ import {
 } from "effect"
 import { Sse } from "effect/encoding"
 import { HttpClient, HttpClientError, type HttpClientRequest } from "effect/http"
+import * as Socket from "effect/socket/Socket"
 import * as Client from "./Client.js"
+import * as Frame from "./Frame.js"
+import { duplex } from "./internal/socket.js"
 import * as Run from "./Run.js"
-import { type Envelope, type RunEvent, StreamId } from "./RunEvent.js"
+import { type Envelope, EnvelopeJson, type RunEvent, StreamId } from "./RunEvent.js"
 
 export type Transport<I, S, E, R> = {
   /** Start a run for `input` and stream its envelopes. Interrupting the stream abandons it. */
@@ -319,3 +322,45 @@ export const reconnect: {
       : durableOf({ ...self, resume: resumed(self.resume, "terminal") })
   },
 )
+
+// ---------------------------------------------------------------------------
+// Live: one socket, frames both ways (mic in, audio out)
+// ---------------------------------------------------------------------------
+
+/**
+ * A live session: `connect` sends `up` and streams what comes back, envelopes
+ * and media frames, until either side closes. No resume: a dropped live
+ * session is a new one.
+ */
+export type Live<U, E, R> = {
+  readonly connect: (
+    up: Stream.Stream<Frame.Frame<U>>,
+  ) => Stream.Stream<Frame.Frame<Envelope>, E, R>
+}
+
+/** A raw duplex connection: what to send in, what arrives out. */
+export type Connect<E, R> = <EU>(
+  up: Stream.Stream<Frame.Wire, EU>,
+) => Stream.Stream<Frame.Wire, E | EU, R>
+
+/**
+ * A WebSocket to `url`. The peer closing cleanly ends the stream; ending `up`
+ * closes the socket. In a browser, provide `Socket.layerWebSocketConstructorGlobal`.
+ */
+export const socket =
+  (url: string | Effect.Effect<string>): Connect<Socket.SocketError, Socket.WebSocketConstructor> =>
+  (up) =>
+    Stream.unwrap(Effect.map(Socket.makeWebSocket(url), (s) => duplex(s)(up)))
+
+/** Frames over a raw connection; upstream messages encode with `up`, envelopes decode as sent. */
+export const live = <U, I, E, R>(options: {
+  readonly connect: Connect<E, R>
+  readonly up: Schema.Codec<U, I>
+}): Live<U, E | Schema.SchemaError | Frame.FrameError, R> => {
+  const encode = Frame.encode(options.up)
+  const decode = Frame.decode(EnvelopeJson)
+  return {
+    connect: (up) =>
+      options.connect(up.pipe(Stream.mapEffect(encode))).pipe(Stream.mapEffect(decode)),
+  }
+}

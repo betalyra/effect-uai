@@ -1,25 +1,131 @@
 /**
- * Browser-side entry point. Bundled by `Bun.build` at server startup and
- * served as `/client.js`. Wires mic → WebSocket → server, server →
- * playback worklet + DOM.
+ * Browser entry point, bundled at server startup and served as `/client.js`.
  *
- * Imperative on purpose — `getUserMedia`, `AudioContext`, `AudioWorklet`,
- * and `WebSocket` are all callback-driven web APIs. Effect lives entirely
- * on the server in this recipe.
+ * One live session over `@effect-uai/ui`. The server opens the mic channel
+ * at the rate its transcriber takes; the page records with `Media.mic` and
+ * sends each frame on it. Each reply is a run that opens its own audio
+ * channel; the audio plays through one `Media.pcmPlayer`, and a reply the
+ * user cuts short with a stop word (`run-stopped`) drops what is still queued.
+ *
+ * The devices are one Effect per connection: each opens once the server
+ * declares its channel, and all of them are released when the connection
+ * ends. Rendering is plain DOM.
  */
+import * as Atoms from "@effect-uai/ui/Atoms"
+import * as Frame from "@effect-uai/ui/Frame"
+import * as Media from "@effect-uai/ui/Media"
+import * as RunView from "@effect-uai/ui/RunView"
+import * as StreamView from "@effect-uai/ui/StreamView"
+import * as Transport from "@effect-uai/ui/Transport"
+import type * as UiContract from "@effect-uai/ui/UiContract"
+import { Effect, Option, Predicate, Queue, Stream } from "effect"
+import { Atom, AtomRegistry } from "effect/reactivity"
+import * as Socket from "effect/socket/Socket"
+import { MIC, SPEAKER, Up, VoiceUi } from "../contract.js"
 
-// A module, not a script: every recipe's client declares `$`, `setStatus` and
-// a `StatusEvent`, and as scripts they would all share one global scope.
+// A module, not a script: recipe clients would otherwise share one global scope.
 export {}
 
-type StatusEvent =
-  | { readonly type: "user-partial"; readonly text: string }
-  | { readonly type: "user-final"; readonly text: string }
-  | { readonly type: "assistant-thinking" }
-  | { readonly type: "assistant-delta"; readonly text: string }
-  | { readonly type: "assistant-done"; readonly text: string }
-  | { readonly type: "assistant-cancelled"; readonly text: string }
-  | { readonly type: "error"; readonly message: string }
+// The `@effect-uai/ui` worklets, served by `app.ts`.
+const MIC_WORKLET = "/worklets/mic.mjs"
+const PLAYER_WORKLET = "/worklets/player.mjs"
+
+type Payloads = UiContract.Payloads<typeof VoiceUi>
+type View = StreamView.StreamView<Payloads>
+
+// ---------------------------------------------------------------------------
+// The session
+// ---------------------------------------------------------------------------
+
+// Reply audio, held until the player is open.
+const speaker = Effect.runSync(Queue.unbounded<Uint8Array>())
+
+const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
+
+const session = Atoms.live({
+  runtime: Atom.runtime(Socket.layerWebSocketConstructorGlobal),
+  transport: Transport.live({ connect: Transport.socket(wsUrl), up: Up }),
+  initial: StreamView.empty<Payloads>(),
+  step: StreamView.step,
+  decode: VoiceUi.decode,
+  media: (frame) =>
+    frame.channel === SPEAKER ? Effect.asVoid(Queue.offer(speaker, frame.bytes)) : Effect.void,
+})
+
+const registry = AtomRegistry.make()
+const views = AtomRegistry.toStream(registry, session.state)
+
+// ---------------------------------------------------------------------------
+// Devices: the mic and the player, for as long as a connection lasts
+// ---------------------------------------------------------------------------
+
+/** A channel, once the server has opened it. */
+const opened = (channel: number) =>
+  views.pipe(
+    Stream.map((view) => view.channels[channel]),
+    Stream.filter(Predicate.isNotUndefined),
+    Stream.runHead,
+    Effect.flatMap(Option.match({ onNone: () => Effect.never, onSome: Effect.succeed })),
+  )
+
+/** Each reply the first time it is seen stopped. */
+const stoppedReplies = views.pipe(
+  Stream.mapAccum(
+    () => new Set<string>(),
+    (seen, view): readonly [Set<string>, ReadonlyArray<string>] => {
+      const ids = StreamView.runsOf(view, "assistant").flatMap((reply) =>
+        reply.status === "stopped" && reply.runId !== undefined && !seen.has(reply.runId)
+          ? [reply.runId]
+          : [],
+      )
+      return [new Set([...seen, ...ids]), ids]
+    },
+  ),
+)
+
+const devices = Effect.gen(function* () {
+  yield* Queue.clear(speaker)
+  yield* opened(MIC).pipe(
+    Effect.flatMap((up) =>
+      Media.mic({ sampleRate: up.sampleRate ?? 16000, worklet: MIC_WORKLET }).pipe(
+        Stream.runForEach((bytes) =>
+          Effect.sync(() => registry.set(session.send, Frame.media(MIC, bytes))),
+        ),
+      ),
+    ),
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        setStatus(`mic ${error.reason}: ${error.message}`, true)
+        registry.set(session.disconnect, undefined)
+      }),
+    ),
+    Effect.forkScoped,
+  )
+  // One player for the connection, at the rate the first reply declares.
+  const down = yield* opened(SPEAKER)
+  const player = yield* Media.pcmPlayer({
+    sampleRate: down.sampleRate ?? 48000,
+    worklet: PLAYER_WORKLET,
+  })
+  // A stop word ends the reply early: drop what is still queued, so it stops at once.
+  yield* stoppedReplies.pipe(
+    Stream.runForEach(() => Effect.andThen(Queue.clear(speaker), player.clear)),
+    Effect.forkScoped,
+  )
+  yield* Stream.fromQueue(speaker).pipe(Stream.runForEach(player.push))
+}).pipe(
+  Effect.catch((error) =>
+    Effect.sync(() => setStatus(`audio ${error.reason}: ${error.message}`, true)),
+  ),
+  Effect.scoped,
+)
+
+AtomRegistry.toStream(registry, session.connected).pipe(
+  Stream.changes,
+  Stream.switchMap((connected) => (connected ? Stream.fromEffect(devices) : Stream.empty)),
+  Stream.runDrain,
+  Effect.runFork,
+)
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -40,287 +146,57 @@ const setStatus = (text: string, error = false): void => {
   statusEl.classList.toggle("err", error)
 }
 
-// ---------------------------------------------------------------------------
-// Conversation rendering — keeps a running list of user / assistant blocks.
-// Live partials and streaming assistant text mutate the trailing block.
-// ---------------------------------------------------------------------------
-
-type Block = {
-  readonly el: HTMLDivElement
-  readonly role: "user" | "assistant"
-  readonly text: HTMLSpanElement
-  partial: boolean
-}
-
-let currentUser: Block | undefined
-let currentAssistant: Block | undefined
-
-const makeBlock = (role: "user" | "assistant"): Block => {
+const block = (role: "user" | "assistant", text: string, partial: boolean): HTMLElement => {
   const el = document.createElement("div")
   el.className = `transcript ${role}`
-  const roleLabel = document.createElement("div")
-  roleLabel.className = "role"
-  roleLabel.textContent = role
-  const text = document.createElement("span")
-  el.appendChild(roleLabel)
-  el.appendChild(text)
-  conversationEl.appendChild(el)
-  return { el, role, text, partial: false }
+  const label = document.createElement("div")
+  label.className = "role"
+  label.textContent = role
+  const body = document.createElement("span")
+  body.textContent = text
+  body.classList.toggle("partial", partial)
+  el.append(label, body)
+  return el
 }
 
-const setUserPartial = (s: string): void => {
-  if (!currentUser || !currentUser.partial) currentUser = makeBlock("user")
-  currentUser.partial = true
-  currentUser.text.textContent = s
-  currentUser.text.classList.add("partial")
+const promptOf = (reply: RunView.RunView<Payloads>): string =>
+  reply.blocks.flatMap((b) => (b.type === "data" && b.name === "prompt" ? [b.value] : [])).join(" ")
+
+/** Each reply with the words that started it, then whatever the user is saying now. */
+const render = (view: View): void => {
+  const replies = StreamView.runsOf(view, "assistant")
+  const utterances = Object.entries(view.data.transcript ?? {}).sort(
+    ([a], [b]) => Number(a) - Number(b),
+  )
+  const speaking = utterances.at(-1)?.[1]
+  conversationEl.replaceChildren(
+    ...replies.flatMap((reply) => [
+      block("user", promptOf(reply), false),
+      block("assistant", RunView.text(reply), reply.status === "streaming"),
+    ]),
+    ...(speaking !== undefined && !speaking.final ? [block("user", speaking.text, true)] : []),
+  )
+  const problem = view.live.problem
+  if (problem !== undefined) setStatus(problem, true)
+  else setStatus(replies.at(-1)?.status === "streaming" ? "speaking…" : "listening")
 }
 
-const commitUserFinal = (s: string): void => {
-  if (!currentUser) currentUser = makeBlock("user")
-  currentUser.text.textContent = s
-  currentUser.text.classList.remove("partial")
-  currentUser.partial = false
-  currentUser = undefined // next partial starts a fresh block
-}
+registry.subscribe(session.state, render, { immediate: true })
 
-const startAssistant = (): void => {
-  currentAssistant = makeBlock("assistant")
-  currentAssistant.text.classList.add("partial")
-}
-
-const appendAssistantDelta = (s: string): void => {
-  if (!currentAssistant) startAssistant()
-  currentAssistant!.text.textContent = (currentAssistant!.text.textContent ?? "") + s
-}
-
-const finishAssistant = (s: string): void => {
-  if (!currentAssistant) currentAssistant = makeBlock("assistant")
-  currentAssistant.text.textContent = s
-  currentAssistant.text.classList.remove("partial")
-  currentAssistant = undefined
-}
-
-const handleStatus = (event: StatusEvent): void => {
-  switch (event.type) {
-    case "user-partial":
-      setUserPartial(event.text)
-      break
-    case "user-final":
-      commitUserFinal(event.text)
-      break
-    case "assistant-thinking":
-      setStatus("thinking…")
-      startAssistant()
-      break
-    case "assistant-delta":
-      setStatus("speaking…")
-      appendAssistantDelta(event.text)
-      break
-    case "assistant-done":
-      setStatus("listening")
-      finishAssistant(event.text)
-      break
-    case "assistant-cancelled":
-      // Drop everything queued in the playback worklet so the user stops
-      // hearing the assistant immediately — otherwise the ring-buffer tail
-      // (up to ~200 ms of pre-roll plus anything else queued) would still
-      // play out before silence.
-      if (active !== undefined) active.playbackNode.port.postMessage({ type: "clear" })
-      setStatus("listening")
-      finishAssistant(event.text)
-      break
-    case "error":
-      setStatus(event.message, true)
-      break
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Session lifecycle
-// ---------------------------------------------------------------------------
-
-type Session = {
-  readonly stream: MediaStream
-  readonly ctx: AudioContext
-  readonly ws: WebSocket
-  readonly anchor: HTMLAudioElement
-  readonly playbackNode: AudioWorkletNode
-}
-
-let active: Session | undefined
-
-const teardown = (s: Session): void => {
-  try {
-    s.stream.getTracks().forEach((t) => t.stop())
-  } catch {
-    /* ignore */
-  }
-  try {
-    s.anchor.pause()
-    s.anchor.srcObject = null
-  } catch {
-    /* ignore */
-  }
-  try {
-    if (s.ws.readyState === WebSocket.OPEN || s.ws.readyState === WebSocket.CONNECTING) s.ws.close()
-  } catch {
-    /* ignore */
-  }
-  try {
-    void s.ctx.close()
-  } catch {
-    /* ignore */
-  }
-}
-
-const stop = (): void => {
-  if (active !== undefined) {
-    teardown(active)
-    active = undefined
-  }
-  toggleBtn.textContent = "Start"
-}
-
-// ---------------------------------------------------------------------------
-// PCM helpers — decode incoming binary frames (server TTS audio) into Float32
-// for the playback worklet.
-// ---------------------------------------------------------------------------
-
-const pcmS16ToFloat32 = (bytes: Uint8Array): Float32Array => {
-  // `bytes` is the wire frame as-is (s16le). Wrap as Int16 and convert.
-  const view = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2)
-  const out = new Float32Array(view.length)
-  for (let i = 0; i < view.length; i++) {
-    const v = view[i]
-    out[i] = v < 0 ? v / 0x8000 : v / 0x7fff
-  }
-  return out
-}
-
-// ---------------------------------------------------------------------------
-// Start session
-// ---------------------------------------------------------------------------
-
-type WireConfig = { readonly micSampleRate: number; readonly playbackSampleRate: number }
-
-const fetchConfig = async (): Promise<WireConfig> => {
-  const res = await fetch("/config")
-  return (await res.json()) as WireConfig
-}
-
-const start = async (): Promise<void> => {
-  toggleBtn.textContent = "Stop"
-  setStatus("requesting microphone…")
-
-  let cfg: WireConfig
-  try {
-    cfg = await fetchConfig()
-  } catch (err) {
-    setStatus(`config fetch failed: ${(err as Error).message}`, true)
-    stop()
-    return
-  }
-
-  let stream: MediaStream
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-  } catch (err) {
-    setStatus(`mic denied: ${(err as Error).message}`, true)
-    stop()
-    return
-  }
-
-  // Chrome / Safari quirk: `MediaStreamAudioSourceNode` produces silence
-  // unless the underlying `MediaStream` is also being "consumed" by an
-  // `<audio>` element. Muted playback is enough.
-  const anchor = new Audio()
-  anchor.srcObject = stream
-  anchor.muted = true
-  try {
-    await anchor.play()
-  } catch {
-    /* autoplay policy may reject — the source node usually still works */
-  }
-
-  // Use the playback sample rate as the context rate so the playback worklet
-  // doesn't need to resample. The mic worklet will downsample mic input from
-  // ctx.sampleRate to cfg.micSampleRate.
-  const ctx = new AudioContext({ sampleRate: cfg.playbackSampleRate })
-  if (ctx.state === "suspended") await ctx.resume()
-
-  try {
-    await ctx.audioWorklet.addModule("/mic-worklet.js")
-    await ctx.audioWorklet.addModule("/playback-worklet.js")
-  } catch (err) {
-    setStatus(`audio worklet failed: ${(err as Error).message}`, true)
-    stream.getTracks().forEach((t) => t.stop())
-    void ctx.close()
-    stop()
-    return
-  }
-
-  // Mic capture
-  const source = ctx.createMediaStreamSource(stream)
-  const micWorklet = new AudioWorkletNode(ctx, "mic-worklet", {
-    processorOptions: { sourceRate: ctx.sampleRate, targetRate: cfg.micSampleRate },
-  })
-  source.connect(micWorklet)
-  // Silent sink to keep the graph pulling on the mic worklet.
-  const sink = ctx.createGain()
-  sink.gain.value = 0
-  micWorklet.connect(sink)
-  sink.connect(ctx.destination)
-
-  // Playback
-  const playbackNode = new AudioWorkletNode(ctx, "playback-worklet")
-  playbackNode.connect(ctx.destination)
-
-  // WebSocket — sends binary mic frames, receives binary TTS frames + text
-  // status frames.
-  const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
-  const ws = new WebSocket(wsUrl)
-  ws.binaryType = "arraybuffer"
-
-  active = { stream, ctx, ws, anchor, playbackNode }
-
-  ws.addEventListener("open", () => {
-    setStatus("listening")
-    micWorklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(e.data)
-    }
-  })
-
-  ws.addEventListener("message", (e) => {
-    if (typeof e.data === "string") {
-      try {
-        handleStatus(JSON.parse(e.data) as StatusEvent)
-      } catch {
-        /* ignore non-JSON text */
-      }
-      return
-    }
-    // Binary frame = TTS audio bytes.
-    const bytes = e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : (e.data as Uint8Array)
-    playbackNode.port.postMessage(pcmS16ToFloat32(bytes))
-  })
-
-  ws.addEventListener("close", () => {
-    if (active !== undefined) {
-      setStatus("closed")
-      stop()
-    }
-  })
-  ws.addEventListener("error", () => {
-    setStatus("ws error", true)
-    stop()
-  })
-}
+registry.subscribe(
+  session.connected,
+  (connected) => {
+    toggleBtn.textContent = connected ? "Stop" : "Start"
+  },
+  { immediate: true },
+)
 
 toggleBtn.addEventListener("click", () => {
-  if (active === undefined) {
-    void start()
-  } else {
+  if (registry.get(session.connected)) {
     setStatus("stopped")
-    stop()
+    registry.set(session.disconnect, undefined)
+  } else {
+    setStatus("connecting…")
+    registry.set(session.connect, undefined)
   }
 })

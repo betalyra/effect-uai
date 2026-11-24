@@ -9,30 +9,22 @@
  *
  * Frames are expensive, so who decides when to send one matters. Here the
  * browser sends them only while it hears the user, and this file just
- * forwards what arrives.
+ * forwards what arrives. `Projection.fromRealtime` turns the session into
+ * what the page sees.
  */
-import { Cause, Effect, Fiber, Match, Ref, Stream } from "effect"
+import { Cause, Effect, FiberMap, Match, Queue, Ref, Stream } from "effect"
 import type { AudioFormat } from "@effect-uai/core/Audio"
 import type { ImageSource } from "@effect-uai/core/Image"
+import type * as Items from "@effect-uai/core/Items"
 import { RealtimeInput } from "@effect-uai/core/Realtime"
+import type { RealtimeEvent } from "@effect-uai/core/Realtime"
 import * as RealtimeSession from "@effect-uai/core/RealtimeSession"
 import * as Toolkit from "@effect-uai/core/Toolkit"
-
-/** What the browser is told. Rendering is the client's business. */
-export type StatusEvent =
-  | { readonly type: "user-transcript"; readonly text: string; readonly final: boolean }
-  | { readonly type: "assistant-started" }
-  | { readonly type: "assistant-delta"; readonly text: string }
-  | { readonly type: "assistant-done"; readonly reason: string }
-  /** Stop the voice: the model has abandoned what it was saying. */
-  | { readonly type: "interrupted" }
-  /** How many frames the model has been shown so far. */
-  | { readonly type: "frames"; readonly count: number }
-  | { readonly type: "tool-call"; readonly name: string; readonly arguments: string }
-  | { readonly type: "tool-done"; readonly name: string }
-  | { readonly type: "tool-cancelled"; readonly count: number }
-  | { readonly type: "session-ending" }
-  | { readonly type: "error"; readonly message: string }
+import * as Frame from "@effect-uai/ui/Frame"
+import * as Projection from "@effect-uai/ui/Projection"
+import type * as Run from "@effect-uai/ui/Run"
+import { type Json, RunId, type RunEvent } from "@effect-uai/ui/RunEvent"
+import { CAMERA, MIC, SPEAKER, type Up } from "./contract.js"
 
 export type AssistantConfig = {
   readonly model: string
@@ -42,124 +34,182 @@ export type AssistantConfig = {
   readonly outputFormat: AudioFormat
 }
 
-export type AssistantIO = {
-  readonly mic: Stream.Stream<Uint8Array>
-  /** JPEG stills, paced by whoever produces them. At most one per second. */
-  readonly frames: Stream.Stream<ImageSource>
-  readonly typed: Stream.Stream<string>
-  readonly sendStatus: (event: StatusEvent) => Effect.Effect<void>
-  readonly sendAudio: (bytes: Uint8Array) => Effect.Effect<void>
+/** Where the frames come from: the page's camera or screen, or a stream of the app's own. */
+export type Frames =
+  | { readonly _tag: "page"; readonly source: "camera" | "screen" }
+  | { readonly _tag: "own"; readonly frames: Stream.Stream<ImageSource> }
+
+/** A tool's output as the page shows it: the JSON it returned, or its text. */
+const shown = (output: Items.ToolCallOutput): Json => {
+  const parts = output.output.flatMap((part): ReadonlyArray<Json> =>
+    Match.value(part).pipe(
+      Match.discriminatorsExhaustive("type")({
+        input_json: (p) => [p.value],
+        input_text: (p) => [p.text],
+        input_image: () => [],
+        input_file: () => [],
+      }),
+    ),
+  )
+  return parts.length === 1 ? (parts[0] ?? null) : parts
 }
 
+const toolResult = (call: Items.ToolCall, output: Items.ToolCallOutput): RunEvent => ({
+  type: "tool-result",
+  callId: call.call_id,
+  name: call.name,
+  result:
+    output.isError === true
+      ? { _tag: "Failure", error: shown(output) }
+      : { _tag: "Success", value: shown(output) },
+})
+
+const event = (e: RunEvent): Frame.Frame<Run.Owned> => Frame.message({ event: e })
+
+export const jpeg = (bytes: Uint8Array): ImageSource => ({
+  _tag: "bytes",
+  bytes,
+  mimeType: "image/jpeg",
+})
+
 /**
- * Open a session, forward microphone and camera, and answer events until the
- * socket closes. Runs for the lifetime of the surrounding scope.
+ * Open a session and run it for as long as the returned stream is read:
+ * `up` carries the microphone, the camera and typed messages in; the stream
+ * carries the session out, as frames for `Frame.sequence`.
  */
 export const runAssistant = <T extends Toolkit.Toolkit>(
   cfg: AssistantConfig,
   toolkit: T,
-  io: AssistantIO,
+  frames: Frames,
+  up: Stream.Stream<Frame.Frame<Up>>,
 ) =>
-  Effect.gen(function* () {
-    const session = yield* RealtimeSession.open({
-      model: cfg.model,
-      instructions: cfg.instructions,
-      voiceId: cfg.voiceId,
-      inputFormat: cfg.inputFormat,
-      outputFormat: cfg.outputFormat,
-      tools: Toolkit.descriptors(toolkit),
-    })
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const session = yield* RealtimeSession.open({
+        model: cfg.model,
+        instructions: cfg.instructions,
+        voiceId: cfg.voiceId,
+        inputFormat: cfg.inputFormat,
+        outputFormat: cfg.outputFormat,
+        tools: Toolkit.descriptors(toolkit),
+      })
 
-    const seen = yield* Ref.make(0)
-    // Tool fibers by `call_id`. An entry lives until its result is sent or the
-    // call is cancelled, never to the end of the response: the turn that
-    // carries a call routinely finishes while the tool is still working.
-    const pending = yield* Ref.make<ReadonlyArray<readonly [string, Fiber.Fiber<void, never>]>>([])
+      // Tool fibers by `call_id`, in the session's scope. An entry lives until
+      // its tool is done or the call is cancelled, never to the end of the
+      // response: the turn that carries a call routinely finishes while the
+      // tool is still working.
+      const pending = yield* FiberMap.make<string>()
+      // What the page sees beside the session's own events: tool results, frame counts.
+      const side = yield* Queue.unbounded<Frame.Frame<Run.Owned>, Cause.Done>()
+      const seen = yield* Ref.make(0)
 
-    yield* Effect.forkScoped(
-      Stream.runForEach(io.mic, (bytes) => session.send(RealtimeInput.Audio({ bytes }))),
-    )
-    yield* Effect.forkScoped(
-      Stream.runForEach(io.typed, (text) => session.send(RealtimeInput.Text({ text }))),
-    )
-    yield* Effect.forkScoped(
-      Stream.runForEach(io.frames, (frame) =>
+      const show = (frame: ImageSource) =>
         Effect.andThen(
           RealtimeSession.sendVideoFrame(session, frame),
           Effect.flatMap(
             Ref.updateAndGet(seen, (n) => n + 1),
-            (count) => io.sendStatus({ type: "frames", count }),
+            (count) => Queue.offer(side, event({ type: "live", name: "frames", value: count })),
+          ),
+        )
+
+      yield* up.pipe(
+        Stream.runForEach(
+          Frame.Frame.$match({
+            Media: ({ channel, bytes }) =>
+              Match.value(channel).pipe(
+                Match.when(MIC, () => session.send(RealtimeInput.Audio({ bytes }))),
+                Match.when(CAMERA, () =>
+                  frames._tag === "page" ? Effect.asVoid(show(jpeg(bytes))) : Effect.void,
+                ),
+                Match.orElse(() => Effect.void),
+              ),
+            Message: ({ message }) => session.send(RealtimeInput.Text({ text: message.text })),
+          }),
+        ),
+        Effect.forkScoped,
+      )
+      if (frames._tag === "own") {
+        yield* frames.frames.pipe(Stream.runForEach(show), Effect.forkScoped)
+      }
+
+      const runTool = (responseId: string, call: Items.ToolCall) =>
+        Toolkit.run(toolkit, [call]).pipe(
+          Stream.filter(Toolkit.isOutcome),
+          Stream.mapEffect(Toolkit.output(toolkit)),
+          // Once the model has the result, the page gets it too, even if a cancel lands now.
+          Stream.runForEach((output) =>
+            Effect.uninterruptible(
+              Effect.andThen(
+                session.send(RealtimeInput.ToolResult({ output })),
+                Queue.offer(
+                  side,
+                  Frame.message({ runId: RunId.make(responseId), event: toolResult(call, output) }),
+                ),
+              ),
+            ),
+          ),
+          // A rejected result is invisible otherwise: the model simply never
+          // answers, and the page shows a call that never lands.
+          Effect.tapCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.void
+              : Effect.logError("[tool] failed", { name: call.name, cause: Cause.pretty(cause) }),
+          ),
+          Effect.ignore,
+        )
+
+      // What the projection leaves to the app: the tools. The provider owns
+      // barge-in here, and there is no truncate to send after it.
+      const act = (e: RealtimeEvent) =>
+        Match.value(e).pipe(
+          Match.tag("ToolCall", (call) =>
+            Effect.asVoid(
+              FiberMap.run(pending, call.call.call_id, runTool(call.responseId, call.call)),
+            ),
+          ),
+          Match.tag("ToolCallCancelled", (cancelled) =>
+            Effect.forEach(cancelled.callIds, (id) => FiberMap.remove(pending, id), {
+              discard: true,
+            }),
+          ),
+          Match.orElse(() => Effect.void),
+        )
+
+      // The page records at the model's rate, and shows a camera switch only
+      // when it is the one that supplies the frames.
+      const opening: ReadonlyArray<Frame.Frame<Run.Owned>> = [
+        event({
+          type: "channel-opened",
+          channel: MIC,
+          direction: "up",
+          mimeType: "audio/pcm",
+          sampleRate: cfg.inputFormat.sampleRate,
+          channels: 1,
+        }),
+        ...(frames._tag === "page"
+          ? [
+              event({
+                type: "channel-opened",
+                channel: CAMERA,
+                direction: "up",
+                mimeType: "image/jpeg",
+              }),
+              event({ type: "live", name: "source", value: frames.source }),
+            ]
+          : []),
+      ]
+
+      return Stream.fromIterable(opening).pipe(
+        Stream.concat(
+          session.events.pipe(
+            Stream.tap(act),
+            Projection.fromRealtime({
+              channel: SPEAKER,
+              format: { sampleRate: cfg.outputFormat.sampleRate },
+            }),
+            Stream.merge(Stream.fromQueue(side), { haltStrategy: "left" }),
           ),
         ),
-      ),
-    )
-
-    yield* Stream.runForEach(session.events, (event) =>
-      Match.value(event).pipe(
-        Match.tag("ResponseStarted", () => io.sendStatus({ type: "assistant-started" })),
-        Match.tag("AudioDelta", (e) => io.sendAudio(e.bytes)),
-        Match.tag("OutputTranscriptDelta", (e) =>
-          io.sendStatus({ type: "assistant-delta", text: e.text }),
-        ),
-        Match.tag("InputTranscript", (e) =>
-          io.sendStatus({ type: "user-transcript", text: e.text, final: e.final }),
-        ),
-        // The provider owns barge-in here, and there is no truncate to send
-        // after it: what the listener missed stays in the model's context.
-        Match.tag("Interrupted", () => io.sendStatus({ type: "interrupted" })),
-        Match.tag("ToolCall", (e) =>
-          Effect.gen(function* () {
-            yield* io.sendStatus({
-              type: "tool-call",
-              name: e.call.name,
-              arguments: e.call.arguments,
-            })
-            // Forked, so the conversation stays live while the tool works.
-            const fiber = yield* Effect.forkScoped(
-              Toolkit.run(toolkit, [e.call]).pipe(
-                Stream.filter(Toolkit.isOutcome),
-                Stream.mapEffect(Toolkit.output(toolkit)),
-                Stream.runForEach((output) =>
-                  Effect.gen(function* () {
-                    yield* session.send(RealtimeInput.ToolResult({ output }))
-                    yield* Ref.update(pending, (xs) => xs.filter(([id]) => id !== e.call.call_id))
-                    yield* io.sendStatus({ type: "tool-done", name: e.call.name })
-                  }),
-                ),
-                // A rejected result is invisible otherwise: the model simply
-                // never answers, and the page shows a call that never lands.
-                Effect.tapCause((cause) =>
-                  Cause.hasInterruptsOnly(cause)
-                    ? Effect.void
-                    : Effect.logError("[tool] failed", {
-                        name: e.call.name,
-                        cause: Cause.pretty(cause),
-                      }),
-                ),
-                Effect.ignore,
-              ),
-            )
-            yield* Ref.update(pending, (xs) => [...xs, [e.call.call_id, fiber] as const])
-          }),
-        ),
-        Match.tag("ToolCallCancelled", (e) =>
-          Effect.gen(function* () {
-            // The model gave up on these, so stop the work rather than
-            // answering a call nobody is waiting for.
-            const doomed = yield* Ref.modify(pending, (xs) => [
-              xs.filter(([id]) => e.callIds.includes(id)),
-              xs.filter(([id]) => !e.callIds.includes(id)),
-            ])
-            yield* Effect.forEach(doomed, ([, fiber]) => Fiber.interrupt(fiber), { discard: true })
-            yield* io.sendStatus({ type: "tool-cancelled", count: doomed.length })
-          }),
-        ),
-        Match.tag("ResponseDone", (e) =>
-          io.sendStatus({ type: "assistant-done", reason: e.reason }),
-        ),
-        Match.tag("SessionEnding", () => io.sendStatus({ type: "session-ending" })),
-        Match.tag("Error", (e) => io.sendStatus({ type: "error", message: e.message })),
-        Match.orElse(() => Effect.void),
-      ),
-    )
-  })
+      )
+    }),
+  )

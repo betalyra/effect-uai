@@ -60,7 +60,8 @@ export const RunFailed = event("run-failed", {
   reason: Schema.String,
   message: Schema.optional(Schema.String),
 })
-export const RunStopped = event("run-stopped", {})
+/** `reason` is the app's short code for why (e.g. "user", "barge-in"). */
+export const RunStopped = event("run-stopped", { reason: Schema.optional(Schema.String) })
 
 // ---------------------------------------------------------------------------
 // Steps (one per model turn) and content
@@ -96,6 +97,27 @@ export const Media = event("media", {
   id: Schema.optional(Schema.String),
   name: Schema.optional(Schema.String),
 })
+
+// ---------------------------------------------------------------------------
+// Channels: continuous media on a live socket (see `Frame`)
+// ---------------------------------------------------------------------------
+
+/** A media channel's number; binary frames carry it as a big-endian u16. */
+export const Channel = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 }))
+
+/**
+ * Declares a channel's format. `down`: the server sends media on it (play
+ * it); `up`: the server expects the client to send it. `audio/pcm` is s16le.
+ * Opened inside a run, the channel belongs to that run.
+ */
+export const ChannelOpened = event("channel-opened", {
+  channel: Channel,
+  direction: Schema.Literals(["down", "up"]),
+  mimeType: Schema.String,
+  sampleRate: Schema.optional(Schema.Int),
+  channels: Schema.optional(Schema.Int),
+})
+export const ChannelClosed = event("channel-closed", { channel: Channel })
 
 // ---------------------------------------------------------------------------
 // Structured objects
@@ -242,6 +264,8 @@ export const plainEvents = [
   Citation,
   Image,
   Media,
+  ChannelOpened,
+  ChannelClosed,
   ObjectStarted,
   ObjectDelta,
   ObjectFailed,
